@@ -21,6 +21,7 @@ import {
 	type ArchiveWorktreeTarget,
 	useSessionActions,
 } from "./sessionActions";
+import { useT } from "../../stores/language";
 
 export function restoreSidebarFocus(prevElement: HTMLElement | null) {
 	if (
@@ -96,6 +97,7 @@ function ArchiveWorktreeModal({
 	target: ArchiveWorktreeTarget;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	useDialogFocusRestore();
 	const [busy, setBusy] = useState(false);
 	const initialBtnRef = useRef<HTMLButtonElement>(null);
@@ -148,7 +150,7 @@ function ArchiveWorktreeModal({
 			await archiveSessions([target.session.id]);
 			if (isMountedRef.current) onClose();
 		} catch (err) {
-			if (isMountedRef.current) toast.error(`归档失败: ${errMsg(err)}`);
+			if (isMountedRef.current) toast.error(t("sessions.archiveFailed", { error: errMsg(err) }));
 		} finally {
 			if (isMountedRef.current) setBusy(false);
 		}
@@ -176,7 +178,7 @@ function ArchiveWorktreeModal({
 			}
 		} catch (err) {
 			if (isMountedRef.current) {
-				toast.error(`清理或归档失败: ${errMsg(err)}`);
+				toast.error(t("sessions.cleanOrArchiveFailed", { error: errMsg(err) }));
 			}
 		} finally {
 			if (isMountedRef.current) {
@@ -187,14 +189,14 @@ function ArchiveWorktreeModal({
 	return (
 		<Modal
 			onClose={onClose}
-			title="归档会话与工作树清理"
+			title={t("sessions.archiveAndCleanTitle")}
 			icon={<AlertTriangle size={14} className="text-amber-400" />}
 			size="md"
 		>
 			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 
 				<p className="text-xs text-[var(--text-muted)] leading-relaxed">
-					此会话关联了工作树：
+					{t("sessions.sessionLinkedWorktree")}
 					<code className="mx-1 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text)] break-all">
 						{target.wt.path}
 					</code>
@@ -202,9 +204,9 @@ function ArchiveWorktreeModal({
 
 				{target.wt.dirty > 0 && (
 					<Notice tone="warning">
-						该工作树包含{" "}
-						<span className="font-bold">{target.wt.dirty}</span>{" "}
-						个未提交的改动。清理工作树时将提示是否强制清理并放弃改动。
+						{t("sessions.worktreeDirtyNoticePrefix")}
+						<span className="font-bold">{target.wt.dirty}</span>
+						{t("sessions.worktreeDirtyNoticeSuffix")}
 					</Notice>
 				)}
 
@@ -217,10 +219,10 @@ function ArchiveWorktreeModal({
 						className="press-scale rounded-xl border border-[var(--border-divider)] bg-[var(--bg-hover)] p-3 text-left hover:bg-[var(--bg-active-fill)] transition-colors disabled:opacity-50"
 					>
 						<div className="font-semibold text-[var(--text)]">
-							仅归档会话 (保留工作树)
+							{t("sessions.archiveSessionOnly")}
 						</div>
 						<div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-							会话归档，但保留工作树文件与本地分支。
+							{t("sessions.archiveSessionOnlyDesc")}
 						</div>
 					</button>
 
@@ -233,15 +235,16 @@ function ArchiveWorktreeModal({
 							}`}
 						>
 							<span>
-								该工作树还有 {siblingSessions.length} 个会话
 								{hasBusyOrActive
-									? `，其中 ${busyOrActiveSiblings.length} 个运行中/活动`
-									: ""}
-								。
+									? t("sessions.worktreeSiblingSessionsActive", {
+											count: siblingSessions.length,
+											active: busyOrActiveSiblings.length,
+										})
+									: t("sessions.worktreeSiblingSessions", { count: siblingSessions.length })}
 							</span>
 							{hasBusyOrActive && (
 								<p className="mt-1 text-[11px] text-rose-300/90 font-medium">
-									⚠️ 存在运行中或活动的会话，清理将导致目录被删除。请先停止这些会话后再清理工作树。
+									{t("sessions.worktreeActiveWarning")}
 								</p>
 							)}
 						</div>
@@ -253,7 +256,7 @@ function ArchiveWorktreeModal({
 						onClick={handleCleanWorktree}
 						title={
 							hasBusyOrActive
-								? `工作树仍有活动会话（${busyOrActiveSiblings.map((s) => sessionDisplayName(s)).join("、")}），无法清理`
+								? t("sessions.worktreeHasActiveSessionsTooltip", { names: busyOrActiveSiblings.map((s) => sessionDisplayName(s)).join(t("sessions.listSeparator")) })
 								: undefined
 						}
 						className="press-scale rounded-xl border border-rose-500/40 bg-rose-950/20 p-3 text-left hover:bg-rose-950/40 text-rose-300 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
@@ -264,12 +267,12 @@ function ArchiveWorktreeModal({
 							) : (
 								<Trash2 size={13} />
 							)}
-							归档并清理工作树
+							{t("sessions.archiveAndCleanWorktree")}
 						</div>
 						<div className="text-[11px] text-rose-300/80 mt-0.5">
 							{hasBusyOrActive
-								? "该工作树包含运行中或活动会话，请先停止它们"
-								: "移除该工作树目录；如包含未提交改动将弹出确认。"}
+								? t("sessions.worktreeStopActiveFirstDesc")
+								: t("sessions.worktreeCleanPromptDesc")}
 						</div>
 					</button>
 
@@ -278,7 +281,7 @@ function ArchiveWorktreeModal({
 						onClick={onClose}
 						className="press-scale mt-1 rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] text-center transition-colors"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 				</div>
 			</div>
@@ -299,6 +302,7 @@ function AssignWorkspaceModal({
 	sessionIds: string[];
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
 	const activeMode = useSidebarStore((s) => s.activeMode);
@@ -351,24 +355,24 @@ function AssignWorkspaceModal({
 			if (failedCount === sessionIds.length) {
 				toast.error(
 					sessionIds.length === 1
-						? "更新工作区归属失败"
-						: `更新工作区归属失败: 全部 ${failedCount} 个会话均未能更新`,
+						? t("sessions.assignWorkspaceFailed")
+						: t("sessions.assignWorkspaceFailedAll", { count: failedCount }),
 				);
 				return;
 			}
 
 			if (failedCount > 0) {
 				toast.info(
-					`已更新 ${successes.length} 个会话的工作区归属，${failedCount} 个会话更新失败`,
+					t("sessions.assignWorkspacePartial", { success: successes.length, failed: failedCount }),
 				);
 			} else {
 				toast.success(
-					targetWsId === "" ? "已恢复自动归属" : "已更新工作区归属",
+					targetWsId === "" ? t("sessions.assignWorkspaceRestored") : t("sessions.assignWorkspaceSuccess"),
 				);
 			}
 			onClose();
 		} catch (err) {
-			toast.error(`更新工作区归属失败: ${errMsg(err)}`);
+			toast.error(t("sessions.assignWorkspaceFailedError", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -379,8 +383,8 @@ function AssignWorkspaceModal({
 			onClose={onClose}
 			title={
 				sessionIds.length > 1
-					? `归入工作区（已选 ${sessionIds.length} 个会话）`
-					: "归入工作区"
+					? t("sessions.assignWorkspaceModalTitleMulti", { count: sessionIds.length })
+					: t("sessions.assignWorkspaceModalTitleSingle")
 			}
 			icon={<FolderInput size={14} />}
 			size="sm"
@@ -426,7 +430,7 @@ function AssignWorkspaceModal({
 								: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 						}`}
 					>
-						<span>恢复自动归属（移除工作区绑定）</span>
+						<span>{t("sessions.restoreAutoAssignment")}</span>
 						{(commonWorkspaceId === "" || commonWorkspaceId === null) && (
 							<Check size={14} className="shrink-0" />
 						)}
@@ -448,6 +452,7 @@ function MoveToGroupModal({
 	sessionIds: string[];
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const groups = useSessionGroups((s) => s.groups);
 	const loadGroups = useSessionGroups((s) => s.load);
 	const activeMode = useSidebarStore((s) => s.activeMode);
@@ -496,17 +501,17 @@ function MoveToGroupModal({
 			if (successes.length > 0) useSessions.getState().upsert(successes);
 
 			if (failedCount === sessionIds.length) {
-				toast.error("移动分组失败");
+				toast.error(t("sessions.moveToGroupFailed"));
 				return;
 			}
 			if (failedCount > 0) {
-				toast.info(`已移动 ${successes.length} 个会话，${failedCount} 个失败`);
+				toast.info(t("sessions.moveToGroupPartial", { success: successes.length, failed: failedCount }));
 			} else {
-				toast.success(groupId ? "已移到分组" : "已移回无分组");
+				toast.success(groupId ? t("sessions.movedToGroup") : t("sessions.movedToNoGroup"));
 			}
 			onClose();
 		} catch (err) {
-			toast.error(`移动分组失败: ${errMsg(err)}`);
+			toast.error(t("sessions.moveToGroupFailedError", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -517,8 +522,8 @@ function MoveToGroupModal({
 			onClose={onClose}
 			title={
 				sessionIds.length > 1
-					? `移到分组（已选 ${sessionIds.length} 个会话）`
-					: "移到分组"
+					? t("sessions.moveToGroupModalTitleMulti", { count: sessionIds.length })
+					: t("sessions.moveToGroupModalTitleSingle")
 			}
 			icon={<Tag size={14} />}
 			size="sm"
@@ -551,7 +556,7 @@ function MoveToGroupModal({
 
 					{modeGroups.length === 0 && (
 						<div className="px-3 py-2 text-[11px] text-[var(--text-dim)]">
-							还没有分组，可在「Universal」侧栏中新建
+							{t("sessions.noGroupsPrompt")}
 						</div>
 					)}
 
@@ -568,7 +573,7 @@ function MoveToGroupModal({
 								: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 						}`}
 					>
-						<span>无分组（移回 Universal 列表）</span>
+						<span>{t("sessions.noGroupOption")}</span>
 						{commonGroupId === null && <Check size={14} className="shrink-0" />}
 					</button>
 				</div>
@@ -588,6 +593,7 @@ function TakeoverModal({
 	sessionId: string;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	useDialogFocusRestore();
 	const [busy, setBusy] = useState(false);
 	const confirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -602,10 +608,10 @@ function TakeoverModal({
 		try {
 			await takeoverExternal(sessionId);
 			useUi.getState().selectSession(sessionId);
-			toast.success("已成功接管外部会话");
+			toast.success(t("sessions.takeoverExternalSuccess"));
 			onClose();
 		} catch (err) {
-			toast.error(`接管会话失败: ${errMsg(err)}`);
+			toast.error(t("sessions.takeoverExternalFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -614,7 +620,7 @@ function TakeoverModal({
 	return (
 		<Modal
 			onClose={onClose}
-			title="接管外部会话"
+			title={t("sessions.takeoverModalTitle")}
 			icon={<ExternalLink size={14} className="text-purple-400" />}
 			size="sm"
 			closeOnBackdrop={!busy}
@@ -622,11 +628,11 @@ function TakeoverModal({
 		>
 			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 				<p className="text-xs text-[var(--text-muted)] leading-relaxed">
-					接管外部会话：
+					{t("sessions.takeoverModalDesc")}
 					<strong className="text-rose-400 font-medium">
-						可能丢失未落盘状态
+						{t("sessions.takeoverModalWarning")}
 					</strong>
-					。接管后该会话将由本应用作为主控进程管理。确定要继续接管吗？
+					{t("sessions.takeoverModalTrailing")}
 				</p>
 				<div className="mt-2 flex justify-end gap-2 text-xs">
 					<button
@@ -635,7 +641,7 @@ function TakeoverModal({
 						onClick={onClose}
 						className="press-scale rounded-lg px-3 py-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 					<button
 						ref={confirmBtnRef}
@@ -645,7 +651,7 @@ function TakeoverModal({
 						className="press-scale flex items-center gap-1.5 rounded-lg bg-purple-600 px-3.5 py-1.5 font-medium text-white hover:bg-purple-500 disabled:opacity-60 transition-colors"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
-						确定接管
+						{t("sessions.confirmTakeover")}
 					</button>
 				</div>
 			</div>

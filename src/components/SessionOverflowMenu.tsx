@@ -21,7 +21,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { copyText } from "../lib/dialogs";
 import { rpcRestart, sessionExportHtml, sessionResumeCommand } from "../lib/ipc";
 import { toast } from "../lib/toast";
-
+import { useT } from "../stores/language";
 import { FloatingLayer } from "./FloatingLayer";
 export interface SessionOverflowMenuProps {
 	sessionId: string;
@@ -42,6 +42,7 @@ export function SessionOverflowMenu({
 
 	className,
 }: SessionOverflowMenuProps) {
+	const { t } = useT();
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
@@ -52,11 +53,11 @@ export function SessionOverflowMenu({
 		setBusy(true);
 		try {
 			await rpcRestart(sessionId);
-			toast.info("流连接已重置（本地历史已保留）");
+			toast.info(t("shell.streamResetSuccess"));
 			setOpen(false);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			toast.error(`重置流连接失败: ${msg}`);
+			toast.error(t("shell.streamResetFailed", { error: msg }));
 		} finally {
 			setBusy(false);
 		}
@@ -64,7 +65,7 @@ export function SessionOverflowMenu({
 
 	const handleClearContextNotice = () => {
 		toast.info(
-			"当前 omp CLI / RPC 后端暂不支持在保留同一会话的同时清空上下文（仅交互式 TUI 支持 /clear，RPC 模式未开放重置边界接口）。",
+			t("shell.clearContextNotSupportedMsg"),
 			5000,
 		);
 		setOpen(false);
@@ -75,16 +76,16 @@ export function SessionOverflowMenu({
 		setBusy(true);
 		try {
 			const outPath = await sessionExportHtml(sessionId);
-			toast.success(`已导出 HTML: ${outPath}`);
+			toast.success(t("shell.exportedHtml", { path: outPath }));
 			try {
 				await revealItemInDir(outPath);
 			} catch (err) {
-				console.warn("在访达中显示失败:", err);
+				console.warn("Failed to reveal in Finder:", err);
 			}
 			setOpen(false);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			toast.error(`导出 HTML 失败: ${msg}`);
+			toast.error(t("shell.exportHtmlFailed", { error: msg }));
 		} finally {
 			setBusy(false);
 		}
@@ -95,11 +96,11 @@ export function SessionOverflowMenu({
 		setBusy(true);
 		try {
 			await copyText(await sessionResumeCommand(sessionId));
-			toast.success("已复制终端续接命令");
+			toast.success(t("shell.copyResumeCommandSuccess"));
 			setOpen(false);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			toast.error(`复制续接命令失败: ${msg}`);
+			toast.error(t("shell.copyResumeCommandFailed", { error: msg }));
 		} finally {
 			setBusy(false);
 		}
@@ -111,10 +112,10 @@ export function SessionOverflowMenu({
 				ref={btnRef}
 				type="button"
 				onClick={() => setOpen((v) => !v)}
-				aria-label="更多会话操作"
+				aria-label={t("shell.moreSessionActions")}
 				aria-haspopup="menu"
 				aria-expanded={open}
-				title="更多操作"
+				title={t("shell.moreActions")}
 				className={clsx(
 					"flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-95",
 					open
@@ -138,7 +139,7 @@ export function SessionOverflowMenu({
 			>
 					{/* Section 1: 会话弹性与恢复 */}
 					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
-						会话连接与维护
+						{t("shell.sectionConnection")}
 					</div>
 
 					{/* /fresh equivalent: 重置流连接（保留历史） */}
@@ -148,13 +149,13 @@ export function SessionOverflowMenu({
 						disabled={busy}
 						onClick={handleFreshRestart}
 						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
-						title="重启 RPC 进程并重置提供商与网络连接，保留完整本地历史"
+						title={t("shell.resetStreamTip")}
 					>
 						<RefreshCw
 							size={13}
 							className={clsx("shrink-0 text-emerald-400", busy && "animate-spin")}
 						/>
-						<span className="flex-1 truncate">重置流连接（保留历史）</span>
+						<span className="flex-1 truncate">{t("shell.resetStreamAction")}</span>
 					</button>
 
 
@@ -165,12 +166,12 @@ export function SessionOverflowMenu({
 						role="menuitem"
 						onClick={handleClearContextNotice}
 						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-all active:scale-[0.98]"
-						title="清空上下文（保留会话）：当前 CLI 后端在 RPC 模式下暂不支持"
+						title={t("shell.clearContextTip")}
 					>
 						<Eraser size={13} className="shrink-0 text-neutral-400" />
-						<span className="flex-1 truncate">清空上下文（保留会话）</span>
+						<span className="flex-1 truncate">{t("shell.clearContextAction")}</span>
 						<span className="shrink-0 rounded-md bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
-							未支持
+							{t("shell.unsupportedTag")}
 						</span>
 					</button>
 
@@ -178,7 +179,7 @@ export function SessionOverflowMenu({
 
 					{/* Section 2: 折叠的常用操作 (Task C fold) */}
 					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
-						快捷操作
+						{t("shell.sectionQuickActions")}
 					</div>
 
 					{/* 在访达中显示 */}
@@ -192,10 +193,10 @@ export function SessionOverflowMenu({
 								onOpenInFinder();
 							}}
 							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-30 transition-all active:scale-[0.98]"
-							title={cwd ? `在访达中显示 (${cwd})` : "无工作目录"}
+							title={cwd ? t("shell.revealInFinder", { path: cwd }) : t("shell.noCwd")}
 						>
 							<FolderOpen size={13} className="shrink-0 text-neutral-400" />
-							<span className="flex-1 truncate">在访达中显示</span>
+							<span className="flex-1 truncate">{t("shell.revealInFinderAction")}</span>
 						</button>
 					)}
 
@@ -211,7 +212,7 @@ export function SessionOverflowMenu({
 							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
 						>
 							<Copy size={13} className="shrink-0 text-neutral-400" />
-							<span className="flex-1 truncate">复制为 Markdown</span>
+							<span className="flex-1 truncate">{t("shell.copyAsMarkdown")}</span>
 						</button>
 					)}
 
@@ -222,10 +223,10 @@ export function SessionOverflowMenu({
 						disabled={busy}
 						onClick={handleExportHtml}
 						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
-						title="导出当前会话为独立 HTML 文件并在访达中显示"
+						title={t("shell.exportHtmlTip")}
 					>
 						<FileDown size={13} className="shrink-0 text-neutral-400" />
-						<span className="flex-1 truncate">导出 HTML</span>
+						<span className="flex-1 truncate">{t("shell.exportHtmlAction")}</span>
 					</button>
 
 					{/* 复制终端续接命令 */}
@@ -235,10 +236,10 @@ export function SessionOverflowMenu({
 						disabled={busy}
 						onClick={handleCopyResumeCommand}
 						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
-						title="在其他终端接着聊时用这条命令：带上本应用的提示词参数，避免提示缓存失效"
+						title={t("shell.copyResumeCommandTip")}
 					>
 						<Terminal size={13} className="shrink-0 text-neutral-400" />
-						<span className="flex-1 truncate">复制终端续接命令</span>
+						<span className="flex-1 truncate">{t("shell.copyResumeCommandAction")}</span>
 					</button>
 
 					{/* 手机扫码查看 */}
@@ -253,7 +254,7 @@ export function SessionOverflowMenu({
 							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
 						>
 							<QrCode size={13} className="shrink-0 text-neutral-400" />
-							<span className="flex-1 truncate">手机扫码查看</span>
+							<span className="flex-1 truncate">{t("shell.mobileScan")}</span>
 						</button>
 					)}
 			</FloatingLayer>

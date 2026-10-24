@@ -11,6 +11,7 @@ import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { ompConfigSet } from "../../lib/ipc";
+import { tNow, useT } from "../../stores/language";
 import type { ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { FallbackChainEditor, PICKER_BUTTON_CLASS } from "./FallbackChainEditor";
@@ -18,17 +19,33 @@ import { buildWildcard, classifyChainKey, parseChain, ruleKeys, validateChainKey
 import { Button, Chip, SettingsCard, type ChipTone } from "./ui";
 
 const KEY_CHIP: Record<string, { label: string; tone: ChipTone }> = {
-	model: { label: "模型", tone: "neutral" },
-	provider: { label: "供应商", tone: "accent" },
-	prefix: { label: "前缀通配符", tone: "warning" },
-	invalid: { label: "格式有误", tone: "danger" },
+	get model() {
+		return { label: tNow("settingsModels.kindModel"), tone: "neutral" as const };
+	},
+	get provider() {
+		return { label: tNow("settingsModels.kindProvider"), tone: "accent" as const };
+	},
+	get prefix() {
+		return { label: tNow("settingsModels.kindPrefix"), tone: "warning" as const };
+	},
+	get invalid() {
+		return { label: tNow("settingsModels.kindInvalid"), tone: "danger" as const };
+	},
 };
 
-/** Whether a rule key matches a search needle (key text or its Chinese kind label). */
+/** Whether a rule key matches a search needle (key text or its Chinese/English kind label). */
 export function ruleMatchesQuery(key: string, query: string): boolean {
 	const needle = query.trim().toLowerCase();
 	if (!needle) return true;
-	return key.toLowerCase().includes(needle) || KEY_CHIP[classifyChainKey(key)].label.includes(needle);
+	const kind = classifyChainKey(key);
+	const zhKind =
+		kind === "model" ? "模型" : kind === "provider" ? "供应商" : kind === "prefix" ? "前缀通配符" : "格式有误";
+	return (
+		key.toLowerCase().includes(needle) ||
+		KEY_CHIP[kind].label.toLowerCase().includes(needle) ||
+		zhKind.includes(needle) ||
+		kind.includes(needle)
+	);
 }
 
 function RuleRow({
@@ -52,15 +69,16 @@ function RuleRow({
 	onSaved: () => void;
 	onDelete: () => void;
 }) {
+	const { t } = useT();
 	const [open, setOpen] = useState(defaultOpen);
 	const chain = useMemo(() => parseChain(chains[ruleKey]), [chains, ruleKey]);
 	const kind = KEY_CHIP[classifyChainKey(ruleKey)];
 	const preview = isDraft
-		? "尚未保存：选「自定义」添加备用模型并点应用"
+		? t("settingsModels.draftPreview")
 		: chain.state === "list"
 			? chain.items.join(" → ")
 			: chain.state === "empty"
-				? "失败即停，不回退"
+				? t("settingsModels.noFallbackStop")
 				: "";
 
 	return (
@@ -82,7 +100,7 @@ function RuleRow({
 					)}
 				</span>
 				<Chip tone={isDraft ? "neutral" : chain.state === "empty" ? "warning" : chain.state === "list" ? "success" : "neutral"}>
-					{isDraft ? "未保存" : chain.state === "empty" ? "不回退" : `${chain.items.length} 项`}
+					{isDraft ? t("settingsModels.draftBadge") : chain.state === "empty" ? t("settingsModels.stateEmpty") : t("settingsModels.stateCount", { count: chain.items.length })}
 				</Chip>
 				<ChevronDown className={`mt-1 h-3 w-3 shrink-0 text-[var(--text-dim)] transition-transform ${open ? "rotate-180" : ""}`} />
 			</button>
@@ -95,11 +113,11 @@ function RuleRow({
 						roleIds={roleIds}
 						onSaved={onSaved}
 						onCollapse={() => setOpen(false)}
-						unsetTitle="删除这条规则：不再单独处理这个对象"
-						emptyTitle="显式空链 []：这个对象失败时不回退"
+						unsetTitle={t("settingsModels.unsetRuleTitle")}
+						emptyTitle={t("settingsModels.emptyRuleTitle")}
 					/>
 					<Button variant="danger" size="sm" icon={Trash2} disabled={busy} onClick={onDelete}>
-						删除这条规则
+						{t("settingsModels.deleteRuleBtn")}
 					</Button>
 				</div>
 			)}
@@ -121,6 +139,7 @@ export function ModelRulesSection({
 	query: string;
 	onSaved: () => void;
 }) {
+	const { t } = useT();
 	const [drafts, setDrafts] = useState<string[]>([]);
 	const [justAdded, setJustAdded] = useState<string | null>(null);
 	const [addMode, setAddMode] = useState<"model" | "provider">("model");
@@ -138,15 +157,15 @@ export function ModelRulesSection({
 	const addRule = (key: string) => {
 		const problem = validateChainKey(key);
 		if (problem) {
-			toast.error(`规则对象「${key}」${problem}`);
+			toast.error(t("settingsModels.ruleKeyProblem", { key, problem }));
 			return;
 		}
 		if (!key.includes("/")) {
-			toast.error("规则对象需要写成 供应商/模型");
+			toast.error(t("settingsModels.ruleFormatError"));
 			return;
 		}
 		if (key in chains || drafts.includes(key)) {
-			toast.error(`已经有「${key}」这条规则，直接在列表里修改即可`);
+			toast.error(t("settingsModels.ruleAlreadyExists", { key }));
 			setJustAdded(key);
 			return;
 		}
@@ -155,10 +174,10 @@ export function ModelRulesSection({
 	};
 
 	const removeRule = async (key: string) => {
-		const ok = await confirmDialog(`删除「${key}」这条规则？这个对象之后按角色回退链处理。`, {
-			title: "删除规则",
+		const ok = await confirmDialog(t("settingsModels.deleteRuleConfirmText", { key }), {
+			title: t("settingsModels.deleteRuleConfirmTitle"),
 			danger: true,
-			okLabel: "删除",
+			okLabel: t("common.delete"),
 		});
 		if (!ok) return;
 		setDrafts(drafts.filter((k) => k !== key));
@@ -168,7 +187,7 @@ export function ModelRulesSection({
 			await ompConfigSet("retry.fallbackChains", JSON.stringify(withChain(chains, key, null)));
 			onSaved();
 		} catch (e) {
-			toast.error(`删除规则失败：${errMsg(e)}`);
+			toast.error(t("settingsModels.deleteRuleFailed", { error: errMsg(e) }));
 		} finally {
 			setBusy(false);
 		}
@@ -176,15 +195,15 @@ export function ModelRulesSection({
 
 	return (
 		<SettingsCard
-			title="模型规则"
-			jump="模型规则"
-			aside={`${visible.length} 条`}
-			description="按出错的模型单独设置备用模型，优先级高于角色回退链"
+			title={t("settingsModels.modelRulesTitle")}
+			jump={t("settingsModels.modelRulesJump")}
+			aside={t("settingsModels.rulesCountAside", { count: visible.length })}
+			description={t("settingsModels.modelRulesDesc")}
 			clip
 		>
 			{visible.length === 0 ? (
 				<p className="px-4 py-3 text-xs leading-5 text-[var(--text-dim)]">
-					还没有规则。规则让某一个模型（或某个供应商）出错时走专属的备用名单，不管它当时扮演什么角色。
+					{t("settingsModels.emptyRulesText")}
 				</p>
 			) : (
 				visible.map((k) => (
@@ -205,14 +224,14 @@ export function ModelRulesSection({
 			{!searching && (
 				<div className="space-y-2 px-4 py-3">
 					<div className="flex flex-wrap items-center gap-2">
-						<span className="text-xs font-semibold text-[var(--text)]">新增规则</span>
+						<span className="text-xs font-semibold text-[var(--text)]">{t("settingsModels.addRuleTitle")}</span>
 						<Segmented
 							size="sm"
 							value={addMode}
 							onChange={(m) => setAddMode(m === "provider" ? "provider" : "model")}
 							options={[
-								{ value: "model", label: "指定一个模型" },
-								{ value: "provider", label: "指定整个供应商" },
+								{ value: "model", label: t("settingsModels.ruleTypeModel") },
+								{ value: "provider", label: t("settingsModels.ruleTypeProvider") },
 							]}
 						/>
 					</div>
@@ -223,7 +242,7 @@ export function ModelRulesSection({
 							direction="down"
 							align="start"
 							widthClass="w-[380px]"
-							label="选择要设规则的模型"
+							label={t("settingsModels.selectModelForRule")}
 							buttonClass={PICKER_BUTTON_CLASS}
 							models={models}
 							currentValue=""
@@ -239,7 +258,7 @@ export function ModelRulesSection({
 								containerClassName="w-40"
 								onChange={(e) => setProvider(e.target.value)}
 							>
-								<option value="">选择供应商</option>
+								<option value="">{t("settingsModels.selectProviderOption")}</option>
 								{providers.map((p) => (
 									<option key={p} value={p}>
 										{p}
@@ -251,8 +270,8 @@ export function ModelRulesSection({
 								value={prefix}
 								onChange={(e) => setPrefix(e.target.value)}
 								spellCheck={false}
-								placeholder="模型名前缀（可不填）"
-								title="例如在 openrouter 下填 google，只管 openrouter/google/ 开头的模型"
+								placeholder={t("settingsModels.prefixPlaceholder")}
+								title={t("settingsModels.prefixTitle")}
 								className="w-40 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
 							/>
 							<Button
@@ -263,7 +282,7 @@ export function ModelRulesSection({
 									setPrefix("");
 								}}
 							>
-								添加规则
+								{t("settingsModels.addRuleBtn")}
 							</Button>
 						</div>
 					)}

@@ -21,6 +21,7 @@ import remarkGfm from "remark-gfm";
 import { CopyButton } from "../../components/CopyButton";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
+import { useLanguageStore } from "../../stores/language";
 import { HIGHLIGHT_LANGUAGES } from "../chat/markdownAssets";
 import { SectionHeader } from "../settings/ui";
 import {
@@ -67,10 +68,11 @@ const LANG_LABEL: Record<GuideLang, string> = { zh: "中文", en: "English" };
 function readStoredLang(): GuideLang {
 	try {
 		const v = localStorage.getItem(GUIDE_LANG_STORAGE_KEY);
-		return v === "en" || v === "zh" ? v : "zh";
+		if (v === "en" || v === "zh") return v;
 	} catch {
-		return "zh";
+		/* storage unavailable: fall through to the app locale */
 	}
+	return useLanguageStore.getState().locale === "en-US" ? "en" : "zh";
 }
 
 async function loadChapters(lang: GuideLang): Promise<Chapter[]> {
@@ -87,24 +89,31 @@ async function loadChapters(lang: GuideLang): Promise<Chapter[]> {
 	);
 }
 
-const CALLOUT_STYLE: Record<CalloutKind, { label: string; box: string }> = {
-	note: { label: "提示", box: "border-sky-400/60 bg-sky-400/10" },
-	tip: { label: "技巧", box: "border-emerald-400/60 bg-emerald-400/10" },
-	warning: { label: "注意", box: "border-amber-400/70 bg-amber-400/10" },
+const CALLOUT_STYLE: Record<GuideLang, Record<CalloutKind, { label: string; box: string }>> = {
+	zh: {
+		note: { label: "提示", box: "border-sky-400/60 bg-sky-400/10" },
+		tip: { label: "技巧", box: "border-emerald-400/60 bg-emerald-400/10" },
+		warning: { label: "注意", box: "border-amber-400/70 bg-amber-400/10" },
+	},
+	en: {
+		note: { label: "Note", box: "border-sky-400/60 bg-sky-400/10" },
+		tip: { label: "Tip", box: "border-emerald-400/60 bg-emerald-400/10" },
+		warning: { label: "Warning", box: "border-amber-400/70 bg-amber-400/10" },
+	},
 };
 
 function isCalloutKind(v: unknown): v is CalloutKind {
 	return v === "note" || v === "tip" || v === "warning";
 }
 
-function GuideImage({ src, alt }: { src?: string; alt?: string }) {
+function GuideImage({ src, alt, lang }: { src?: string; alt?: string; lang: GuideLang }) {
 	const name = guideImageName(src);
 	const url = name ? IMAGE_URLS[name] : undefined;
 	const [failed, setFailed] = useState(false);
 	if (!url || failed) {
 		return (
 			<span className="my-3 flex min-h-24 items-center justify-center rounded-lg border border-dashed border-[var(--line)] px-4 py-6 text-center text-xs text-[var(--text-60)]">
-				{alt || "截图"}
+				{alt || (lang === "zh" ? "截图" : "Screenshot")}
 			</span>
 		);
 	}
@@ -118,7 +127,7 @@ function GuideImage({ src, alt }: { src?: string; alt?: string }) {
 		/>
 	);
 }
-function CodeBlock({ children }: { children?: React.ReactNode }) {
+function CodeBlock({ children, lang }: { children?: React.ReactNode; lang: GuideLang }) {
 	const textRef = useRef<HTMLPreElement>(null);
 	return (
 		<div className="group relative my-3">
@@ -131,7 +140,7 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
 			<CopyButton
 				text={() => textRef.current?.innerText ?? ""}
 				size={14}
-				title="复制代码"
+				title={lang === "zh" ? "复制代码" : "Copy code"}
 				resetMs={2000}
 				className="absolute right-2 top-2 rounded border border-[var(--line)] bg-[var(--well-bg)] px-1.5 py-0.5 text-xs text-[var(--text-60)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text)] group-hover:opacity-100"
 			/>
@@ -154,7 +163,7 @@ function LangToggle({ lang, onChange }: { lang: GuideLang; onChange: (l: GuideLa
 	return (
 		<div
 			role="group"
-			aria-label="语言"
+			aria-label={lang === "zh" ? "语言" : "Language"}
 			className="inline-flex shrink-0 gap-0.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] p-0.5"
 		>
 			{GUIDE_LANGS.map((l) => (
@@ -271,7 +280,7 @@ export function GuideReader() {
 					e.preventDefault();
 					if (link.kind === "anchor") scrollToAnchor(link.anchor);
 					else if (link.kind === "chapter") openChapter(link.slug, link.anchor);
-					else openUrl(link.url).catch((err) => toast.error(`打开链接失败: ${errMsg(err)}`));
+					else openUrl(link.url).catch((err) => toast.error(lang === "zh" ? `打开链接失败: ${errMsg(err)}` : `Failed to open link: ${errMsg(err)}`));
 				};
 				return (
 					<a
@@ -284,7 +293,9 @@ export function GuideReader() {
 					</a>
 				);
 			},
-			img: GuideImage,
+			img(props: { src?: string; alt?: string }) {
+				return <GuideImage {...props} lang={lang} />;
+			},
 			blockquote({
 				children,
 				"data-callout": callout,
@@ -293,7 +304,7 @@ export function GuideReader() {
 				"data-callout"?: string;
 			}) {
 				if (!isCalloutKind(callout)) return <blockquote>{children}</blockquote>;
-				const style = CALLOUT_STYLE[callout];
+				const style = CALLOUT_STYLE[lang][callout];
 				return (
 					<div
 						role="note"
@@ -311,9 +322,11 @@ export function GuideReader() {
 					</div>
 				);
 			},
-			pre: CodeBlock,
+			pre({ children }: { children?: React.ReactNode }) {
+				return <CodeBlock lang={lang}>{children}</CodeBlock>;
+			},
 		}),
-		[openChapter, scrollToAnchor],
+		[openChapter, scrollToAnchor, lang],
 	);
 
 	const [searchQuery, setSearchQuery] = useState("");
@@ -491,7 +504,7 @@ export function GuideReader() {
 			{/* 正文区域与大纲侧栏 */}
 			<div className="select-text">
 				{chapters === null ? (
-					<p className="text-sm text-[var(--text-60)]">加载中</p>
+					<p className="text-sm text-[var(--text-60)]">{lang === "zh" ? "加载中" : "Loading"}</p>
 				) : active ? (
 					<div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
 						<div className="min-w-0">
@@ -592,7 +605,7 @@ export function GuideReader() {
 					</div>
 				) : (
 					<p className="text-sm text-[var(--text-60)]">
-						{loadError ? `加载失败: ${loadError}` : "暂无内容"}
+						{loadError ? (lang === "zh" ? `加载失败: ${loadError}` : `Failed to load: ${loadError}`) : (lang === "zh" ? "暂无内容" : "No content")}
 					</p>
 				)}
 			</div>

@@ -2,7 +2,7 @@
 
 import { formatBytes } from "../../../lib/format";
 import type { MemoryFileInfo } from "../../../lib/ipc";
-
+import { tNow } from "../../../stores/language";
 /** omp's per-project memory dir name: `--` + path with separators → `-` + `--`. */
 export function cwdToMemorySlug(cwd: string): string {
 	const trimmed = cwd.length > 1 ? cwd.replace(/\/+$/, "") : cwd;
@@ -51,7 +51,7 @@ export function memoryProjectLabel(
 	knownPaths: readonly string[] = [],
 ): MemoryProjectLabel {
 	const inner = slugInner(slug);
-	if (inner.endsWith(GLOBAL_SUFFIX)) return { label: "全局（无项目）", exact: true };
+	if (inner.endsWith(GLOBAL_SUFFIX)) return { label: tNow("memoryRules.globalNoProject"), exact: true };
 	for (const known of knownPaths) {
 		for (const p of withAncestors(known)) {
 			if (cwdToMemorySlug(p) === slug) return { label: tildePath(p, home), exact: true };
@@ -75,13 +75,12 @@ export function defaultMemorySlug(projects: string[], cwd: string | null): strin
 }
 
 export function describeMemoryFile(rel: string): { title: string; role: string } {
-	if (rel === "memory_summary.md") return { title: "记忆摘要", role: "每次新会话都会注入" };
-	if (rel === "MEMORY.md") return { title: "完整记忆", role: "完整记忆，agent 按需查阅" };
+	if (rel === "memory_summary.md") return { title: tNow("memoryRules.summaryTitle"), role: tNow("memoryRules.summaryRole") };
+	if (rel === "MEMORY.md") return { title: tNow("memoryRules.fullMemoryTitle"), role: tNow("memoryRules.fullMemoryRole") };
 	const skill = skillNameOf(rel);
-	if (skill) return { title: skill, role: "omp 沉淀出的技能" };
+	if (skill) return { title: skill, role: tNow("memoryRules.skillRole") };
 	return { title: rel, role: "" };
 }
-
 /** Name of the skill folder for a `skills/<name>/SKILL.md` rel, else null. */
 export function skillNameOf(rel: string): string | null {
 	return /^skills\/([^/]+)\/SKILL\.md$/.exec(rel)?.[1] ?? null;

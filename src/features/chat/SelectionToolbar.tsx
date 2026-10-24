@@ -23,6 +23,7 @@ import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { claimEscape } from "../../lib/escapeClaim";
 import { collectTextSegments, quoteOccurrence, segmentOffset } from "./annotationAnchor";
 
+import { useT } from "../../stores/language";
 /** Custom Highlight API name painting the quoted text while its comment is typed. */
 const PENDING_HIGHLIGHT = "annotation-pending";
 
@@ -75,6 +76,7 @@ export function SelectionToolbar({
 	/** Selection is inside a file preview: annotations quote that file (source "doc") instead of a message. */
 	docFile?: string;
 }) {
+	const { t } = useT();
 	const [sel, setSel] = useState<Sel | null>(null);
 	const [commenting, setCommenting] = useState(false);
 	const [draft, setDraft] = useState("");
@@ -371,8 +373,8 @@ export function SelectionToolbar({
 								submitQuote();
 							}
 						}}
-						placeholder="添加批注（Enter 发送，Shift+Enter 换行）…"
-						aria-label="添加批注"
+						placeholder={t("chatView.selection.annotatePlaceholder")}
+						aria-label={t("chatView.selection.annotateAria")}
 						className={`min-w-0 resize-none rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--text-30)] ${inSideChat ? "w-60" : "w-72"}`}
 					/>
 					<div className={inSideChat ? "flex shrink-0 items-center pb-1" : "flex items-center justify-between gap-3 px-1 pb-0.5"}>
@@ -380,17 +382,17 @@ export function SelectionToolbar({
 							<Segmented<AnnotationTarget>
 								size="sm"
 								pill
-								aria-label="批注目标"
+								aria-label={t("chatView.selection.targetAria")}
 								value={target}
 								onChange={setAnnotationTarget}
 								options={[
-									{ value: "main", label: "主对话", title: "批注进入主会话输入框" },
+									{ value: "main", label: t("chatView.selection.targetMain"), title: t("chatView.selection.targetMainTitle") },
 									{
 										value: "sidechat",
-										label: "辅助对话",
+										label: t("chatView.selection.targetSideChat"),
 										title: tooDeep
-											? `已达侧聊嵌套上限（${MAX_SIDE_CHAT_DEPTH} 层）`
-											: "批注暂存到右侧辅助对话输入框",
+											? t("chatView.selection.sideChatMaxDepth", { depth: MAX_SIDE_CHAT_DEPTH })
+											: t("chatView.selection.targetSideChatTitle"),
 										disabled: tooDeep,
 									},
 								]}
@@ -398,8 +400,8 @@ export function SelectionToolbar({
 						)}
 						<button
 							type="button"
-							aria-label="确认批注"
-							title="确认批注 (Enter)"
+							aria-label={t("chatView.selection.confirmAnnotationAria")}
+							title={t("chatView.selection.confirmAnnotationTitle")}
 							onClick={submitQuote}
 							className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
 						>
@@ -409,11 +411,11 @@ export function SelectionToolbar({
 				</div>
 			) : (
 				<>
-					<BubbleAction icon={<MessageSquareQuote size={12} />} label="批注" onClick={startComment} />
+					<BubbleAction icon={<MessageSquareQuote size={12} />} label={t("chatView.selection.actionAnnotate")} onClick={startComment} />
 					{!docFile && (
 						<BubbleAction
 							icon={<BookmarkPlus size={12} />}
-							label="记到收集箱"
+							label={t("chatView.selection.actionQuickCapture")}
 							onClick={() => {
 								openModal("quick-capture", { text: sel.text, sessionId });
 								dismiss("discard");
@@ -423,7 +425,7 @@ export function SelectionToolbar({
 					{showSendToMain && (
 						<BubbleAction
 							icon={<CornerUpLeft size={12} />}
-							label="发到主对话"
+							label={t("chatView.selection.actionSendToMain")}
 							onClick={() => {
 								stageInParent(sessionId, sel.text);
 								dismiss("discard");

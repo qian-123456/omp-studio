@@ -5,34 +5,42 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseDocument } from "yaml";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { useEscapeKey } from "../../../lib/hooks";
+import { useT } from "../../../stores/language";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useProviders } from "../../providers/store";
 import { ompInfo, readTextFile, writeTextFile } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
 import { Button } from "../ui";
 
-const FILES = [
+type FileName = "models.yml" | "config.yml" | ".env";
+
+interface FileMeta {
+	name: FileName;
+	label: string;
+	kind: "yaml" | "env";
+	hint: string;
+}
+
+const getFiles = (t: (k: string) => string): FileMeta[] => [
 	{
 		name: "models.yml",
-		label: "models.yml（供应商与模型）",
+		label: t("memoryRules.rawFiles.modelsLabel"),
 		kind: "yaml",
-		hint: "记录有哪些供应商（接口地址、密钥变量名、接口类型）和每个模型的单独设置（如压缩用的模型）。「供应商」页管理的就是这个文件。",
+		hint: t("memoryRules.rawFiles.modelsHint"),
 	},
 	{
 		name: "config.yml",
-		label: "config.yml（omp 配置）",
+		label: t("memoryRules.rawFiles.configLabel"),
 		kind: "yaml",
-		hint: "omp 自身的全局设置：各角色默认用哪个模型和思考等级（modelRoles）、禁用的供应商、主题、压缩策略、编辑模式等。",
+		hint: t("memoryRules.rawFiles.configHint"),
 	},
 	{
 		name: ".env",
-		label: ".env（环境变量）",
+		label: t("memoryRules.rawFiles.envLabel"),
 		kind: "env",
-		hint: "存放各供应商的 API 密钥，格式为 变量名=密钥；models.yml 里的 apiKey 写的是这里的变量名。",
+		hint: t("memoryRules.rawFiles.envHint"),
 	},
-] as const;
-
-type FileName = (typeof FILES)[number]["name"];
+];
 
 /** Full YAML parse error text, or null when the text parses. */
 function yamlError(text: string): string | null {
@@ -41,29 +49,31 @@ function yamlError(text: string): string | null {
 }
 
 export function RawFilesDialog({ onClose }: { onClose: () => void }) {
+	const { t } = useT();
+	const files = useMemo(() => getFiles(t), [t]);
 	const [agentDir, setAgentDir] = useState<string | null>(null);
 	const [active, setActive] = useState<FileName>("models.yml");
-	const [saved, setSaved] = useState("");
 	const [text, setText] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [saved, setSaved] = useState("");
 
 	useEffect(() => {
 		ompInfo().then(
 			(i) => setAgentDir(i.agentDir),
 			(e) => {
-				setLoadError(`无法确定 omp 数据目录：${errMsg(e)}`);
+				setLoadError(t("memoryRules.rawFiles.cannotDetermineAgentDir", { error: errMsg(e) }));
 				setLoading(false);
 			},
 		);
 	}, []);
 
 	const path = agentDir ? `${agentDir}/${active}` : null;
-	const meta = FILES.find((f) => f.name === active)!;
-	const kind = meta.kind;
+	const meta = files.find((f) => f.name === active) ?? files[0];
 	const dirty = text !== saved;
+	const kind = meta.kind;
 
 	useEffect(() => {
 		if (!path) return;
@@ -95,12 +105,12 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 
 	const switchTo = async (name: FileName) => {
 		if (name === active) return;
-		if (dirty && !(await confirmDialog("当前文件有未保存的修改，切换后将丢失。继续吗？", { danger: true }))) return;
+		if (dirty && !(await confirmDialog(t("memoryRules.rawFiles.confirmDiscardSwitch"), { danger: true }))) return;
 		setActive(name);
 	};
 
 	const close = async () => {
-		if (dirty && !(await confirmDialog("有未保存的修改，关闭后将丢失。继续吗？", { danger: true }))) return;
+		if (dirty && !(await confirmDialog(t("memoryRules.rawFiles.confirmDiscardClose"), { danger: true }))) return;
 		onClose();
 	};
 
@@ -119,20 +129,20 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 			// The page stores cache these files; reload so they show the new values.
 			void useProviders.getState().load();
 			void useOmpConfigStore.getState().load(true);
-			toast.success(`已保存 ${active}`);
+			toast.success(t("memoryRules.rawFiles.savedFile", { file: active }));
 		} catch (e) {
 			setSaveError(errMsg(e));
 		} finally {
 			setSaving(false);
 		}
-	}, [path, parseError, text, active]);
+	}, [path, parseError, text, active, t]);
 
 	const reveal = async () => {
 		if (!path) return;
 		try {
 			await revealItemInDir(path);
 		} catch (e) {
-			toast.error(`在访达中显示失败：${errMsg(e)}`);
+			toast.error(t("memoryRules.rawFiles.revealFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -146,17 +156,17 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 			<div
 				role="dialog"
 				aria-modal="true"
-				aria-label="编辑原始配置文件"
+				aria-label={t("memoryRules.rawFiles.title")}
 				className="flex h-[80vh] w-full max-w-3xl flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--bg-elevated,var(--bg))] p-5 shadow-xl"
 			>
 				<div className="flex items-center justify-between">
-					<h2 className="text-base font-semibold">编辑原始配置文件</h2>
-					<button type="button" aria-label="关闭" onClick={() => void close()} className="rounded p-1 hover:bg-[var(--bg-hover,transparent)]">
+					<h2 className="text-base font-semibold">{t("memoryRules.rawFiles.title")}</h2>
+					<button type="button" aria-label={t("memoryRules.rawFiles.close")} onClick={() => void close()} className="rounded p-1 hover:bg-[var(--bg-hover,transparent)]">
 						<X size={16} />
 					</button>
 				</div>
 				<div className="flex flex-wrap gap-2">
-					{FILES.map((f) => (
+					{files.map((f) => (
 						<Button key={f.name} variant={f.name === active ? "primary" : "secondary"} onClick={() => void switchTo(f.name)}>
 							{f.label}
 						</Button>
@@ -167,10 +177,10 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 				{kind === "env" ? (
 					<div className="flex items-start gap-2 rounded-md border border-[var(--status-warning,var(--line))] p-2 text-xs">
 						<AlertTriangle size={14} className="mt-0.5 shrink-0" />
-						<span>.env 可能包含 API 密钥等机密信息，请勿截图或分享此处内容。保存后需重启会话才会生效。</span>
+						<span>{t("memoryRules.rawFiles.envNotice")}</span>
 					</div>
 				) : (
-					<div className="text-xs text-[var(--text-muted,inherit)]">直接修改文件内容；保存前会校验 YAML 语法。文件不存在时保存会新建。</div>
+					<div className="text-xs text-[var(--text-muted,inherit)]">{t("memoryRules.rawFiles.yamlNotice")}</div>
 				)}
 				{loadError ? (
 					<pre className="whitespace-pre-wrap rounded-md border border-[var(--status-error)] p-2 text-xs text-[var(--status-error)]">{loadError}</pre>
@@ -181,20 +191,20 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 					disabled={loading || !!loadError}
 					spellCheck={false}
 					autoComplete="off"
-					aria-label={`${active} 内容`}
+					aria-label={t("memoryRules.rawFiles.contentAria", { file: active })}
 					className="min-h-0 flex-1 resize-none rounded-md border border-[var(--line)] bg-transparent p-2 font-mono text-xs"
 				/>
 				{parseError || saveError ? (
 					<pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--status-error)] p-2 text-xs text-[var(--status-error)]">
-						{parseError ? `YAML 语法错误：\n${parseError}` : `保存失败：${saveError}`}
+						{parseError ? t("memoryRules.rawFiles.yamlSyntaxError", { error: parseError }) : t("memoryRules.rawFiles.saveFailedMsg", { error: saveError ?? "" })}
 					</pre>
 				) : null}
 				<div className="flex items-center justify-between gap-2">
-					<Button icon={FolderOpen} disabled={!path} onClick={() => void reveal()}>在访达中显示</Button>
+					<Button icon={FolderOpen} disabled={!path} onClick={() => void reveal()}>{t("memoryRules.showInFinder")}</Button>
 					<div className="flex gap-2">
-						<Button onClick={() => void close()}>关闭</Button>
+						<Button onClick={() => void close()}>{t("memoryRules.rawFiles.close")}</Button>
 						<Button variant="primary" loading={saving} disabled={!dirty || !!parseError || loading || !!loadError} onClick={() => void save()}>
-							保存
+							{t("memoryRules.rawFiles.save")}
 						</Button>
 					</div>
 				</div>

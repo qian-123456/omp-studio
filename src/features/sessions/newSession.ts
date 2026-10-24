@@ -24,6 +24,7 @@ import { useSessionGroups } from "./sessionGroups";
 import { useSettings } from "../settings/store";
 import { resolveNewSessionTargetWorkspace } from "./modes";
 import { startSessionOptimistic } from "./pendingSession";
+import { tNow } from "../../stores/language";
 
 let creationInFlight = false;
 
@@ -49,7 +50,7 @@ export async function startSessionInDir(
 		if (isolatedWorktree && ws.kind !== "global") {
 			const summary = await gitSummary(ws.path).catch(() => null);
 			if (!summary?.isRepo) {
-				toast.error("该目录不是 Git 仓库，无法创建独立工作树");
+				toast.error(tNow("sessions.notGitRepoCannotCreateWorktree"));
 				return;
 			}
 			const wt = await gitCreateWorktree(
@@ -84,7 +85,7 @@ export async function startSessionInDir(
 					useSidebarStore.getState().setGroupOpen((prev) => ({ ...prev, [`grp:${groupId}`]: true }));
 					const groupName = useSessionGroups.getState().groups.find((g) => g.id === groupId)?.name;
 					if (groupName) {
-						toast.success(`已在分组「${groupName}」新建会话`);
+						toast.success(tNow("sessions.createdInGroup", { group: groupName }));
 					}
 				}
 				useUi.getState().selectSession(draft.id);
@@ -103,11 +104,11 @@ export async function startSessionInDir(
 			useSidebarStore.getState().setGroupOpen((prev) => ({ ...prev, [`grp:${groupId}`]: true }));
 			const groupName = useSessionGroups.getState().groups.find((g) => g.id === groupId)?.name;
 			if (groupName) {
-				toast.success(`已在分组「${groupName}」新建会话`);
+				toast.success(tNow("sessions.createdInGroup", { group: groupName }));
 			}
 		}
 	} catch (err) {
-		toast.error(`创建会话失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.createSessionFailed", { error: errMsg(err) }));
 	} finally {
 		creationInFlight = false;
 		useSidebarStore.getState().setCreatingKey(null);
@@ -140,7 +141,7 @@ export async function startSessionAt(
 			mode: ws.mode,
 		});
 	} catch (err) {
-		toast.error(`创建会话失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.createSessionFailed", { error: errMsg(err) }));
 	} finally {
 		creationInFlight = false;
 		useSidebarStore.getState().setCreatingKey(null);
@@ -170,7 +171,7 @@ export async function startSessionInWorktree(cwd: string): Promise<void> {
 			mode,
 		});
 	} catch (err) {
-		toast.error(`创建会话失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.createSessionFailed", { error: errMsg(err) }));
 	} finally {
 		creationInFlight = false;
 	}

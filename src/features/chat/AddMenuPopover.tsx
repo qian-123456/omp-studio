@@ -2,6 +2,7 @@
 import { Check, FolderOpen, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { useT } from "../../stores/language";
 
 /**
  * Per-item icon hues. Fixed on purpose rather than theme tokens: several themes
@@ -75,6 +76,7 @@ export function AddMenuPopover({
 	onTogglePlan: () => void;
 	onSketch: () => void;
 }) {
+	const { t } = useT();
 	const run = (fn: () => void) => () => {
 		onClose();
 		fn();
@@ -89,21 +91,21 @@ export function AddMenuPopover({
 			onDismiss={onClose}
 			className="w-[280px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1"
 		>
-			<div className="px-2 pt-1 pb-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">添加</div>
-			<Item icon={<Paperclip size={14} />} color={TONE.files} title="文件" desc="从电脑选择并附加" onClick={run(onAddFiles)} />
-			<Item icon={<Monitor size={14} />} color={TONE.finder} title="Finder 选中项" desc="附加当前在 Finder 中选中的文件" onClick={run(onAttachFinder)} />
+			<div className="px-2 pt-1 pb-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">{t("chat.addMenu.add")}</div>
+			<Item icon={<Paperclip size={14} />} color={TONE.files} title={t("chat.addMenu.files")} desc={t("chat.addMenu.filesDesc")} onClick={run(onAddFiles)} />
+			<Item icon={<Monitor size={14} />} color={TONE.finder} title={t("chat.addMenu.finder")} desc={t("chat.addMenu.finderDesc")} onClick={run(onAttachFinder)} />
 			<div className="my-1 border-t border-[var(--line,var(--border-divider))]" />
-			<Item icon={<FolderOpen size={14} />} color={TONE.project} title="在项目中工作" desc="为新聊天选择项目" onClick={run(onPickProject)} />
-			<Item icon={<Target size={14} />} color={TONE.goal} title="目标" desc="设置要持续追求的目标" onClick={run(onGoal)} />
+			<Item icon={<FolderOpen size={14} />} color={TONE.project} title={t("chat.addMenu.workInProject")} desc={t("chat.addMenu.workInProjectDesc")} onClick={run(onPickProject)} />
+			<Item icon={<Target size={14} />} color={TONE.goal} title={t("chat.addMenu.goal")} desc={t("chat.addMenu.goalDesc")} onClick={run(onGoal)} />
 			<Item
 				icon={<Lightbulb size={14} />}
 				color={TONE.plan}
-				title="规划模式"
-				desc={planMode ? "关闭规划模式" : "开启规划模式"}
+				title={t("chat.addMenu.planMode")}
+				desc={planMode ? t("chat.addMenu.disablePlan") : t("chat.addMenu.enablePlan")}
 				active={planMode}
 				onClick={run(onTogglePlan)}
 			/>
-			<Item icon={<Signature size={14} />} color={TONE.sketch} title="草图" desc="绘制草图" onClick={run(onSketch)} />
+			<Item icon={<Signature size={14} />} color={TONE.sketch} title={t("chat.addMenu.sketch")} desc={t("chat.addMenu.sketchDesc")} onClick={run(onSketch)} />
 		</FloatingLayer>
 	);
 }

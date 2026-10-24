@@ -7,13 +7,13 @@
 import clsx from "clsx";
 import { Keyboard, RotateCcw, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { useT } from "../../../stores/language";
 import { Segmented } from "../../../components/Segmented";
 import { confirmDialog } from "../../../lib/dialogs";
 import { alternateShortcutHint, normalizeSendShortcut } from "../../chat/sendKeys";
 import { acceleratorOf, findConflict, useShortcutBindings } from "../../shortcuts/bindingsStore";
 import {
 	SHORTCUTS,
-	SHORTCUT_GROUP_LABEL,
 	shortcutDef,
 	type ShortcutDef,
 	type ShortcutGroup,
@@ -37,9 +37,6 @@ const MODIFIER_KEY_CODES: Record<string, true> = {
 	Fn: true,
 };
 
-
-const NEEDS_MODIFIER_HINT = "需要同时按住 ⌘ / ⌃ / ⌥ 之一（只加 ⇧ 不行）";
-
 /**
  * Accelerator for an in-window combo, or null when it is unusable: a ⌘/⌃/⌥ modifier is
  * required (bare keys would hijack typing; Shift alone is just a capital letter).
@@ -58,6 +55,21 @@ export function inAppAccelerator(e: {
 }
 
 const GROUP_ORDER: ShortcutGroup[] = ["navigation", "session", "panel", "find", "view"];
+
+const GROUP_TITLE_KEYS: Record<
+	ShortcutGroup,
+	| "shortcutsSettings.groups.navigation"
+	| "shortcutsSettings.groups.session"
+	| "shortcutsSettings.groups.panel"
+	| "shortcutsSettings.groups.find"
+	| "shortcutsSettings.groups.view"
+> = {
+	navigation: "shortcutsSettings.groups.navigation",
+	session: "shortcutsSettings.groups.session",
+	panel: "shortcutsSettings.groups.panel",
+	find: "shortcutsSettings.groups.find",
+	view: "shortcutsSettings.groups.view",
+};
 
 /** Shared column template: action | description | key cell (fixed width so capsules line up). */
 const ROW_GRID = "grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-x-3 px-3";
@@ -108,13 +120,14 @@ function TableRow({
 
 
 function FixedCapsule({ combo }: { combo: string }) {
+	const { t } = useT();
 	return (
 		<div className="flex items-center gap-1.5">
 			<span className={clsx(CAPSULE, "hairline bg-[var(--well-bg)] font-mono tracking-wide text-[var(--text-muted)]")}>
 				{combo}
 			</span>
 			<div className="w-[52px]">
-				<Chip>固定</Chip>
+				<Chip>{t("shortcutsSettings.fixedCapsule")}</Chip>
 			</div>
 		</div>
 	);
@@ -140,6 +153,7 @@ function BindingControl({
 	/** Restore the default; resolved by the table so it can ask about conflicts. */
 	onReset: () => void;
 }) {
+	const { t } = useT();
 	const overrides = useShortcutBindings((s) => s.overrides);
 	const setBinding = useShortcutBindings((s) => s.setBinding);
 	const id = def.id as ShortcutId;
@@ -152,7 +166,7 @@ function BindingControl({
 		<div className="flex items-center gap-1.5">
 			<button
 				type="button"
-				aria-label={`修改「${def.label}」的快捷键`}
+				aria-label={t("shortcutsSettings.modifyBindingAria", { name: def.label })}
 				data-shortcut-recording={recording ? "" : undefined}
 				onClick={onToggleRecording}
 				className={clsx(
@@ -164,23 +178,31 @@ function BindingControl({
 			>
 				<Keyboard className="h-3.5 w-3.5 shrink-0 opacity-70" />
 				{recording ? (
-					<span>{hint ?? "请按下组合键，Esc 取消"}</span>
+					<span>{hint ?? t("shortcutsSettings.recorder.pressCombo")}</span>
 				) : display ? (
 					<span className="font-mono tracking-wide">{display}</span>
 				) : (
-					<span className="text-[var(--text-dim)]">未设置</span>
+					<span className="text-[var(--text-dim)]">{t("shortcutsSettings.notSet")}</span>
 				)}
 			</button>
 			<div className="flex w-[52px] items-center gap-0.5">
 				{current && !recording && (
-					<IconButton size="sm" icon={X} label={`清除「${def.label}」的快捷键`} title="清除（不再响应）" onClick={() => setBinding(id, "")} />
+					<IconButton
+						size="sm"
+						icon={X}
+						label={t("shortcutsSettings.clearBindingLabel", { name: def.label })}
+						title={t("shortcutsSettings.clearBindingTitle")}
+						onClick={() => setBinding(id, "")}
+					/>
 				)}
 				{current !== def.defaultAccelerator && !recording && (
 					<IconButton
 						size="sm"
 						icon={RotateCcw}
-						label={`恢复「${def.label}」的默认快捷键`}
-						title={`恢复默认（${def.defaultAccelerator ? formatAccelerator(def.defaultAccelerator) : "未设置"}）`}
+						label={t("shortcutsSettings.resetBindingLabel", { name: def.label })}
+						title={t("shortcutsSettings.resetBindingTitle", {
+							def: def.defaultAccelerator ? formatAccelerator(def.defaultAccelerator) : t("shortcutsSettings.notSet"),
+						})}
 						onClick={onReset}
 					/>
 				)}
@@ -190,21 +212,22 @@ function BindingControl({
 }
 
 function ConflictNotice({ conflict, onResolve }: { conflict: PendingConflict; onResolve: (takeOver: boolean) => void }) {
+	const { t } = useT();
 	const other = shortcutDef(conflict.other);
 	return (
 		<div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)] px-3 py-2 text-xs">
 			<span className="text-[var(--text)]">
-				{formatAccelerator(conflict.accelerator)} 与「{other.label}」冲突
-				{other.editable ? "" : "，它是固定快捷键，不能更改"}
+				{t("shortcutsSettings.conflictNotice", { acc: formatAccelerator(conflict.accelerator), other: other.label })}
+				{other.editable ? "" : t("shortcutsSettings.conflictFixed")}
 			</span>
 			<span className="ml-auto flex items-center gap-2">
 				{other.editable && (
 					<Button variant="primary" size="sm" onClick={() => onResolve(true)}>
-						改用这个，并取消另一个
+						{t("shortcutsSettings.useThisAndCancelOther")}
 					</Button>
 				)}
 				<Button size="sm" onClick={() => onResolve(false)}>
-					放弃
+					{t("shortcutsSettings.cancelConflict")}
 				</Button>
 			</span>
 		</div>
@@ -212,6 +235,7 @@ function ConflictNotice({ conflict, onResolve }: { conflict: PendingConflict; on
 }
 
 function ShortcutTable() {
+	const { t } = useT();
 	const setBinding = useShortcutBindings((s) => s.setBinding);
 	const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
@@ -237,12 +261,12 @@ function ShortcutTable() {
 						.filter(Boolean)
 						.join("+"),
 				);
-				setHint(held ? `${held} + 再按一个键` : null);
+				setHint(held ? t("shortcutsSettings.recorder.pressAnotherKey", { held }) : null);
 				return;
 			}
 			const acc = inAppAccelerator(e);
 			if (!acc) {
-				setHint(NEEDS_MODIFIER_HINT);
+				setHint(t("shortcutsSettings.needsModifierHint"));
 				return;
 			}
 			const id = recordingId;
@@ -261,7 +285,7 @@ function ShortcutTable() {
 			window.removeEventListener("keydown", onKey, true);
 			window.removeEventListener("blur", stop);
 		};
-	}, [recordingId, setBinding]);
+	}, [recordingId, setBinding, t]);
 
 	const resolve = (takeOver: boolean) => {
 		if (conflict && takeOver) {
@@ -301,42 +325,46 @@ function ShortcutTable() {
 
 	return (
 		<>
-			{GROUP_ORDER.map((group) => (
-				<section key={group} data-jump={SHORTCUT_GROUP_LABEL[group]}>
-					<GroupLabel>{SHORTCUT_GROUP_LABEL[group]}</GroupLabel>
-					{SHORTCUTS.filter((s) => s.group === group).map((def: ShortcutDef) => {
-						const id = def.id as ShortcutId;
-						return (
-							<TableRow
-								key={id}
-								fieldId={`shortcut:${id}`}
-								label={def.label}
-								description={def.description}
-								control={
-									<BindingControl
-										def={def}
-										recording={recordingId === id}
-										hint={recordingId === id ? hint : null}
-										onToggleRecording={() => {
-											setConflict(null);
-											setHint(null);
-											setRecordingId((r) => (r === id ? null : id));
-										}}
-										onReset={() => resetToDefault(id)}
-									/>
-								}
-							>
-								{conflict?.id === id && <ConflictNotice conflict={conflict} onResolve={resolve} />}
-							</TableRow>
-						);
-					})}
-				</section>
-			))}
+			{GROUP_ORDER.map((group) => {
+				const groupName = t(GROUP_TITLE_KEYS[group]);
+				return (
+					<section key={group} data-jump={groupName}>
+						<GroupLabel>{groupName}</GroupLabel>
+						{SHORTCUTS.filter((s) => s.group === group).map((def: ShortcutDef) => {
+							const id = def.id as ShortcutId;
+							return (
+								<TableRow
+									key={id}
+									fieldId={`shortcut:${id}`}
+									label={def.label}
+									description={def.description}
+									control={
+										<BindingControl
+											def={def}
+											recording={recordingId === id}
+											hint={recordingId === id ? hint : null}
+											onToggleRecording={() => {
+												setConflict(null);
+												setHint(null);
+												setRecordingId((r) => (r === id ? null : id));
+											}}
+											onReset={() => resetToDefault(id)}
+										/>
+									}
+								>
+									{conflict?.id === id && <ConflictNotice conflict={conflict} onResolve={resolve} />}
+								</TableRow>
+							);
+						})}
+					</section>
+				);
+			})}
 		</>
 	);
 }
 
 export function ShortcutsSection() {
+	const { t } = useT();
 	const { settings, save } = useAppSettings();
 	const shortcutSave = useSaveStatus();
 	const sendSave = useSaveStatus();
@@ -347,9 +375,9 @@ export function ShortcutsSection() {
 
 	const onResetAll = async () => {
 		if (!changed) return;
-		const ok = await confirmDialog("所有应用内快捷键都会恢复成默认组合，你的自定义设置会丢失。", {
-			title: "全部恢复默认",
-			okLabel: "恢复默认",
+		const ok = await confirmDialog(t("shortcutsSettings.resetAllConfirm"), {
+			title: t("shortcutsSettings.resetAll"),
+			okLabel: t("shortcutsSettings.resetAllConfirmOk"),
 		});
 		if (ok) resetAll();
 	};
@@ -357,28 +385,28 @@ export function ShortcutsSection() {
 	return (
 		<div className="space-y-4">
 			<SectionHeader
-				title="快捷键"
-				description="点击右侧的按键框，再按下新的组合键即可更换。"
+				title={t("shortcutsSettings.title")}
+				description={t("shortcutsSettings.desc")}
 				actions={
 					<Button icon={RotateCcw} disabled={!changed} onClick={() => void onResetAll()}>
-						全部恢复默认
+						{t("shortcutsSettings.resetAll")}
 					</Button>
 				}
 			/>
 
 			<div className="overflow-hidden rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
 				<div className={clsx(ROW_GRID, "border-b border-[var(--border-divider)] py-1.5 text-[11px] text-[var(--text-dim)]")}>
-					<span>动作</span>
-					<span>说明</span>
-					<span className="w-[144px] text-right">快捷键</span>
+					<span>{t("shortcutsSettings.colAction")}</span>
+					<span>{t("shortcutsSettings.colDesc")}</span>
+					<span className="w-[144px] text-right">{t("shortcutsSettings.colShortcut")}</span>
 				</div>
 				<ShortcutTable />
 
-				<GroupLabel>输入框</GroupLabel>
+				<GroupLabel>{t("shortcutsSettings.groups.composer")}</GroupLabel>
 				<TableRow
 					fieldId="sendShortcut"
-					label="发送"
-					description="选择用哪个按键发送消息，另一个组合用于换行"
+					label={t("shortcutsSettings.sendLabel")}
+					description={t("shortcutsSettings.sendDesc")}
 					status={sendSave.status}
 					statusError={sendSave.error}
 					control={
@@ -386,28 +414,28 @@ export function ShortcutsSection() {
 							value={sendShortcut}
 							onChange={(v) => void sendSave.run(() => save({ sendShortcut: v }))}
 							options={[
-								{ value: "enter", label: "Enter 发送", title: "Enter 发送，Shift + Enter 换行" },
-								{ value: "mod-enter", label: "⌘ Enter 发送", title: "⌘ Enter 发送，Enter 换行" },
+								{ value: "enter", label: t("shortcutsSettings.enterSend"), title: t("shortcutsSettings.enterSendTitle") },
+								{ value: "mod-enter", label: t("shortcutsSettings.modEnterSend"), title: t("shortcutsSettings.modEnterSendTitle") },
 							]}
 						/>
 					}
 				/>
 				<TableRow
-					label="换行"
-					description="随上面的发送方式变化"
+					label={t("shortcutsSettings.newlineLabel")}
+					description={t("shortcutsSettings.newlineDesc")}
 					control={<FixedCapsule combo={sendShortcut === "mod-enter" ? "Enter" : "⇧Enter"} />}
 				/>
 				<TableRow
-					label="临时换一种发送方式"
-					description="AI 还在回复时，对这一条消息改用另一种处理（引导 / 排队 / 打断）"
+					label={t("shortcutsSettings.altSendLabel")}
+					description={t("shortcutsSettings.altSendDesc")}
 					control={<FixedCapsule combo={alternateShortcutHint(sendShortcut)} />}
 				/>
 
-				<GroupLabel>全局（任何应用里都能用）</GroupLabel>
+				<GroupLabel>{t("shortcutsSettings.groups.global")}</GroupLabel>
 				<TableRow
 					fieldId="quickCaptureShortcut"
-					label="快速记录"
-					description="弹出快速记录窗口；清除即停用，需包含 ⌘ / ⌃ / ⌥ / ⇧ 之一（F 键除外）"
+					label={t("shortcutsSettings.quickCaptureLabel")}
+					description={t("shortcutsSettings.quickCaptureDesc")}
 					status={shortcutSave.status}
 					statusError={shortcutSave.error}
 					control={

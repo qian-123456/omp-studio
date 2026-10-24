@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 import { toast } from "../lib/toast";
+import { tNow } from "./language";
 import {
 	canPreviewFile,
 	resolveFilePath,
@@ -177,15 +178,15 @@ export async function openFileLink(
 ): Promise<void> {
 	const { path, found } = await locateFile(raw, opts);
 	if (!path) {
-		toast.error(`无法确定文件位置（缺少工作目录）：${raw}`);
+		toast.error(tNow("shell.cannotLocateFileNoCwd", { raw }));
 		return;
 	}
 	if (!found) {
-		toast.error(`找不到文件：${raw}\n已尝试 ${path}`);
+		toast.error(tNow("shell.fileNotFound", { raw, path }));
 		return;
 	}
 	if (!canPreviewFile(path)) {
-		toast.error(`只能在右侧预览文本或图片，已阻止打开：${basename(path)}`);
+		toast.error(tNow("shell.blockedPreviewNonTextOrImage", { name: basename(path) }));
 		return;
 	}
 	useFilePreview.getState().openFile(path, { cwd: opts.cwd ?? null });

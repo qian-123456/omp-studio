@@ -2,6 +2,7 @@ import { Check, CornerDownLeft, Pencil, RotateCcw, Send, Trash2, Undo2 } from "l
 import { useState } from "react";
 import type { BacklogItem, BacklogKind, SessionMeta } from "../../lib/contracts";
 import { sessionDisplayName } from "../../lib/sessionName";
+import { useT } from "../../stores/language";
 import { IdeaEditBox } from "./IdeaEditBox";
 import { IdeaTextView } from "./IdeaEditor";
 import { refImagePaths } from "./ideaTokens";
@@ -43,6 +44,7 @@ export interface IdeaRowProps {
 
 /** One idea: text, then a single action row (kind chip, time, per-status controls). */
 export function IdeaRow(p: IdeaRowProps) {
+	const { t } = useT();
 	const { item, phase, linked } = p;
 	const meta = KIND_META[item.kind];
 	const KindIcon = meta.icon;
@@ -55,12 +57,12 @@ export function IdeaRow(p: IdeaRowProps) {
 				type="button"
 				onClick={() => p.onOpenSession(item.targetSessionId as string)}
 				className="min-w-0 max-w-full whitespace-normal break-words text-left text-[11px] font-medium text-[var(--accent)] hover:underline"
-				title="打开会话"
+				title={t("backlog.openSession")}
 			>
 				{sessionDisplayName(linked)}
 			</button>
 		) : (
-			<span className="text-[11px] text-[var(--text-dim)]">会话已不存在</span>
+			<span className="text-[11px] text-[var(--text-dim)]">{t("backlog.sessionNoLongerExists")}</span>
 		);
 
 	return (
@@ -81,7 +83,7 @@ export function IdeaRow(p: IdeaRowProps) {
 				onChange={() => {}}
 				onClick={(e) => p.onToggle(e.shiftKey)}
 				className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[var(--border-divider)] accent-[var(--accent)] focus:ring-0"
-				title="选择"
+				title={t("backlog.select")}
 			/>
 			<div className="min-w-0 flex-1 space-y-1.5">
 				{p.editing ? (
@@ -107,15 +109,15 @@ export function IdeaRow(p: IdeaRowProps) {
 							</div>
 							{phase !== "trash" && !p.selecting && (
 								<span className="pointer-events-none absolute -top-0.5 right-0 flex items-center gap-2 rounded-full border border-[var(--border-divider)] bg-[var(--bg-panel)]/80 px-1.5 opacity-0 shadow-sm backdrop-blur-md transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
-									<button type="button" onClick={p.onStartEdit} className={ICON_BTN} title="编辑" aria-label="编辑">
+									<button type="button" onClick={p.onStartEdit} className={ICON_BTN} title={t("common.edit")} aria-label={t("common.edit")}>
 										<Pencil className="h-3.5 w-3.5" />
 									</button>
 									<button
 										type="button"
 										onClick={() => void deleteIdeas(id)}
 										className={`${ICON_BTN} hover:text-[var(--status-error)]`}
-										title="删除"
-										aria-label="删除"
+										title={t("common.delete")}
+										aria-label={t("common.delete")}
 									>
 										<Trash2 className="h-3.5 w-3.5" />
 									</button>
@@ -125,7 +127,7 @@ export function IdeaRow(p: IdeaRowProps) {
 						<div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
 							<span className={`${CHIP} ${meta.tone}`}>
 								<KindIcon className="h-3 w-3" />
-								{meta.label}
+								{t(meta.labelKey)}
 							</span>
 							<span className="shrink-0 text-[10px] text-[var(--text-dim)]" title={new Date(at).toLocaleString()}>
 								{formatAddedTime(at)}
@@ -137,9 +139,9 @@ export function IdeaRow(p: IdeaRowProps) {
 								</span>
 							)}
 							{phase === "review" && <span className="flex min-w-0 flex-wrap items-center gap-1.5">{sessionLink}</span>}
-							{phase === "finished" && <span className={`${CHIP} ${TONE_SUCCESS}`}>完成</span>}
+							{phase === "finished" && <span className={`${CHIP} ${TONE_SUCCESS}`}>{t("common.finish")}</span>}
 							{phase === "trash" && (
-								<span className="text-[10px] text-[var(--text-dim)]">{trashDaysLeft(item)} 天后彻底删除</span>
+								<span className="text-[10px] text-[var(--text-dim)]">{t("backlog.trashDaysLeft", { days: trashDaysLeft(item) })}</span>
 							)}
 							<span className="ml-auto flex flex-wrap items-center justify-end gap-1">
 								{!p.selecting && phase === "pending" && (
@@ -149,49 +151,49 @@ export function IdeaRow(p: IdeaRowProps) {
 											disabled={!p.canFill}
 											onClick={p.onFill}
 											className={PILL_OUTLINE}
-											title={p.canFill ? "填入输入框，追加到当前会话" : "当前未选择会话"}
-											aria-label="填入输入框"
+											title={p.canFill ? t("backlog.fillComposerTooltip") : t("backlog.noSessionSelectedTooltip")}
+											aria-label={t("backlog.fillComposer")}
 										>
 											<CornerDownLeft className="h-3 w-3" />
-											填入输入框
+											{t("backlog.fillComposer")}
 										</button>
 										<button type="button" onClick={p.onDispatch} className={PILL_PRIMARY}>
 											<Send className="h-3 w-3" />
-											派发
+											{t("backlog.dispatch")}
 										</button>
 									</>
 								)}
 								{phase === "review" && (
 									<>
-										<button type="button" onClick={() => void setIdeasStatus(id, "inbox")} className={PILL_OUTLINE} title="放回待处理">
+										<button type="button" onClick={() => void setIdeasStatus(id, "inbox")} className={PILL_OUTLINE} title={t("backlog.putBackToPending")}>
 											<RotateCcw className="h-3 w-3" />
-											放回
+											{t("backlog.putBack")}
 										</button>
 										<button type="button" onClick={() => void setIdeasStatus(id, "done")} className={PILL_SUCCESS}>
 											<Check className="h-3 w-3" />
-											完成
+											{t("common.finish")}
 										</button>
 									</>
 								)}
 								{phase === "finished" && (
-									<button type="button" onClick={() => void setIdeasStatus(id, "inbox")} className={PILL_OUTLINE} title="放回待处理">
+									<button type="button" onClick={() => void setIdeasStatus(id, "inbox")} className={PILL_OUTLINE} title={t("backlog.putBackToPending")}>
 										<RotateCcw className="h-3 w-3" />
-										放回
+										{t("backlog.putBack")}
 									</button>
 								)}
 								{phase === "trash" && (
 									<>
 										<button type="button" onClick={() => void restoreIdeas(id)} className={PILL_OUTLINE}>
 											<Undo2 className="h-3 w-3" />
-											恢复
+											{t("backlog.restore")}
 										</button>
 										<button
 											type="button"
-											onClick={() => void purgeIdeas(id, "彻底删除", "彻底删除这条想法？此操作不可恢复。")}
+											onClick={() => void purgeIdeas(id, t("backlog.purge"), t("backlog.purgeConfirmSingle"))}
 											className={PILL_DANGER}
 										>
 											<Trash2 className="h-3 w-3" />
-											彻底删除
+											{t("backlog.purge")}
 										</button>
 									</>
 								)}

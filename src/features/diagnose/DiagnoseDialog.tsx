@@ -22,12 +22,14 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { NativeSelect } from "../../components/NativeSelect";
+import { useT } from "../../stores/language";
 
 /**
  * [D] Diagnose dialog. Always mounted; opened via
  * `ui.openModal("diagnose", { sessionId })`.
  */
 export function DiagnoseDialog() {
+	const { t } = useT();
 	const modal = useUi((s) => s.modal);
 	const closeModal = useUi((s) => s.closeModal);
 	const selectSession = useUi((s) => s.selectSession);
@@ -58,8 +60,8 @@ export function DiagnoseDialog() {
 			})
 			.catch((err) => {
 				const msg = errMsg(err);
-				setError(`生成诊断提示词失败: ${msg}`);
-				toast.error(`生成诊断提示词失败: ${msg}`);
+				setError(t("diagnose.errorGeneratingPrompt", { error: msg }));
+				toast.error(t("diagnose.errorGeneratingPrompt", { error: msg }));
 			})
 			.finally(() => {
 				setLoadingPrompt(false);
@@ -98,18 +100,18 @@ export function DiagnoseDialog() {
 				});
 				diagnoserId = info.sessionId;
 			} else {
-				if (!diagnoserId) throw new Error("请选择用于诊断的会话");
+				if (!diagnoserId) throw new Error(t("diagnose.selectDiagnoserSession"));
 			}
 
 			await dispatchPrompt(diagnoserId, prompt);
 
-			toast.success("已启动诊断任务");
+			toast.success(t("diagnose.diagnosisStarted"));
 			closeModal();
 			selectSession(diagnoserId);
 		} catch (err) {
 			const msg = errMsg(err);
 			setError(msg);
-			toast.error(`启动诊断失败: ${msg}`);
+			toast.error(t("diagnose.errorStartingDiagnosis", { error: msg }));
 			setDispatching(false);
 		}
 	};
@@ -122,7 +124,7 @@ export function DiagnoseDialog() {
 		<Modal
 			onClose={closeModal}
 			size="none"
-			ariaLabel="诊断异常会话"
+			ariaLabel={t("diagnose.title")}
 			className="w-full max-w-xl max-h-[min(90vh,720px)] p-6 text-[var(--text)]"
 		>
 			<div
@@ -162,17 +164,17 @@ export function DiagnoseDialog() {
 						</div>
 						<div>
 							<h2 id="diagnose-dialog-title" className="text-sm font-semibold text-[var(--text)]">
-								诊断异常会话
+								{t("diagnose.title")}
 							</h2>
 							<p className="text-[11px] text-neutral-400">
-								收集报错上下文与摘要，派发给诊断专家 Agent
+								{t("diagnose.subtitle")}
 							</p>
 						</div>
 					</div>
 					<button
 						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭对话框"
+						title={t("diagnose.closeEsc")}
+						aria-label={t("diagnose.closeDialog")}
 						onClick={closeModal}
 						className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
@@ -194,7 +196,7 @@ export function DiagnoseDialog() {
 									className="inline-flex items-center gap-1 rounded bg-[var(--bg-hover)] px-2 py-1 text-xs text-neutral-200 hover:bg-[var(--bg-active-fill)] disabled:opacity-40"
 								>
 									<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
-									<span>重试</span>
+									<span>{t("diagnose.retry")}</span>
 								</button>
 							}
 						>
@@ -207,15 +209,15 @@ export function DiagnoseDialog() {
 				<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-xs">
 					<div className="flex items-center justify-between">
 						<span className="font-semibold text-neutral-300">
-							被诊断会话: {targetSession?.title || targetSessionId}
+							{t("diagnose.diagnosedSession", { title: targetSession?.title || targetSessionId })}
 						</span>
 						<span className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-medium text-rose-300">
-							{targetSession?.status ?? "异常"}
+							{targetSession?.status ?? t("diagnose.defaultAbnormal")}
 						</span>
 					</div>
 					{targetSession?.cwd && (
 						<div className="mt-1 break-all text-[11px] text-neutral-500" title={targetSession.cwd}>
-							工作目录: {targetSession.cwd}
+							{t("diagnose.workingDirectory", { cwd: targetSession.cwd })}
 						</div>
 					)}
 				</div>
@@ -228,7 +230,7 @@ export function DiagnoseDialog() {
 					>
 						<div className="flex items-center gap-1.5">
 							<FileText className="h-3.5 w-3.5" />
-							<span>诊断上下文提示词 ({prompt ? `${prompt.length} 字符` : "准备中..."})</span>
+							<span>{t("diagnose.promptTitle", { count: prompt ? t("diagnose.charCount", { count: prompt.length }) : t("diagnose.promptPreparing") })}</span>
 						</div>
 						{showPromptPreview ? (
 							<ChevronDown className="h-4 w-4" />
@@ -243,7 +245,7 @@ export function DiagnoseDialog() {
 								<div className="space-y-3 py-1">
 									<div className="flex items-center gap-2 text-xs text-amber-400">
 										<RefreshCw className="h-3.5 w-3.5 animate-spin" />
-										<span>正在扫描会话尾部错误和生成诊断摘要...</span>
+										<span>{t("diagnose.scanningTailErrors")}</span>
 									</div>
 									<div className="space-y-2 pt-1">
 										<div className="h-3.5 w-3/4 animate-pulse rounded bg-neutral-800" />
@@ -257,20 +259,20 @@ export function DiagnoseDialog() {
 										value={prompt}
 										onChange={(e) => setPrompt(e.target.value)}
 										rows={8}
-										placeholder="诊断提示词生成中，生成后可在此二次修订..."
+										placeholder={t("diagnose.promptPlaceholder")}
 										className="w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 p-2.5 text-[11px] font-mono text-neutral-200 placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
 									/>
 									<div className="flex items-center justify-between text-[11px] text-neutral-500">
-										<span>可在文本框内自由增删提示词或补充排查细节</span>
+										<span>{t("diagnose.promptHint")}</span>
 										<button
 											type="button"
 											onClick={fetchPrompt}
 											disabled={loadingPrompt}
 											className="inline-flex items-center gap-1 text-neutral-400 hover:text-amber-400 disabled:opacity-40"
-											title="重新生成诊断提示词"
+											title={t("diagnose.regenerateTitle")}
 										>
 											<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
-											<span>重新生成</span>
+											<span>{t("diagnose.regenerate")}</span>
 										</button>
 									</div>
 								</div>
@@ -282,7 +284,7 @@ export function DiagnoseDialog() {
 				{/* Diagnoser Target Selection */}
 				<div className="space-y-3">
 					<div className="text-xs font-semibold text-neutral-300">
-						由哪个 Agent 执行诊断？
+						{t("diagnose.whichAgentLabel")}
 					</div>
 
 					<div className="flex rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-1 text-xs font-medium">
@@ -295,7 +297,7 @@ export function DiagnoseDialog() {
 									: "text-neutral-400 hover:text-neutral-200"
 							}`}
 						>
-							现有会话
+							{t("diagnose.tabExisting")}
 						</button>
 						<button
 							type="button"
@@ -306,19 +308,19 @@ export function DiagnoseDialog() {
 									: "text-neutral-400 hover:text-neutral-200"
 							}`}
 						>
-							新开诊断会话
+							{t("diagnose.tabNew")}
 						</button>
 					</div>
 
 					{targetType === "existing" ? (
 						candidateSessions.length === 0 ? (
 							<div className="rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-xs text-neutral-500">
-								没有其他可用会话，请选择「新开诊断会话」。
+								{t("diagnose.noAvailableSessions")}
 							</div>
 						) : (
 							<div>
 								<label className="mb-1 block text-xs text-neutral-400">
-									选择执行诊断的会话
+									{t("diagnose.selectSessionLabel")}
 								</label>
 								<NativeSelect
 									value={selectedExistingId}
@@ -328,13 +330,13 @@ export function DiagnoseDialog() {
 										const modelLabel = s.model ? ` [${s.model}]` : "";
 										const statusLabel =
 											s.status === "working"
-												? "忙碌"
+												? t("diagnose.statusWorking")
 												: s.status === "idle"
-													? "空闲"
+													? t("diagnose.statusIdle")
 													: s.status === "error"
-														? "异常"
+														? t("diagnose.statusError")
 														: s.status === "suspended"
-															? "已挂起"
+															? t("diagnose.statusSuspended")
 															: s.status;
 										return (
 											<option key={s.id} value={s.id}>
@@ -349,18 +351,18 @@ export function DiagnoseDialog() {
 						<div className="space-y-2">
 							<div>
 								<label className="mb-1 block text-xs text-neutral-400">
-									模型 (可选)
+									{t("diagnose.modelLabel")}
 								</label>
 								<input
 									type="text"
 									value={newSessionModel}
 									onChange={(e) => setNewSessionModel(e.target.value)}
-									placeholder="留空使用默认模型，或输入指定模型"
+									placeholder={t("diagnose.modelPlaceholder")}
 									className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:ring-1 focus:ring-amber-500 focus:outline-none transition-all"
 								/>
 							</div>
 							<div className="text-[11px] text-neutral-500">
-								新会话将在目标会话的工作目录 ({targetSession?.cwd ?? "当前目录"}) 下启动。
+								{t("diagnose.newSessionHint", { cwd: targetSession?.cwd ?? t("diagnose.currentDirectory") })}
 							</div>
 						</div>
 					)}
@@ -375,7 +377,7 @@ export function DiagnoseDialog() {
 						onClick={closeModal}
 						className="rounded-lg px-4 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
-						取消
+						{t("diagnose.cancel")}
 					</button>
 					<button
 						type="button"
@@ -393,7 +395,7 @@ export function DiagnoseDialog() {
 						) : (
 							<Send className="h-3.5 w-3.5" />
 						)}
-						<span>{dispatching ? "正在启动诊断..." : "开始诊断"}</span>
+						<span>{dispatching ? t("diagnose.startingDiagnosis") : t("diagnose.startDiagnosis")}</span>
 					</button>
 				</div>
 			</div>

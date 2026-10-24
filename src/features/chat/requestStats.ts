@@ -4,6 +4,7 @@ import {
 	type RequestStatField,
 	type RequestStatFieldPrefs,
 } from "../../stores/displayPrefs";
+import { tNow } from "../../stores/language";
 
 /** Stats of one model request (= one assistant message), as recorded by omp. */
 export interface RequestStat {
@@ -26,14 +27,78 @@ export const REQUEST_STAT_FIELDS: Record<
 	RequestStatField,
 	{ glyph: string; label: string; description: string }
 > = {
-	time: { glyph: "", label: "开始时间", description: "这次请求发出的时间" },
-	input: { glyph: "↘", label: "输入", description: "发给模型的新内容，含写入缓存的部分" },
-	output: { glyph: "↗", label: "输出", description: "模型生成的内容（含思考）" },
-	cache: { glyph: "💾", label: "缓存命中", description: "直接从缓存读取的内容，更快更便宜" },
-	ttft: { glyph: "⏱", label: "首字延迟", description: "从发出请求到收到第一个字的时间" },
-	tps: { glyph: "⚡", label: "输出速度", description: "每秒生成的 token 数（输出 ÷ 总耗时）" },
-	duration: { glyph: "⌛", label: "总耗时", description: "这次请求从发出到结束的时间" },
-	cost: { glyph: "$", label: "费用", description: "这次请求的费用（美元）" },
+	time: {
+		glyph: "",
+		get label() {
+			return tNow("chatView.stats.fieldTimeLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldTimeDesc");
+		},
+	},
+	input: {
+		glyph: "↘",
+		get label() {
+			return tNow("chatView.stats.fieldInputLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldInputDesc");
+		},
+	},
+	output: {
+		glyph: "↗",
+		get label() {
+			return tNow("chatView.stats.fieldOutputLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldOutputDesc");
+		},
+	},
+	cache: {
+		glyph: "💾",
+		get label() {
+			return tNow("chatView.stats.fieldCacheLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldCacheDesc");
+		},
+	},
+	ttft: {
+		glyph: "⏱",
+		get label() {
+			return tNow("chatView.stats.fieldTtftLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldTtftDesc");
+		},
+	},
+	tps: {
+		glyph: "⚡",
+		get label() {
+			return tNow("chatView.stats.fieldTpsLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldTpsDesc");
+		},
+	},
+	duration: {
+		glyph: "⌛",
+		get label() {
+			return tNow("chatView.stats.fieldDurationLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldDurationDesc");
+		},
+	},
+	cost: {
+		glyph: "$",
+		get label() {
+			return tNow("chatView.stats.fieldCostLabel");
+		},
+		get description() {
+			return tNow("chatView.stats.fieldCostDesc");
+		},
+	},
 };
 
 const MISSING = "—";
@@ -41,7 +106,6 @@ const MISSING = "—";
 const finiteOrNull = (v: unknown): number | null =>
 	typeof v === "number" && Number.isFinite(v) ? v : null;
 
-const FALLBACK_ERROR = "请求失败，未返回原因";
 
 function buildStat(
 	completedAt: number | null,
@@ -70,7 +134,7 @@ export function requestStatFromItem(item: TranscriptItem): RequestStat | null {
 		item.duration ?? null,
 		item.ttft ?? null,
 		item.usage,
-		item.stopReason === "error" ? item.text?.trim() || FALLBACK_ERROR : null,
+		item.stopReason === "error" ? item.text?.trim() || tNow("chatView.stats.fallbackError") : null,
 	);
 }
 
@@ -101,7 +165,7 @@ export function requestStatFromMessage(
 		finiteOrNull(msg.duration),
 		finiteOrNull(msg.ttft),
 		usage,
-		msg.stopReason === "error" ? errText || FALLBACK_ERROR : null,
+		msg.stopReason === "error" ? errText || tNow("chatView.stats.fallbackError") : null,
 	);
 }
 
@@ -185,8 +249,8 @@ export function formatFailedRequest(stat: RequestStat): FailedRequestText | null
 	if (!stat.error) return null;
 	return {
 		time: stat.startedAt == null ? null : formatStatClock(stat.startedAt),
-		label: "请求失败",
-		wait: stat.durationMs == null ? null : `等待 ${(stat.durationMs / 1000).toFixed(1)}s`,
+		label: tNow("chatView.stats.requestFailed"),
+		wait: stat.durationMs == null ? null : tNow("chatView.stats.waitingSeconds", { seconds: (stat.durationMs / 1000).toFixed(1) }),
 		reason: stat.error,
 	};
 }

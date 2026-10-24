@@ -8,6 +8,7 @@ import { onTmLog } from "../../lib/events";
 import { gitSummary, tmStop } from "../../lib/ipc";
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { appendLog, stripAnsi } from "./helpers";
 
 /** Live view of one time-machine run: log tail, URL, stop/discard. */
@@ -21,6 +22,7 @@ export function TmRunCard({
 	/** Called after a stop so the parent list entry drops its running state. */
 	onUpdate?: (run: TmRun) => void;
 }) {
+	const { t } = useT();
 	const [log, setLog] = useState<string[]>(() =>
 		run.logTail ? run.logTail.split("\n").map(stripAnsi) : [],
 	);
@@ -56,15 +58,15 @@ export function TmRunCard({
 			try {
 				const sum = await gitSummary(info.worktree);
 				if (sum.hasUncommitted && sum.files.length > 0) {
-					dirtyWarning = `\n\n⚠️ 警告：该工作树包含 ${sum.files.length} 个未提交的改动，丢弃后将永久删除！`;
+					dirtyWarning = t("worktree.tm.dirtyWarning", { count: sum.files.length });
 				}
 			} catch {
 				// Ignore inspection error; proceed to dialog
 			}
-			const ok = await confirmDialog(`丢弃此版本的工作树目录？\n${info.worktree}${dirtyWarning}`, {
+			const ok = await confirmDialog(t("worktree.tm.discardConfirm", { worktree: info.worktree, dirtyWarning }), {
 				danger: true,
-				title: "丢弃工作树",
-				okLabel: "丢弃目录",
+				title: t("worktree.tm.discardTitle"),
+				okLabel: t("worktree.tm.discardOk"),
 			});
 			if (!ok) return;
 		}
@@ -89,13 +91,13 @@ export function TmRunCard({
 	const copyUrl = async () => {
 		if (!info.url) return;
 		await copyText(info.url);
-		toast.success("已复制服务地址");
+		toast.success(t("worktree.tm.copiedUrl"));
 	};
 
 	const copyAllLogs = async () => {
 		if (log.length === 0) return;
 		await copyText(log.join("\n"));
-		toast.success("已复制全部运行日志");
+		toast.success(t("worktree.tm.copiedLogs"));
 	};
 
 	const running = info.pid !== null && info.pid !== undefined;
@@ -105,7 +107,7 @@ export function TmRunCard({
 			<div className="mb-1 flex items-center gap-1.5">
 				<span className={running ? "h-2 w-2 rounded-full bg-emerald-400" : "h-2 w-2 rounded-full bg-neutral-600"} />
 				<span className="min-w-0 flex-1 truncate text-neutral-400" title={info.command || info.worktree}>
-					{info.command || `仅创建目录 ${basename(info.worktree)}`}
+					{info.command || t("worktree.tm.onlyCreatedDir", { dir: basename(info.worktree) })}
 				</span>
 				{info.url && (
 					<div className="flex shrink-0 items-center gap-1">
@@ -113,7 +115,7 @@ export function TmRunCard({
 							type="button"
 							onClick={() => openUrl(info.url as string)}
 							className="flex items-center gap-0.5 text-sky-400 hover:underline"
-							title="在系统浏览器中打开"
+							title={t("worktree.tm.openInBrowser")}
 						>
 							{info.url} <ExternalLink size={11} />
 						</button>
@@ -121,8 +123,8 @@ export function TmRunCard({
 							type="button"
 							onClick={copyUrl}
 							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-							title="复制地址"
-							aria-label="复制地址"
+							title={t("worktree.tm.copyUrl")}
+							aria-label={t("worktree.tm.copyUrl")}
 						>
 							<Copy size={11} />
 						</button>
@@ -137,8 +139,8 @@ export function TmRunCard({
 							type="button"
 							onClick={copyAllLogs}
 							className="hover:text-neutral-200"
-							title="复制全部日志"
-							aria-label="复制全部日志"
+							title={t("worktree.tm.copyAllLogs")}
+							aria-label={t("worktree.tm.copyAllLogs")}
 						>
 							<Copy size={11} />
 						</button>
@@ -146,8 +148,8 @@ export function TmRunCard({
 							type="button"
 							onClick={() => setLogExpanded(!logExpanded)}
 							className="hover:text-neutral-200"
-							title={logExpanded ? "收起日志高度" : "展开日志高度"}
-							aria-label={logExpanded ? "收起日志高度" : "展开日志高度"}
+							title={logExpanded ? t("worktree.tm.collapseLogHeight") : t("worktree.tm.expandLogHeight")}
+							aria-label={logExpanded ? t("worktree.tm.collapseLogHeight") : t("worktree.tm.expandLogHeight")}
 						>
 							{logExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
 						</button>
@@ -172,7 +174,7 @@ export function TmRunCard({
 					onClick={() => revealItemInDir(info.worktree)}
 					className="flex items-center gap-1 rounded px-1.5 py-0.5 text-neutral-300 hover:bg-neutral-800"
 				>
-					<FolderOpen size={12} /> 打开目录
+					<FolderOpen size={12} /> {t("worktree.tm.openDir")}
 				</button>
 				{running && (
 					<button
@@ -181,7 +183,7 @@ export function TmRunCard({
 						onClick={() => stop(false)}
 						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-amber-300 hover:bg-neutral-800"
 					>
-						<Square size={12} /> 停止
+						<Square size={12} /> {t("worktree.tm.stop")}
 					</button>
 				)}
 				<button
@@ -190,7 +192,7 @@ export function TmRunCard({
 					onClick={() => stop(true)}
 					className="flex items-center gap-1 rounded px-1.5 py-0.5 text-rose-300 hover:bg-neutral-800"
 				>
-					<Trash2 size={12} /> 丢弃
+					<Trash2 size={12} /> {t("worktree.tm.discard")}
 				</button>
 			</div>
 		</div>

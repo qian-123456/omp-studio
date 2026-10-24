@@ -6,6 +6,7 @@
  * still matches what the draft was based on.
  */
 
+import { useT } from "../../stores/language";
 import { markdown } from "@codemirror/lang-markdown";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
@@ -60,9 +61,11 @@ export function FileEditor({
 	statusText,
 	extraActions,
 	onChanged,
-	savedToast = "已保存，新开的会话会使用新内容",
+	savedToast,
 	bare = false,
 }: FileEditorProps) {
+	const { t } = useT();
+	const effectiveSavedToast = savedToast ?? t("settingsCore.fileEditor.savedToast");
 	const short = useShortPath();
 	const dark = themeById(useResolvedThemeId())?.dark ?? true;
 
@@ -110,7 +113,7 @@ export function FileEditor({
 					setDraft(cached.draft);
 					setRestored(true);
 				} else {
-					if (useCache && cached) toast.info("文件已被修改，之前未保存的草稿已丢弃");
+					if (useCache && cached) toast.info(t("settingsCore.fileEditor.draftDiscarded"));
 					apply(res);
 				}
 				setLoadError(null);
@@ -146,14 +149,14 @@ export function FileEditor({
 					setStamp(next);
 					setDraft(text);
 					setRestored(false);
-					toast.success(savedToast);
+					toast.success(effectiveSavedToast);
 					onChanged?.();
 					return;
 				} catch (e) {
 					if (!isConflictError(e)) throw e;
 					const overwrite = await confirmDialog(
-						"这个文件在你打开之后被 omp 或其他程序更新过。覆盖会丢掉磁盘上的新内容；重新载入会丢掉你当前的修改。",
-						{ title: "文件已被 omp 更新", danger: true, okLabel: "覆盖", cancelLabel: "重新载入" },
+						t("settingsCore.fileEditor.conflictConfirm"),
+						{ title: t("settingsCore.fileEditor.conflictTitle"), danger: true, okLabel: t("settingsCore.fileEditor.overwrite"), cancelLabel: t("settingsCore.fileEditor.reload") },
 					);
 					if (!overwrite) {
 						const fresh = await loadFile();
@@ -166,7 +169,7 @@ export function FileEditor({
 				}
 			}
 		} catch (e) {
-			toast.error(`保存失败：${errMsg(e)}`);
+			toast.error(t("settingsCore.fileEditor.saveError", { error: errMsg(e) }));
 		} finally {
 			setSaving(false);
 		}
@@ -183,21 +186,21 @@ export function FileEditor({
 			onChanged?.();
 		} catch (e) {
 			if (isConflictError(e)) {
-				toast.info("文件已经存在，已载入");
+				toast.info(t("settingsCore.fileEditor.fileAlreadyExists"));
 				await load(false);
 				onChanged?.();
 			} else {
-				toast.error(`创建失败：${errMsg(e)}`);
+				toast.error(t("settingsCore.fileEditor.createError", { error: errMsg(e) }));
 			}
 		}
 	};
 
 	const discard = async () => {
 		if (!dirty) return;
-		const ok = await confirmDialog("撤销所有未保存的修改，恢复到上次保存的内容？", {
-			title: "放弃修改",
+		const ok = await confirmDialog(t("settingsCore.fileEditor.discardConfirm"), {
+			title: t("settingsCore.fileEditor.discardTitle"),
 			danger: true,
-			okLabel: "放弃修改",
+			okLabel: t("settingsCore.fileEditor.discardLabel"),
 		});
 		if (ok && loaded !== null) {
 			setDraft(loaded);
@@ -207,10 +210,10 @@ export function FileEditor({
 
 	const reload = async () => {
 		if (dirty) {
-			const ok = await confirmDialog("重新读取会丢掉未保存的修改。确定继续？", {
-				title: "放弃未保存的修改？",
+			const ok = await confirmDialog(t("settingsCore.fileEditor.reloadConfirm"), {
+				title: t("settingsCore.fileEditor.reloadConfirmTitle"),
 				danger: true,
-				okLabel: "放弃修改",
+				okLabel: t("settingsCore.fileEditor.discardLabel"),
 			});
 			if (!ok) return;
 		}
@@ -221,7 +224,7 @@ export function FileEditor({
 
 	const reveal = () => {
 		const where = loaded !== null ? path : path.replace(/\/[^/]+$/, "");
-		void revealItemInDir(where).catch((e) => toast.error(`无法在访达中显示：${errMsg(e)}`));
+		void revealItemInDir(where).catch((e) => toast.error(t("settingsCore.fileEditor.revealError", { error: errMsg(e) })));
 	};
 
 	useEffect(() => {
@@ -239,21 +242,21 @@ export function FileEditor({
 
 	const exists = ready && !loadError && loaded !== null;
 	const status = !ready
-		? "读取中"
+		? t("settingsCore.fileEditor.statusReading")
 		: loadError
-			? "读取失败"
+			? t("settingsCore.fileEditor.statusFailed")
 			: statusText
 				? statusText(loaded)
 				: loaded === null
-					? "文件不存在"
-					: "已存在";
+					? t("settingsCore.fileEditor.statusNotExists")
+					: t("settingsCore.fileEditor.statusExists");
 	const body = (
 		<>
 			<div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-1.5">
 						{dirty && (
-							<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" title="有未保存的修改" />
+							<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" title={t("settingsCore.fileEditor.unsavedIndicator")} />
 						)}
 						<code className="break-all font-mono text-xs text-[var(--text)]" title={path}>
 							{short(path)}
@@ -263,16 +266,16 @@ export function FileEditor({
 				</div>
 				{extraActions}
 				<Button icon={FolderOpen} onClick={reveal}>
-					在访达中显示
+					{t("settingsCore.fileEditor.showInFinder")}
 				</Button>
 				<Button
 					icon={RefreshCw}
 					onClick={() => void reload()}
 					disabled={loading}
-					title="从磁盘重新读取"
-					aria-label="从磁盘重新读取"
+					title={t("settingsCore.fileEditor.reloadFromDisk")}
+					aria-label={t("settingsCore.fileEditor.reloadFromDisk")}
 				>
-					<span className={clsx(loading && "animate-pulse")}>重新读取</span>
+					<span className={clsx(loading && "animate-pulse")}>{t("settingsCore.fileEditor.reloading")}</span>
 				</Button>
 			</div>
 
@@ -280,10 +283,10 @@ export function FileEditor({
 
 			{ready && !loadError && loaded === null && (
 				<div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-					<p className="text-xs text-neutral-400">这个文件还没有创建。</p>
+					<p className="text-xs text-neutral-400">{t("settingsCore.fileEditor.notCreated")}</p>
 					{createContent !== undefined && (
 						<Button icon={FilePlus2} onClick={() => void create()}>
-							创建文件
+							{t("settingsCore.fileEditor.createFile")}
 						</Button>
 					)}
 				</div>
@@ -292,33 +295,33 @@ export function FileEditor({
 			{exists && (
 				<div>
 					{restored && (
-						<div className="px-4 py-2 text-[11px] text-[var(--status-warning)]">已恢复你上次离开时未保存的修改。</div>
+						<div className="px-4 py-2 text-[11px] text-[var(--status-warning)]">{t("settingsCore.fileEditor.restoredNotice")}</div>
 					)}
 					{tooLarge && (
 						<div className="px-4 py-2 text-[11px] text-[var(--status-warning)]">
-							文件超过 1 MB，为避免卡顿只能查看。请用外部编辑器修改。
+							{t("settingsCore.fileEditor.tooLargeNotice")}
 						</div>
 					)}
 					{forcedReadOnly && (
 						<div className="px-4 py-2 text-[11px] text-[var(--text-muted)]">
-							这个文件由 omp 自动生成，只能查看，修改会在下次整理记忆时被覆盖。
+							{t("settingsCore.fileEditor.forcedReadOnlyNotice")}
 						</div>
 					)}
 					<div className="flex items-center justify-between gap-2 px-4 py-2">
 						<Segmented<Tab>
-							aria-label="编辑或预览"
+							aria-label={t("settingsCore.fileEditor.editOrPreview")}
 							size="sm"
 							value={tab}
 							onChange={setTab}
 							options={[
-								{ value: "edit", label: forcedReadOnly ? "原文" : "编辑" },
-								{ value: "preview", label: "预览" },
+								{ value: "edit", label: forcedReadOnly ? t("settingsCore.fileEditor.rawTab") : t("settingsCore.fileEditor.editTab") },
+								{ value: "preview", label: t("settingsCore.fileEditor.previewTab") },
 							]}
 						/>
 						{!forcedReadOnly && (
 							<div className="flex items-center gap-2">
 								<Button icon={RotateCcw} onClick={() => void discard()} disabled={!dirty || saving}>
-									放弃修改
+									{t("settingsCore.fileEditor.discardLabel")}
 								</Button>
 								<Button
 									variant="primary"
@@ -326,9 +329,9 @@ export function FileEditor({
 									onClick={() => void save()}
 									disabled={!dirty || saving}
 									loading={saving}
-									title="保存 (⌘S)"
+									title={`${t("settingsCore.fileEditor.saveButton")} (⌘S)`}
 								>
-									{saving ? "保存中" : "保存"}
+									{saving ? t("settingsCore.fileEditor.savingButton") : t("settingsCore.fileEditor.saveButton")}
 								</Button>
 							</div>
 						)}
@@ -351,7 +354,7 @@ export function FileEditor({
 							{draft.trim() ? (
 								<Markdown text={draft} />
 							) : (
-								<p className="text-[var(--text-dim)]">空文件</p>
+								<p className="text-[var(--text-dim)]">{t("settingsCore.fileEditor.emptyFile")}</p>
 							)}
 						</div>
 					)}

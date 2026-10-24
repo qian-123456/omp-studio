@@ -17,12 +17,13 @@ import { formatCadence } from "./humanCadence";
 import { ScheduleEditorPage } from "./ScheduleEditorPage";
 import { ScheduleRow } from "./ScheduleRow";
 import {
-	TEMPLATES,
 	draftFromSchedule,
 	isRecentRun,
 	lifecycleOf,
 	renameDraft,
 } from "./scheduleUtils";
+import { useT } from "../../stores/language";
+import { getTemplates } from "./scheduleUtils";
 import { useSchedulesStore } from "./schedulesStore";
 
 type StatusFilter = "all" | "active" | "paused" | "completed";
@@ -45,6 +46,7 @@ export function SchedulesPage() {
 	const draftTemplate = useSchedulesStore((s) => s.draftTemplate);
 	const editorTab = useSchedulesStore((s) => s.editorTab);
 
+	const { t, locale } = useT();
 	const load = useSchedulesStore((s) => s.load);
 	const loadRuns = useSchedulesStore((s) => s.loadRuns);
 	const toggleEnabled = useSchedulesStore((s) => s.toggleEnabled);
@@ -103,7 +105,7 @@ export function SchedulesPage() {
 				return a.nextRunAt.localeCompare(b.nextRunAt);
 			if (a.nextRunAt) return -1;
 			if (b.nextRunAt) return 1;
-			return a.name.localeCompare(b.name, "zh-CN");
+			return a.name.localeCompare(b.name, locale);
 		};
 		const byRecent = (a: Schedule, b: Schedule) =>
 			(b.lastRunAt ?? b.updatedAt).localeCompare(a.lastRunAt ?? a.updatedAt);
@@ -150,9 +152,9 @@ export function SchedulesPage() {
 
 	const isFiltering = query.trim().length > 0 || filter !== "all";
 	const groupSections: { key: string; title: string; items: Schedule[] }[] = [
-		{ key: "active", title: "即将运行", items: groups.active },
-		{ key: "paused", title: "已暂停", items: groups.paused },
-		{ key: "completed", title: "已完成", items: groups.completed },
+		{ key: "active", title: t("schedules.sectionActive"), items: groups.active },
+		{ key: "paused", title: t("schedules.sectionPaused"), items: groups.paused },
+		{ key: "completed", title: t("schedules.sectionCompleted"), items: groups.completed },
 	];
 
 	// The editor is a full-page view, not a modal — it replaces the list.
@@ -177,13 +179,13 @@ export function SchedulesPage() {
 				<div className="mx-auto flex max-w-[880px] items-center justify-between gap-4 px-8 py-5">
 					<div className="min-w-0">
 						<h1 className="flex items-center gap-2.5 text-lg font-semibold text-[var(--text)]">
-							<span>定时任务</span>
+							<span>{t("schedules.title")}</span>
 							<span className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-xs font-normal text-[var(--text-60)]">
 								{schedules.length}
 							</span>
 						</h1>
 						<p className="mt-1 text-xs text-[var(--text-40)]">
-							按预设时间自动向 Agent 发送指令，运行结果同步至收件箱
+							{t("schedules.subtitle")}
 						</p>
 					</div>
 
@@ -192,7 +194,7 @@ export function SchedulesPage() {
 							type="button"
 							onClick={() => load()}
 							className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-40)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-							title="刷新任务列表"
+							title={t("schedules.refreshList")}
 						>
 							<RefreshCw
 								size={14}
@@ -206,7 +208,7 @@ export function SchedulesPage() {
 							className={PRIMARY_BTN}
 						>
 							<Plus size={14} />
-							<span>新建任务</span>
+							<span>{t("schedules.newSchedule")}</span>
 						</button>
 					</div>
 				</div>
@@ -220,13 +222,13 @@ export function SchedulesPage() {
 						<div className="mb-6 flex items-center gap-2 text-xs leading-relaxed text-[var(--text-40)]">
 							<Info size={13} className="shrink-0" />
 							<span className="flex-1">
-								定时任务依赖本地进程调度，应用需保持运行才能按时触发；错过的时间将在启动时补跑一次。
+								{t("schedules.bannerHint")}
 							</span>
 							<button
 								type="button"
 								onClick={dismissNote}
 								className="shrink-0 rounded-md p-1 text-[var(--text-30)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-60)]"
-								title="关闭提示"
+								title={t("schedules.dismissHint")}
 							>
 								<X size={12} />
 							</button>
@@ -239,8 +241,8 @@ export function SchedulesPage() {
 							<SearchInput
 								value={query}
 								onChange={setQuery}
-								placeholder="搜索任务…"
-								ariaLabel="搜索任务"
+								placeholder={t("schedules.searchPlaceholder")}
+								ariaLabel={t("schedules.searchAriaLabel")}
 								iconSize={13}
 								className="w-56 sm:w-64"
 								inputClassName="h-9 w-full rounded-xl hairline bg-[var(--bg-panel)] pl-8 pr-7 text-xs text-[var(--text)] placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-[var(--hairline-strong)]"
@@ -248,14 +250,14 @@ export function SchedulesPage() {
 
 							<Segmented<StatusFilter>
 								size="sm"
-								aria-label="按状态筛选"
+								aria-label={t("schedules.filterAriaLabel")}
 								value={filter}
 								onChange={setFilter}
 								options={[
-									{ value: "all", label: "全部" },
-									{ value: "active", label: "运行中" },
-									{ value: "paused", label: "已暂停" },
-									{ value: "completed", label: "已完成" },
+									{ value: "all", label: t("schedules.filterAll") },
+									{ value: "active", label: t("schedules.filterActive") },
+									{ value: "paused", label: t("schedules.filterPaused") },
+									{ value: "completed", label: t("schedules.filterCompleted") },
 								]}
 							/>
 						</div>
@@ -267,14 +269,14 @@ export function SchedulesPage() {
 							className="mx-auto flex max-w-2xl items-start justify-between gap-3 rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 text-xs text-rose-300"
 						>
 							<span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words">
-								定时任务加载失败：{loadError}
+								{t("schedules.loadFailed", { error: loadError })}
 							</span>
 							<button
 								type="button"
 								onClick={() => void useSchedulesStore.getState().load()}
 								className="shrink-0 whitespace-nowrap rounded bg-rose-900/60 px-2.5 py-1 font-medium text-rose-200 transition-colors hover:bg-rose-800/80"
 							>
-								重试
+								{t("common.retry")}
 							</button>
 						</div>
 					) : schedules.length === 0 ? (
@@ -285,11 +287,10 @@ export function SchedulesPage() {
 									<Clock size={22} />
 								</div>
 								<h2 className="text-base font-semibold text-[var(--text)]">
-									暂无定时任务
+									{t("schedules.emptyTitle")}
 								</h2>
 								<p className="mx-auto max-w-md text-xs leading-relaxed text-[var(--text-40)]">
-									定时任务可以在特定时间或周期自动向 Agent
-									发送指令，执行代码巡检、提交总结或日常检查，结果将自动记录并同步至收件箱。
+									{t("schedules.emptyDesc")}
 								</p>
 								<div className="pt-1">
 									<button
@@ -298,7 +299,7 @@ export function SchedulesPage() {
 										className={PRIMARY_BTN}
 									>
 										<Plus size={14} />
-										<span>创建第一个任务</span>
+										<span>{t("schedules.createFirst")}</span>
 									</button>
 								</div>
 							</div>
@@ -307,13 +308,13 @@ export function SchedulesPage() {
 							<div className="space-y-3">
 								<div className="flex items-center gap-2 px-1 text-xs font-medium text-[var(--text-60)]">
 									<Sparkles size={13} className="text-[var(--text-40)]" />
-									<span>从常用模板快速创建</span>
+									<span>{t("schedules.quickTemplates")}</span>
 								</div>
 
 								<div className="grid grid-cols-1 gap-3">
-									{TEMPLATES.map((tmpl) => (
+									{getTemplates(t).map((tmpl) => (
 										<button
-											key={tmpl.title}
+											key={tmpl.id}
 											type="button"
 											onClick={() => openCreate(tmpl.draft)}
 											className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-4 text-left transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--bg-hover)]/40"
@@ -327,7 +328,7 @@ export function SchedulesPage() {
 												</div>
 											</div>
 											<span className="shrink-0 text-xs font-medium text-[var(--text-30)] transition-colors group-hover:text-[var(--text)]">
-												使用模板 →
+												{t("schedules.useTemplate")}
 											</span>
 										</button>
 									))}
@@ -342,8 +343,8 @@ export function SchedulesPage() {
 						/* Search / filter empty state */
 						<EmptyState
 							icon={Search}
-							title="没有匹配的定时任务"
-							description="尝试更换关键词，或清除筛选条件。"
+							title={t("schedules.noMatchTitle")}
+							description={t("schedules.noMatchDesc")}
 						/>
 					) : (
 						/* Grouped schedule list */

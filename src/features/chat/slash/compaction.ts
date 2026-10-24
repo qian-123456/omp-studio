@@ -6,6 +6,7 @@
  */
 import { create } from "zustand";
 import { useLive } from "../../../stores/live";
+import { tNow } from "../../../stores/language";
 
 /** Sessions with a compaction currently running. */
 export const useCompaction = create<{ active: Record<string, true> }>(() => ({ active: {} }));
@@ -89,7 +90,7 @@ export async function runCompaction(deps: CompactDeps): Promise<CompactOutcome> 
 			return "failed";
 		}
 		if (isNothingToCompact(text)) {
-			finish({ status: "done", detail: "当前上下文无需再压缩" });
+			finish({ status: "done", detail: tNow("slash.nothingToCompact") });
 			return "nothing";
 		}
 		finish({ status: "error", detail: text });

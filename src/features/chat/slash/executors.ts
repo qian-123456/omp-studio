@@ -5,6 +5,7 @@ import { isResumeCancelled } from "../../../lib/ensureLive";
 import { errMsg } from "../../../lib/dialogs";
 import { toast } from "../../../lib/toast";
 import { rpcSend } from "../../../lib/ipc";
+import { tNow } from "../../../stores/language";
 import { useComposer } from "../../../stores/composer";
 import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
@@ -89,7 +90,7 @@ export async function runSlashInput(
 		// SlashAbort = "usage hint shown, keep the draft"; a cancelled resume
 		// dialog also leaves the composer untouched.
 		if (err instanceof SlashAbort || isResumeCancelled(err)) return "keep";
-		toast.error(`/${def.name} 失败: ${errMsg(err)}`);
+		toast.error(tNow("slash.execFailed", { name: def.name, error: errMsg(err) }));
 		return "keep";
 	}
 	useComposer.getState().pushHistory(trimmed);

@@ -1,5 +1,6 @@
 /** Pure project/scope helpers for Settings ▸ MCP 服务器. */
 import type { McpScope, McpServerItem, McpServerView, Workspace } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 import { projectName } from "./mcpDraft";
 
 export interface KnownProject {
@@ -102,7 +103,7 @@ export function sameScope(a: McpScope, b: McpScope): boolean {
 
 /** Only-selected-projects scope with nothing selected cannot be saved. */
 export function scopeError(scope: McpScope): string | null {
-	return !scope.allProjects && scope.projects.length === 0 ? "请至少选择一个项目" : null;
+	return !scope.allProjects && scope.projects.length === 0 ? tNow("mcp.selectAtLeastOneProject") : null;
 }
 
 /** True when the definition holds env/header values hidden from the UI. */

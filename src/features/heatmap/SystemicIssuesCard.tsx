@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { aggregateSystemicIssues } from "./doctor";
 import { useDoctor } from "./doctorStore";
+import { useT } from "../../stores/language";
 
 export function SystemicIssuesCard({
 	sessions,
@@ -11,15 +12,16 @@ export function SystemicIssuesCard({
 	sessions: Record<string, SessionMeta>;
 	onSelect: (sessionId: string) => void;
 }) {
+	const { t, locale } = useT();
 	const history = useDoctor((s) => s.history);
-	const issues = useMemo(() => aggregateSystemicIssues(history), [history]);
+	const issues = useMemo(() => aggregateSystemicIssues(history), [history, locale]);
 
 	return (
 		<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
-			<div className="mb-2 text-[11.5px] font-medium text-neutral-200">🩺 长期共性问题 Top 3</div>
+			<div className="mb-2 text-[11.5px] font-medium text-neutral-200">{t("doctor.cardTitle")}</div>
 			{issues.length === 0 ? (
 				<div className="text-[10.5px] leading-relaxed text-neutral-500">
-					暂无共性问题。至少完成 2 次会话体检、且同一问题在多个对话中反复出现后，这里才会列出。
+					{t("doctor.emptyIssues")}
 				</div>
 			) : (
 				<div className="space-y-2">

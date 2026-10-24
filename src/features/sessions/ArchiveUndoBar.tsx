@@ -2,6 +2,7 @@ import { Undo2, X } from "lucide-react";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { undoArchive, useArchiveUndo } from "./archiveUndo";
+import { useT } from "../../stores/language";
 
 /**
  * Global archive undo bar displayed at the bottom of the session sidebar.
@@ -9,6 +10,7 @@ import { undoArchive, useArchiveUndo } from "./archiveUndo";
  * Safe with light/dark theme variables (R16).
  */
 export function ArchiveUndoBar() {
+	const { t } = useT();
 	const item = useArchiveUndo((s) => s.item);
 	const clear = useArchiveUndo((s) => s.clear);
 
@@ -24,7 +26,7 @@ export function ArchiveUndoBar() {
 
 	const handleUndo = () => {
 		undoArchive().catch((err) => {
-			toast.error(`撤销归档失败: ${errMsg(err)}`);
+			toast.error(t("sessions.undoArchiveFailed", { error: errMsg(err) }));
 		});
 		restoreListFocus();
 	};
@@ -41,7 +43,7 @@ export function ArchiveUndoBar() {
 					className="press-scale flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-[var(--primary)] hover:bg-[var(--bg-hover)] transition-colors"
 				>
 					<Undo2 size={12} />
-					撤销
+					{t("sessions.undoArchive")}
 				</button>
 				<button
 					type="button"
@@ -50,7 +52,7 @@ export function ArchiveUndoBar() {
 						restoreListFocus();
 					}}
 					className="press-scale flex h-5 w-5 items-center justify-center rounded text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
-					title="关闭"
+					title={t("common.close")}
 				>
 					<X size={12} />
 				</button>

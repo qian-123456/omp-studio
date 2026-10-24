@@ -12,6 +12,8 @@
  * (see ompConfigMeta.ts for how to regenerate it).
  */
 
+import { t as translate, type Locale } from "../../lib/i18n";
+import { useLanguageStore } from "../../stores/language";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { OMP_CONFIG_DEFAULTS } from "./ompConfigDefaults";
 import {
@@ -49,8 +51,6 @@ export interface OmpSectionDef {
 	page: OmpHostPage;
 	/** Sub-tab inside a host page ("keys" | "quota" on providers). */
 	slot?: string;
-	/** Chinese heading. */
-	title: string;
 	/** TUI group label (English), shown muted next to the heading. */
 	tui?: string;
 	/** Optional one-line lead under the heading. */
@@ -67,14 +67,13 @@ const FALLBACK_ID = "advanced.other";
 
 /** Section table in display order (pages are interleaved by nav order, not grouped). */
 const RULES: readonly SectionRule[] = [
-	{ id: "general.system", page: "general", title: "系统", tui: "Power", exact: ["power.sleepPrevention"] },
-	{ id: "privacy.omp", page: "privacy", title: "密钥脱敏与数据上报", tui: "Privacy", exact: ["secrets.enabled", "telemetry.otlpExportEnabled"] },
-	{ id: "about.update", page: "about", title: "omp 更新", tui: "Startup & Updates", exact: ["update.channel"] },
+	{ id: "general.system", page: "general", tui: "Power", exact: ["power.sleepPrevention"] },
+	{ id: "privacy.omp", page: "privacy", tui: "Privacy", exact: ["secrets.enabled", "telemetry.otlpExportEnabled"] },
+	{ id: "about.update", page: "about", tui: "Startup & Updates", exact: ["update.channel"] },
 	{
 		id: "providers.catalog",
 		page: "providers",
 		slot: "keys",
-		title: "启用的模型与供应商",
 		tui: "Model",
 		exact: ["enabledModels", "enabledProviders", "disabledProviders", "modelProviderOrder", "modelTags", "modelPresets"],
 	},
@@ -82,7 +81,6 @@ const RULES: readonly SectionRule[] = [
 		id: "providers.advanced",
 		page: "providers",
 		slot: "keys",
-		title: "供应商高级选项",
 		tui: "Protocol",
 		exact: [
 			"providers.antigravityEndpoint",
@@ -100,11 +98,10 @@ const RULES: readonly SectionRule[] = [
 		],
 		prefixes: ["providers.", "provider.", "auth."],
 	},
-	{ id: "providers.resets", page: "providers", slot: "quota", title: "额度用完时自动兑换", tui: "Services", prefixes: ["codexResets.", "claudeResets."] },
+	{ id: "providers.resets", page: "providers", slot: "quota", tui: "Services", prefixes: ["codexResets.", "claudeResets."] },
 	{
 		id: "thinking.level",
 		page: "thinking",
-		title: "思考",
 		tui: "Thinking",
 		exact: [
 			"defaultThinkingLevel",
@@ -119,41 +116,38 @@ const RULES: readonly SectionRule[] = [
 			"thinkingBudgets.max",
 		],
 	},
-	{ id: "thinking.sampling", page: "thinking", title: "采样参数", tui: "Sampling", exact: ["temperature", "topP", "topK", "minP", "presencePenalty", "repetitionPenalty"] },
-	{ id: "thinking.style", page: "thinking", title: "回复风格", tui: "Prompt", exact: ["personality", "textVerbosity"] },
-	{ id: "thinking.tier", page: "thinking", title: "服务等级", tui: "Sampling", prefixes: ["tier."] },
-	{ id: "helper.advisor", page: "helper-models", title: "顾问模型", tui: "Advisor", prefixes: ["advisor."] },
-	{ id: "helper.prewalk", page: "helper-models", title: "预探", tui: "Prewalk", prefixes: ["prewalk."] },
-	{ id: "helper.images", page: "helper-models", title: "图片与识图", tui: "Vision", prefixes: ["images."] },
-	{ id: "helper.tiny", page: "helper-models", title: "本地小模型", tui: "Tiny Model", exact: ["providers.tinyModelDevice", "providers.tinyModelDtype"] },
-	{ id: "fallback.retry", page: "model-fallback", title: "重试", tui: "Retry & Fallback", exact: ["providers.anthropic.serverSideFallback"], prefixes: ["retry."] },
+	{ id: "thinking.sampling", page: "thinking", tui: "Sampling", exact: ["temperature", "topP", "topK", "minP", "presencePenalty", "repetitionPenalty"] },
+	{ id: "thinking.style", page: "thinking", tui: "Prompt", exact: ["personality", "textVerbosity"] },
+	{ id: "thinking.tier", page: "thinking", tui: "Sampling", prefixes: ["tier."] },
+	{ id: "helper.advisor", page: "helper-models", tui: "Advisor", prefixes: ["advisor."] },
+	{ id: "helper.prewalk", page: "helper-models", tui: "Prewalk", prefixes: ["prewalk."] },
+	{ id: "helper.images", page: "helper-models", tui: "Vision", prefixes: ["images."] },
+	{ id: "helper.tiny", page: "helper-models", tui: "Tiny Model", exact: ["providers.tinyModelDevice", "providers.tinyModelDtype"] },
+	{ id: "fallback.retry", page: "model-fallback", tui: "Retry & Fallback", exact: ["providers.anthropic.serverSideFallback"], prefixes: ["retry."] },
 	{
 		id: "fallback.timeouts",
 		page: "model-fallback",
-		title: "超时与并发",
 		tui: "Timeouts",
 		exact: ["providers.streamFirstEventTimeoutSeconds", "providers.streamIdleTimeoutSeconds", "providers.maxInFlightRequests"],
 	},
 	{
 		id: "fallback.guard",
 		page: "model-fallback",
-		title: "防死循环与意外停止",
 		tui: "Thinking",
 		exact: ["features.unexpectedStopDetection"],
 		prefixes: ["model.loopGuard.", "model.toolCallLoopGuard."],
 	},
-	{ id: "context.snapcompact", page: "context-window", title: "实验：快照压缩", tui: "Experimental", prefixes: ["snapcompact."] },
-	{ id: "sessions.queue", page: "sessions", title: "消息排队与打断", tui: "Input", exact: ["steeringMode", "followUpMode", "interruptMode"] },
-	{ id: "sessions.ask", page: "sessions", title: "AI 提问", tui: "Notifications", exact: ["ask.enabled", "ask.timeout"] },
-	{ id: "sessions.modes", page: "sessions", title: "计划与目标模式", tui: "Modes", prefixes: ["plan.", "goal."] },
-	{ id: "sessions.keywords", page: "sessions", title: "魔法关键词", tui: "Magic Keywords", prefixes: ["magicKeywords."] },
-	{ id: "sessions.title", page: "sessions", title: "会话标题", tui: "Modes", prefixes: ["title."] },
-	{ id: "sessions.share", page: "sessions", title: "分享", tui: "Collab", prefixes: ["share."] },
-	{ id: "rules.ttsr", page: "agents-md", title: "实时规则（TTSR）", tui: "Rules (TTSR)", prefixes: ["ttsr."] },
+	{ id: "context.snapcompact", page: "context-window", tui: "Experimental", prefixes: ["snapcompact."] },
+	{ id: "sessions.queue", page: "sessions", tui: "Input", exact: ["steeringMode", "followUpMode", "interruptMode"] },
+	{ id: "sessions.ask", page: "sessions", tui: "Notifications", exact: ["ask.enabled", "ask.timeout"] },
+	{ id: "sessions.modes", page: "sessions", tui: "Modes", prefixes: ["plan.", "goal."] },
+	{ id: "sessions.keywords", page: "sessions", tui: "Magic Keywords", prefixes: ["magicKeywords."] },
+	{ id: "sessions.title", page: "sessions", tui: "Modes", prefixes: ["title."] },
+	{ id: "sessions.share", page: "sessions", tui: "Collab", prefixes: ["share."] },
+	{ id: "rules.ttsr", page: "agents-md", tui: "Rules (TTSR)", prefixes: ["ttsr."] },
 	{
 		id: "prompt.contents",
 		page: "prompt-composition",
-		title: "提示词包含的内容",
 		tui: "Prompt",
 		exact: ["includeModelInPrompt", "includeWorkspaceTree", "inlineToolDescriptors", "skillful"],
 		prefixes: ["contextFiles.", "workspace."],
@@ -161,7 +155,6 @@ const RULES: readonly SectionRule[] = [
 	{
 		id: "tools.available",
 		page: "tools",
-		title: "可用工具",
 		tui: "Available Tools",
 		exact: [
 			"archive.enabled",
@@ -179,18 +172,17 @@ const RULES: readonly SectionRule[] = [
 			"vault.enabled",
 		],
 	},
-	{ id: "tools.approval", page: "tools", title: "工具审批规则", tui: "Approvals", exact: ["tools.approval"] },
-	{ id: "tools.todo", page: "tools", title: "待办", tui: "Todos", prefixes: ["todo."] },
-	{ id: "tools.search", page: "tools", title: "代码搜索", tui: "Grep & Browser", prefixes: ["grep.", "astGrep."] },
-	{ id: "tools.browser", page: "tools", title: "浏览器", tui: "Grep & Browser", prefixes: ["browser."] },
-	{ id: "tools.computer", page: "tools", title: "电脑操控", tui: "Computer", prefixes: ["computer."] },
-	{ id: "tools.speech", page: "tools", title: "语音生成", tui: "Services", prefixes: ["speechgen.", "tts."] },
-	{ id: "tools.github", page: "tools", title: "GitHub", tui: "GitHub", prefixes: ["github."] },
-	{ id: "tools.ida", page: "tools", title: "IDA Pro", tui: "IDA Pro", prefixes: ["ida."] },
+	{ id: "tools.approval", page: "tools", tui: "Approvals", exact: ["tools.approval"] },
+	{ id: "tools.todo", page: "tools", tui: "Todos", prefixes: ["todo."] },
+	{ id: "tools.search", page: "tools", tui: "Grep & Browser", prefixes: ["grep.", "astGrep."] },
+	{ id: "tools.browser", page: "tools", tui: "Grep & Browser", prefixes: ["browser."] },
+	{ id: "tools.computer", page: "tools", tui: "Computer", prefixes: ["computer."] },
+	{ id: "tools.speech", page: "tools", tui: "Services", prefixes: ["speechgen.", "tts."] },
+	{ id: "tools.github", page: "tools", tui: "GitHub", prefixes: ["github."] },
+	{ id: "tools.ida", page: "tools", tui: "IDA Pro", prefixes: ["ida."] },
 	{
 		id: "tools.output",
 		page: "tools",
-		title: "输出长度限制",
 		tui: "Output Limits",
 		exact: [
 			"tools.artifactHeadBytes",
@@ -204,23 +196,21 @@ const RULES: readonly SectionRule[] = [
 	{
 		id: "tools.execution",
 		page: "tools",
-		title: "执行方式",
 		tui: "Execution",
 		exact: ["images.questionTimeoutMs", "tools.abortOnFabricatedResult", "tools.intentTracing", "tools.maxTimeout", "tools.format"],
 		prefixes: ["async.", "tools.speculativeExecution."],
 	},
-	{ id: "tools.other", page: "tools", title: "其他工具设置", tui: "Available Tools", prefixes: ["tools."] },
-	{ id: "files.edit", page: "files", title: "编辑", tui: "Editing", prefixes: ["edit."] },
-	{ id: "files.read", page: "files", title: "读取", tui: "Reading", exact: ["readLineNumbers"], prefixes: ["read."] },
-	{ id: "files.summary", page: "files", title: "读取摘要", tui: "Read Summaries", prefixes: ["read.summarize."] },
-	{ id: "files.lsp", page: "files", title: "代码诊断（LSP）", tui: "LSP", prefixes: ["lsp."] },
-	{ id: "shell.bash", page: "shell", title: "Bash", tui: "Bash", exact: ["shellPath"], prefixes: ["bash.", "bashInterceptor."] },
-	{ id: "shell.minimizer", page: "shell", title: "命令输出精简", tui: "Bash", prefixes: ["shellMinimizer."] },
-	{ id: "shell.eval", page: "shell", title: "代码运行", tui: "Eval & Runtimes", prefixes: ["eval.", "python."] },
+	{ id: "tools.other", page: "tools", tui: "Available Tools", prefixes: ["tools."] },
+	{ id: "files.edit", page: "files", tui: "Editing", prefixes: ["edit."] },
+	{ id: "files.read", page: "files", tui: "Reading", exact: ["readLineNumbers"], prefixes: ["read."] },
+	{ id: "files.summary", page: "files", tui: "Read Summaries", prefixes: ["read.summarize."] },
+	{ id: "files.lsp", page: "files", tui: "LSP", prefixes: ["lsp."] },
+	{ id: "shell.bash", page: "shell", tui: "Bash", exact: ["shellPath"], prefixes: ["bash.", "bashInterceptor."] },
+	{ id: "shell.minimizer", page: "shell", tui: "Bash", prefixes: ["shellMinimizer."] },
+	{ id: "shell.eval", page: "shell", tui: "Eval & Runtimes", prefixes: ["eval.", "python."] },
 	{
 		id: "subagents.behavior",
 		page: "subagents",
-		title: "子代理",
 		tui: "Subagents",
 		// Ordered by importance × how often users touch it; unlisted keys sort after.
 		exact: [
@@ -255,7 +245,6 @@ const RULES: readonly SectionRule[] = [
 	{
 		id: "subagents.isolation",
 		page: "subagents",
-		title: "隔离与工作树",
 		tui: "Isolation",
 		exact: [
 			"task.isolation.enabled",
@@ -269,20 +258,19 @@ const RULES: readonly SectionRule[] = [
 		],
 		prefixes: ["task.isolation.", "isolation.", "worktree."],
 	},
-	{ id: "memory.general", page: "memory", title: "记忆", tui: "General", exact: ["memory.backend"] },
-	{ id: "memory.autolearn", page: "memory", title: "自主学习", tui: "Auto-Learn", prefixes: ["autolearn."] },
-	{ id: "memory.local", page: "memory", title: "本地记忆参数", tui: "General", prefixes: ["memories."] },
-	{ id: "memory.hindsight", page: "memory", title: "Hindsight", tui: "Hindsight", prefixes: ["hindsight."] },
-	{ id: "memory.mnemopi", page: "memory", title: "Mnemopi", tui: "Mnemopi", prefixes: ["mnemopi."] },
-	{ id: "memory.sharpshooter", page: "memory", title: "Sharpshooter", tui: "Sharpshooter", prefixes: ["sharpshooter."] },
-	{ id: "skills.skills", page: "skills", title: "技能", tui: "Skills", prefixes: ["skills."] },
-	{ id: "skills.commands", page: "skills", title: "自定义命令", tui: "Commands & Skills", prefixes: ["commands."] },
-	{ id: "mcp.runtime", page: "mcp", title: "MCP 运行参数", tui: "Discovery & MCP", prefixes: ["mcp."] },
-	{ id: "mcp.xdev", page: "mcp", title: "工具设备（xd://）", tui: "Discovery & MCP", exact: ["tools.xdev", "tools.xdevDocs", "tools.xdevInlineDevices"] },
+	{ id: "memory.general", page: "memory", tui: "General", exact: ["memory.backend"] },
+	{ id: "memory.autolearn", page: "memory", tui: "Auto-Learn", prefixes: ["autolearn."] },
+	{ id: "memory.local", page: "memory", tui: "General", prefixes: ["memories."] },
+	{ id: "memory.hindsight", page: "memory", tui: "Hindsight", prefixes: ["hindsight."] },
+	{ id: "memory.mnemopi", page: "memory", tui: "Mnemopi", prefixes: ["mnemopi."] },
+	{ id: "memory.sharpshooter", page: "memory", tui: "Sharpshooter", prefixes: ["sharpshooter."] },
+	{ id: "skills.skills", page: "skills", tui: "Skills", prefixes: ["skills."] },
+	{ id: "skills.commands", page: "skills", tui: "Commands & Skills", prefixes: ["commands."] },
+	{ id: "mcp.runtime", page: "mcp", tui: "Discovery & MCP", prefixes: ["mcp."] },
+	{ id: "mcp.xdev", page: "mcp", tui: "Discovery & MCP", exact: ["tools.xdev", "tools.xdevDocs", "tools.xdevInlineDevices"] },
 	{
 		id: "plugins.extensions",
 		page: "plugins",
-		title: "扩展",
 		tui: "Extensions",
 		exact: ["extensions", "disabledExtensions", "marketplace.autoUpdate"],
 		prefixes: ["extensionHandlers."],
@@ -290,23 +278,29 @@ const RULES: readonly SectionRule[] = [
 	{
 		id: "web.tools",
 		page: "web",
-		title: "联网工具",
 		tui: "Available Tools",
 		exact: ["web_search.enabled", "fetch.enabled", "providers.fetch", "providers.webSearchTimeoutSeconds"],
 	},
-	{ id: "web.exa", page: "web", title: "Exa", tui: "Services", prefixes: ["exa."] },
-	{ id: "web.searxng", page: "web", title: "SearXNG", tui: "Services", prefixes: ["searxng."] },
-	{ id: "advanced.autoqa", page: "advanced", title: "问题自动上报", tui: "Developer", prefixes: ["dev."] },
-	{ id: FALLBACK_ID, page: "advanced", title: "其他" },
+	{ id: "web.exa", page: "web", tui: "Services", prefixes: ["exa."] },
+	{ id: "web.searxng", page: "web", tui: "Services", prefixes: ["searxng."] },
+	{ id: "advanced.autoqa", page: "advanced", tui: "Developer", prefixes: ["dev."] },
+	{ id: FALLBACK_ID, page: "advanced" },
 ];
 
-export const OMP_SECTIONS: readonly OmpSectionDef[] = RULES.map(({ id, page, slot, title, tui, description }) => {
-	const def: OmpSectionDef = { id, page, title };
+export const OMP_SECTIONS: readonly OmpSectionDef[] = RULES.map(({ id, page, slot, tui, description }) => {
+	const def: OmpSectionDef = { id, page };
 	if (slot) def.slot = slot;
 	if (tui) def.tui = tui;
 	if (description) def.description = description;
 	return def;
 });
+
+const currentLocale = (): Locale => useLanguageStore.getState().locale;
+
+/** Localized section heading (messages `settingsCore.ompSection.<id>`). */
+export function ompSectionTitle(section: OmpSectionDef, locale: Locale = currentLocale()): string {
+	return translate(`settingsCore.ompSection.${section.id}`, undefined, locale);
+}
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -469,7 +463,6 @@ type ValueOf = (key: string) => unknown;
 
 interface Condition {
 	met(v: ValueOf): boolean;
-	hint: string;
 }
 
 const MEMORY_BACKEND = "memory.backend";
@@ -480,17 +473,17 @@ function backendIs(backend: string): (v: ValueOf) => boolean {
 
 /** Conditions by omp `ui.condition` id (omp config/settings-ui.ts CONDITIONS). */
 const CONDITIONS: Readonly<Record<string, Condition>> = {
-	advisorEnabled: { met: (v) => v("advisor.enabled") === true, hint: "开启顾问模型后显示" },
-	hindsightActive: { met: backendIs("hindsight"), hint: "当前记忆后端不是 Hindsight，只在它生效的设置先不显示，共" },
-	mnemopiActive: { met: backendIs("mnemopi"), hint: "当前记忆后端不是 Mnemopi，只在它生效的设置先不显示，共" },
-	sharpshooterActive: { met: backendIs("sharpshooter"), hint: "当前记忆后端不是 Sharpshooter，只在它生效的设置先不显示，共" },
-	localMemoryActive: { met: backendIs("local"), hint: "当前记忆后端不是本地，只在本地后端生效的设置先不显示，共" },
-	autolearnActive: { met: (v) => v("autolearn.enabled") === true, hint: "开启自主学习后显示" },
-	autoThinkingActive: { met: (v) => v("defaultThinkingLevel") === "auto", hint: "思考级别设为「自动」后显示" },
-	usageAwareFallbackEnabled: { met: (v) => v("retry.usageAwareFallback") === true, hint: "开启按额度切换备用模型后显示" },
-	planModeEnabled: { met: (v) => v("plan.enabled") !== false, hint: "开启计划模式后显示" },
-	planAutosaveEnabled: { met: (v) => v("plan.enabled") !== false && v("plan.autosave") === true, hint: "开启计划自动保存后显示" },
-	vimModeEnabled: { met: (v) => v("tui.vimMode") === true, hint: "开启 Vim 模式后显示" },
+	advisorEnabled: { met: (v) => v("advisor.enabled") === true },
+	hindsightActive: { met: backendIs("hindsight") },
+	mnemopiActive: { met: backendIs("mnemopi") },
+	sharpshooterActive: { met: backendIs("sharpshooter") },
+	localMemoryActive: { met: backendIs("local") },
+	autolearnActive: { met: (v) => v("autolearn.enabled") === true },
+	autoThinkingActive: { met: (v) => v("defaultThinkingLevel") === "auto" },
+	usageAwareFallbackEnabled: { met: (v) => v("retry.usageAwareFallback") === true },
+	planModeEnabled: { met: (v) => v("plan.enabled") !== false },
+	planAutosaveEnabled: { met: (v) => v("plan.enabled") !== false && v("plan.autosave") === true },
+	vimModeEnabled: { met: (v) => v("tui.vimMode") === true },
 };
 
 /** Conditions that cannot gate a desktop row (terminal capability, platform, provenance): always met. */
@@ -533,9 +526,12 @@ export function ompConditionMet(key: string, valueOf: (key: string) => unknown):
 	});
 }
 
-/** Chinese hint explaining why a conditional row is hidden, or null for unconditional keys. */
-export function ompConditionHint(key: string): string | null {
-	return conditionFor(key)?.hint ?? null;
+/** Hint explaining why a conditional row is hidden, or null for unconditional keys. */
+export function ompConditionHint(key: string, locale: Locale = currentLocale()): string | null {
+	const id = conditionIdFor(key);
+	if (!id || ALWAYS_MET[id]) return null;
+	if (!CONDITIONS[id]) return null;
+	return translate(`settingsCore.ompCondition.${id}`, undefined, locale);
 }
 
 // ---------------------------------------------------------------------------
@@ -556,19 +552,28 @@ const TUI_TAB_LABELS: Readonly<Record<string, string>> = {
 };
 
 /** Where the same setting lives in omp's terminal /settings, e.g. 「终端 /settings › Model › Thinking · Default Thinking Level」. */
-export function ompTuiLocation(key: string): string | null {
+export function ompTuiLocation(key: string, locale: Locale = currentLocale()): string | null {
 	const meta = OMP_CONFIG_META[key];
 	if (!meta?.tab) return null;
-	const parts = ["终端 /settings", TUI_TAB_LABELS[meta.tab] ?? meta.tab];
+	const parts = [translate("settingsCore.ompCondition.terminalPrefix", undefined, locale), TUI_TAB_LABELS[meta.tab] ?? meta.tab];
 	if (meta.group) parts.push(meta.group);
 	const where = parts.join(" › ");
 	return meta.label ? `${where} · ${meta.label}` : where;
 }
 
-/** Search haystack: key, zh title, English TUI label, zh description, section title, TUI group. */
-export function ompSearchTerms(key: string): string[] {
+/** Search haystack: key, title, English TUI label, description, section title, TUI group. */
+export function ompSearchTerms(key: string, locale: Locale = currentLocale()): string[] {
 	const meta = OMP_CONFIG_META[key];
 	const section = ompSectionFor(key);
-	const terms = [key, ompConfigTitle(key), meta?.label, ompConfigDescription(key), section.title, section.tui];
+	const secTitle = ompSectionTitle(section, locale);
+	const terms = [
+		key,
+		ompConfigTitle(key, locale),
+		meta?.label,
+		ompConfigDescription(key, undefined, locale),
+		secTitle,
+		ompSectionTitle(section, "zh-CN"),
+		section.tui,
+	];
 	return terms.filter((t): t is string => typeof t === "string" && t.length > 0);
 }

@@ -11,6 +11,7 @@ import type { SubagentSummary } from "../../../lib/contracts";
 import { type DiskSubscription, subscribeDiskSubagents } from "./diskPoller";
 import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
+import { useT } from "../../../stores/language";
 import { ActivityHeader } from "../ActivityHeader";
 import { asTaskDetails, mergeAgents, type AgentRow } from "./merge";
 import { SubagentSheet } from "./SubagentSheet";
@@ -54,12 +55,12 @@ const STATUS_ICON: Record<
 	aborted: { Icon: Square, color: "var(--status-warning)" },
 };
 
-export const SUBAGENT_STATUS_TEXT: Record<SubagentStatus, string> = {
-	pending: "排队中",
-	running: "运行中",
-	completed: "已完成",
-	failed: "失败",
-	aborted: "已中止",
+const SUBAGENT_STATUS_TEXT_KEYS: Record<SubagentStatus, string> = {
+	pending: "subagents.statusPending",
+	running: "subagents.statusRunning",
+	completed: "subagents.statusCompleted",
+	failed: "subagents.statusFailed",
+	aborted: "subagents.statusAborted",
 };
 
 /** `A.B` ids render as an `A > B` breadcrumb (TUI formatTaskId). */
@@ -74,12 +75,12 @@ function formatTokensShort(tokens: number): string {
 }
 
 /** Trailing meta run: model · thinking · tools · tokens · duration · cost. */
-function metaParts(row: AgentRow): string[] {
+function metaParts(row: AgentRow, t: ReturnType<typeof useT>["t"]): string[] {
 	const parts: string[] = [];
 	const model = formatShortModel(row.model);
 	if (model) parts.push(model);
 	if (row.thinkingLevel) parts.push(row.thinkingLevel);
-	if (row.toolCount) parts.push(`${row.toolCount} 工具`);
+	if (row.toolCount) parts.push(t("subagents.toolCountShort", { count: row.toolCount }));
 	if (row.tokens) parts.push(formatTokensShort(row.tokens));
 	if (row.durationMs && row.status !== "pending") {
 		parts.push(formatDurationCompact(row.durationMs));
@@ -119,7 +120,8 @@ function AgentRowView({
 	onOpen: (row: AgentRow) => void;
 }) {
 	const { Icon, color, spin } = STATUS_ICON[row.status];
-	const meta = metaParts(row);
+	const { t } = useT();
+	const meta = metaParts(row, t);
 	const showBadge = Boolean(row.agent && row.agent !== "task");
 	const nested =
 		row.status === "running" && row.inflightTaskDetails?.progress?.length
@@ -147,7 +149,7 @@ function AgentRowView({
 					size={12}
 					className={clsx("shrink-0", spin && "animate-spin")}
 					style={{ color }}
-					aria-label={SUBAGENT_STATUS_TEXT[row.status]}
+					aria-label={t(SUBAGENT_STATUS_TEXT_KEYS[row.status] ?? "subagents.statusPending")}
 				/>
 				<span className="shrink-0 font-medium text-[length:var(--chat-font-size)] text-[var(--text)]">
 					{formatTaskId(row.id)}
@@ -190,6 +192,7 @@ export function TaskToolBlock({
 	resultText,
 	expanded,
 }: TaskToolBlockProps) {
+	const { t } = useT();
 	// Collapsed by default like every activity row; running/error show via the
 	// header tone. A click or expand-all opens it.
 	const [open, setOpen] = useState(expanded === true);
@@ -258,9 +261,9 @@ export function TaskToolBlock({
 	const isActive = status === "running" || status === "called";
 	const header = isActive
 		? total > 0
-			? `${running === 0 && queued > 0 ? "子代理派发中" : "子代理运行中"} · ${done}/${total} 完成`
-			: "派发子代理"
-		: `派发 ${total} 个子代理`;
+			? `${running === 0 && queued > 0 ? t("subagents.dispatching") : t("subagents.running")} · ${t("subagents.doneCount", { done, total })}`
+			: t("subagents.dispatchSubagents")
+		: t("subagents.dispatchedCount", { total });
 
 	const visible = expandedAll ? rows : rows.slice(0, COLLAPSED_LIMIT);
 	// Re-derive the sheet row each render so live progress frames update the
@@ -282,15 +285,15 @@ export function TaskToolBlock({
 					isActive && (running > 0 || queued > 0) ? (
 						<span className="shrink-0 whitespace-nowrap text-[12px] text-[var(--text-40)]">
 							{[
-								running > 0 ? `${running} 运行中` : "",
-								queued > 0 ? `${queued} 派发中` : "",
+								running > 0 ? t("subagents.runningCount", { count: running }) : "",
+								queued > 0 ? t("subagents.queuedCount", { count: queued }) : "",
 							]
 								.filter(Boolean)
 								.join(" · ")}
 						</span>
 					) : !isActive && failed > 0 ? (
 						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
-							{failed} 失败
+							{t("subagents.failedCount", { count: failed })}
 						</span>
 					) : null
 				}
@@ -313,12 +316,12 @@ export function TaskToolBlock({
 							className="flex items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
 						>
 							<span className="w-4 shrink-0 text-center font-mono">└─</span>
-							还有 {hidden} 个
+							{t("subagents.more", { count: hidden })}
 						</button>
 					)}
 					{total === 0 && (
 						<div className="px-1 py-0.5 text-[11px] text-[var(--text-30)]">
-							{resultText?.trim() || "无子代理记录"}
+							{resultText?.trim() || t("subagents.noRecord")}
 						</div>
 					)}
 				</div>

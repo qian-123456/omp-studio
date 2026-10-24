@@ -11,6 +11,7 @@ import { useComposer } from "../../../stores/composer";
 import { usePromptComposition } from "../../../stores/promptComposition";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
+import { useT } from "../../../stores/language";
 import { Notice } from "../../../components/Notice";
 import { Button, Chip, SectionHeader, SettingsCard } from "../ui";
 import { SectionJumpBar } from "../SectionJumpBar";
@@ -45,6 +46,7 @@ function ItemRow({
 	open: boolean;
 	onToggle: () => void;
 }) {
+	const { t } = useT();
 	return (
 		<div data-prompt-item={item.id}>
 			<button
@@ -59,7 +61,7 @@ function ItemRow({
 					{item.detail && <span className="block break-all text-[11px] text-neutral-500">{item.detail}</span>}
 				</span>
 				<span className="shrink-0 font-mono text-[11px] text-neutral-400">
-					约 {fmtTokens(item.tokens)} · {sharePct(item.tokens, total).toFixed(1)}%
+					{t("promptComposition.approxTokensShare", { tokens: fmtTokens(item.tokens), share: sharePct(item.tokens, total).toFixed(1) })}
 				</span>
 			</button>
 			{open && (
@@ -86,6 +88,7 @@ function CategoryCard({
 	openItems: ReadonlySet<string>;
 	onToggleItem: (id: string) => void;
 }) {
+	const { t } = useT();
 	return (
 		<div data-prompt-category={category.id} className="overflow-hidden rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
 			<button
@@ -97,9 +100,9 @@ function CategoryCard({
 				{open ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
 				<span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_COLOR[category.id] }} />
 				<span className="min-w-0 flex-1 text-xs font-medium text-neutral-100">{category.label}</span>
-				<Chip>{category.items.length} 项</Chip>
+				<Chip>{t("promptComposition.itemCount", { count: category.items.length })}</Chip>
 				<span className="shrink-0 font-mono text-[11px] text-neutral-300">
-					约 {fmtTokens(category.tokens)} · {sharePct(category.tokens, total).toFixed(1)}%
+					{t("promptComposition.approxTokensShare", { tokens: fmtTokens(category.tokens), share: sharePct(category.tokens, total).toFixed(1) })}
 				</span>
 			</button>
 			{open && (
@@ -120,25 +123,28 @@ function CategoryCard({
 }
 
 function HintRow({ hint, onLocate }: { hint: PromptHint; onLocate: (ids: string[]) => void }) {
+	const { t } = useT();
 	const [quoteOpen, setQuoteOpen] = useState(false);
 	return (
 		<div className="space-y-1.5 px-3 py-2.5">
 			<div className="flex items-start gap-2">
-				<Chip tone={hint.severity === "warn" ? "warning" : "neutral"}>{hint.severity === "warn" ? "建议处理" : "参考"}</Chip>
+				<Chip tone={hint.severity === "warn" ? "warning" : "neutral"}>
+					{hint.severity === "warn" ? t("promptComposition.suggestFix") : t("promptComposition.reference")}
+				</Chip>
 				<div className="min-w-0 flex-1">
 					<div className="break-words text-xs font-medium text-neutral-100">{hint.title}</div>
 					<div className="break-words text-[11px] leading-4 text-neutral-400">{hint.detail}</div>
 				</div>
 				{hint.itemIds.length > 0 && (
 					<Button size="sm" onClick={() => onLocate(hint.itemIds)} className="shrink-0">
-						查看相关项
+						{t("promptComposition.viewRelated")}
 					</Button>
 				)}
 			</div>
 			{hint.quote && (
 				<div>
 					<button type="button" onClick={() => setQuoteOpen((v) => !v)} className="rounded-md border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors hover:bg-[var(--bg-hover)] text-[var(--accent)]">
-						{quoteOpen ? "收起重复内容" : "查看重复内容"}
+						{quoteOpen ? t("promptComposition.collapseQuote") : t("promptComposition.expandQuote")}
 					</button>
 					{quoteOpen && (
 						<pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--bg-active-fill)] p-2.5 font-mono text-[11px] leading-4 text-neutral-300 select-text">
@@ -152,12 +158,12 @@ function HintRow({ hint, onLocate }: { hint: PromptHint; onLocate: (ids: string[
 }
 
 export function PromptCompositionSection() {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const requestedCwd = usePromptComposition((s) => s.requestedCwd);
 	const requestId = usePromptComposition((s) => s.requestId);
 	const lastCwd = usePromptComposition((s) => s.lastCwd);
 	const options = useMemo(() => projectOptions(workspaces, requestedCwd), [workspaces, requestedCwd]);
-
 	const [cwd, setCwd] = useState<string | null>(null);
 	const [comp, setComp] = useState<PromptComposition | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -244,9 +250,9 @@ export function PromptCompositionSection() {
 			useSessions.getState().upsert([stub]);
 			useComposer.getState().setDraft(sessionId, buildOptimizePrompt(comp, projectOption?.label ?? comp.cwd));
 			useUi.getState().selectSession(sessionId);
-			toast.success("已新建会话，分析内容已填入输入框，确认后再发送");
+			toast.success(t("promptComposition.optimizeCreated"));
 		} catch (err) {
-			toast.error(`新建会话失败：${errMsg(err)}`);
+			toast.error(t("promptComposition.optimizeFailed", { error: errMsg(err) }));
 		} finally {
 			setCreating(false);
 		}
@@ -258,14 +264,14 @@ export function PromptCompositionSection() {
 	return (
 		<div className="space-y-5">
 			<SectionHeader
-				title="系统提示词"
-				description="新建一个空会话时，模型在你说第一句话之前就已经带上的内容：系统提示词、规则文件、Skills、工具说明、MCP 工具。读取过程不调用模型，不产生费用，也不会留下会话。"
+				title={t("promptComposition.title")}
+				description={t("promptComposition.desc")}
 			/>
 			<SectionJumpBar />
 
-			<SettingsCard jump="读取范围">
+			<SettingsCard jump={t("promptComposition.projectScope")}>
 				<div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-					<span className="text-xs text-neutral-300">项目</span>
+					<span className="text-xs text-neutral-300">{t("promptComposition.project")}</span>
 					<NativeSelect
 						containerClassName="min-w-0 flex-1"
 						value={cwd ?? ""}
@@ -279,7 +285,7 @@ export function PromptCompositionSection() {
 						))}
 					</NativeSelect>
 					<Button icon={RefreshCw} loading={loading} onClick={() => cwd && load(cwd)} disabled={!cwd}>
-						重新读取
+						{t("promptComposition.reload")}
 					</Button>
 				</div>
 			</SettingsCard>
@@ -287,32 +293,33 @@ export function PromptCompositionSection() {
 			{loading && (
 				<div className="flex items-center gap-2 px-1 text-xs text-neutral-400">
 					<Loader2 size={14} className="animate-spin" />
-					正在读取，需要启动一次 omp，通常几秒
+					{t("promptComposition.loading")}
 				</div>
 			)}
 			{error && (
-				<Notice tone="danger" title="读取失败">
+				<Notice tone="danger" title={t("promptComposition.loadFailed")}>
 					<span className="whitespace-pre-wrap break-words select-text">{error}</span>
 				</Notice>
 			)}
 
 			{comp && (
 				<>
-					<SettingsCard jump="总览"
-						title="总览"
-						footer={`${comp.estimateNote}。读取用时 ${(comp.probeMs / 1000).toFixed(1)} 秒。`}
+					<SettingsCard jump={t("promptComposition.overview")}
+						title={t("promptComposition.overview")}
+						footer={t("promptComposition.overviewFooter", { note: comp.estimateNote, sec: (comp.probeMs / 1000).toFixed(1) })}
 					>
 						<div className="space-y-3 px-3 py-3">
 							<div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-neutral-300">
 								<span>
-									估算合计 <b className="font-mono text-sm text-neutral-100">约 {fmtTokens(comp.totalTokens)} tokens</b>
+									{t("promptComposition.estimatedTotal")}{" "}
+									<b className="font-mono text-sm text-neutral-100">{t("promptComposition.tokensApprox", { tokens: fmtTokens(comp.totalTokens) })}</b>
 								</span>
 								{comp.reportedTokens != null && (
-									<span className="text-neutral-400">OMP 自己报告：{fmtTokens(comp.reportedTokens)} tokens（参考）</span>
+									<span className="text-neutral-400">{t("promptComposition.ompReported", { tokens: fmtTokens(comp.reportedTokens) })}</span>
 								)}
 								{comp.contextWindow != null && comp.contextWindow > 0 && (
 									<span className="text-neutral-400">
-										占上下文窗口约 {sharePct(comp.totalTokens, comp.contextWindow).toFixed(1)}%
+										{t("promptComposition.shareOfContext", { pct: sharePct(comp.totalTokens, comp.contextWindow).toFixed(1) })}
 									</span>
 								)}
 							</div>
@@ -336,8 +343,8 @@ export function PromptCompositionSection() {
 						</div>
 					</SettingsCard>
 
-					<div data-jump="按类别查看" className="scroll-mt-4 space-y-2">
-						<h3 className="px-1 text-[11px] font-semibold text-neutral-400">按类别查看（点开读原文）</h3>
+					<div data-jump={t("promptComposition.byCategory")} className="scroll-mt-4 space-y-2">
+						<h3 className="px-1 text-[11px] font-semibold text-neutral-400">{t("promptComposition.byCategoryHeading")}</h3>
 						{visible.map((c) => (
 							<CategoryCard
 								key={c.id}
@@ -351,24 +358,24 @@ export function PromptCompositionSection() {
 						))}
 					</div>
 
-					<SettingsCard jump="优化线索"
-						title="优化线索"
-						footer="由固定规则自动算出，不调用 AI；只是线索，是否精简由你决定。"
+					<SettingsCard jump={t("promptComposition.hints")}
+						title={t("promptComposition.hints")}
+						footer={t("promptComposition.hintsFooter")}
 						clip
 					>
 						{comp.hints.length === 0 ? (
-							<div className="px-3 py-3 text-xs text-neutral-400">没有发现明显可以精简的地方。</div>
+							<div className="px-3 py-3 text-xs text-neutral-400">{t("promptComposition.noHints")}</div>
 						) : (
 							comp.hints.map((h) => <HintRow key={h.id} hint={h} onLocate={locate} />)
 						)}
 					</SettingsCard>
 
-					<SettingsCard jump="AI 优化"
-						title="让 AI 帮我优化"
-						footer="会新建一个会话，把上面的分析写进输入框，但不会自动发送。你看过、改过再发；AI 在改动任何文件前都必须先和你讨论并征得同意。"
+					<SettingsCard jump={t("promptComposition.aiOptimize")}
+						title={t("promptComposition.aiOptimize")}
+						footer={t("promptComposition.aiOptimizeFooter")}
 					>
 						<div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-							<span className="text-xs text-neutral-300">在哪个工作区新建会话</span>
+							<span className="text-xs text-neutral-300">{t("promptComposition.targetWorkspace")}</span>
 							<NativeSelect
 								containerClassName="min-w-0 flex-1"
 								value={targetWs ?? ""}
@@ -387,7 +394,7 @@ export function PromptCompositionSection() {
 								onClick={() => void optimize()}
 								disabled={!targetWs}
 							>
-								让 AI 帮我优化
+								{t("promptComposition.aiOptimizeBtn")}
 							</Button>
 						</div>
 					</SettingsCard>

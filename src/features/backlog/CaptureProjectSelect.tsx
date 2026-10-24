@@ -2,6 +2,7 @@ import { Check, ChevronDown, Folder } from "lucide-react";
 import { useMemo, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { useSessions } from "../../stores/sessions";
+import { useT } from "../../stores/language";
 import { useBacklog } from "./backlogStore";
 import {
 	CAPTURE_PROJECT_NONE,
@@ -20,6 +21,7 @@ export function CaptureProjectSelect({
 	currentProject: string | null;
 	className?: string;
 }) {
+	const { t } = useT();
 	const pick = useBacklog((s) => s.captureProject);
 	const setPick = useBacklog((s) => s.setCaptureProject);
 	const workspaces = useSessions((s) => s.workspaces);
@@ -27,18 +29,18 @@ export function CaptureProjectSelect({
 	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
 	const resolved = resolveCaptureProject(pick, currentProject);
-	const label = resolved ? projectDisplayName(resolved) : "无项目";
+	const label = resolved ? projectDisplayName(resolved) : t("backlog.noProject");
 	// A remembered project that is no longer a workspace must stay selectable.
 	const extra =
 		pick !== null && pick !== CAPTURE_PROJECT_NONE && !options.some((o) => o.path === pick) ? pick : null;
-	const autoName = currentProject ? projectDisplayName(currentProject) : "无项目";
+	const autoName = currentProject ? projectDisplayName(currentProject) : t("backlog.noProject");
 	const value = pick === null ? AUTO : pick;
 
 	const rows: { value: string; label: string }[] = [
-		{ value: AUTO, label: `跟随当前会话（${autoName}）` },
+		{ value: AUTO, label: t("backlog.followCurrentSession", { name: autoName }) },
 		...options.map((o) => ({ value: o.path, label: o.name })),
 		...(extra ? [{ value: extra, label: projectDisplayName(extra) }] : []),
-		{ value: CAPTURE_PROJECT_NONE, label: "不归属项目" },
+		{ value: CAPTURE_PROJECT_NONE, label: t("backlog.noProjectAssigned") },
 	];
 
 	return (
@@ -46,8 +48,8 @@ export function CaptureProjectSelect({
 			<button
 				type="button"
 				onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
-				title={resolved ?? "不归属任何项目"}
-				aria-label={`归属项目：${label}`}
+				title={resolved ?? t("backlog.noProjectAssignedTitle")}
+				aria-label={t("backlog.assignProjectAria", { label })}
 				aria-haspopup="listbox"
 				aria-expanded={anchor !== null}
 				className={`inline-flex h-7 min-w-0 max-w-[180px] items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 text-[12px] text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] ${className}`}
@@ -63,7 +65,7 @@ export function CaptureProjectSelect({
 				ignoreRefs={[{ current: anchor }]}
 				onDismiss={() => setAnchor(null)}
 				role="listbox"
-				aria-label="归属项目"
+				aria-label={t("backlog.assignProject")}
 				className="w-[240px] !bg-[var(--bg-panel)] py-1"
 			>
 				{rows.map((r) => (

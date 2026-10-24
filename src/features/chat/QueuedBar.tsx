@@ -8,6 +8,7 @@ import { errMsg } from "../../lib/dialogs";
 import { rpcSend } from "../../lib/ipc";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 import { useSettings } from "../settings/store";
 import { dropEchoesForTexts, isFlowBusy, restoreTextsToDraft, useLive } from "../../stores/live";
 import { type HeldItem, heldQueueItems, useHeldQueue } from "./heldQueue";
@@ -32,7 +33,7 @@ export async function drainNext(sid: string): Promise<boolean> {
 		return true;
 	} catch (err) {
 		useHeldQueue.getState().unshift(sid, item);
-		if (!isResumeCancelled(err)) toast.error(`排队消息发送失败: ${errMsg(err)}`);
+		if (!isResumeCancelled(err)) toast.error(tNow("chatView.queue.sendFailed", { error: errMsg(err) }));
 		return false;
 	} finally {
 		draining.delete(sid);
@@ -97,7 +98,7 @@ export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean)
 		const idx = (q.queues[sid] ?? EMPTY_LIST).findIndex((x) => x.id === item.id);
 		if (idx >= 0) q.remove(sid, idx);
 	} catch (err) {
-		if (!isResumeCancelled(err)) toast.error(`排队消息发送失败: ${errMsg(err)}`);
+		if (!isResumeCancelled(err)) toast.error(tNow("chatView.queue.sendFailed", { error: errMsg(err) }));
 	} finally {
 		setBusy(item.id, false);
 	}
@@ -117,7 +118,7 @@ export async function removeOmpQueued(
 		dropEchoesForTexts(sid, [text]);
 		restoreTextsToDraft(sid, [text]);
 	} catch (err) {
-		toast.error(`移出队列失败: ${errMsg(err)}`);
+		toast.error(tNow("chatView.queue.removeFailed", { error: errMsg(err) }));
 	} finally {
 		setBusy(echo.id, false);
 	}
@@ -130,7 +131,7 @@ export async function promoteOmpQueued(sid: string, echo: { id: string; text?: s
 	try {
 		await rpcSend(sid, { type: "promote_queued_message", message: echo.text ?? "" });
 	} catch (err) {
-		toast.error(`插队失败: ${errMsg(err)}`);
+		toast.error(tNow("chatView.queue.promoteFailed", { error: errMsg(err) }));
 	} finally {
 		setBusy(echo.id, false);
 	}

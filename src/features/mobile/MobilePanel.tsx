@@ -23,6 +23,7 @@ import {
 } from "../../lib/ipc";
 import { Switch } from "../settings/Switch";
 import { toast } from "../../lib/toast";
+import { tNow, useT } from "../../stores/language";
 import { Notice } from "../../components/Notice";
 import {
 	Button,
@@ -52,33 +53,11 @@ type Busy =
 
 type TunnelMode = "off" | "quick" | "named";
 
-const TARGET_LABELS: Record<PairingTarget, string> = {
-	lan: "局域网",
-	tunnel: "公网",
-	ipv6: "IPv6",
-};
-
-const TUNNEL_MODES: { value: TunnelMode; label: string; explain: string }[] = [
-	{ value: "off", label: "关闭", explain: "只能在同一个 Wi-Fi / 局域网内用手机访问，最安全。" },
-	{
-		value: "quick",
-		label: "临时公网地址",
-		explain:
-			"不需要任何配置，自动分配一个 trycloudflare.com 的随机网址，出门在外也能访问；每次启动网址都会变，适合临时使用。",
-	},
-	{
-		value: "named",
-		label: "固定域名",
-		explain:
-			"使用你在 Cloudflare 上已经建好的隧道和自己的域名，网址固定不变。需要先用 cloudflared 创建隧道，建议同时配置 Cloudflare Access 保护。",
-	},
-];
-
 function RunChip({ status }: { status: "unknown" | "running" | "stopped" | "noIpv6" }) {
-	if (status === "unknown") return <Chip tone="neutral">检测中</Chip>;
-	if (status === "running") return <Chip tone="success">运行中</Chip>;
-	if (status === "noIpv6") return <Chip tone="warning">没有公网 IPv6</Chip>;
-	return <Chip tone="neutral">已停止</Chip>;
+	if (status === "unknown") return <Chip tone="neutral">{tNow("mobile.statusDetecting")}</Chip>;
+	if (status === "running") return <Chip tone="success">{tNow("mobile.statusRunning")}</Chip>;
+	if (status === "noIpv6") return <Chip tone="warning">{tNow("mobile.statusNoIpv6")}</Chip>;
+	return <Chip tone="neutral">{tNow("mobile.statusStopped")}</Chip>;
 }
 
 function asMode(v: string | undefined | null): TunnelMode {
@@ -87,15 +66,15 @@ function asMode(v: string | undefined | null): TunnelMode {
 
 function validatePort(v: string): string | null {
 	const n = Number(v);
-	return /^\d+$/.test(v) && Number.isInteger(n) && n >= 1 && n <= 65535 ? null : "端口需要是 1–65535 之间的整数";
+	return /^\d+$/.test(v) && Number.isInteger(n) && n >= 1 && n <= 65535 ? null : tNow("mobile.portValidation");
 }
 
-function formatSyncTime(iso: string | null | undefined): string {
-	if (!iso) return "从未同步";
+function formatSyncTime(iso: string | null | undefined, locale?: string): string {
+	if (!iso) return tNow("mobile.neverSynced");
 	try {
 		const d = new Date(iso);
 		if (Number.isNaN(d.getTime())) return iso;
-		return d.toLocaleString("zh-CN", {
+		return d.toLocaleString(locale ?? "zh-CN", {
 			hour12: false,
 			month: "2-digit",
 			day: "2-digit",
@@ -132,10 +111,11 @@ function CopyLine({ label, value, toastText, copyLabel, mono = true }: { label: 
 }
 
 function UrlLine({ label, url }: { label: string; url: string }) {
-	return <CopyLine label={label} value={url} toastText="地址已复制" copyLabel={`复制${label}`} />;
+	return <CopyLine label={label} value={url} toastText={tNow("mobile.toastAddressCopied")} copyLabel={tNow("mobile.copyLabel", { label })} />;
 }
 
 export function MobilePanel() {
+	const { t, locale } = useT();
 	const { settings, save } = useAppSettings();
 	const [status, setStatus] = useState<MobileStatus | null>(null);
 	const [pairing, setPairing] = useState<PairingInfo | null>(null);
@@ -153,6 +133,25 @@ export function MobilePanel() {
 	const tunnelSave = useSaveStatus();
 	const qrRef = useRef<HTMLDivElement>(null);
 
+	const targetLabels: Record<PairingTarget, string> = {
+		lan: t("mobile.targetLan"),
+		tunnel: t("mobile.targetTunnel"),
+		ipv6: t("mobile.targetIpv6"),
+	};
+
+	const tunnelModes: { value: TunnelMode; label: string; explain: string }[] = [
+		{ value: "off", label: t("mobile.tunnelModeOff"), explain: t("mobile.tunnelModeOffExplain") },
+		{
+			value: "quick",
+			label: t("mobile.tunnelModeQuick"),
+			explain: t("mobile.tunnelModeQuickExplain"),
+		},
+		{
+			value: "named",
+			label: t("mobile.tunnelModeNamed"),
+			explain: t("mobile.tunnelModeNamedExplain"),
+		},
+	];
 	useEffect(() => {
 		if (!settings) return;
 		setTunnelMode(asMode(settings.tunnelMode));
@@ -206,10 +205,10 @@ export function MobilePanel() {
 			if (running) {
 				await mobileStop();
 				setPairing(null);
-				toast.info("手机访问已停止，已配对的手机暂时无法连接");
+				toast.info(t("mobile.toastStopped"));
 			} else {
 				await mobileStart();
-				toast.success("手机访问已启动");
+				toast.success(t("mobile.toastStarted"));
 			}
 			setPortChangedWhileRunning(false);
 			await refresh();
@@ -221,7 +220,7 @@ export function MobilePanel() {
 			await mobileStart();
 			setPairing(null);
 			setPortChangedWhileRunning(false);
-			toast.success("已用新端口重新启动");
+			toast.success(t("mobile.toastRestartedPort"));
 			await refresh();
 		});
 
@@ -232,10 +231,10 @@ export function MobilePanel() {
 			if (ipv6Running) {
 				await mobileIpv6Stop();
 				if (pairTarget === "ipv6") setPairing(null);
-				toast.info("IPv6 直连已停止");
+				toast.info(t("mobile.toastIpv6Stopped"));
 			} else {
 				await mobileIpv6Start();
-				toast.success("IPv6 直连已启动");
+				toast.success(t("mobile.toastIpv6Started"));
 			}
 			setIpv6PortChangedWhileRunning(false);
 			await refresh();
@@ -247,7 +246,7 @@ export function MobilePanel() {
 			await mobileIpv6Start();
 			if (pairTarget === "ipv6") setPairing(null);
 			setIpv6PortChangedWhileRunning(false);
-			toast.success("已用新端口重新启动 IPv6 直连");
+			toast.success(t("mobile.toastIpv6RestartedPort"));
 			await refresh();
 		});
 
@@ -258,7 +257,7 @@ export function MobilePanel() {
 			const nextDdns = await mobileDdnsSetToken(token);
 			setDdnsTokenDraft("");
 			setStatus((prev) => (prev ? { ...prev, ddns: nextDdns } : prev));
-			toast.success("Cloudflare API 令牌已保存并验证");
+			toast.success(t("mobile.toastTokenSaved"));
 			await refresh();
 		});
 
@@ -267,7 +266,7 @@ export function MobilePanel() {
 			const nextDdns = await mobileDdnsClearToken();
 			setDdnsTokenDraft("");
 			setStatus((prev) => (prev ? { ...prev, ddns: nextDdns } : prev));
-			toast.info("Cloudflare API 令牌已清除");
+			toast.info(t("mobile.toastTokenCleared"));
 			await refresh();
 		});
 
@@ -275,7 +274,7 @@ export function MobilePanel() {
 		run("ddnsSync", async () => {
 			const nextDdns = await mobileDdnsSync();
 			setStatus((prev) => (prev ? { ...prev, ddns: nextDdns } : prev));
-			toast.success("DDNS 记录已同步");
+			toast.success(t("mobile.toastDdnsSynced"));
 			await refresh();
 		});
 
@@ -297,7 +296,7 @@ export function MobilePanel() {
 	const applyTunnel = () =>
 		run("tunnel", async () => {
 			if (namedMissing) {
-				setError("固定域名模式需要同时填写隧道名称和域名");
+				setError(t("mobile.errorNamedMissing"));
 				return;
 			}
 			const ok = await tunnelSave.run(() =>
@@ -310,10 +309,10 @@ export function MobilePanel() {
 			if (!ok) return;
 			if (tunnelMode === "off") {
 				await tunnelStop();
-				toast.info("公网访问已关闭");
+				toast.info(t("mobile.toastTunnelClosed"));
 			} else {
 				await tunnelStart();
-				toast.success("公网隧道已启动");
+				toast.success(t("mobile.toastTunnelStarted"));
 			}
 			await refresh();
 		});
@@ -321,46 +320,45 @@ export function MobilePanel() {
 	const revokeAll = () =>
 		run("revoke", async () => {
 			const confirmed = await confirmDialog(
-				"所有已经配对过的手机都会立刻断开，之后需要重新扫码才能使用。确定继续吗？",
-				{ danger: true, title: "让所有手机重新配对", okLabel: "全部撤销" },
+				t("mobile.revokeConfirmMessage"),
+				{ danger: true, title: t("mobile.revokeConfirmTitle"), okLabel: t("mobile.revokeConfirmOk") },
 			);
 			if (!confirmed) return;
 			await mobileRevokeAll();
 			setPairing(null);
-			toast.success("已撤销，所有手机需要重新扫码配对");
+			toast.success(t("mobile.toastRevoked"));
 		});
 
 	const mm = Math.floor(expiresIn / 60);
 	const ss = String(expiresIn % 60).padStart(2, "0");
 	const expired = pairing != null && expiresIn === 0;
-	const modeInfo = TUNNEL_MODES.find((m) => m.value === tunnelMode) ?? TUNNEL_MODES[0];
+	const modeInfo = tunnelModes.find((m) => m.value === tunnelMode) ?? tunnelModes[0];
 	const tunnelButtonLabel =
-		tunnelMode === "off" ? (status?.tunnelUrl ? "关闭公网访问" : "保存") : status?.tunnelUrl ? "保存并重新连接" : "保存并启动隧道";
-
+		tunnelMode === "off" ? (status?.tunnelUrl ? t("mobile.btnCloseTunnel") : t("common.save")) : status?.tunnelUrl ? t("mobile.btnSaveAndReconnect") : t("mobile.btnSaveAndStartTunnel");
 	return (
 		<div className="space-y-6">
 			{error && (
 				<Notice
 					tone="danger"
-					action={<IconButton size="sm" icon={X} label="关闭错误提示" onClick={() => setError(null)} />}
+					action={<IconButton size="sm" icon={X} label={t("mobile.dismissErrorAria")} onClick={() => setError(null)} />}
 				>
 					{error}
 				</Notice>
 			)}
 
 			{/* LAN server */}
-			<SettingsCard title="手机访问服务" fieldId="mobileLan">
+			<SettingsCard title={t("mobile.cardLanTitle")} fieldId="mobileLan">
 				<SettingRow
 					label={
 						<span className="flex items-center gap-2">
-							手机访问
+							{t("mobile.rowMobileLanLabel")}
 							<RunChip status={status == null ? "unknown" : running ? "running" : "stopped"} />
 						</span>
 					}
 					description={
 						running
-							? "手机可以连接到这台电脑；不用时可以停止"
-							: "启动后，同一 Wi-Fi 下的手机扫码即可查看会话、处理审批"
+							? t("mobile.rowMobileLanDescRunning")
+							: t("mobile.rowMobileLanDescStopped")
 					}
 					control={
 						<Button
@@ -370,23 +368,23 @@ export function MobilePanel() {
 							disabled={busy !== null || status == null}
 							onClick={toggleServer}
 						>
-							{busy === "server" ? (running ? "正在停止" : "正在启动") : running ? "停止" : "启动"}
+							{busy === "server" ? (running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : running ? t("mobile.btnStop") : t("mobile.btnStart")}
 						</Button>
 					}
 				>
-					{running && status?.lanUrl && <UrlLine label="局域网地址" url={status.lanUrl} />}
+					{running && status?.lanUrl && <UrlLine label={t("mobile.lanUrlLabel")} url={status.lanUrl} />}
 				</SettingRow>
 				<SettingRow
-					label="端口"
-					description="手机连接用的端口号，一般不需要改；和其他程序冲突导致启动失败时再换一个"
-					hint="范围 1–65535，默认 7788"
+					label={t("mobile.portLabel")}
+					description={t("mobile.portDesc")}
+					hint={t("mobile.portHint")}
 					control={
 						<CommitInput
 							type="number"
 							min={1}
 							max={65535}
 							className="w-28"
-							aria-label="手机访问端口"
+							aria-label={t("mobile.portAria")}
 							value={String(settings?.mobilePort ?? 7788)}
 							validate={validatePort}
 							onCommit={async (v) => {
@@ -401,26 +399,26 @@ export function MobilePanel() {
 							tone="warning"
 							action={
 								<Button icon={RotateCcw} loading={busy === "restart"} disabled={busy !== null} onClick={restartServer}>
-									立即重启
+									{t("mobile.btnRestartNow")}
 								</Button>
 							}
 						>
-							新端口已保存，需要重启服务后才会生效
+							{t("mobile.noticePortRestart")}
 						</Notice>
 					)}
 				</SettingRow>
 				<SettingRow
-					label="配对手机（局域网）"
-					description={running ? "生成二维码，用手机相机扫一下即可连接（5 分钟内有效，只能用一次）" : "需要先启动上面的「手机访问」"}
+					label={t("mobile.pairLanLabel")}
+					description={running ? t("mobile.pairLanDescRunning") : t("mobile.pairLanDescStopped")}
 					control={
 						<Button
 							icon={QrCode}
 							loading={busy === "pair" && pairTarget === "lan"}
 							disabled={busy !== null || !running}
-							title={running ? undefined : "请先启动手机访问"}
+							title={running ? undefined : t("mobile.pairLanTitleStopped")}
 							onClick={() => makePairing("lan")}
 						>
-							生成配对二维码
+							{t("mobile.btnGenerateQr")}
 						</Button>
 					}
 				/>
@@ -428,14 +426,14 @@ export function MobilePanel() {
 
 			{/* IPv6 direct */}
 			<SettingsCard
-				title="IPv6 直连"
+				title={t("mobile.cardIpv6Title")}
 				fieldId="mobileIpv6"
-				footer="利用公网 IPv6 无 NAT 特性，让手机在蜂窝移动网络（4G/5G）下直接连接这台电脑，无需第三方服务器中转。"
+				footer={t("mobile.cardIpv6Footer")}
 			>
 				<SettingRow
 					label={
 						<span className="flex items-center gap-2">
-							IPv6 直连
+							{t("mobile.ipv6DirectLabel")}
 							<RunChip
 								status={
 									status == null
@@ -451,8 +449,8 @@ export function MobilePanel() {
 					}
 					description={
 						ipv6Running
-							? "已开启公网 IPv6 上的 HTTPS 服务，手机通过流量可直连"
-							: "启动后将在公网 IPv6 地址上开启 HTTPS 服务；首次使用请阅读下方使用提示"
+							? t("mobile.ipv6DirectDescRunning")
+							: t("mobile.ipv6DirectDescStopped")
 					}
 					control={
 						<Button
@@ -462,43 +460,43 @@ export function MobilePanel() {
 							disabled={busy !== null || status == null}
 							onClick={toggleIpv6}
 						>
-							{busy === "ipv6Server" ? (ipv6Running ? "正在停止" : "正在启动") : ipv6Running ? "停止" : "启动"}
+							{busy === "ipv6Server" ? (ipv6Running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : ipv6Running ? t("mobile.btnStop") : t("mobile.btnStart")}
 						</Button>
 					}
 				>
 					<div className="space-y-2">
 						{status?.ipv6Address ? (
 							<CopyLine
-								label="公网 IPv6 地址"
+								label={t("mobile.ipv6AddrLabel")}
 								value={status.ipv6Address}
-								toastText="IPv6 地址已复制"
-								copyLabel="复制 IPv6 地址"
+								toastText={t("mobile.ipv6AddrCopied")}
+								copyLabel={t("mobile.ipv6AddrCopyAria")}
 							/>
 						) : (
-							<Notice tone="warning">本机没有公网 IPv6 地址，无法使用直连</Notice>
+							<Notice tone="warning">{t("mobile.noticeNoIpv6")}</Notice>
 						)}
-						{ipv6Running && status?.ipv6Url && <UrlLine label="IPv6 访问链接" url={status.ipv6Url} />}
+						{ipv6Running && status?.ipv6Url && <UrlLine label={t("mobile.ipv6UrlLabel")} url={status.ipv6Url} />}
 						{status?.certSha256 && (
 							<CopyLine
-								label="证书 SHA-256 指纹"
+								label={t("mobile.certShaLabel")}
 								value={status.certSha256}
-								toastText="证书指纹已复制"
-								copyLabel="复制证书指纹"
+								toastText={t("mobile.certShaCopied")}
+								copyLabel={t("mobile.certShaCopyAria")}
 							/>
 						)}
 					</div>
 				</SettingRow>
 				<SettingRow
-					label="IPv6 端口"
-					description="IPv6 直连使用的端口号，默认 7789；路由器防火墙需放行该端口的入站连接"
-					hint="范围 1–65535，默认 7789"
+					label={t("mobile.ipv6PortLabel")}
+					description={t("mobile.ipv6PortDesc")}
+					hint={t("mobile.ipv6PortHint")}
 					control={
 						<CommitInput
 							type="number"
 							min={1}
 							max={65535}
 							className="w-28"
-							aria-label="IPv6 访问端口"
+							aria-label={t("mobile.ipv6PortAria")}
 							value={String(settings?.mobileIpv6Port ?? 7789)}
 							validate={validatePort}
 							onCommit={async (v) => {
@@ -518,20 +516,20 @@ export function MobilePanel() {
 									disabled={busy !== null}
 									onClick={restartIpv6}
 								>
-									立即重启
+									{t("mobile.btnRestartNow")}
 								</Button>
 							}
 						>
-							新端口已保存，需要重启 IPv6 直连后生效
+							{t("mobile.noticeIpv6PortRestart")}
 						</Notice>
 					)}
 				</SettingRow>
 				<SettingRow
-					label="配对手机（IPv6 直连）"
+					label={t("mobile.pairIpv6Label")}
 					description={
 						ipv6Running
-							? "生成二维码，用手机相机扫一下即可通过 IPv6 直连（5 分钟内有效，只能用一次）"
-							: "需要先启动上面的「IPv6 直连」"
+							? t("mobile.pairIpv6DescRunning")
+							: t("mobile.pairIpv6DescStopped")
 					}
 					control={
 						<Button
@@ -540,31 +538,31 @@ export function MobilePanel() {
 							disabled={busy !== null || !ipv6Running || !status?.ipv6Url}
 							title={
 								!ipv6Running
-									? "请先启动 IPv6 直连"
+									? t("mobile.pairIpv6TitleStopped")
 									: !status?.ipv6Url
-										? "未检测到可用的 IPv6 访问地址"
+										? t("mobile.pairIpv6TitleNoUrl")
 										: undefined
 							}
 							onClick={() => makePairing("ipv6")}
 						>
-							生成 IPv6 配对二维码
+							{t("mobile.btnGenerateIpv6Qr")}
 						</Button>
 					}
 				/>
 				<div className="space-y-1.5 px-4 py-3 text-xs leading-relaxed text-[var(--text-muted)]">
-					<div className="font-medium text-[var(--text)]">使用提示</div>
+					<div className="font-medium text-[var(--text)]">{t("mobile.usageTipsTitle")}</div>
 					<ul className="list-inside list-disc space-y-1">
-						<li>路由器需放行该端口的 IPv6 入站</li>
-						<li>首次打开会提示证书不受信任，核对指纹一致后继续</li>
-						<li>用手机流量（关闭 Wi-Fi）测试</li>
-						<li>地址变化后重新扫码配对，或启用 DDNS</li>
+						<li>{t("mobile.tip1")}</li>
+						<li>{t("mobile.tip2")}</li>
+						<li>{t("mobile.tip3")}</li>
+						<li>{t("mobile.tip4")}</li>
 					</ul>
 				</div>
 				{/* DDNS subsection */}
 				<SettingRow
 					label={
 						<span className="flex items-center gap-2">
-							Cloudflare DDNS 动态域名
+							{t("mobile.ddnsLabel")}
 							{settings?.ddnsEnabled && (
 								<Chip
 									tone={
@@ -578,22 +576,22 @@ export function MobilePanel() {
 									}
 								>
 									{status?.ddns?.halted
-										? "已暂停"
+										? t("mobile.ddnsStatusHalted")
 										: status?.ddns?.lastError
-											? "错误"
+											? t("mobile.ddnsStatusError")
 											: status?.ddns?.lastIp
-												? "已同步"
-												: "未同步"}
+												? t("mobile.ddnsStatusSynced")
+												: t("mobile.ddnsStatusUnsynced")}
 								</Chip>
 							)}
 						</span>
 					}
-					description="公网 IPv6 地址发生变化时，自动更新 Cloudflare 上的 AAAA 解析记录，配合自己的域名保持访问不中断。"
+					description={t("mobile.ddnsDesc")}
 					control={
 						<Switch
 							checked={settings?.ddnsEnabled ?? false}
 							disabled={busy !== null}
-							ariaLabel="启用 Cloudflare DDNS"
+							ariaLabel={t("mobile.ddnsEnableAria")}
 							onChange={async (checked) => {
 								await save({ ddnsEnabled: checked });
 								await refresh();
@@ -608,7 +606,7 @@ export function MobilePanel() {
 									<span>Zone ID</span>
 									<CommitInput
 										aria-label="Cloudflare Zone ID"
-										placeholder="例如 023e105f4ecef8ad9ca31a8372d0c353"
+										placeholder={t("mobile.zoneIdPlaceholder")}
 										value={settings?.ddnsZoneId ?? ""}
 										onCommit={async (v) => {
 											await save({ ddnsZoneId: v.trim() || null });
@@ -617,10 +615,10 @@ export function MobilePanel() {
 									/>
 								</label>
 								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>解析域名（AAAA）</span>
+									<span>{t("mobile.ddnsHostnameLabel")}</span>
 									<CommitInput
-										aria-label="DDNS 域名"
-										placeholder="例如 home.example.com"
+										aria-label={t("mobile.ddnsHostnameAria")}
+										placeholder={t("mobile.ddnsHostnamePlaceholder")}
 										value={settings?.ddnsHostname ?? ""}
 										onCommit={async (v) => {
 											await save({ ddnsHostname: v.trim() || null });
@@ -632,8 +630,8 @@ export function MobilePanel() {
 
 							<div className="space-y-1 text-xs text-[var(--text-muted)]">
 								<div className="flex items-center justify-between">
-									<span>Cloudflare API 令牌</span>
-									{status?.ddns?.tokenSet && <Chip tone="success">已保存</Chip>}
+									<span>{t("mobile.cfTokenLabel")}</span>
+									{status?.ddns?.tokenSet && <Chip tone="success">{t("mobile.tokenSetChip")}</Chip>}
 								</div>
 								<div className="flex gap-2">
 									<input
@@ -641,8 +639,8 @@ export function MobilePanel() {
 										className={INPUT_CLASS}
 										placeholder={
 											status?.ddns?.tokenSet
-												? "••••••••••••••••（已保存，输入新令牌以覆盖）"
-												: "输入具备 Zone:DNS:Edit 权限的 API 令牌"
+												? t("mobile.tokenSetPlaceholder")
+												: t("mobile.tokenEmptyPlaceholder")
 										}
 										value={ddnsTokenDraft}
 										onChange={(e) => setDdnsTokenDraft(e.target.value)}
@@ -653,36 +651,36 @@ export function MobilePanel() {
 										disabled={busy !== null || !ddnsTokenDraft.trim()}
 										onClick={saveDdnsToken}
 									>
-										保存令牌
+										{t("mobile.btnSaveToken")}
 									</Button>
 									{status?.ddns?.tokenSet && (
 										<Button loading={busy === "ddnsClear"} disabled={busy !== null} onClick={clearDdnsToken}>
-											清除令牌
+											{t("mobile.btnClearToken")}
 										</Button>
 									)}
 								</div>
 								<p className="text-[11px] text-[var(--text-dim)]">
-									令牌安全存储在本地加密保管库中，仅用于更新 AAAA 记录，绝不会明文回显。
+									{t("mobile.tokenSecurityNote")}
 								</p>
 							</div>
 
 							{status?.ddns?.halted && (
-								<Notice tone="warning" title="自动同步已暂停">
-									遇到鉴权失败或连续同步错误已暂停自动更新。请检查 API 令牌与配置后，点击「立即同步」重试并恢复自动调度。
+								<Notice tone="warning" title={t("mobile.noticeDdnsHaltedTitle")}>
+									{t("mobile.noticeDdnsHaltedMsg")}
 								</Notice>
 							)}
 
 							{status?.ddns?.lastError && !status?.ddns?.halted && (
-								<Notice tone="danger">最近同步错误：{status.ddns.lastError}</Notice>
+								<Notice tone="danger">{t("mobile.noticeDdnsLastError", { error: status.ddns.lastError })}</Notice>
 							)}
 
 							<div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-divider)] pt-2 text-xs text-[var(--text-muted)]">
 								<div className="flex flex-wrap items-center gap-3">
-									<span>上次同步：{formatSyncTime(status?.ddns?.lastSyncAt)}</span>
+									<span>{t("mobile.lastSyncLabel", { time: formatSyncTime(status?.ddns?.lastSyncAt, locale) })}</span>
 									<span>
-										上次解析 IP：{" "}
+										{t("mobile.lastResolvedIpLabel")}
 										<code className="rounded bg-[var(--well-bg)] px-1 font-mono text-[var(--text)]">
-											{status?.ddns?.lastIp ?? "无"}
+											{status?.ddns?.lastIp ?? t("mobile.lastResolvedIpNone")}
 										</code>
 									</span>
 								</div>
@@ -697,14 +695,14 @@ export function MobilePanel() {
 									}
 									title={
 										!status?.ddns?.tokenSet
-											? "请先保存 API 令牌"
+											? t("mobile.titleSyncNoToken")
 											: !settings?.ddnsZoneId || !settings?.ddnsHostname
-												? "请先填写 Zone ID 和域名"
+												? t("mobile.titleSyncNoDomain")
 												: undefined
 									}
 									onClick={syncDdns}
 								>
-									立即同步
+									{t("mobile.btnSyncNow")}
 								</Button>
 							</div>
 						</div>
@@ -714,19 +712,19 @@ export function MobilePanel() {
 
 			{/* Tunnel */}
 			<SettingsCard
-				title="不在同一网络时访问（公网隧道）"
+				title={t("mobile.cardTunnelTitle")}
 				fieldId="mobileTunnel"
-				footer="公网隧道通过 Cloudflare 免费服务转发，手机用 4G/5G 或其他 Wi-Fi 也能访问。仍然需要扫码配对，陌生人无法直接使用。"
+				footer={t("mobile.cardTunnelFooter")}
 			>
 				<SettingRow
 					stacked
 					label={
 						<span className="flex items-center gap-2">
-							访问方式
+							{t("mobile.tunnelMethodLabel")}
 							{status?.tunnelUrl ? (
-								<Chip tone="success">已连接</Chip>
+								<Chip tone="success">{t("mobile.tunnelConnectedChip")}</Chip>
 							) : savedMode !== "off" ? (
-								<Chip tone="neutral">未连接</Chip>
+								<Chip tone="neutral">{t("mobile.tunnelDisconnectedChip")}</Chip>
 							) : null}
 						</span>
 					}
@@ -734,45 +732,45 @@ export function MobilePanel() {
 					control={
 						<Segmented
 							size="sm"
-							aria-label="公网访问方式"
+							aria-label={t("mobile.tunnelMethodAria")}
 							value={tunnelMode}
 							onChange={setTunnelMode}
 							disabled={busy !== null}
-							options={TUNNEL_MODES.map((m) => ({ value: m.value, label: m.label }))}
+							options={tunnelModes.map((m) => ({ value: m.value, label: m.label }))}
 						/>
 					}
 				>
 					<div className="space-y-2.5">
 						{cloudflaredMissing && tunnelMode !== "off" && (
 							<Notice tone="warning">
-								需要先安装 Cloudflare 的小工具 cloudflared：在「终端」里运行{" "}
+								{t("mobile.noticeCloudflaredMissingPre")}
 								<code className="rounded bg-[var(--well-bg)] px-1 font-mono">brew install cloudflared</code>
-								，装好后点右侧「刷新状态」。
+								{t("mobile.noticeCloudflaredMissingPost")}
 							</Notice>
 						)}
 						{tunnelMode === "named" && (
 							<div className="grid grid-cols-2 gap-2">
 								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>隧道名称</span>
+									<span>{t("mobile.tunnelNameLabel")}</span>
 									<input
 										className={INPUT_CLASS}
-										placeholder="例如 omp-mobile"
+										placeholder={t("mobile.tunnelNamePlaceholder")}
 										value={tunnelName}
 										onChange={(e) => setTunnelName(e.target.value)}
 									/>
 								</label>
 								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>域名</span>
+									<span>{t("mobile.tunnelHostLabel")}</span>
 									<input
 										className={INPUT_CLASS}
-										placeholder="例如 omp.example.com"
+										placeholder={t("mobile.tunnelHostPlaceholder")}
 										value={tunnelHost}
 										onChange={(e) => setTunnelHost(e.target.value)}
 									/>
 								</label>
 							</div>
 						)}
-						{status?.tunnelUrl && <UrlLine label="公网地址" url={status.tunnelUrl} />}
+						{status?.tunnelUrl && <UrlLine label={t("mobile.tunnelPublicUrlLabel")} url={status.tunnelUrl} />}
 						<div className="flex flex-wrap items-center gap-2">
 							<Button
 								variant={tunnelMode === "off" ? "secondary" : "primary"}
@@ -784,30 +782,30 @@ export function MobilePanel() {
 									(tunnelMode !== "off" && cloudflaredMissing) ||
 									(!tunnelDirty && tunnelMode === "off" && !status?.tunnelUrl)
 								}
-								title={namedMissing ? "请先填写隧道名称和域名" : undefined}
+								title={namedMissing ? t("mobile.errorNamedMissing") : undefined}
 								onClick={applyTunnel}
 							>
-								{busy === "tunnel" ? "正在处理" : tunnelButtonLabel}
+								{busy === "tunnel" ? t("mobile.btnTunnelProcessing") : tunnelButtonLabel}
 							</Button>
 							<Button
 								icon={RefreshCw}
 								loading={busy === "refresh"}
 								disabled={busy !== null}
 								onClick={() => run("refresh", refresh)}
-								title="临时公网地址可能需要几秒才会出现"
+								title={t("mobile.tipTempUrlSlow")}
 							>
-								刷新状态
+								{t("mobile.btnRefreshStatus")}
 							</Button>
 							<Button
 								icon={QrCode}
 								disabled={busy !== null || !status?.tunnelUrl}
-								title={status?.tunnelUrl ? undefined : "公网隧道连接成功后才能生成"}
+								title={status?.tunnelUrl ? undefined : t("mobile.tipTunnelNotReady")}
 								onClick={() => makePairing("tunnel")}
 							>
-								生成公网配对二维码
+								{t("mobile.btnGenerateTunnelQr")}
 							</Button>
 							{tunnelDirty && tunnelSave.status === "idle" && (
-								<Chip tone="warning">有未保存的修改</Chip>
+								<Chip tone="warning">{t("mobile.unsavedChangesChip")}</Chip>
 							)}
 							<SaveIndicator status={tunnelSave.status} error={tunnelSave.error} />
 						</div>
@@ -823,16 +821,16 @@ export function MobilePanel() {
 				>
 					<div className="flex w-full items-center justify-between border-b border-[var(--border-divider)] pb-2">
 						<span className="text-xs font-medium text-[var(--text)]">
-							{TARGET_LABELS[pairTarget]}配对二维码 ·{" "}
+							{t("mobile.qrTitle", { target: targetLabels[pairTarget] })}
 							{expired ? (
-								<span className="text-[var(--status-error)]">已过期</span>
+								<span className="text-[var(--status-error)]">{t("mobile.qrExpired")}</span>
 							) : (
 								<span className={`font-mono tabular-nums ${expiresIn <= 30 ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}>
-									{mm}:{ss} 后失效
+									{t("mobile.qrExpiresIn", { mm, ss })}
 								</span>
 							)}
 						</span>
-						<IconButton icon={X} label="关闭二维码" onClick={() => setPairing(null)} />
+						<IconButton icon={X} label={t("mobile.closeQrAria")} onClick={() => setPairing(null)} />
 					</div>
 					<div className="relative">
 						<div
@@ -848,28 +846,28 @@ export function MobilePanel() {
 									disabled={busy !== null}
 									onClick={() => makePairing(pairTarget)}
 								>
-									重新生成
+									{t("mobile.btnRegenerate")}
 								</Button>
 							</div>
 						)}
 					</div>
 					<p className="text-center text-xs text-[var(--text-muted)]">
 						{expired
-							? "二维码已失效，请重新生成"
-							: "用手机相机或微信扫一扫打开链接，在手机浏览器中完成配对。每个二维码只能用一次。"}
+							? t("mobile.qrExpiredHelp")
+							: t("mobile.qrScanHelp")}
 					</p>
 					{!expired && (
 						<div className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2">
 							<code className="flex-1 break-all font-mono text-[11px] text-[var(--text)]">{pairing.url}</code>
 							<Button
 								icon={Copy}
-								title="复制配对链接"
+								title={t("mobile.copyPairUrlTitle")}
 								onClick={async () => {
 									await copyText(pairing.url);
-									toast.success("配对链接已复制，可发到手机上打开");
+									toast.success(t("mobile.toastPairUrlCopied"));
 								}}
 							>
-								复制链接
+								{t("mobile.btnCopyLink")}
 							</Button>
 						</div>
 					)}
@@ -877,14 +875,14 @@ export function MobilePanel() {
 			)}
 
 			{/* Paired devices */}
-			<SettingsCard title="已配对的手机" fieldId="mobileDevices">
+			<SettingsCard title={t("mobile.cardDevicesTitle")} fieldId="mobileDevices">
 				<SettingRow
 					danger
-					label="撤销所有手机的访问权限"
-					description="手机丢失、或不想再让某台手机访问时使用。目前无法单独移除某一台，只能全部撤销后让需要的手机重新扫码。"
+					label={t("mobile.rowRevokeLabel")}
+					description={t("mobile.rowRevokeDesc")}
 					control={
 						<Button variant="danger" icon={ShieldAlert} loading={busy === "revoke"} disabled={busy !== null} onClick={revokeAll}>
-							全部撤销
+							{t("mobile.btnRevokeAll")}
 						</Button>
 					}
 				/>

@@ -50,22 +50,24 @@ import { ModelReplacePlanPreview } from "./ModelReplacePlanPreview";
 import { ModelReplaceResults } from "./ModelReplaceResults";
 import { invalidateAfterModelReplace } from "./store";
 import { BTN_GHOST, BTN_PRIMARY, LevelSelect, TargetPicker, tabOfGroup } from "./parts";
+import { useT } from "../../../stores/language";
 
 type Step = "overview" | "configure" | "preview" | "results" | "history";
 
 const STEP_ORDER: Step[] = ["overview", "configure", "preview", "results"];
 
-const STEP_LABELS: Record<Step, string> = {
-	overview: "选择来源",
-	configure: "选择目标",
-	preview: "预览改动",
-	results: "执行结果",
-	history: "历史记录",
+const STEP_LABEL_KEYS: Record<Step, string> = {
+	overview: "modelReplace.stepOverview",
+	configure: "modelReplace.stepConfigure",
+	preview: "modelReplace.stepPreview",
+	results: "modelReplace.stepResults",
+	history: "modelReplace.stepHistory",
 };
 
 const FIELD_LABEL = "w-20 shrink-0 text-[11px] text-neutral-500";
 
 export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
+	const { t } = useT();
 	const kinds = useModelKindCatalog();
 	const { load: loadKinds } = kinds;
 	const [step, setStep] = useState<Step>("overview");
@@ -343,20 +345,20 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 	const historyBack: Step =
 		historyReturn === "results" && results.length === 0 ? "overview" : historyReturn;
 	const historyBackLabel =
-		historyBack === "results" ? "返回结果" : `返回${STEP_LABELS[historyBack]}`;
+		historyBack === "results" ? t("modelReplace.backToResults") : t("modelReplace.backToStep", { step: t(STEP_LABEL_KEYS[historyBack]) });
 	/** Why 应用 is unavailable although a plan exists (stale scan after an apply). */
 	const applyBlocked =
 		scanStale && step === "preview"
 			? scanError !== null
-				? `上次替换已经写入，重新扫描失败，暂时不能再次应用：${scanError}。回到第一步可以重试扫描。`
-				: "上次替换已经写入，正在重新扫描模型引用；扫描完成前不能再次应用。"
+				? t("modelReplace.applyBlockedRescanFailed", { error: scanError })
+				: t("modelReplace.applyBlockedRescanning")
 			: null;
 
 	return (
 		<Modal
 			onClose={onClose}
 			size="none"
-			ariaLabel="批量替换模型"
+			ariaLabel={t("modelReplace.dialogTitle")}
 			className="h-[min(85vh,780px)] w-[900px] max-w-[calc(100vw-2rem)] overflow-hidden p-4 text-[var(--text)]"
 		>
 			<div
@@ -388,10 +390,10 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
 					<div className="min-w-0">
 						<h2 id="model-replace-title" className="text-sm font-semibold text-[var(--text)]">
-							批量替换模型
+							{t("modelReplace.dialogTitle")}
 						</h2>
 						<p className="mt-0.5 text-[11px] leading-5 text-neutral-400">
-							把一处模型用法批量换成另一个模型：全局与项目配置、回退链、应用设置和定时任务。
+							{t("modelReplace.dialogDesc")}
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
@@ -406,12 +408,12 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 											: "bg-[var(--well-bg)] text-neutral-500"
 								}`;
 								return reachable ? (
-									<button key={s} type="button" onClick={() => goToStep(s)} className={chipClass} title={`回到「${STEP_LABELS[s]}」`}>
-										{i + 1} {STEP_LABELS[s]}
+									<button key={s} type="button" onClick={() => goToStep(s)} className={chipClass} title={t("modelReplace.backToStepAria", { step: t(STEP_LABEL_KEYS[s]) })}>
+										{i + 1} {t(STEP_LABEL_KEYS[s])}
 									</button>
 								) : (
 									<span key={s} className={chipClass} aria-current={step === s ? "step" : undefined}>
-										{i + 1} {STEP_LABELS[s]}
+										{i + 1} {t(STEP_LABEL_KEYS[s])}
 									</span>
 								);
 							})}
@@ -419,17 +421,17 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 						<button
 							type="button"
 							onClick={openHistory}
-							title="查看最近的批量替换并撤销"
+							title={t("modelReplace.historyButtonTitle")}
 							className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
 							<History className="h-3 w-3" />
-							历史记录
+							{t("modelReplace.historyButton")}
 						</button>
 						<button
 							type="button"
 							onClick={onClose}
-							aria-label="关闭"
-							title="关闭"
+							aria-label={t("common.close")}
+							title={t("common.close")}
 							className="rounded-lg p-1 text-neutral-500 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
 						>
 							<X className="h-3.5 w-3.5" />
@@ -463,12 +465,12 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 						<div className="flex min-h-0 flex-1 flex-col">
 							<div className="rounded-xl hairline">
 								<div className="flex items-start gap-3 border-b border-[var(--border-divider)] px-3 py-2.5">
-									<span className={`${FIELD_LABEL} pt-0.5`}>要替换的模型</span>
+									<span className={`${FIELD_LABEL} pt-0.5`}>{t("modelReplace.sourceModelLabel")}</span>
 									<div className="min-w-0 flex-1">
 										<div className="break-words font-mono text-xs text-neutral-200">{fromModel}</div>
 										{fromSources.length > 0 && (
 											<div className="mt-2">
-												<div className="mb-1 text-[11px] text-neutral-500">出现在以下 {fromSources.length} 处：</div>
+												<div className="mb-1 text-[11px] text-neutral-500">{t("modelReplace.appearsInCount", { count: String(fromSources.length) })}</div>
 												<ul className="max-h-48 space-y-0.5 overflow-y-auto rounded-lg bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px]">
 													{fromSources.map((s) => (
 														<li key={`${s.scope}\u0000${s.title}`} className="flex items-start gap-2 leading-5">
@@ -481,11 +483,11 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 										)}
 									</div>
 									<button type="button" onClick={() => setStep("overview")} className={BTN_GHOST}>
-										重新选择
+										{t("modelReplace.reselect")}
 									</button>
 								</div>
 								<div className={`flex items-start gap-3 px-3 py-2.5 ${takesLevel ? "border-b border-[var(--border-divider)]" : ""}`}>
-									<span className={`${FIELD_LABEL} pt-1.5`}>统一目标</span>
+									<span className={`${FIELD_LABEL} pt-1.5`}>{t("modelReplace.unifiedTarget")}</span>
 									<div className="min-w-0 flex-1">
 										<TargetPicker
 											value={toModel}
@@ -493,35 +495,34 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 											loading={kinds.loading}
 											error={kinds.error}
 											initialGroup={tabOfGroup(toGroup ?? fromGroup)}
-											caption="只列出模型目录里的模型"
+											caption={t("modelReplace.onlyCatalogModels")}
 											onSelect={pickTarget}
 										/>
 										<p className="mt-1 text-[10px] text-neutral-500">
 											{toGroup !== null && !isChat
-												? "这类模型不使用思考等级，不会写入等级后缀。"
+												? t("modelReplace.noThinkingLevelKind")
 												: isChat && !takesLevel
-													? "这个模型没有可选的思考等级，不会写入等级后缀。"
-													: "所有行默认换成它，个别行可在下一步单独指定；仅模型目录中的模型"}
+													? t("modelReplace.noThinkingLevelModel")
+													: t("modelReplace.defaultTargetHint")}
 										</p>
 									</div>
 								</div>
 								{takesLevel && (
 									<div className="flex items-center gap-3 px-3 py-2.5">
-										<span className={FIELD_LABEL}>思考等级</span>
-										<LevelSelect value={effectiveLevel} levels={levels} onChange={setLevel} ariaLabel="思考等级" containerClassName="w-44" />
+										<span className={FIELD_LABEL}>{t("modelReplace.thinkingLevelLabel")}</span>
+										<LevelSelect value={effectiveLevel} levels={levels} onChange={setLevel} ariaLabel={t("modelReplace.thinkingLevelLabel")} containerClassName="w-44" />
 										<span className="min-w-0 break-all text-[10px] text-neutral-500">
-											{effectiveLevel ? `写入 ${toModel}:${effectiveLevel}` : "「模型默认」不写入等级后缀"}
+											{effectiveLevel ? t("modelReplace.writeLevelSuffix", { model: toModel, level: effectiveLevel }) : t("modelReplace.defaultNoSuffix")}
 										</span>
 									</div>
 								)}
 							</div>
 							<p className="px-1 pt-3 text-[11px] leading-5 text-neutral-500">
-								替换范围：{scopeLabel(scope, projectNames)}
-								{scope === "all" ? "（所有位置）" : "；只改这个范围内的位置，返回第一步可更改"}。
+								{t("modelReplace.scopeDisplay", { scope: scopeLabel(scope, projectNames) })}
+								{scope === "all" ? t("modelReplace.scopeAllHint") : t("modelReplace.scopeProjectHint")}
 							</p>
 							<p className="px-1 pt-2 text-[11px] leading-5 text-neutral-500">
-								匹配规则：只看模型选择器本身（忽略结尾的思考等级后缀，如 :off、:high），同名但不同供应商的模型不会被替换；
-								「@角色」别名不会被改写。
+								{t("modelReplace.matchRulesHint")}
 							</p>
 						</div>
 					)}
@@ -580,7 +581,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 						{step === "configure" && (
 							<button type="button" onClick={() => goToStep("overview")} className={BTN_GHOST}>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
-								上一步
+								{t("common.previousStep")}
 							</button>
 						)}
 						{step === "preview" && (
@@ -588,7 +589,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 							// send another one (应用 / 重试失败项) are disabled meanwhile.
 							<button type="button" onClick={() => goToStep("configure")} className={BTN_GHOST}>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
-								上一步
+								{t("common.previousStep")}
 							</button>
 						)}
 						{step === "results" && (
@@ -596,10 +597,10 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 								type="button"
 								onClick={() => goToStep("preview")}
 								className={BTN_GHOST}
-								title="回到「预览改动」，保留这次的目标和勾选；再次应用会记成新的一次替换"
+								title={t("modelReplace.stepResultsBackTitle")}
 							>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
-								上一步
+								{t("common.previousStep")}
 							</button>
 						)}
 						{step === "history" && (
@@ -623,7 +624,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 								disabled={toModel.trim() === ""}
 								className={BTN_PRIMARY}
 							>
-								预览改动
+								{t("modelReplace.previewChanges")}
 							</button>
 						)}
 						{step === "preview" && plan && (
@@ -634,12 +635,12 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 								className={BTN_PRIMARY}
 							>
 								{busy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
-								应用 {plan.edits.length} 项
+								{t("modelReplace.applyItems", { count: String(plan.edits.length) })}
 							</button>
 						)}
 						{step === "results" && (
 							<button type="button" onClick={startOver} className={BTN_PRIMARY}>
-								返回总览
+								{t("modelReplace.returnToOverview")}
 							</button>
 						)}
 					</div>

@@ -8,6 +8,7 @@ import { backlogUpdate } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { useBacklog } from "./backlogStore";
 import { bufferDoc } from "./IdeaEditBox";
 import { fillIdeasIntoComposer } from "./fillComposer";
@@ -35,12 +36,12 @@ import { PILL_DANGER } from "./ideaStyles";
 import { SelectionDock } from "./SelectionDock";
 import { StatusTabs } from "./StatusTabs";
 
-const EMPTY_TEXT: Record<IdeaPhase, string> = {
-	pending: "还没有待处理的想法，在上面记一条吧",
-	running: "没有正在运行中的任务",
-	review: "没有待验收的任务",
-	finished: "没有已结束的事项",
-	trash: "废纸篓是空的（保留 7 天）",
+const EMPTY_TEXT_KEYS: Record<IdeaPhase, string> = {
+	pending: "backlog.emptyPending",
+	running: "backlog.emptyRunning",
+	review: "backlog.emptyReview",
+	finished: "backlog.emptyFinished",
+	trash: "backlog.emptyTrash",
 };
 
 export function IdeasPanel({
@@ -52,6 +53,7 @@ export function IdeasPanel({
 	currentProject: string | null;
 	onDispatch: (items: BacklogItem[]) => void;
 }) {
+	const { t } = useT();
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
 	const sessions = useSessions((s) => s.sessions);
@@ -143,7 +145,7 @@ export function IdeasPanel({
 		const buf = useBacklog.getState().editBuffer;
 		const stored = buf ? docToStored(bufferDoc(buf)) : "";
 		if (!stored) {
-			toast.error("内容不能为空");
+			toast.error(t("backlog.contentRequired"));
 			return;
 		}
 		try {
@@ -152,7 +154,7 @@ export function IdeasPanel({
 			if (useBacklog.getState().editBuffer?.id === id) cancelEdit();
 			await useBacklog.getState().load();
 		} catch (err) {
-			toast.error(`更新失败: ${errMsg(err)}`);
+			toast.error(t("backlog.updateFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -161,7 +163,7 @@ export function IdeasPanel({
 		if (!selectedSessionId || targets.length === 0) return;
 		fillIdeasIntoComposer(selectedSessionId, targets);
 		setSelected((prev) => prev.filter((id) => !targets.some((t) => t.id === id)));
-		toast.success(targets.length === 1 ? "已放进当前输入框" : `已将 ${targets.length} 条放进当前输入框`);
+		toast.success(targets.length === 1 ? t("backlog.filledSingle") : t("backlog.filledMultiple", { count: targets.length }));
 	};
 
 	const toggleChecked = (id: string, shiftKey: boolean) => {
@@ -243,24 +245,24 @@ export function IdeasPanel({
 							onClick={() =>
 								void purgeIdeas(
 									trashed.map((i) => i.id),
-									"清空废纸篓",
-									`彻底删除废纸篓里的 ${trashed.length} 条想法？此操作不可恢复。`,
+									t("backlog.emptyTrashBtn"),
+									t("backlog.emptyTrashConfirm", { count: trashed.length }),
 								)
 							}
 							className={PILL_DANGER}
 						>
 							<Trash2 className="h-3 w-3" />
-							清空废纸篓
+							{t("backlog.emptyTrashBtn")}
 						</button>
 					</div>
 				)}
 				{phaseItems.length === 0 ? (
 					<div className="my-4 rounded-xl border border-dashed border-[var(--border-divider)] p-4 text-center text-[var(--text-dim)]">
 						{searchActive
-							? "没有符合搜索的想法"
+							? t("backlog.noSearchResults")
 							: scope !== null && activePhase === "pending"
-								? "该项目没有待处理的想法"
-								: EMPTY_TEXT[activePhase]}
+								? t("backlog.noProjectPending")
+								: t(EMPTY_TEXT_KEYS[activePhase])}
 					</div>
 				) : groups ? (
 					groups.map((g) => {
@@ -277,14 +279,14 @@ export function IdeasPanel({
 										}}
 										onChange={() => toggleGroup(ids)}
 										className="mt-0.5 h-3 w-3 shrink-0 rounded accent-[var(--accent)]"
-										title="选择该项目全部事项"
+										title={t("backlog.selectAllInProject")}
 									/>
 									<span className="min-w-0 break-words" title={g.project ?? ""}>
 										{g.label}
 									</span>
 									{g.isCurrent && (
 										<span className="shrink-0 rounded-full bg-[var(--bg-hover)] px-1.5 text-[10px] font-normal text-[var(--accent)]">
-											当前
+											{t("backlog.currentTag")}
 										</span>
 									)}
 									<span className="shrink-0 text-[10px] font-normal opacity-75">({g.items.length})</span>
@@ -316,7 +318,7 @@ export function IdeasPanel({
 					}}
 					onRestore={() => void afterBatch(() => restoreIdeas(selectedIds))}
 					onPurge={() =>
-						void purgeIdeas(selectedIds, "彻底删除", `彻底删除这 ${selectedIds.length} 条想法？此操作不可恢复。`).then(
+						void purgeIdeas(selectedIds, t("backlog.purge"), t("backlog.purgeConfirmMultiple", { count: selectedIds.length })).then(
 							(ok) => ok && clearSelection(),
 						)
 					}

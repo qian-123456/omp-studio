@@ -5,6 +5,7 @@
  */
 import clsx from "clsx";
 import { Segmented } from "../../../components/Segmented";
+import { useT } from "../../../stores/language";
 import { REQUEST_STAT_FIELDS } from "../../chat/requestStats";
 import {
 	REQUEST_STAT_FIELD_IDS,
@@ -17,29 +18,30 @@ import { Switch } from "../Switch";
 import { SettingRow, SettingsCard, ToggleRow } from "../ui";
 
 export function RequestStatsCard() {
+	const { t, locale } = useT();
 	const requestStats = useDisplayPrefs((s) => s.requestStats);
 	const requestStatFields = useDisplayPrefs((s) => s.requestStatFields);
 	const setRequestStats = useDisplayPrefs((s) => s.setRequestStats);
 	const setRequestStatField = useDisplayPrefs((s) => s.setRequestStatField);
 	const defaultOn = REQUEST_STAT_FIELD_IDS.filter((f) => DEFAULT_REQUEST_STAT_FIELDS[f])
 		.map((f) => REQUEST_STAT_FIELDS[f].label)
-		.join("、");
+		.join(locale === "zh-CN" ? "、" : ", ");
 
 	return (
 		<SettingsCard
-			title="请求统计"
-			footer={`默认显示：${defaultOn}，其余默认不显示。旧会话没有记录到的数据会显示「—」。`}
+			title={t("settingsSections.requestStats.title")}
+			footer={t("settingsSections.requestStats.footer", { defaultOn })}
 		>
 			<ToggleRow
 				fieldId="requestStats"
-				label="显示请求统计"
-				description="每次模型请求下方显示一行统计，下面可选择包含哪些项"
+				label={t("settingsSections.requestStats.toggleLabel")}
+				description={t("settingsSections.requestStats.toggleDesc")}
 				checked={requestStats}
 				onChange={setRequestStats}
 			/>
 			<div
 				className={clsx("grid grid-cols-1 gap-x-6 px-4 py-2 sm:grid-cols-2", !requestStats && "opacity-50")}
-				title={requestStats ? undefined : "需先打开上面的「显示请求统计」"}
+				title={requestStats ? undefined : t("settingsSections.requestStats.needsToggleHint")}
 			>
 				{REQUEST_STAT_FIELD_IDS.map((field) => (
 					<div
@@ -62,6 +64,7 @@ export function RequestStatsCard() {
 }
 
 export function ConversationDisplayCard() {
+	const { t } = useT();
 	const thinkingPreview = useDisplayPrefs((s) => s.thinkingPreview);
 	const setThinkingPreview = useDisplayPrefs((s) => s.setThinkingPreview);
 	const sideChatHandback = useDisplayPrefs((s) => s.sideChatHandback);
@@ -70,39 +73,39 @@ export function ConversationDisplayCard() {
 	const setBottomBar = useDisplayPrefs((s) => s.setBottomBar);
 
 	return (
-		<SettingsCard title="对话显示" footer="保存在本机，立即生效。">
+		<SettingsCard title={t("settingsSections.conversationDisplay.title")} footer={t("settingsSections.conversationDisplay.footer")}>
 			<ToggleRow
 				fieldId="bottomBar"
-				label="显示底栏"
-				description="窗口底部的状态栏（会话统计、性能、omp 版本、缩放）；关闭后隐藏，缩放快捷键仍可用"
+				label={t("settingsSections.conversationDisplay.bottomBarLabel")}
+				description={t("settingsSections.conversationDisplay.bottomBarDesc")}
 				checked={bottomBar}
 				onChange={setBottomBar}
 			/>
 			<ToggleRow
 				fieldId="thinkingPreview"
-				label="思考时显示最新两行"
-				description="模型思考时在「正在思考」下面滚动显示最新两行；思考结束后折叠成一行，点一下可展开全文"
+				label={t("settingsSections.conversationDisplay.thinkingPreviewLabel")}
+				description={t("settingsSections.conversationDisplay.thinkingPreviewDesc")}
 				checked={thinkingPreview}
 				onChange={setThinkingPreview}
 			/>
 			<SettingRow
 				fieldId="sideChatHandback"
-				label="辅助对话怎么带回主对话"
+				label={t("settingsSections.conversationDisplay.sideChatHandbackLabel")}
 				description={
 					sideChatHandback === "summary"
-						? "整理成结论：AI 把辅助对话的结论写成一段，确认后放进主对话输入框"
-						: "手动选择：选中辅助对话里的文字，点「发到主对话」放进输入框"
+						? t("settingsSections.conversationDisplay.sideChatHandbackSummary")
+						: t("settingsSections.conversationDisplay.sideChatHandbackSelect")
 				}
-				hint="都不会自动发送，由你决定是否发出。"
+				hint={t("settingsSections.conversationDisplay.sideChatHandbackHint")}
 				control={
 					<Segmented<SideChatHandbackMode>
-						aria-label="辅助对话怎么带回主对话"
+						aria-label={t("settingsSections.conversationDisplay.sideChatHandbackAria")}
 						size="sm"
 						value={sideChatHandback}
 						onChange={setSideChatHandback}
 						options={[
-							{ value: "summary", label: "整理成结论" },
-							{ value: "select", label: "手动选择" },
+							{ value: "summary", label: t("settingsSections.conversationDisplay.sideChatHandbackOptionSummary") },
+							{ value: "select", label: t("settingsSections.conversationDisplay.sideChatHandbackOptionSelect") },
 						]}
 					/>
 				}

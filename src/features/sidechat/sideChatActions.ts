@@ -9,6 +9,7 @@
 
 import { createSideChat, sideChatAsk } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
 import { useLive } from "../../stores/live";
@@ -71,7 +72,7 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 	try {
 		await sideChatAsk(sessionId, question, selection);
 	} catch (err) {
-		toast.error(`发送侧聊消息失败: ${err instanceof Error ? err.message : String(err)}`);
+		toast.error(tNow("sidechat.sendSideChatMessageFailed", { error: err instanceof Error ? err.message : String(err) }));
 	}
 }
 
@@ -113,12 +114,12 @@ export const HANDBACK_MODAL = "side-chat-handback";
  */
 export async function openHandback(childId: string): Promise<void> {
 	if (!useSessions.getState().sessions[childId]?.parentId) {
-		toast.error("未找到父会话");
+		toast.error(tNow("sidechat.parentNotFound"));
 		return;
 	}
 	const running = useHandback.getState().runs[childId]?.phase === "running";
 	if (!running && isSideChatBusy(childId)) {
-		toast.info("辅助对话正在回复，等它结束后再回传");
+		toast.info(tNow("sidechat.sideChatBusyWait"));
 		return;
 	}
 	useUi.getState().openModal(HANDBACK_MODAL, { childId });
@@ -153,6 +154,6 @@ export const SIDE_CHAT_TAB_ACTIONS: readonly {
 	label: string;
 	run: (childId: string) => void | Promise<void>;
 }[] = [
-	{ key: "main", label: "在主视图打开", run: (id) => useUi.getState().selectSession(id) },
-	{ key: HANDBACK_ACTION_KEY, label: "回传给父会话", run: openHandback },
+	{ key: "main", get label() { return tNow("sidechat.openInMain"); }, run: (id) => useUi.getState().selectSession(id) },
+	{ key: HANDBACK_ACTION_KEY, get label() { return tNow("sidechat.handbackToParent"); }, run: openHandback },
 ];

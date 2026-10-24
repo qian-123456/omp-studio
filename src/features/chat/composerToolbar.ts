@@ -1,3 +1,4 @@
+import { tNow } from "../../stores/language";
 /** Responsive tiers for the composer toolbar. The toolbar never wraps: as its own
  * width shrinks, lower-value elements collapse first (in this order):
  *   0 full      model chip + thinking chip + ring with 「53%」
@@ -47,7 +48,7 @@ export function abbreviateThinking(level: string): string {
 /** Text appended after the model name in the merged chip (「 · high」), or "" when none. */
 export function mergedSuffix(kind: ThinkingKind, level: string, abbreviated: boolean): string {
 	if (kind === "levels") return ` · ${abbreviated ? abbreviateThinking(level) : level}`;
-	if (kind === "unconfigured") return " · 未配置";
+	if (kind === "unconfigured") return ` · ${tNow("chat.toolbar.unconfigured")}`;
 	return "";
 }
 
@@ -68,8 +69,8 @@ const RING_PCT = 62;
 
 function thinkingChipWidth(kind: ThinkingKind, level: string): number {
 	if (kind === "levels") return CHIP_PAD + textWidth(level);
-	if (kind === "unconfigured") return 18 + textWidth("未配置思考等级");
-	return 18 + textWidth("不支持思考");
+	if (kind === "unconfigured") return 18 + textWidth(tNow("chat.toolbar.unconfiguredThinking"));
+	return 18 + textWidth(tNow("chat.toolbar.unsupportedThinking"));
 }
 
 export function pickToolbarTier(m: ToolbarMeasure): ToolbarTier {

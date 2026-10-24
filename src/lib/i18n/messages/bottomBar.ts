@@ -1,0 +1,36 @@
+import { defineMessages } from "../define";
+
+export default defineMessages({
+	"zh-CN": {
+		memoryFootprint: "应用内存",
+		zoomIn: "放大界面 (+5%)",
+		zoomOut: "缩小界面 (-5%)",
+		resetZoom: "重置缩放为 100%",
+		ompVersionTip: "omp 版本 — 点击查看版本与更新",
+		ompNewVersion: "omp 有新版本 {version}",
+		viewGitPanel: "查看 Git 面板",
+		statsTip: "点击查看详细会话统计 (模型用时、TTFT、TPS、Token 消耗)",
+		roundsAndSteps: "{rounds} 轮 {steps} 步",
+		cacheHitRate: "缓存 {rate}%",
+		ready: "OMP 工作台已就绪",
+		memoryTooltip: "真实物理内存占用 (对齐活动监视器口径，含本体及 WebView/帮助进程){processes}，点击查看各进程明细",
+		processesCount: " — 含 {count} 个进程",
+		performance: "性能 {memory}",
+	},
+	"en-US": {
+		memoryFootprint: "App Memory",
+		zoomIn: "Zoom In (+5%)",
+		zoomOut: "Zoom Out (-5%)",
+		resetZoom: "Reset Zoom to 100%",
+		ompVersionTip: "omp version — click to view About & Updates",
+		ompNewVersion: "omp update available: {version}",
+		viewGitPanel: "Toggle Git Panel",
+		statsTip: "Click to view detailed session statistics (model timing, TTFT, TPS, token usage)",
+		roundsAndSteps: "Turns {rounds} · Steps {steps}",
+		cacheHitRate: "Cache {rate}%",
+		ready: "OMP workspace ready",
+		memoryTooltip: "Physical memory footprint (aligned with Activity Monitor, including main, WebView, and helper processes){processes}; click to view per-process breakdown",
+		processesCount: " — {count} processes",
+		performance: "Perf {memory}",
+	},
+});

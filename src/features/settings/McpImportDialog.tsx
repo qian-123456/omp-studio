@@ -1,5 +1,6 @@
 /** 「导入配置」 dialog: paste an MCP config from another tool, preview it, save each server. */
 
+import { useT } from "../../stores/language";
 import { useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import type { McpScope } from "../../lib/contracts";
@@ -28,6 +29,7 @@ export function McpImportDialog({
 	onFinished: (imported: number) => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const [text, setText] = useState("");
 	const [singleName, setSingleName] = useState("");
 	const [scope, setScope] = useState<McpScope>(() =>
@@ -53,7 +55,7 @@ export function McpImportDialog({
 		skip: done.has(e.name)
 			? null
 			: parsed.kind === "single" && !e.name
-				? "请先在上面填写名称"
+				? t("mcp.fillNameAboveFirst")
 				: importSkipReason(e.name, e.entry, existingNames),
 	}));
 	const pending = rows.filter((r) => !done.has(r.name) && !r.skip);
@@ -85,10 +87,10 @@ export function McpImportDialog({
 	};
 
 	return (
-		<Modal title="导入 MCP 配置" size="xl" closeOnBackdrop={false} onClose={onClose}>
+		<Modal title={t("mcp.importMcpConfig")} size="xl" closeOnBackdrop={false} onClose={onClose}>
 			<div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
 				<label className="block space-y-1">
-					<span className="text-[11px] text-[var(--text-muted)]">把 MCP 配置粘贴到这里</span>
+					<span className="text-[11px] text-[var(--text-muted)]">{t("mcp.pastePlaceholder")}</span>
 					<textarea
 						autoFocus
 						value={text}
@@ -102,7 +104,7 @@ export function McpImportDialog({
 						className={`${FIELD_CLASS} font-mono`}
 					/>
 					<span className="block text-[11px] text-[var(--text-dim)]">
-						支持 Claude / Cursor / VS Code 等工具的 MCP 配置，允许带注释和多余的逗号。
+						{t("mcp.importHelper")}
 					</span>
 				</label>
 
@@ -114,41 +116,41 @@ export function McpImportDialog({
 
 				{parsed.kind === "single" && (
 					<label className="block space-y-1">
-						<span className="text-[11px] text-[var(--text-muted)]">这是一个服务器的配置，给它起个名字</span>
+						<span className="text-[11px] text-[var(--text-muted)]">{t("mcp.singleNameLabel")}</span>
 						<input
 							value={singleName}
 							onChange={(e) => setSingleName(e.target.value)}
-							placeholder="例如 filesystem"
+							placeholder={t("mcp.singleNamePlaceholder")}
 							className={FIELD_CLASS}
 						/>
 						{singleName.trim() && !NAME_RE.test(singleName.trim()) && (
-							<span className="block text-[11px] text-[var(--status-error)]">名称只能包含字母、数字、- _ .</span>
+							<span className="block text-[11px] text-[var(--status-error)]">{t("mcp.nameInvalid")}</span>
 						)}
 					</label>
 				)}
 
 				{rows.length > 0 && (
-					<div className="rounded-xl hairline" aria-label="导入预览">
-						{rows.map((r) => (
+					<div className="rounded-xl hairline" aria-label={t("mcp.previewTitle")}>
+						{rows.map((r, i) => (
 							<div
-								key={r.name || "(未命名)"}
+								key={r.name || `unnamed-${i}`}
 								data-import-row={r.name}
 								className="space-y-1 border-b border-[var(--border-divider)] px-3 py-2 last:border-b-0"
 							>
 								<div className="flex flex-wrap items-center gap-1.5">
 									<span className="break-all text-[13px] font-medium text-[var(--text)]">
-										{r.name || "（未命名）"}
+										{r.name || t("mcp.unnamed")}
 									</span>
 									<Chip>{r.transport}</Chip>
-									{done.has(r.name) && <Chip tone="success">已导入</Chip>}
-									{r.skip && <Chip tone="warning">将跳过：{r.skip}</Chip>}
+									{done.has(r.name) && <Chip tone="success">{t("mcp.importedBadge")}</Chip>}
+									{r.skip && <Chip tone="warning">{t("mcp.willSkip", { reason: r.skip })}</Chip>}
 								</div>
 								{r.endpoint && (
 									<div className="break-all font-mono text-xs text-[var(--text-dim)]">{r.endpoint}</div>
 								)}
 								{failed.has(r.name) && (
 									<div className="select-text whitespace-pre-wrap break-all text-xs text-[var(--status-error)]">
-										导入失败：{failed.get(r.name)}
+										{t("mcp.importFailed", { error: failed.get(r.name) ?? "" })}
 									</div>
 								)}
 							</div>
@@ -158,7 +160,7 @@ export function McpImportDialog({
 
 				{rows.length > 0 && (
 					<div className="space-y-1.5">
-						<div className="text-[13px] font-medium text-[var(--text)]">用在哪些项目</div>
+						<div className="text-[13px] font-medium text-[var(--text)]">{t("mcp.whichProjects")}</div>
 						<McpScopePicker
 							projects={projects}
 							current={current}
@@ -170,10 +172,10 @@ export function McpImportDialog({
 				)}
 			</div>
 			<div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] px-4 py-3">
-				<span className="text-[11px] text-[var(--text-dim)]">导入后对新开的会话生效</span>
+				<span className="text-[11px] text-[var(--text-dim)]">{t("mcp.takesEffectNewSessions")}</span>
 				<div className="flex gap-2">
 					<Button variant="ghost" onClick={onClose}>
-						关闭
+						{t("common.close")}
 					</Button>
 					<Button
 						variant="primary"
@@ -181,7 +183,7 @@ export function McpImportDialog({
 						disabled={pending.length === 0 || invalid}
 						onClick={() => void run()}
 					>
-						{`导入 ${pending.length} 个`}
+						{t("mcp.importCount", { count: pending.length })}
 					</Button>
 				</div>
 			</div>

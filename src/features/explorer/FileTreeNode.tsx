@@ -7,6 +7,7 @@ import { FloatingLayer } from "../../components/FloatingLayer";
 import { copyText } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { FileIcon } from "./FileIcon";
+import { useT } from "../../stores/language";
 
 interface FileTreeNodeProps {
 	entry: DirEntry;
@@ -35,6 +36,7 @@ export function FileTreeNode({
 	loadingPaths,
 	onRefreshDir,
 }: FileTreeNodeProps) {
+	const { t } = useT();
 	const isExpanded = expandedPaths.has(entry.path);
 	const isSelected = selectedPath === entry.path;
 	const isLoading = loadingPaths.has(entry.path);
@@ -72,9 +74,9 @@ export function FileTreeNode({
 			: entry.name;
 		try {
 			await copyText(rel);
-			toast.success("已复制相对路径");
+			toast.success(t("explorer.copiedRelativePath"));
 		} catch {
-			toast.error("复制失败");
+			toast.error(t("explorer.copyFailed"));
 		}
 	};
 
@@ -82,9 +84,9 @@ export function FileTreeNode({
 		setContextMenu(null);
 		try {
 			await copyText(entry.path);
-			toast.success("已复制绝对路径");
+			toast.success(t("explorer.copiedAbsolutePath"));
 		} catch {
-			toast.error("复制失败");
+			toast.error(t("explorer.copyFailed"));
 		}
 	};
 
@@ -93,7 +95,7 @@ export function FileTreeNode({
 		try {
 			await revealItemInDir(entry.path);
 		} catch (err) {
-			toast.error(`在访达中打开失败: ${String(err)}`);
+			toast.error(t("explorer.openInFinderFailed", { error: String(err) }));
 		}
 	};
 
@@ -158,7 +160,7 @@ export function FileTreeNode({
 						handleContextMenu(e);
 					}}
 					className="opacity-0 group-hover:opacity-100 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-opacity"
-					title="更多选项"
+					title={t("explorer.moreOptions")}
 				>
 					<MoreHorizontal size={11} />
 				</button>
@@ -177,7 +179,7 @@ export function FileTreeNode({
 							style={{ paddingLeft: `${(depth + 1) * 10 + 16}px` }}
 							className="py-0.5 text-[10px] text-neutral-500 italic select-none"
 						>
-							空目录
+							{t("explorer.emptyDirectory")}
 						</div>
 					) : (
 						children.map((child) => (
@@ -216,7 +218,7 @@ export function FileTreeNode({
 					}}
 					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 				>
-					在访达中显示
+					{t("explorer.revealInFinder")}
 				</button>
 				<button
 					type="button"
@@ -226,7 +228,7 @@ export function FileTreeNode({
 					}}
 					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 				>
-					复制相对路径
+					{t("explorer.copyRelativePath")}
 				</button>
 				<button
 					type="button"
@@ -236,7 +238,7 @@ export function FileTreeNode({
 					}}
 					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 				>
-					复制完整路径
+					{t("explorer.copyFullPath")}
 				</button>
 				{entry.isDir && (
 					<>
@@ -249,7 +251,7 @@ export function FileTreeNode({
 							}}
 							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
-							刷新此目录
+							{t("explorer.refreshDirectory")}
 						</button>
 					</>
 				)}

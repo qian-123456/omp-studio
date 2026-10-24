@@ -1,6 +1,7 @@
 /** [D] Shared store for OMP config entries — feeds the settings sub-nav and panel. */
 
 import { create } from "zustand";
+import { tNow } from "../../stores/language";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { ompConfigList } from "../../lib/ipc";
 
@@ -39,7 +40,7 @@ export const useOmpConfigStore = create<OmpConfigState>((set, get) => ({
 				if (r.found) {
 					set({ entries: r.entries, loaded: true, error: null });
 				} else {
-					set({ error: r.error ?? "无法读取 OMP 配置", loaded: false });
+					set({ error: r.error ?? tNow("settingsCore.ompConfigStore.loadFailed"), loaded: false });
 				}
 			})
 			.catch((e) => {

@@ -7,6 +7,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { SessionMeta, Workspace } from "../lib/contracts";
 import { toast } from "../lib/toast";
+import { tNow } from "./language";
 import { onSessionForked, onSessionsRemoved, onSessionsUpdated } from "../lib/events";
 import { listSessions, listWorkspaces, markSeen } from "../lib/ipc";
 import { useUi } from "./ui";
@@ -481,9 +482,9 @@ export async function startSessionEvents(): Promise<void> {
 
 		const unlistenForked = await onSessionForked(({ sessionId }) => {
 			const title = useSessions.getState().sessions[sessionId]?.title?.trim();
-			const name = title ? `「${title}」` : "这个会话";
+			const name = title ? `「${title}」` : tNow("shell.defaultSessionName");
 			toast.error(
-				`${name}在终端里被另一个 omp 打开了。终端没有接着原会话写，而是把这段对话复制了一份当作新会话往下聊，所以终端里新说的话不会出现在这个会话里。App 已先停掉这个会话，免得两边各写各的。想接着终端里的内容聊，请在会话列表里打开那个新会话。`,
+				tNow("shell.sessionOpenedInTerminalNotice", { name }),
 				20_000,
 			);
 		});

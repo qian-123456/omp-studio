@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TranscriptItem } from "../../../lib/contracts";
 import { claimEscape } from "../../../lib/escapeClaim";
 import { isComposing } from "../../../lib/hooks";
+import { useT } from "../../../stores/language";
 import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
 import { computeMatches, visibleFindItems } from "./findCore";
@@ -24,6 +25,7 @@ export function ThreadFindBar({ sessionId }: { sessionId: string }) {
 }
 
 function Bar({ sessionId }: { sessionId: string }) {
+	const { t } = useT();
 	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY);
 	// The message list hides a side chat's inherited parent history; search must
 	// count the same visible items or it reports hits that can never be located.
@@ -51,7 +53,7 @@ function Bar({ sessionId }: { sessionId: string }) {
 		focusComposer(sessionId);
 	};
 
-	const counter = !query ? "" : count === 0 ? "无结果" : `${index + 1} / ${count}`;
+	const counter = !query ? "" : count === 0 ? t("threadFind.noResults") : `${index + 1} / ${count}`;
 
 	return (
 		<div
@@ -61,8 +63,8 @@ function Bar({ sessionId }: { sessionId: string }) {
 			<input
 				ref={inputRef}
 				value={query}
-				placeholder="在对话中查找"
-				aria-label="在对话中查找"
+				placeholder={t("threadFind.placeholder")}
+				aria-label={t("threadFind.ariaLabel")}
 				onChange={(e) => useThreadFind.getState().setQuery(e.target.value)}
 				onCompositionStart={() => (composing.current = true)}
 				onCompositionEnd={() => (composing.current = false)}
@@ -91,8 +93,8 @@ function Bar({ sessionId }: { sessionId: string }) {
 			</span>
 			<button
 				type="button"
-				aria-label="上一个"
-				title="上一个 (Shift+Enter)"
+				aria-label={t("threadFind.previous")}
+				title={t("threadFind.previousShortcut")}
 				disabled={count === 0}
 				onClick={() => useThreadFind.getState().step(-1)}
 				className={BTN}
@@ -101,8 +103,8 @@ function Bar({ sessionId }: { sessionId: string }) {
 			</button>
 			<button
 				type="button"
-				aria-label="下一个"
-				title="下一个 (Enter)"
+				aria-label={t("threadFind.next")}
+				title={t("threadFind.nextShortcut")}
 				disabled={count === 0}
 				onClick={() => useThreadFind.getState().step(1)}
 				className={BTN}
@@ -114,7 +116,7 @@ function Bar({ sessionId }: { sessionId: string }) {
 				onClick={close}
 				className="shrink-0 whitespace-nowrap rounded-md border border-[var(--line)] px-2 py-0.5 text-[12px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 			>
-				关闭
+				{t("threadFind.close")}
 			</button>
 		</div>
 	);

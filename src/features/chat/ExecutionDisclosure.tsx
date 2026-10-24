@@ -26,6 +26,7 @@ import { Markdown } from "../../components/Markdown";
 import { isTaskTool, TaskToolBlock } from "./subagents/TaskToolBlock";
 import { ToolCard, type ToolStatus } from "./ToolCard";
 import { ThinkingPreview } from "./ThinkingPreview";
+import { tNow, useT } from "../../stores/language";
 import { RequestStatsLine, TurnSummaryRows } from "./RequestStatsLine";
 import { RetryNoticeRows } from "./RetryNoticeList";
 import type { FallbackInfo, RetryNotice } from "../../stores/retryNotice";
@@ -166,6 +167,7 @@ export function UserMessageBubble({
 	/** Shown when the text is only markers. */
 	emptyText?: string;
 }) {
+	const { t } = useT();
 	const [preview, setPreview] = useState<number | null>(null);
 	const images = useMemo(
 		() =>
@@ -195,7 +197,7 @@ export function UserMessageBubble({
 				<ImagePreviewModal
 					images={images.map((img, idx) => ({
 						path: img.path,
-						marker: img.marker ?? `图片 #${idx + 1}`,
+						marker: img.marker ?? t("chat.execution.imageMarker", { num: idx + 1 }),
 					}))}
 					initialIndex={preview}
 					onClose={() => setPreview(null)}
@@ -234,12 +236,13 @@ export function useElapsedMs(startedAt: number | undefined, active: boolean): nu
 
 function processingLabel(elapsedMs: number): string {
 	return elapsedMs >= 1000
-		? `正在处理 ${formatDurationCompact(elapsedMs)}…`
-		: "正在处理…";
+		? tNow("chat.execution.processingWithTime", { time: formatDurationCompact(elapsedMs) })
+		: tNow("chat.execution.processing");
 }
 
 /** Leaf that owns the 1s tick so only the title text re-renders. */
 function ProcessingTitle({ startedAt }: { startedAt: number | undefined }) {
+	useT();
 	return <>{processingLabel(useElapsedMs(startedAt, true))}</>;
 }
 
@@ -247,16 +250,17 @@ function ProcessingTitle({ startedAt }: { startedAt: number | undefined }) {
  * model's next move (no tool, reasoning or reply is running right now). It is
  * deliberately not 「正在思考」: the model may emit no reasoning at all. */
 export function LiveWaitingRow() {
+	const { t } = useT();
 	return (
 		<div className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6">
-			<span className="shimmer-text">正在等待模型回复</span>
+			<span className="shimmer-text">{t("chat.execution.waitingResponse")}</span>
 		</div>
 	);
 }
 
 /** Seconds label for reasoning rows ("5秒"). */
 function elapsedLabel(ms: number): string {
-	return `${Math.max(1, Math.round(ms / 1000))}秒`;
+	return tNow("chat.execution.seconds", { count: Math.max(1, Math.round(ms / 1000)) });
 }
 
 /** Local open state; an "expand/collapse all" value seeds it until toggled. */
@@ -288,6 +292,7 @@ function ThinkingRow({
 	running?: boolean;
 	forceExpanded?: boolean | null;
 }) {
+	const { t } = useT();
 	const { open, setOpen, toggle } = useDisclosure(forceExpanded);
 	const peekOn = useDisplayPrefs((s) => s.thinkingPreview);
 	const expandable = thinking.trim() !== "";
@@ -297,10 +302,10 @@ function ThinkingRow({
 		wasRunning.current = Boolean(running);
 	}, [running, forceExpanded, setOpen]);
 	const label = running
-		? "正在思考"
+		? t("chat.execution.thinkingRunning")
 		: durationMs !== undefined
-			? `思考 · ${elapsedLabel(durationMs)}`
-			: "思考";
+			? t("chat.execution.thinkingWithTime", { time: elapsedLabel(durationMs) })
+			: t("chat.execution.thinking");
 
 	return (
 		<div id={anchorId}>
@@ -382,6 +387,7 @@ function ToolGroupRow({
 	/** Parallel-run marks for the group's rows. */
 	parallel: Map<string, ParallelRunMark>;
 }) {
+	const { t } = useT();
 	const statuses = steps.map(statusFor);
 	const running = statuses.includes("running");
 	const failed = statuses.filter((s) => s === "error").length;
@@ -413,7 +419,7 @@ function ToolGroupRow({
 				accessory={
 					failed > 0 && (
 						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
-							{failed} 个失败
+							{t("chat.execution.failedCount", { count: failed })}
 						</span>
 					)
 				}
@@ -713,6 +719,7 @@ export function ExecutionDisclosure({
 	 * stays live (counting from the turn start) instead of claiming a short run. */
 	awaitingSubagents?: boolean;
 }) {
+	const { t } = useT();
 	const { open: expanded, toggle } = useDisclosure(
 		forceExpanded || liveOpen ? true : forceExpanded,
 	);
@@ -720,9 +727,9 @@ export function ExecutionDisclosure({
 	const titleText: ReactNode = live ? (
 		<ProcessingTitle startedAt={startedAt} />
 	) : durationMs ? (
-		`已处理 ${formatDurationCompact(durationMs)}`
+		t("chat.execution.processedWithTime", { time: formatDurationCompact(durationMs) })
 	) : (
-		`已处理 ${steps.length} 个步骤`
+		t("chat.execution.processedWithSteps", { count: steps.length })
 	);
 
 	if (steps.length === 0) {
@@ -776,13 +783,14 @@ function DisclosureHeader({
 	expanded: boolean;
 	onToggle: () => void;
 }) {
+	const { t } = useT();
 	return (
 		<div className="w-fit">
 			<button
 				type="button"
 				onClick={onToggle}
 				className="group/act inline-flex w-fit items-center gap-1 rounded py-0.5 text-left select-none"
-				title={expanded ? "收起执行步骤" : "展开查看执行步骤"}
+				title={expanded ? t("chat.execution.collapseSteps") : t("chat.execution.expandSteps")}
 				aria-expanded={expanded}
 			>
 				<span
@@ -881,15 +889,16 @@ export function LiveDisclosure({
 	statsPlan?: TurnStatsPlan;
 }) {
 	// null = follow the phase (open while working, folded after); a click pins it.
+	const { t } = useT();
 	const [override, setOverride] = useState<boolean | null>(null);
 	useEffect(() => setOverride(null), [folded]);
 	const open = override ?? !folded;
 	const title: ReactNode = live ? (
 		<ProcessingTitle startedAt={startedAt} />
 	) : durationMs ? (
-		`已处理 ${formatDurationCompact(durationMs)}`
+		t("chat.execution.processedWithTime", { time: formatDurationCompact(durationMs) })
 	) : (
-		`已处理 ${steps.length} 个步骤`
+		t("chat.execution.processedWithSteps", { count: steps.length })
 	);
 
 	return (

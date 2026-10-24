@@ -6,8 +6,10 @@ import type { SecretEntry } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { privacyUpdate } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
+import { useT } from "../../../stores/language";
 
 export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
+	const { t } = useT();
 	// Default: safe entries checked, risky unchecked.
 	const [unchecked, setUnchecked] = useState<Record<string, boolean>>({});
 	const [saving, setSaving] = useState(false);
@@ -26,7 +28,7 @@ export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
 				),
 			);
 		} catch (err) {
-			toast.error(`保存隐私库失败: ${errMsg(err)}`);
+			toast.error(t("chatPrivacy.saveLibraryFailed", { error: errMsg(err) }));
 		} finally {
 			setSaving(false);
 		}
@@ -35,10 +37,10 @@ export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
 	return (
 		<div className="mb-2 rounded-xl border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-3 py-2 text-[12px] text-[var(--text)] shadow-sm">
 			<div className="mb-1 flex items-center justify-between">
-				<span className="font-medium">保存到隐私库？以后在其他会话中也会自动替换</span>
+				<span className="font-medium">{t("chatPrivacy.savePromptTitle")}</span>
 				<button
 					type="button"
-					aria-label="不保存"
+					aria-label={t("chatPrivacy.dontSave")}
 					onClick={() => void finish(false)}
 					className="text-[var(--text-40,var(--text-dim))] hover:text-[var(--text)]"
 				>
@@ -53,8 +55,8 @@ export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
 							checked={isChecked(e)}
 							onChange={(ev) => setUnchecked((u) => ({ ...u, [e.id]: !ev.target.checked }))}
 						/>
-						{e.risk === "risky" && <span title="比较短/常见，可能误伤普通文字">⚠</span>}
-						<span className="truncate">{e.label ?? "未命名"}</span>
+						{e.risk === "risky" && <span title={t("chatPrivacy.riskyWarningTitle")}>⚠</span>}
+						<span className="truncate">{e.label ?? t("chatPrivacy.unnamed")}</span>
 						<span className="truncate font-mono text-[11px] text-[var(--text-40,var(--text-dim))]">
 							{e.placeholder}
 						</span>
@@ -68,7 +70,7 @@ export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
 					onClick={() => void finish(false)}
 					className="rounded-md px-2.5 py-0.5 hover:bg-[var(--ghost-hover,var(--bg-hover))] disabled:opacity-50"
 				>
-					不保存
+					{t("chatPrivacy.dontSave")}
 				</button>
 				<button
 					type="button"
@@ -76,7 +78,7 @@ export function LibraryPromptCard({ entries }: { entries: SecretEntry[] }) {
 					onClick={() => void finish(true)}
 					className="rounded-md bg-[var(--text)] px-2.5 py-0.5 text-[var(--bg-panel)] disabled:opacity-50"
 				>
-					保存
+					{t("chatPrivacy.save")}
 				</button>
 			</div>
 		</div>

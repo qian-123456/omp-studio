@@ -36,6 +36,7 @@ import { copyText, errMsg } from "../../../lib/dialogs";
 import { useEscapeKey } from "../../../lib/hooks";
 import { subagentTranscript } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
+import { tNow, useT } from "../../../stores/language";
 import { Markdown } from "../../../components/Markdown";
 import { formatTokens } from "../sessionStats";
 import { formatDurationCompact, formatShortModel } from "../turnGrouping";
@@ -53,26 +54,26 @@ const ICON: Record<
 	aborted: { Icon: Square, color: "var(--status-warning)" },
 };
 
-const STATUS_TEXT: Record<SubagentStatus, string> = {
-	pending: "排队中",
-	running: "运行中",
-	completed: "已完成",
-	failed: "失败",
-	aborted: "已中止",
+const STATUS_TEXT_KEYS: Record<SubagentStatus, string> = {
+	pending: "subagents.statusPending",
+	running: "subagents.statusRunning",
+	completed: "subagents.statusCompleted",
+	failed: "subagents.statusFailed",
+	aborted: "subagents.statusAborted",
 };
 
-const SOURCE_TEXT: Record<string, string> = {
-	bundled: "内置",
-	user: "用户",
-	project: "项目",
+const SOURCE_TEXT_KEYS: Record<string, string> = {
+	bundled: "subagents.sourceBundled",
+	user: "subagents.sourceUser",
+	project: "subagents.sourceProject",
 };
 
 type Tab = "overview" | "prompt" | "process" | "output";
-const TABS: { id: Tab; label: string }[] = [
-	{ id: "overview", label: "概览" },
-	{ id: "prompt", label: "提示词" },
-	{ id: "process", label: "过程" },
-	{ id: "output", label: "输出" },
+const TAB_KEYS: { id: Tab; labelKey: string }[] = [
+	{ id: "overview", labelKey: "subagents.tabOverview" },
+	{ id: "prompt", labelKey: "subagents.tabPrompt" },
+	{ id: "process", labelKey: "subagents.tabProcess" },
+	{ id: "output", labelKey: "subagents.tabOutput" },
 ];
 
 const POLL_MS = 1500;
@@ -84,9 +85,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 			onClick={async () => {
 				try {
 					await copyText(text);
-					toast.success("已复制");
+					toast.success(tNow("common.copied"));
 				} catch (e) {
-					toast.error(`复制失败: ${errMsg(e)}`);
+					toast.error(tNow("subagents.copyFailed", { error: errMsg(e) }));
 				}
 			}}
 			className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
@@ -216,6 +217,7 @@ export function SubagentSheet({
 	onPrev?: () => void;
 	onNext?: () => void;
 }) {
+	const { t } = useT();
 	const [tab, setTab] = useState<Tab>("overview");
 	const [data, setData] = useState<SubagentTranscript | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -294,7 +296,7 @@ export function SubagentSheet({
 		return m;
 	}, [items]);
 
-	const statusText = STATUS_TEXT[row.status];
+	const statusText = t(STATUS_TEXT_KEYS[row.status] ?? STATUS_TEXT_KEYS.pending);
 	const duration =
 		row.durationMs !== undefined
 			? formatDurationCompact(row.durationMs)
@@ -315,7 +317,7 @@ export function SubagentSheet({
 		try {
 			await revealItemInDir(outputPath);
 		} catch (e) {
-			toast.error(`打开失败: ${errMsg(e)}`);
+			toast.error(t("subagents.openFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -325,7 +327,7 @@ export function SubagentSheet({
 			style={{ zIndex: Z_LAYER.modal }}
 			role="dialog"
 			aria-modal="true"
-			aria-label={`子代理 ${row.id}`}
+			aria-label={t("subagents.subagentAria", { id: row.id })}
 		>
 			{/* Very light dim; click closes */}
 			<div className="absolute inset-0 bg-black/10" onMouseDown={onClose} />
@@ -350,8 +352,8 @@ export function SubagentSheet({
 									type="button"
 									onClick={onPrev}
 									disabled={!onPrev}
-									aria-label="上一个子代理"
-									title="上一个（↑）"
+									aria-label={t("subagents.prevSubagent")}
+									title={t("subagents.prevSubagentShortcut")}
 									className={GLASS_BTN}
 								>
 									<ChevronUp size={14} />
@@ -360,15 +362,15 @@ export function SubagentSheet({
 									type="button"
 									onClick={onNext}
 									disabled={!onNext}
-									aria-label="下一个子代理"
-									title="下一个（↓）"
+									aria-label={t("subagents.nextSubagent")}
+									title={t("subagents.nextSubagentShortcut")}
 									className={GLASS_BTN}
 								>
 									<ChevronDown size={14} />
 								</button>
 							</>
 						)}
-						<button type="button" onClick={onClose} className={GLASS_BTN} aria-label="关闭" title="关闭（Esc）">
+						<button type="button" onClick={onClose} className={GLASS_BTN} aria-label={t("common.close")} title={t("subagents.closeShortcut")}>
 							<X size={14} />
 						</button>
 					</div>
@@ -388,21 +390,21 @@ export function SubagentSheet({
 						<span
 							aria-hidden
 							className="sa-seg-thumb absolute inset-y-0.5 left-0.5 w-[calc((100%-4px)/4)] rounded-full bg-[var(--bg-active-fill)] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_1px_2px_rgba(0,0,0,0.15)]"
-							style={{ transform: `translateX(${TABS.findIndex((t) => t.id === tab) * 100}%)` }}
+							style={{ transform: `translateX(${TAB_KEYS.findIndex((tItem) => tItem.id === tab) * 100}%)` }}
 						/>
-						{TABS.map((t) => (
+						{TAB_KEYS.map((tItem) => (
 							<button
-								key={t.id}
+								key={tItem.id}
 								type="button"
-								onClick={() => setTab(t.id)}
+								onClick={() => setTab(tItem.id)}
 								className={clsx(
 									"relative rounded-full py-1 text-[12px] transition-colors",
-									tab === t.id
+									tab === tItem.id
 										? "text-[var(--text)]"
 										: "text-[var(--text-40)] hover:text-[var(--text-60)]",
 								)}
 							>
-								{t.label}
+								{t(tItem.labelKey)}
 							</button>
 						))}
 					</div>
@@ -415,8 +417,8 @@ export function SubagentSheet({
 							{assignmentText && (
 								<section className="rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2.5">
 									<div className="mb-1 flex items-center justify-between">
-										<span className="text-[11px] text-[var(--text-40)]">负责什么</span>
-										<CopyButton text={assignmentText} label="复制" />
+										<span className="text-[11px] text-[var(--text-40)]">{t("subagents.taskTitle")}</span>
+										<CopyButton text={assignmentText} label={t("common.copy")} />
 									</div>
 									<p
 										className={clsx(
@@ -432,39 +434,39 @@ export function SubagentSheet({
 											onClick={() => setTaskOpen(!taskOpen)}
 											className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
 										>
-											{taskOpen ? "收起" : "展开全文"}
+											{taskOpen ? t("common.collapse") : t("subagents.expandAll")}
 											<ChevronRight size={11} className={clsx("transition-transform", taskOpen ? "-rotate-90" : "rotate-90")} />
 										</button>
 									)}
 								</section>
 							)}
 							<section className="grid grid-cols-2 gap-2">
-								<StatCard icon={Cpu} label="模型" value={row.model} wide />
-								<StatCard icon={Brain} label="思考等级" value={row.thinkingLevel} />
-								<StatCard icon={Tag} label="模型角色" value={row.modelRole} />
+								<StatCard icon={Cpu} label={t("subagents.statModel")} value={row.model} wide />
+								<StatCard icon={Brain} label={t("subagents.statThinking")} value={row.thinkingLevel} />
+								<StatCard icon={Tag} label={t("subagents.statRole")} value={row.modelRole} />
 								<StatCard
 									icon={Layers}
-									label="来源"
-									value={row.agentSource ? SOURCE_TEXT[row.agentSource] ?? row.agentSource : undefined}
+									label={t("subagents.statSource")}
+									value={row.agentSource ? (SOURCE_TEXT_KEYS[row.agentSource] ? t(SOURCE_TEXT_KEYS[row.agentSource]) : row.agentSource) : undefined}
 								/>
 								<StatCard
 									icon={Wrench}
-									label="工具次数"
+									label={t("subagents.statToolCalls")}
 									value={row.toolCount ? String(row.toolCount) : undefined}
 								/>
 								<StatCard
 									icon={Send}
-									label="请求数"
+									label={t("subagents.statRequests")}
 									value={row.requests ? String(row.requests) : undefined}
 								/>
 								<StatCard
 									icon={Coins}
-									label="Tokens"
+									label={t("subagents.statTokens")}
 									value={row.tokens ? formatTokens(row.tokens) : undefined}
 								/>
 								<StatCard
 									icon={Gauge}
-									label="上下文"
+									label={t("subagents.statContext")}
 									value={
 										row.contextTokens && row.contextWindow
 											? `${Math.round((row.contextTokens / row.contextWindow) * 100)}%`
@@ -475,19 +477,19 @@ export function SubagentSheet({
 								/>
 								<StatCard
 									icon={CircleDollarSign}
-									label="费用"
+									label={t("subagents.statCost")}
 									value={
 										typeof row.cost === "number" && Number.isFinite(row.cost)
 											? `$${row.cost.toFixed(3)}`
 											: undefined
 									}
 								/>
-								<StatCard icon={Timer} label="用时" value={duration} />
+								<StatCard icon={Timer} label={t("subagents.statElapsed")} value={duration} />
 							</section>
 							{row.status === "running" && row.currentTool && (
 								<section>
 									<div className="mb-1 text-[11px] text-[var(--text-30)]">
-										当前工具
+										{t("subagents.currentTool")}
 									</div>
 									<div className="font-mono text-[12px] text-[var(--text-60)]">
 										↳ {row.currentTool}
@@ -498,7 +500,7 @@ export function SubagentSheet({
 							{row.recentTools && row.recentTools.length > 0 && (
 								<section>
 									<div className="mb-1 text-[11px] text-[var(--text-30)]">
-										最近工具
+										{t("subagents.recentTools")}
 									</div>
 									<div className="space-y-0.5">
 										{row.recentTools.slice(-8).map((t, i) => (
@@ -529,10 +531,10 @@ export function SubagentSheet({
 							<section>
 								<div className="mb-1 flex items-center justify-between">
 									<span className="text-[11px] text-[var(--text-30)]">
-										任务提示词
+										{t("subagents.taskPrompt")}
 									</span>
 									{taskPrompt && (
-										<CopyButton text={taskPrompt} label="复制" />
+										<CopyButton text={taskPrompt} label={t("common.copy")} />
 									)}
 								</div>
 								{taskPrompt ? (
@@ -540,16 +542,16 @@ export function SubagentSheet({
 										{taskPrompt}
 									</pre>
 								) : (
-									<p className="text-[12px] text-[var(--text-30)]">无提示词</p>
+									<p className="text-[12px] text-[var(--text-30)]">{t("subagents.noPrompt")}</p>
 								)}
 							</section>
 							{context && (
 								<section>
 									<div className="mb-1 flex items-center justify-between">
 										<span className="text-[11px] text-[var(--text-30)]">
-											共享上下文
+											{t("subagents.sharedContext")}
 										</span>
-										<CopyButton text={context} label="复制" />
+										<CopyButton text={context} label={t("common.copy")} />
 									</div>
 									<pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--text-40)]">
 										{context}
@@ -570,14 +572,14 @@ export function SubagentSheet({
 												systemOpen && "rotate-90",
 											)}
 										/>
-										系统提示词
+										{t("subagents.systemPrompt")}
 									</button>
 									{systemOpen && (
 										<div className="mt-1">
 											<div className="flex justify-end">
 												<CopyButton
 													text={data.systemPrompt}
-													label="复制"
+													label={t("common.copy")}
 												/>
 											</div>
 											<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--text-30)]">
@@ -594,7 +596,7 @@ export function SubagentSheet({
 						<div className="space-y-1">
 							{!file && (
 								<p className="text-[12px] text-[var(--text-30)]">
-									会话文件不可用
+									{t("subagents.sessionFileUnavailable")}
 								</p>
 							)}
 							{error && (
@@ -604,7 +606,7 @@ export function SubagentSheet({
 							)}
 							{file && !error && items.length === 0 && (
 								<p className="text-[12px] text-[var(--text-30)]">
-									{isLive ? "等待子代理输出…" : "无过程记录"}
+									{isLive ? t("subagents.waitingForOutput") : t("subagents.noProcessRecord")}
 								</p>
 							)}
 							{items.map((it) => {
@@ -666,7 +668,7 @@ export function SubagentSheet({
 								})()
 							) : (
 								<p className="text-[12px] text-[var(--text-30)]">
-									{isLive ? "尚无输出" : "无输出"}
+									{isLive ? t("subagents.noOutputYet") : t("subagents.noOutput")}
 								</p>
 							)}
 							{outputPath && (
@@ -681,12 +683,12 @@ export function SubagentSheet({
 										type="button"
 										onClick={doReveal}
 										className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-										title="在访达中显示"
+										title={t("subagents.revealInFinder")}
 									>
 										<ExternalLink size={11} />
-										显示
+										{t("subagents.reveal")}
 									</button>
-									<CopyButton text={outputPath} label="复制路径" />
+									<CopyButton text={outputPath} label={t("subagents.copyPath")} />
 								</div>
 							)}
 						</div>

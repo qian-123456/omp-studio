@@ -6,6 +6,7 @@
 import type { OmpUsageLimit, OmpUsageProviderReport } from "../../../lib/contracts";
 import { limitUsedPct } from "./QuotaAccountSheet";
 import { dedupeLimits, formatHumanWindowName, formatLimitStatus, localizeQuotaLabel } from "./quotaHelpers";
+import { tNow } from "../../../stores/language";
 
 export interface QuotaRow {
 	key: string;
@@ -63,7 +64,10 @@ export function buildQuotaRows(reports: OmpUsageProviderReport[], now: number): 
 			const used = members.reduce((s, m) => s + (m.amount.used ?? 0), 0);
 			const limit = members.reduce((s, m) => s + (m.amount.limit ?? 0), 0);
 			usedPct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-			usedText = `已用 ${used.toFixed(Number.isInteger(used) ? 0 : 1)} / ${limit.toFixed(Number.isInteger(limit) ? 0 : 1)}`;
+			usedText = tNow("quota.helpers.usedRatio", {
+				used: used.toFixed(Number.isInteger(used) ? 0 : 1),
+				limit: limit.toFixed(Number.isInteger(limit) ? 0 : 1),
+			});
 		}
 		const resetsAt = earliestReset(members, now);
 		const status = formatLimitStatus(usedPct, resetsAt, now);
@@ -75,14 +79,27 @@ export function buildQuotaRows(reports: OmpUsageProviderReport[], now: number): 
 				? `${localizeQuotaLabel(first.label)} · ${formatHumanWindowName(windowId)}`
 				: localizeQuotaLabel(first.label);
 
-		const caption = [status.resetText, n > 1 ? `${n} 个账号平均` : null]
+		const caption = [status.resetText, n > 1 ? tNow("quota.sheet.accountAverageCaption", { count: n }) : null]
 			.filter(Boolean)
 			.join(" · ");
+		const accountInfo = n > 1
+			? percentLike
+				? tNow("quota.sheet.accountAverageInfo", { count: n })
+				: tNow("quota.sheet.accountTotalInfo", { count: n })
+			: "";
+		const reset = status.resetText ? tNow("quota.sheet.resetSuffix", { text: status.resetText }) : "";
 		const title = percentLike
-			? `已用 ${usedPct.toFixed(1)}%，剩余 ${(100 - usedPct).toFixed(1)}%${
-					n > 1 ? `（${n} 个账号的平均值）` : ""
-				}${status.resetText ? `；${status.resetText}` : ""}`
-			: `${usedText}${n > 1 ? `（${n} 个账号合计）` : ""}${status.resetText ? `；${status.resetText}` : ""}`;
+			? tNow("quota.sheet.titlePercent", {
+					used: usedPct.toFixed(1),
+					remaining: (100 - usedPct).toFixed(1),
+					accountInfo,
+					reset,
+				})
+			: tNow("quota.sheet.titleNonPercent", {
+					usedText: usedText ?? "",
+					accountInfo,
+					reset,
+				});
 
 		return {
 			key,

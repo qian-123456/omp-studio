@@ -1,4 +1,5 @@
 /** Pure helpers for the 存储空间 page and the startup image GC. */
+import { tNow } from "../../stores/language";
 import type { StorageProjectRow, StorageSessionRow } from "../../lib/contracts";
 
 export const DEFAULT_STALE_DAYS = 90;
@@ -27,7 +28,7 @@ export function selectedBytes(project: StorageProjectRow, selected: ReadonlySet<
 export function describeStorageError(err: unknown): string {
 	const msg = err instanceof Error ? err.message : String(err);
 	if (/not found|unknown command|did not match/i.test(msg) && /storage_/i.test(msg)) {
-		return "此功能需要重启应用后才能使用";
+		return tNow("settingsCore.storageLogic.restartRequired");
 	}
 	return msg;
 }

@@ -30,9 +30,9 @@ export const TONE_WARNING = "bg-[color-mix(in_srgb,var(--status-warning)_14%,tra
 export const TONE_SUCCESS = "bg-[color-mix(in_srgb,var(--status-success)_14%,transparent)] text-[var(--status-success)]";
 export const TONE_NEUTRAL = "bg-[var(--bg-hover)] text-[var(--text-muted)]";
 
-export const KIND_META: Record<BacklogKind, { label: string; icon: typeof Lightbulb; tone: string }> = {
-	bug: { label: "缺陷", icon: Bug, tone: TONE_ERROR },
-	idea: { label: "想法", icon: Lightbulb, tone: TONE_WARNING },
+export const KIND_META: Record<BacklogKind, { labelKey: string; icon: typeof Lightbulb; tone: string }> = {
+	bug: { labelKey: "backlog.kindBug", icon: Bug, tone: TONE_ERROR },
+	idea: { labelKey: "backlog.kindIdea", icon: Lightbulb, tone: TONE_WARNING },
 };
 
 export const KINDS: BacklogKind[] = ["bug", "idea"];

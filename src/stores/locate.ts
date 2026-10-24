@@ -6,6 +6,7 @@
  * (`TranscriptItem.toolCalls[].id`), the same ids the transcript steps carry.
  */
 import { create } from "zustand";
+import { tNow } from "./language";
 
 export interface LocateTarget {
 	sessionId: string;
@@ -21,7 +22,7 @@ export interface LocateTarget {
 
 /** Pill text for the current call, e.g. 「已定位：web_search #3」. */
 export function locateLabel(name: string, index: number): string {
-	return `已定位：${name} #${index + 1}`;
+	return tNow("shell.locatedToolCall", { name, index: index + 1 });
 }
 
 /** Id of the call the target points at, or null when out of range. */

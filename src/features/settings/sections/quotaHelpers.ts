@@ -2,6 +2,7 @@
  * Helpers for Quota & Subscription dashboard (formatting, deduplication, metadata).
  */
 import type { OmpUsageLimit } from "../../../lib/contracts";
+import { tNow } from "../../../stores/language";
 
 export interface ProviderBrandConfig {
 	name: string;
@@ -216,7 +217,7 @@ export function resolveBrandConfig(providerId: string): ProviderBrandConfig {
 		.replace(/\b\w/g, (c) => c.toUpperCase());
 	return {
 		name: clean,
-		badge: "账号订阅",
+		badge: tNow("quota.helpers.defaultBadge"),
 		color: "var(--accent)",
 		borderLClass: "border-l-[var(--accent)]",
 		badgeClass: "bg-[var(--well-bg)] text-neutral-300 border border-[var(--border-divider)]",
@@ -245,68 +246,68 @@ export function dedupeLimits(limits: OmpUsageLimit[]): OmpUsageLimit[] {
 
 export function formatHumanWindowName(id: string): string {
 	const lower = id.toLowerCase();
-	if (lower.includes("5h") || lower.includes("5-hour")) return "5 小时滚动限额";
+	if (lower.includes("5h") || lower.includes("5-hour")) return tNow("quota.helpers.window5h");
 	if (lower.includes("7d") || lower.includes("weekly") || lower.includes("1w"))
-		return "7 天周期限额";
+		return tNow("quota.helpers.window7d");
 	if (lower.includes("1d") || lower.includes("daily") || lower.includes("day"))
-		return "24 小时每日限额";
+		return tNow("quota.helpers.window1d");
 	if (lower.includes("30d") || lower.includes("monthly") || lower.includes("1mo"))
-		return "30 天每月限额";
+		return tNow("quota.helpers.window30d");
 	return id;
 }
 
 export function formatCountdown(ms: number): string {
-	return ms <= 0 ? "即将重置" : `${formatCountdownCompact(ms)}后重置`;
+	return ms <= 0 ? tNow("quota.helpers.resetsSoon") : tNow("quota.helpers.resetsAfter", { time: formatCountdownCompact(ms) });
 }
 
 export function formatRelativeTime(timestamp: number, now: number): string {
 	const diffSec = Math.max(0, Math.floor((now - timestamp) / 1000));
-	if (diffSec < 60) return "刚刚同步";
+	if (diffSec < 60) return tNow("quota.helpers.syncedJustNow");
 	const diffMin = Math.floor(diffSec / 60);
-	if (diffMin < 60) return `${diffMin} 分钟前同步`;
+	if (diffMin < 60) return tNow("quota.helpers.syncedMinutesAgo", { count: diffMin });
 	const diffHour = Math.floor(diffMin / 60);
-	if (diffHour < 24) return `${diffHour} 小时前同步`;
-	return `${Math.floor(diffHour / 24)} 天前同步`;
+	if (diffHour < 24) return tNow("quota.helpers.syncedHoursAgo", { count: diffHour });
+	return tNow("quota.helpers.syncedDaysAgo", { count: Math.floor(diffHour / 24) });
 }
 
 /** "2 天 8 小时" / "4 小时 49 分" / "45 分钟" / "12 秒"; a zero trailing unit is dropped ("1 小时"). */
 export function formatCountdownCompact(ms: number): string {
-	if (ms <= 0) return "已到期";
+	if (ms <= 0) return tNow("quota.helpers.expired");
 	const totalSec = Math.floor(ms / 1000);
 	const days = Math.floor(totalSec / 86400);
 	const hours = Math.floor((totalSec % 86400) / 3600);
 	const minutes = Math.floor((totalSec % 3600) / 60);
-	if (days >= 1) return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
-	if (hours >= 1) return minutes > 0 ? `${hours} 小时 ${minutes} 分` : `${hours} 小时`;
-	if (minutes >= 1) return `${minutes} 分钟`;
-	return `${totalSec} 秒`;
+	if (days >= 1) return hours > 0 ? tNow("quota.helpers.timeDaysHours", { days, hours }) : tNow("quota.helpers.timeDays", { days });
+	if (hours >= 1) return minutes > 0 ? tNow("quota.helpers.timeHoursMinutes", { hours, minutes }) : tNow("quota.helpers.timeHours", { hours });
+	if (minutes >= 1) return tNow("quota.helpers.timeMinutes", { minutes });
+	return tNow("quota.helpers.timeSeconds", { seconds: totalSec });
 }
 
-const QUOTA_LABEL_ZH: Record<string, string> = {
-	"prompt credits": "提示词额度",
-	"flow credits": "工作流额度",
-	"daily quota": "每日额度",
-	"weekly quota": "每周额度",
-	"monthly quota": "每月额度",
-	"claude 5 hour": "Claude 5 小时",
-	"claude 7 day": "Claude 7 天",
-	"claude 7 day (opus)": "Claude 7 天（Opus）",
-	"claude 7 day (sonnet)": "Claude 7 天（Sonnet）",
+const QUOTA_LABEL_KEYS: Record<string, string> = {
+	"prompt credits": "promptCredits",
+	"flow credits": "flowCredits",
+	"daily quota": "dailyQuota",
+	"weekly quota": "weeklyQuota",
+	"monthly quota": "monthlyQuota",
+	"claude 5 hour": "claude5Hour",
+	"claude 7 day": "claude7Day",
+	"claude 7 day (opus)": "claude7DayOpus",
+	"claude 7 day (sonnet)": "claude7DaySonnet",
 };
 
 /** Chinese display name for an English quota label reported by `omp usage`. */
 export function localizeQuotaLabel(label: string): string {
-	const known = QUOTA_LABEL_ZH[label.trim().toLowerCase()];
-	if (known) return known;
+	const key = QUOTA_LABEL_KEYS[label.trim().toLowerCase()];
+	if (key) return tNow(`quota.helpers.labelMap.${key}`);
 	return label
-		.replace(/\s*\(shared\)/gi, "（共享）")
-		.replace(/\b(\d+)[\s-]*hours?\b/gi, "$1 小时")
-		.replace(/\b(\d+)[\s-]*days?\b/gi, "$1 天")
-		.replace(/\bcredits?\b/gi, "额度")
-		.replace(/\bquota\b/gi, "额度")
-		.replace(/\bdaily\b/gi, "每日")
-		.replace(/\bweekly\b/gi, "每周")
-		.replace(/\bmonthly\b/gi, "每月");
+		.replace(/\s*\(shared\)/gi, tNow("quota.helpers.sharedSuffix"))
+		.replace(/\b(\d+)[\s-]*hours?\b/gi, (_, h) => tNow("quota.helpers.hoursPattern", { hours: h }))
+		.replace(/\b(\d+)[\s-]*days?\b/gi, (_, d) => tNow("quota.helpers.daysPattern", { days: d }))
+		.replace(/\bcredits?\b/gi, tNow("quota.helpers.credits"))
+		.replace(/\bquota\b/gi, tNow("quota.helpers.credits"))
+		.replace(/\bdaily\b/gi, tNow("quota.helpers.daily"))
+		.replace(/\bweekly\b/gi, tNow("quota.helpers.weekly"))
+		.replace(/\bmonthly\b/gi, tNow("quota.helpers.monthly"));
 }
 
 const WINDOW_KEY_ALIASES: Record<string, string> = {
@@ -354,23 +355,30 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 	const remainingMs = resetsAt ? resetsAt - now : null;
 	const hasCountdown = remainingMs !== null && remainingMs > 0;
 	if (usedPct >= 100) {
+		const resetText = hasCountdown
+			? tNow("quota.helpers.exhaustedResetCountdown", { time: formatCountdownCompact(remainingMs) })
+			: tNow("quota.helpers.recovering");
 		return {
-			text: hasCountdown ? `100% 耗尽 · ${formatCountdownCompact(remainingMs)}后恢复` : "100% 耗尽 · 恢复中",
-			usedText: "100% 耗尽",
-			resetText: hasCountdown ? `${formatCountdownCompact(remainingMs)}后恢复` : "恢复中",
-			badge: "已耗尽",
+			text: hasCountdown
+				? tNow("quota.helpers.exhaustedWithCountdown", { time: formatCountdownCompact(remainingMs) })
+				: tNow("quota.helpers.exhaustedRecovering"),
+			usedText: tNow("quota.helpers.exhaustedUsedText"),
+			resetText,
+			badge: tNow("quota.helpers.exhaustedBadge"),
 			isExhausted: true,
 			isWarning: false,
 			color: "rose",
 		};
 	}
-	const usedText = `已用 ${usedPct.toFixed(1)}%`;
-	const resetText = hasCountdown ? `${formatCountdownCompact(remainingMs)}后重置` : null;
+	const usedText = tNow("quota.helpers.usedPct", { percent: usedPct.toFixed(1) });
+	const resetText = hasCountdown
+		? tNow("quota.helpers.resetsAfter", { time: formatCountdownCompact(remainingMs) })
+		: null;
 	const text = resetText ? `${usedText} · ${resetText}` : usedText;
 	if (usedPct >= 80) {
-		return { text, usedText, resetText, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };
+		return { text, usedText, resetText, badge: tNow("quota.helpers.highUsageBadge"), isExhausted: false, isWarning: true, color: "amber" };
 	}
-	return { text, usedText, resetText, badge: "正常", isExhausted: false, isWarning: false, color: "neutral" };
+	return { text, usedText, resetText, badge: tNow("quota.helpers.normalBadge"), isExhausted: false, isWarning: false, color: "neutral" };
 }
 
 /**

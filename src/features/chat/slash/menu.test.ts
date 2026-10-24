@@ -19,14 +19,14 @@ const dynamic = (
 describe("slash menu — buildSlashSections", () => {
 	it("registry commands come grouped in their fixed order", () => {
 		const sections = buildSlashSections("", [], false);
-		expect(sections.map((s) => s.label)).toEqual([
-			"会话",
-			"模型",
-			"状态",
-			"集成",
-			"设置",
-			"技能",
-			"更多 OMP 命令",
+		expect(sections.map((s) => s.group)).toEqual([
+			"session",
+			"model",
+			"status",
+			"integration",
+			"settings",
+			"skill",
+			"omp",
 		]);
 		expect(flattenSections(sections).map((i) => i.name)).toContain("fork");
 	});
@@ -43,12 +43,12 @@ describe("slash menu — buildSlashSections", () => {
 			false,
 		);
 		const byLabel = Object.fromEntries(
-			sections.map((s) => [s.label, s.items.map((i) => i.name)]),
+			sections.map((s) => [s.group, s.items.map((i) => i.name)]),
 		);
-		expect(byLabel["自定义命令"]).toContain("translator");
-		expect(byLabel["技能"]).toContain("skill-x");
-		expect(byLabel["扩展"]).toContain("ext-cmd");
-		expect(byLabel["更多 OMP 命令"]).toContain("security");
+		expect(byLabel.custom).toContain("translator");
+		expect(byLabel.skill).toContain("skill-x");
+		expect(byLabel.extension).toContain("ext-cmd");
+		expect(byLabel.omp).toContain("security");
 	});
 
 	it("registry wins over a dynamic command of the same name or alias", () => {
@@ -109,7 +109,7 @@ describe("slash menu — buildSlashSections", () => {
 		const items = flat.filter((i) => i.name === "skill:visualize");
 		expect(items).toHaveLength(1);
 		expect(items[0].registry).toBe(true);
-		expect(items[0].group).toBe("技能");
+		expect(items[0].group).toBe("skill");
 		expect(items[0].title).toBe("Visualize");
 		expect(items[0].description).toBe("创建可视化和交互工具");
 		expect(items[0].argHint).toBeTruthy();
@@ -220,7 +220,7 @@ describe("slash menu — subcommands", () => {
 			name: "test",
 			subOf: "mcp",
 			title: "",
-			group: "子命令",
+			group: "subcommand",
 			argHint: "<name>",
 			registry: true,
 		});

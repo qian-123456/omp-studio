@@ -5,6 +5,7 @@ import type { OmpInfo, OmpUpdateStatus } from "../lib/contracts";
 import { errMsg } from "../lib/dialogs";
 import { ompInfo, ompUpdateCheck, ompUpdateRun } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { tNow } from "./language";
 import { useSettings } from "../features/settings/store";
 import { useModelCatalog } from "./modelCatalog";
 import { setExternalUpdateHandler, syncStaleness } from "./ompUpdateSessions";
@@ -76,7 +77,7 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 		} catch (e) {
 			const msg = errMsg(e);
 			set({ error: msg, lastOutput: msg });
-			if (!silent) toast.error(`检查 omp 更新失败：${msg}`);
+			if (!silent) toast.error(tNow("shell.checkOmpUpdateFailed", { error: msg }));
 		} finally {
 			const now = Date.now();
 			localStorage.setItem(LAST_CHECK_KEY, String(now));
@@ -102,19 +103,19 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 			set({ lastOutput: res.output });
 			if (!res.success) {
 				set({ error: res.output });
-				toast.error("omp 更新失败，可在「版本与更新」中查看详情");
+				toast.error(tNow("shell.ompUpdateFailedInSettings"));
 				return;
 			}
 			await get().loadInfo();
 			await get().check(true);
 			void useModelCatalog.getState().refresh();
-			const ver = ompVersionLabel(get().info, get().status) ?? res.versionAfter ?? "最新版本";
-			toast.success(`omp 已更新到 ${ver}，正在把已运行的会话切换到新版本`);
+			const ver = ompVersionLabel(get().info, get().status) ?? res.versionAfter ?? tNow("shell.latestVersion");
+			toast.success(tNow("shell.ompUpdatedSuccess", { version: ver }));
 			void syncStaleness({ selfUpdate: true, version: ver }).catch(() => {});
 		} catch (e) {
 			const msg = errMsg(e);
 			set({ error: msg, lastOutput: msg });
-			toast.error(`omp 更新失败：${msg}`);
+			toast.error(tNow("shell.ompUpdateFailed", { error: msg }));
 		} finally {
 			set({ updating: false });
 		}
@@ -130,7 +131,7 @@ setExternalUpdateHandler(async (staleCount) => {
 	void useModelCatalog.getState().refresh();
 	const st = useOmpUpdate.getState();
 	const ver = ompVersionLabel(st.info, st.status);
-	if (staleCount > 0) toast.info(`检测到 omp 已在外部更新到 ${ver ?? "新版本"}，正在把会话切换到新版本`);
+	if (staleCount > 0) toast.info(tNow("shell.ompExternalUpdateNotice", { version: ver ?? tNow("shell.newVersion") }));
 	return ver;
 });
 

@@ -1,5 +1,6 @@
 /** 「选择项目」 dialog: change where one existing server loads. */
 
+import { useT } from "../../stores/language";
 import { useState } from "react";
 import { Modal } from "../../components/Modal";
 import type { McpScope, McpServerView } from "../../lib/contracts";
@@ -22,6 +23,7 @@ export function McpScopeDialog({
 	onSave: (scope: McpScope) => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const [initial] = useState(() =>
 		prefillScope(
 			view,
@@ -33,7 +35,7 @@ export function McpScopeDialog({
 	const invalid = scopeError(scope) !== null;
 
 	return (
-		<Modal title={`“${view.name}” 用在哪些项目`} size="lg" onClose={onClose}>
+		<Modal title={t("mcp.scopeDialogTitle", { name: view.name })} size="lg" onClose={onClose}>
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 				<McpScopePicker
 					projects={projects}
@@ -44,10 +46,10 @@ export function McpScopeDialog({
 				/>
 			</div>
 			<div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] px-4 py-3">
-				<span className="text-[11px] text-[var(--text-dim)]">保存后对新开的会话生效</span>
+				<span className="text-[11px] text-[var(--text-dim)]">{t("mcp.saveScopeNewSessions")}</span>
 				<div className="flex gap-2">
 					<Button variant="ghost" onClick={onClose}>
-						取消
+						{t("common.cancel")}
 					</Button>
 					<Button
 						variant="primary"
@@ -55,7 +57,7 @@ export function McpScopeDialog({
 						disabled={invalid}
 						onClick={() => onSave(scope)}
 					>
-						保存
+						{t("common.save")}
 					</Button>
 				</div>
 			</div>

@@ -1,5 +1,6 @@
 /** Pure logic for the auto-compaction threshold card (no React / IPC). */
 
+import { tNow } from "../../stores/language";
 export type ThresholdMode = "default" | "tokens" | "percent";
 
 export const TOKEN_PRESETS = [100_000, 150_000, 200_000, 250_000, 300_000, 500_000] as const;
@@ -102,13 +103,13 @@ export function formatTokenShort(n: number): string {
 }
 
 export function describeStrategy(t: CompactionThreshold, enabled = true): string {
-	if (!enabled) return "当前策略：自动压缩已关闭，上下文满时需手动压缩";
+	if (!enabled) return tNow("settingsModels.strategyDisabled");
 	switch (resolveMode(t)) {
 		case "tokens":
-			return `当前策略：当会话达到 ${formatTokens(t.tokens)} Token 时自动在后台生成摘要并压缩`;
+			return tNow("settingsModels.strategyTokens", { tokens: formatTokens(t.tokens) });
 		case "percent":
-			return `当前策略：当会话上下文达到模型窗口的 ${t.percent}% 时自动压缩`;
+			return tNow("settingsModels.strategyPercent", { percent: t.percent });
 		default:
-			return `当前策略：使用系统默认（预留约 ${formatTokens(DEFAULT_RESERVE_TOKENS)} Token 时压缩）`;
+			return tNow("settingsModels.strategyDefault", { tokens: formatTokens(DEFAULT_RESERVE_TOKENS) });
 	}
 }

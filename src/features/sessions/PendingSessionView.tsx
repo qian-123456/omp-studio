@@ -11,6 +11,7 @@ import { isComposing } from "../../lib/hooks";
 import { StartGlow, StartHero } from "../../components/StartHero";
 import { gitBadge } from "../../lib/ipc";
 import { usePendingSession } from "./pendingSession";
+import { useT } from "../../stores/language";
 
 const PILL =
 	"flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] select-none";
@@ -21,6 +22,7 @@ function baseName(path: string): string {
 }
 
 export function PendingSessionView() {
+	const { t } = useT();
 	const pending = usePendingSession((s) => s.pending);
 	const setText = usePendingSession((s) => s.setText);
 	const submit = usePendingSession((s) => s.submit);
@@ -73,7 +75,7 @@ export function PendingSessionView() {
 									<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 								</span>
 								{branch && (
-									<span title={`当前分支: ${branch}`} className={PILL}>
+									<span title={t("sessions.currentBranch", { branch })} className={PILL}>
 										<GitBranch size={14} className="shrink-0 text-neutral-400" />
 										<span className="max-w-56 truncate">{branch}</span>
 										<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
@@ -85,8 +87,8 @@ export function PendingSessionView() {
 								value={text}
 								disabled={submitted}
 								rows={1}
-								placeholder="输入消息，/ 命令，@ 引用文件"
-								aria-label="新会话输入框"
+								placeholder={t("composer.placeholderDefault")}
+								aria-label={t("sessions.newSessionInputAria")}
 								onChange={(e) => setText(e.target.value)}
 								onKeyDown={(e) => {
 									if (
@@ -107,13 +109,13 @@ export function PendingSessionView() {
 									</span>
 									<span className="flex h-7 items-center gap-1.5 px-2 text-[var(--text-40,var(--text-dim))]">
 										<Loader2 size={12} className="animate-spin" />
-										{submitted ? "启动后自动发送" : "正在启动会话"}
+										{submitted ? t("sessions.autoSendOnStart") : t("sessions.startingSession")}
 									</span>
 								</div>
 								<button
 									type="button"
-									aria-label="发送消息"
-									title="会话启动后发送"
+									aria-label={t("composer.send")}
+									title={t("sessions.sendAfterStart")}
 									disabled={!canSend}
 									onClick={submit}
 									className={

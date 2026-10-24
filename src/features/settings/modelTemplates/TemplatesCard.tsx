@@ -31,11 +31,12 @@ import {
 	windowOptionsFor,
 } from "./logic";
 import { useModelTemplatesStore } from "./store";
+import { useT } from "../../../stores/language";
 
-const PROVIDER_STATE: Record<string, { label: string; tone: ChipTone }> = {
-	available: { label: "额度充足", tone: "success" },
-	exhausted: { label: "额度用尽", tone: "danger" },
-	unmapped: { label: "无额度报告", tone: "neutral" },
+const PROVIDER_STATE_KEYS: Record<string, { key: "available" | "exhausted" | "unmapped"; tone: ChipTone }> = {
+	available: { key: "available", tone: "success" },
+	exhausted: { key: "exhausted", tone: "danger" },
+	unmapped: { key: "unmapped", tone: "neutral" },
 };
 
 /** 「规则「省钱」依赖 Anthropic · 5 小时 · 当前 82%」 for one rule that applies this template. */
@@ -46,23 +47,23 @@ function RuleDependency({
 	rule: ModelSwitchRule;
 	providers: ProviderStatus[];
 }) {
+	const { t } = useT();
 	const provider = providerOptions(providers).find((p) => p.value === rule.provider);
 	const window = windowOptionsFor(providers, rule.provider).find((w) => w.key === rule.windowKey);
-	const state = PROVIDER_STATE[providers.find((p) => p.usageSlug === rule.provider)?.state ?? ""] ?? {
-		label: "状态未知",
-		tone: "neutral" as ChipTone,
-	};
+	const stateConfig = PROVIDER_STATE_KEYS[providers.find((p) => p.usageSlug === rule.provider)?.state ?? ""];
+	const stateLabel = stateConfig ? t(`modelTemplates.providerState.${stateConfig.key}`) : t("modelTemplates.providerState.unknown");
+	const stateTone = stateConfig?.tone ?? "neutral";
 	return (
 		<div className="flex flex-wrap items-center gap-1.5 text-[11px] leading-4 text-[var(--text-muted)]">
-			<span>规则「{rule.name}」依赖</span>
+			<span>{t("modelTemplates.ruleDependency", { rule: rule.name })}</span>
 			<span className="font-medium text-[var(--text)]">{provider?.label ?? rule.provider}</span>
 			<span>·</span>
 			<span>{window?.label ?? rule.windowKey}</span>
 			<span>·</span>
 			<span className="tabular-nums">
-				{window ? `当前 ${Math.round(window.usedPct)}%` : "暂无额度数据"}
+				{window ? t("modelTemplates.currentPct", { pct: String(Math.round(window.usedPct)) }) : t("modelTemplates.noWindowData")}
 			</span>
-			<Chip tone={state.tone}>{state.label}</Chip>
+			<Chip tone={stateTone}>{stateLabel}</Chip>
 		</div>
 	);
 }
@@ -86,6 +87,7 @@ function TemplateRow({
 	onDuplicate: () => void;
 	onDelete: () => void;
 }) {
+	const { t, locale } = useT();
 	const roles = Object.keys(template.roles);
 	const current = currentForScope(snapshot.currents, template.scope);
 	const isCurrent = current !== null && current.templateId === template.id;
@@ -100,27 +102,27 @@ function TemplateRow({
 						<span className="break-words text-[13px] font-medium leading-5 text-[var(--text)]">
 							{template.name}
 						</span>
-						<Chip title={roles.length > 0 ? roles.join("、") : undefined}>
-							{roles.length} 个角色
+						<Chip title={roles.length > 0 ? roles.join(locale === "zh-CN" ? "、" : ", ") : undefined}>
+							{t("modelTemplates.roleCount", { count: String(roles.length) })}
 						</Chip>
 						{template.isBottomLine && (
 							<Chip tone="accent" icon={Shield}>
-								保底模板
+								{t("modelTemplates.bottomLineBadge")}
 							</Chip>
 						)}
-						{isCurrent && <Chip tone="accent">当前生效</Chip>}
+						{isCurrent && <Chip tone="accent">{t("modelTemplates.currentActive")}</Chip>}
 						{drift && current && (
-							<Chip tone="warning" title={drift}>{`${current.driftedRoles.length} 个角色被改动`}</Chip>
+							<Chip tone="warning" title={drift}>{t("modelTemplates.driftedCount", { count: String(current.driftedRoles.length) })}</Chip>
 						)}
 					</div>
 					<div className="mt-1 space-y-0.5">
 						{drift && (
 							<div className="break-words text-[11px] leading-4 text-[var(--status-warning)]">
-								{drift}：{current?.driftedRoles.join("、")}
+								{drift}{t("modelTemplates.colon")}{current?.driftedRoles.join(locale === "zh-CN" ? "、" : ", ")}
 							</div>
 						)}
 						{dependents.length === 0 ? (
-							<div className="text-[11px] leading-4 text-[var(--text-dim)]">没有规则使用此模板</div>
+							<div className="text-[11px] leading-4 text-[var(--text-dim)]">{t("modelTemplates.noRulesUsing")}</div>
 						) : (
 							dependents.map((rule) => (
 								<RuleDependency key={rule.id} rule={rule} providers={providers} />
@@ -135,27 +137,27 @@ function TemplateRow({
 						icon={Play}
 						disabled={busy}
 						onClick={onApply}
-						aria-label={`应用模板：${template.name}`}
+						aria-label={t("modelTemplates.applyTemplateAria", { name: template.name })}
 					>
-						应用
+						{t("modelTemplates.apply")}
 					</Button>
 					<Button
 						size="sm"
 						icon={Pencil}
 						disabled={busy}
 						onClick={onEdit}
-						aria-label={`编辑模板：${template.name}`}
+						aria-label={t("modelTemplates.editTemplateAria", { name: template.name })}
 					>
-						编辑
+						{t("common.edit")}
 					</Button>
 					<Button
 						size="sm"
 						icon={Copy}
 						disabled={busy}
 						onClick={onDuplicate}
-						aria-label={`复制模板：${template.name}`}
+						aria-label={t("modelTemplates.duplicateTemplateAria", { name: template.name })}
 					>
-						复制
+						{t("common.copy")}
 					</Button>
 					<Button
 						variant="danger"
@@ -163,9 +165,9 @@ function TemplateRow({
 						icon={Trash2}
 						disabled={busy}
 						onClick={onDelete}
-						aria-label={`删除模板：${template.name}`}
+						aria-label={t("modelTemplates.deleteTemplateAria", { name: template.name })}
 					>
-						删除
+						{t("common.delete")}
 					</Button>
 				</div>
 			</div>
@@ -196,55 +198,56 @@ export function TemplatesCard({
 	onDuplicate: (template: ModelTemplate) => void;
 	onApply: (template: ModelTemplate) => void;
 }) {
+	const { t } = useT();
 	const [deletingId, setDeletingId] = useState<string | null>(null);
 	const templates = useMemo(() => inScope(snapshot?.templates ?? [], scope), [snapshot, scope]);
 	const providers = status?.providers ?? [];
 
 	const remove = async (template: ModelTemplate) => {
 		const dependents = snapshot?.rules.filter((r) => r.templateId === template.id).length ?? 0;
-		const extra = dependents > 0 ? `\n引用它的 ${dependents} 条规则也会一起删除。` : "";
-		const ok = await confirmDialog(`确定删除模板「${template.name}」吗？${extra}`, {
-			title: "删除模板",
+		const extra = dependents > 0 ? t("modelTemplates.deleteDependentsWarning", { count: String(dependents) }) : "";
+		const ok = await confirmDialog(t("modelTemplates.deleteConfirm", { name: template.name, extra }), {
+			title: t("modelTemplates.deleteTitle"),
 			danger: true,
-			okLabel: "删除",
+			okLabel: t("common.delete"),
 		});
 		if (!ok) return;
 		setDeletingId(template.id);
 		try {
 			const next = await modelTemplateDelete(template.id);
 			useModelTemplatesStore.getState().setSnapshot(next);
-			toast.success(`已删除模板「${template.name}」`);
+			toast.success(t("modelTemplates.deletedSuccess", { name: template.name }));
 		} catch (e) {
-			toast.error(`删除模板失败：${errMsg(e)}`);
+			toast.error(t("modelTemplates.deleteFailed", { error: errMsg(e) }));
 		} finally {
 			setDeletingId(null);
 		}
 	};
 
 	return (
-		<SettingsCard title="角色模板" description={`一份「角色 → 模型」对照表。${scopeWriteHint(scope, projects)}`} clip jump="角色模板">
+		<SettingsCard title={t("modelTemplates.cardTitle")} description={t("modelTemplates.cardDesc", { hint: scopeWriteHint(scope, projects) })} clip jump={t("modelTemplates.cardTitle")}>
 			<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
 				<span className="text-[11px] text-[var(--text-dim)]">
-					{snapshot === null ? "正在读取" : `共 ${templates.length} 个模板`}
+					{snapshot === null ? t("common.loading") : t("modelTemplates.totalTemplates", { count: String(templates.length) })}
 				</span>
 				<Button variant="primary" size="sm" icon={Plus} onClick={onNew} loading={creating}>
-					新建模板
+					{t("modelTemplates.newTemplate")}
 				</Button>
 			</div>
 			{snapshot === null ? (
-				<EmptyState icon={Loader2} spin title="正在读取模板" />
+				<EmptyState icon={Loader2} spin title={t("modelTemplates.loadingTemplates")} />
 			) : templates.length === 0 ? (
 				<EmptyState
 					icon={Layers}
-					title="还没有模板"
+					title={t("modelTemplates.emptyTitle")}
 					description={
 						scope === GLOBAL_SCOPE
-							? "新建模板会把当前的全局模型角色存成一份对照表，之后可以一键应用或按额度自动切换。"
-							: "新建模板会把该项目自己配置的模型角色存成一份对照表，之后可以一键应用或按额度自动切换。"
+							? t("modelTemplates.emptyDescGlobal")
+							: t("modelTemplates.emptyDescProject")
 					}
 					action={
 						<Button variant="primary" size="sm" icon={Plus} onClick={onNew} loading={creating}>
-							新建模板
+							{t("modelTemplates.newTemplate")}
 						</Button>
 					}
 				/>

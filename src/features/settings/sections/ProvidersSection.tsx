@@ -8,6 +8,7 @@ import { SectionJumpBar } from "../SectionJumpBar";
 import { ompSectionFor } from "../ompPlacement";
 import { useSettingsNav } from "../settingsNav";
 import { Button, SectionHeader } from "../ui";
+import { useT } from "../../../stores/language";
 import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RawFilesDialog } from "./RawFilesDialog";
 
@@ -26,6 +27,7 @@ function tabForFocus(focusKey: string | null): Tab | null {
 }
 
 export function ProvidersSection() {
+	const { t } = useT();
 	const { focusKey, focusRequest } = useSettingsNav();
 	const [tab, setTab] = useState<Tab>(() => tabForFocus(focusKey) ?? "config");
 	const [rawOpen, setRawOpen] = useState(false);
@@ -38,30 +40,30 @@ export function ProvidersSection() {
 
 	return (
 		<div className="space-y-5">
-			<SectionHeader title="模型与供应商" description="API 密钥、订阅额度，以及启用哪些模型和供应商" />
+			<SectionHeader title={t("settingsSections.providers.title")} description={t("settingsSections.providers.description")} />
 			<SectionJumpBar />
 			<div className="flex items-center justify-between gap-3">
 				<Segmented
 					options={[
-						{ value: "config", label: "接口与密钥" },
-						{ value: "quota", label: "订阅与配额" },
+						{ value: "config", label: t("settingsSections.providers.tabConfig") },
+						{ value: "quota", label: t("settingsSections.providers.tabQuota") },
 					]}
 					value={tab}
 					onChange={setTab}
 					size="md"
 				/>
-				<Button icon={FileText} onClick={() => setRawOpen(true)}>编辑原始配置文件</Button>
+				<Button icon={FileText} onClick={() => setRawOpen(true)}>{t("settingsSections.providers.editRawConfig")}</Button>
 			</div>
 			{tab === "config" ? (
 				<div className="space-y-6">
-					<div data-field-id="providerList" data-jump="供应商" className="scroll-mt-4">
+					<div data-field-id="providerList" data-jump={t("settingsSections.providers.jumpProviders")} className="scroll-mt-4">
 						<ProviderPanel />
 					</div>
 					<OmpSections page="providers" slot="keys" />
 				</div>
 			) : (
 				<div className="space-y-6">
-					<div data-jump="配额概览" className="scroll-mt-4">
+					<div data-jump={t("settingsSections.providers.jumpQuota")} className="scroll-mt-4">
 						<QuotaDashboardCard />
 					</div>
 					<OmpSections page="providers" slot="quota" />

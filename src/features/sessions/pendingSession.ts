@@ -12,6 +12,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { tNow } from "../../stores/language";
 import { sendPrompt } from "../chat/send";
 import { closeForkDraft } from "./forkDraft";
 
@@ -82,7 +83,7 @@ export async function startSessionOptimistic(
 		if (mine?.submit && text.trim() && !text.trimStart().startsWith("/")) {
 			void sendPrompt(sessionId, text.trim()).catch((err) => {
 				useComposer.getState().setDraft(sessionId, text);
-				toast.error(`发送失败: ${errMsg(err)}`);
+				toast.error(tNow("sessions.sendFailed", { error: errMsg(err) }));
 			});
 			return;
 		}
@@ -94,6 +95,6 @@ export async function startSessionOptimistic(
 			usePendingSession.setState({ pending: null });
 		}
 		if (visible) useUi.getState().selectSession(null);
-		toast.error(`创建会话失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.createSessionFailed", { error: errMsg(err) }));
 	}
 }

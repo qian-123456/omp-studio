@@ -3,6 +3,7 @@ import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { copyText, errMsg } from "../lib/dialogs";
 import { toast } from "../lib/toast";
+import { useT } from "../stores/language";
 
 export interface CopyButtonProps {
 	/** Text to copy; a function is evaluated at click time (e.g. to read a live draft). */
@@ -45,6 +46,7 @@ export function CopyButton({
 	disabled,
 	onCopied,
 }: CopyButtonProps) {
+	const { t } = useT();
 	const [copied, setCopied] = useState(false);
 	const timer = useRef<number | undefined>(undefined);
 
@@ -56,7 +58,7 @@ export function CopyButton({
 			try {
 				await copyText(typeof text === "function" ? text() : text);
 			} catch (err) {
-				toast.error(`复制失败: ${errMsg(err)}`);
+				toast.error(t("components.copyFailedMsg", { error: errMsg(err) }));
 				return;
 			}
 			setCopied(true);
@@ -67,7 +69,7 @@ export function CopyButton({
 		[text, resetMs, onCopied],
 	);
 
-	const name = copied ? "已复制" : (title ?? "复制");
+	const name = copied ? t("common.copied") : (title ?? t("common.copy"));
 	return (
 		<button
 			type="button"

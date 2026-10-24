@@ -13,6 +13,7 @@ import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
 import { startFork } from "../sessions/forkDraft";
 import { canUndoTurn, undoCascade } from "./turnChips";
+import { tNow } from "../../stores/language";
 
 /** Tiny status letters in the changed-files list; color only on the letter. */
 const STATUS_LETTER_STYLE: Record<string, string> = {
@@ -44,22 +45,19 @@ async function undoTurn(
 	const fileCount = new Set(cascade.flatMap((t) => t.files.map((f) => f.path)))
 		.size;
 
-	let title = "撤回这一轮";
-	let okLabel = "撤回";
+	let title = tNow("chat.undo.titleSingle");
+	let okLabel = tNow("chat.undo.okSingle");
 	let message: string;
 	if (laterCount === 0) {
 		const n = turn.files.length;
 		message =
 			n > 0
-				? `撤回这一轮？这 ${n} 个文件会回到这一轮开始前的样子（这一轮新建的文件会被删除）。Agent 下一轮会收到通知。`
-				: "撤回这一轮？Agent 下一轮会收到通知。";
+				? tNow("chat.undo.msgSingleWithFiles", { count: n })
+				: tNow("chat.undo.msgSingleNoFiles");
 	} else {
-		title = `撤回 ${total} 轮`;
-		okLabel = `撤回这 ${total} 轮`;
-		message =
-			`撤回这一轮会连带撤回之后的 ${laterCount} 轮，共 ${total} 轮、` +
-			`${fileCount} 个文件会回到这一轮开始前的样子（这些轮次里新建的文件会被删除），` +
-			`这一轮之后的文件工作都会丢失。Agent 下一轮会收到通知。`;
+		title = tNow("chat.undo.titleMulti", { count: total });
+		okLabel = tNow("chat.undo.okMulti", { count: total });
+		message = tNow("chat.undo.msgCascade", { laterCount, total, fileCount });
 	}
 	const ok = await confirmDialog(message, { title, danger: true, okLabel });
 	if (!ok) return false;
@@ -68,31 +66,31 @@ async function undoTurn(
 		if (res.conflicts.length > 0) {
 			const ok2 = await confirmDialog(
 				laterCount === 0
-					? `这些文件在这一轮之后又被改过，继续撤回会丢掉后来的修改：\n${res.conflicts.join("\n")}`
-					: `这些文件在要撤回的 ${total} 轮之后又被改过，继续撤回会丢掉后来的修改：\n${res.conflicts.join("\n")}`,
-				{ title, danger: true, okLabel: "仍然撤回" },
+					? tNow("chat.undo.conflictSingle", { conflicts: res.conflicts.join("\n") })
+					: tNow("chat.undo.conflictMulti", { total, conflicts: res.conflicts.join("\n") }),
+				{ title, danger: true, okLabel: tNow("chat.undo.stillUndo") },
 			);
 			if (!ok2) return false;
 			res = await gitUndoTurn(cwd, sessionFile, turn.turnId, true);
 			if (res.conflicts.length > 0) {
-				toast.error(`撤回失败：${res.conflicts.join("、")} 已无法恢复`);
+				toast.error(tNow("chat.undo.conflictFailed", { files: res.conflicts.join("、") }));
 				return false;
 			}
 		}
 		const undone = res.turnsUndone || total;
 		const parts: string[] = [
-			undone === 1 ? "已撤回这一轮" : `已撤回 ${undone} 轮`,
+			undone === 1 ? tNow("chat.undo.doneSingle") : tNow("chat.undo.doneMulti", { count: undone }),
 		];
 		if (res.restored.length > 0)
-			parts.push(`恢复 ${res.restored.length} 个文件`);
+			parts.push(tNow("chat.undo.restoredFiles", { count: res.restored.length }));
 		if (res.deleted.length > 0)
-			parts.push(`删除 ${res.deleted.length} 个新建文件`);
-		if (res.headReset) parts.push("版本历史已回退");
+			parts.push(tNow("chat.undo.deletedFiles", { count: res.deleted.length }));
+		if (res.headReset) parts.push(tNow("chat.undo.headReset"));
 		if (res.warning) parts.push(res.warning);
 		toast.success(parts.join("，"), 6000);
 		return true;
 	} catch (e) {
-		toast.error(`撤回失败: ${errMsg(e)}`);
+		toast.error(tNow("chat.undo.failed", { error: errMsg(e) }));
 		return false;
 	}
 }
@@ -157,14 +155,14 @@ export function AnswerFooter({
 				{answerTime && (
 					<span
 						className="mr-1.5 shrink-0 self-center tabular-nums leading-5"
-						title="回复时间"
+						title={tNow("chat.message.responseTime")}
 					>
 						{answerTime}
 					</span>
 				)}
 				{turnCheckpoint?.undone && (
-					<span className="mr-1.5 shrink-0 self-center px-1 leading-5" title="这一轮的改动已撤回">
-						已撤回
+					<span className="mr-1.5 shrink-0 self-center px-1 leading-5" title={tNow("chat.undo.undoneTitle")}>
+						{tNow("chat.undo.undoneBadge")}
 					</span>
 				)}
 				<div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100">
@@ -181,10 +179,10 @@ export function AnswerFooter({
 								aria-expanded={filesOpen}
 								title={
 									filesOpen
-										? "收起改动文件"
-										: `这一轮改了 ${turnCheckpoint.files.length} 个文件，点击查看`
+										? tNow("chat.undo.collapseFiles")
+										: tNow("chat.undo.changedFilesCount", { count: turnCheckpoint.files.length })
 								}
-								aria-label={`改了 ${turnCheckpoint.files.length} 个文件`}
+								aria-label={tNow("chat.undo.changedFilesAria", { count: turnCheckpoint.files.length })}
 							>
 								<FileDiff size={12} />
 							</button>
@@ -195,8 +193,8 @@ export function AnswerFooter({
 								type="button"
 								onClick={() => useTurnNav.getState().showCommit(cwd, commit)}
 								className={iconBtn}
-								title={`已存档 ${commit.slice(0, 7)} · 在版本历史里查看`}
-								aria-label={`已存档 ${commit.slice(0, 7)}`}
+								title={tNow("chat.undo.archivedCommit", { commit: commit.slice(0, 7) })}
+								aria-label={tNow("chat.undo.archivedCommitAria", { commit: commit.slice(0, 7) })}
 							>
 								<GitCommitHorizontal size={12} />
 							</button>
@@ -221,12 +219,12 @@ export function AnswerFooter({
 								className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
 								title={
 									undoBusy
-										? "正在撤回…"
+										? tNow("chat.undo.undoing")
 										: cascadeLater > 0
-											? `撤回这一轮：工作区回到这一轮开始前的样子，之后的 ${cascadeLater} 轮也会被一并撤回`
-											: "撤回这一轮：把改动的文件恢复回这一轮开始前的样子"
+											? tNow("chat.undo.cascadeTooltip", { laterCount: cascadeLater })
+											: tNow("chat.undo.singleTooltip")
 								}
-								aria-label="撤回这一轮"
+								aria-label={tNow("chat.undo.btnAria")}
 							>
 								<RotateCcw size={12} />
 							</button>
@@ -241,14 +239,14 @@ export function AnswerFooter({
 							onClick={async () => {
 								try {
 									await copyText(answerText);
-									toast.success("回复已复制");
+									toast.success(tNow("chat.undo.replyCopied"));
 								} catch (e) {
-									toast.error(`复制失败: ${errMsg(e)}`);
+									toast.error(tNow("chat.message.copyFailed", { error: errMsg(e) }));
 								}
 							}}
 							className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							title="复制回复"
-							aria-label="复制回复"
+							title={tNow("chat.undo.copyReply")}
+							aria-label={tNow("chat.undo.copyReply")}
 						>
 							<Copy size={12} />
 						</button>
@@ -258,8 +256,8 @@ export function AnswerFooter({
 						type="button"
 						onClick={() => void startFork(sessionId, answerItemId)}
 						className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-						title="从此回复分支出新会话"
-						aria-label="从此回复分支出新会话"
+						title={tNow("chat.undo.forkSession")}
+						aria-label={tNow("chat.undo.forkSession")}
 					>
 						<BranchIcon />
 					</button>
@@ -273,8 +271,8 @@ export function AnswerFooter({
 									.openModal("share-image", { sessionId, itemIds: [answerItemId] })
 							}
 							className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							title="分享为图片"
-							aria-label="分享为图片"
+							title={tNow("chat.undo.shareImage")}
+							aria-label={tNow("chat.undo.shareImage")}
 						>
 							<Share size={12} />
 						</button>

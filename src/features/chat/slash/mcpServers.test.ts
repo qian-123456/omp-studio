@@ -49,7 +49,7 @@ describe("mcpServers", () => {
 		const list = [srv({ name: "my-fs" }), srv({ name: "fs" }), srv({ name: "git" })];
 		const items = buildMcpServerItems(list, "test", "fs");
 		expect(items.map((i) => i.name)).toEqual(["fs", "my-fs"]);
-		expect(items[0]).toMatchObject({ plain: true, group: "MCP 服务器", title: "" });
+		expect(items[0]).toMatchObject({ plain: true, group: "mcp", title: "" });
 		expect(buildMcpServerItems(list, "test", "zzz")).toEqual([]);
 	});
 

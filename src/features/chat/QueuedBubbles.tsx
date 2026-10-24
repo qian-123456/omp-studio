@@ -14,6 +14,7 @@ import type { ImageAttachment } from "../../lib/contracts";
 import { useHeldItems, useHeldQueue } from "./heldQueue";
 import { promoteOmpQueued, removeOmpQueued, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
 import { ompQueueSlot, queuedEchoIds, type UserEcho, useLive } from "../../stores/live";
+import { useT } from "../../stores/language";
 import { UserMessageBubble } from "./ExecutionDisclosure";
 
 const EMPTY_ECHOES: UserEcho[] = [];
@@ -32,16 +33,17 @@ function QueuedBubble({
 	images?: ImageAttachment[];
 	actions?: React.ReactNode;
 }) {
+	const { t } = useT();
 	return (
 		<div className="flex w-full flex-col items-end gap-1 py-1" data-queued-message>
 			<UserMessageBubble
 				text={text}
 				images={images}
 				bubbleClass={BUBBLE_CLASS}
-				emptyText="（附件）"
+				emptyText={t("chatView.queue.attachmentPlaceholder")}
 			/>
 			<div className="flex items-center gap-2 text-[11px] text-[var(--text-40)]">
-				<span>⏳ 排队中</span>
+				<span>{t("chatView.queue.queued")}</span>
 				{actions}
 			</div>
 		</div>
@@ -56,6 +58,7 @@ export function QueuedBubbles({
 	/** Horizontal padding to match the transcript rows. */
 	className?: string;
 }) {
+	const { t } = useT();
 	const echoes = useLive((s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES);
 	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
@@ -86,20 +89,20 @@ export function QueuedBubbles({
 											type="button"
 											className={ACTION_CLASS}
 											disabled={disabled}
-											title="移到当前回复之前处理（打断）"
+											title={t("chatView.queue.promoteTitle")}
 											onClick={() => void promoteOmpQueued(sessionId, e)}
 										>
-											插队
+											{t("chatView.queue.promote")}
 										</button>
 									) : null}
 									<button
 										type="button"
 										className={ACTION_CLASS}
 										disabled={disabled}
-										title="从队列移出这条消息，放回输入框"
+										title={t("chatView.queue.removeToDraftTitle")}
 										onClick={() => void removeOmpQueued(sessionId, e, slot)}
 									>
-										移出队列
+										{t("chatView.queue.removeFromQueue")}
 									</button>
 								</>
 							) : undefined
@@ -118,19 +121,19 @@ export function QueuedBubbles({
 								type="button"
 								className={ACTION_CLASS}
 								disabled={item.id in busy}
-								title={streaming ? "打断当前回复，立即发送这条" : "立即发送这条"}
+								title={streaming ? t("chatView.queue.sendNowInterruptTitle") : t("chatView.queue.sendNowTitle")}
 								onClick={() => void sendQueuedNow(sessionId, item, streaming)}
 							>
-								{streaming ? "插队" : "立即发送"}
+								{streaming ? t("chatView.queue.promote") : t("chatView.queue.sendNow")}
 							</button>
 							<button
 								type="button"
 								className={ACTION_CLASS}
 								disabled={item.id in busy}
-								title="从队列移除这条消息"
+								title={t("chatView.queue.removeTitle")}
 								onClick={() => remove(sessionId, i)}
 							>
-								移出队列
+								{t("chatView.queue.removeFromQueue")}
 							</button>
 						</>
 					}

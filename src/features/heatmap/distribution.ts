@@ -10,6 +10,7 @@
  */
 
 import type { SubagentSummary, TranscriptItem } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 
 export type CategoryKey = "tools" | "skills" | "system" | "mcp" | "prose";
 export interface DrilldownCallItem {
@@ -88,13 +89,13 @@ function estimateTokens(text?: string | null): number {
 
 const CATEGORY_META: Record<
 	CategoryKey,
-	{ label: string; colorClass: string; hex: string }
+	{ labelKey: string; colorClass: string; hex: string }
 > = {
-	tools: { label: "Tool Calls", colorClass: "bg-amber-500", hex: "#f59e0b" },
-	skills: { label: "Skills 注入", colorClass: "bg-purple-500", hex: "#8b5cf6" },
-	system: { label: "System Prompt", colorClass: "bg-blue-500", hex: "#3b82f6" },
-	mcp: { label: "MCP 服务", colorClass: "bg-emerald-500", hex: "#10b981" },
-	prose: { label: "思考与回复", colorClass: "bg-slate-400", hex: "#94a3b8" },
+	tools: { labelKey: "heatmap.categoryTools", colorClass: "bg-amber-500", hex: "#f59e0b" },
+	skills: { labelKey: "heatmap.categorySkills", colorClass: "bg-purple-500", hex: "#8b5cf6" },
+	system: { labelKey: "heatmap.categorySystem", colorClass: "bg-blue-500", hex: "#3b82f6" },
+	mcp: { labelKey: "heatmap.categoryMcp", colorClass: "bg-emerald-500", hex: "#10b981" },
+	prose: { labelKey: "heatmap.categoryProse", colorClass: "bg-slate-400", hex: "#94a3b8" },
 };
 
 /**
@@ -339,8 +340,8 @@ export function analyzeMainDistribution(
 				calls: data.calls,
 				status: isRepeated ? ("waste" as const) : ("ok" as const),
 				note: isRepeated
-					? `⚠️ 重复读取 ${data.calls} 次！前后无变更，空耗约 ${wasteTok} token`
-					: "正常载入规约与指令",
+					? tNow("heatmap.skillRepeatedNote", { count: data.calls, tokens: wasteTok })
+					: tNow("heatmap.skillNormalNote"),
 				targetItemId: data.itemIds[0],
 				callDetails: data.callsList,
 			};
@@ -350,14 +351,14 @@ export function analyzeMainDistribution(
 	const toolDrilldown: DrilldownItem[] = Array.from(toolMap.entries())
 		.map(([name, data]) => {
 			let status: "ok" | "warn" | "waste" = "ok";
-			let note = "正常执行工具操作";
+			let note = tNow("heatmap.toolNormalNote");
 
 			if (data.isError) {
 				status = "waste";
-				note = "🔴 工具报错重试，空耗 Token 且无有效修改";
+				note = tNow("heatmap.toolErrorNote");
 			} else if (data.hasGiantOutput) {
 				status = "warn";
-				note = "⚠️ 单次输出过大，将在后续轮次重复累积滚雪球";
+				note = tNow("heatmap.toolGiantNote");
 			}
 
 			return {
@@ -378,7 +379,7 @@ export function analyzeMainDistribution(
 			tokens: data.tokens,
 			calls: data.calls,
 			status: data.isError ? ("waste" as const) : ("ok" as const),
-			note: data.isError ? "🔴 MCP 工具报错" : "MCP 协议服务调用",
+			note: data.isError ? tNow("heatmap.mcpErrorNote") : tNow("heatmap.mcpNormalNote"),
 			targetItemId: data.itemIds[0],
 			callDetails: data.callsList,
 		}))
@@ -386,35 +387,35 @@ export function analyzeMainDistribution(
 
 	const systemDrilldown: DrilldownItem[] = [
 		{
-			name: "AGENTS.md & 全局规约",
+			name: tNow("heatmap.systemAgentsName"),
 			tokens: Math.round(systemTokens * 0.65),
 			calls: 1,
 			status: "ok",
-			note: "用户偏好与仓库规范契约注入",
+			note: tNow("heatmap.systemAgentsNote"),
 		},
 		{
-			name: "Runtime Harness & 工具声明",
+			name: tNow("heatmap.systemRuntimeName"),
 			tokens: Math.round(systemTokens * 0.35),
 			calls: 1,
 			status: "ok",
-			note: "OMP 工具模式与系统内置约束",
+			note: tNow("heatmap.systemRuntimeNote"),
 		},
 	];
 
 	const proseDrilldown: DrilldownItem[] = [
 		{
-			name: "Thinking (思考链)",
+			name: tNow("heatmap.proseThinkingName"),
 			tokens: Math.round(proseTokens * 0.72),
 			calls: 1,
 			status: "ok",
-			note: "模型内部推理决策过程",
+			note: tNow("heatmap.proseThinkingNote"),
 		},
 		{
-			name: "Assistant 回复文本",
+			name: tNow("heatmap.proseAssistantName"),
 			tokens: Math.round(proseTokens * 0.28),
 			calls: 1,
 			status: "ok",
-			note: "交付给人类的可读回复",
+			note: tNow("heatmap.proseAssistantNote"),
 		},
 	];
 
@@ -436,7 +437,7 @@ export function analyzeMainDistribution(
 			const wasteItems = c.drill.filter((x) => x.status !== "ok");
 			return {
 				key: c.key,
-				label: meta.label,
+				label: tNow(meta.labelKey),
 				colorClass: meta.colorClass,
 				hex: meta.hex,
 				tokens: c.tokens,
@@ -450,19 +451,19 @@ export function analyzeMainDistribution(
 	const used = maxContextUsed || grandTotal;
 	const pct = Math.min(100, Math.round((used / limitTokens) * 100));
 	let gaugeStatus: "ok" | "warn" | "danger" = "ok";
-	let gaugeText = "● 上下文充裕 · 无阻塞风险";
+	let gaugeText = tNow("heatmap.gaugeAbundant");
 
 	if (pct >= 90) {
 		gaugeStatus = "danger";
-		gaugeText = "🔴 严重警报 · 上下文已逼近上限，极易被迫截断";
+		gaugeText = tNow("heatmap.gaugeDanger");
 	} else if (pct >= 75) {
 		gaugeStatus = "warn";
-		gaugeText = "⚠️ 上下文预警 · 建议适时执行 /compact 压缩";
+		gaugeText = tNow("heatmap.gaugeWarn");
 	}
 
 	return {
-		name: "主对话 (Main)",
-		role: "主导协调与决策",
+		name: tNow("heatmap.mainName"),
+		role: tNow("heatmap.mainRole"),
 		totalTokens: grandTotal,
 		model: modelName,
 		contextGauge: {
@@ -502,38 +503,38 @@ export function analyzeSubagentDistribution(
 
 	const toolDrilldown: DrilldownItem[] = [
 		{
-			name: `执行工具调用 (${summary.toolCallCount}次)`,
+			name: tNow("heatmap.subagentToolName", { count: summary.toolCallCount }),
 			tokens: toolTokens,
 			calls: summary.toolCallCount,
 			status: "ok",
-			note: "子代理沙箱中独立执行",
+			note: tNow("heatmap.subagentToolNote"),
 		},
 	];
 
 	const systemDrilldown: DrilldownItem[] = [
 		{
-			name: "子代理轻量提示词",
+			name: tNow("heatmap.subagentSystemName"),
 			tokens: systemTokens,
 			calls: 1,
 			status: "ok",
-			note: "专职隔离任务设定",
+			note: tNow("heatmap.subagentSystemNote"),
 		},
 	];
 
 	const proseDrilldown: DrilldownItem[] = [
 		{
-			name: "交付结论与思考",
+			name: tNow("heatmap.subagentProseName"),
 			tokens: proseTokens,
 			calls: summary.requestCount,
 			status: "ok",
-			note: "回传给主会话的最终结果",
+			note: tNow("heatmap.subagentProseNote"),
 		},
 	];
 
 	const distribution: DistributionCategory[] = [
 		{
 			key: "tools",
-			label: CATEGORY_META.tools.label,
+			label: tNow(CATEGORY_META.tools.labelKey),
 			colorClass: CATEGORY_META.tools.colorClass,
 			hex: CATEGORY_META.tools.hex,
 			tokens: toolTokens,
@@ -543,7 +544,7 @@ export function analyzeSubagentDistribution(
 		},
 		{
 			key: "system",
-			label: CATEGORY_META.system.label,
+			label: tNow(CATEGORY_META.system.labelKey),
 			colorClass: CATEGORY_META.system.colorClass,
 			hex: CATEGORY_META.system.hex,
 			tokens: systemTokens,
@@ -553,7 +554,7 @@ export function analyzeSubagentDistribution(
 		},
 		{
 			key: "prose",
-			label: CATEGORY_META.prose.label,
+			label: tNow(CATEGORY_META.prose.labelKey),
 			colorClass: CATEGORY_META.prose.colorClass,
 			hex: CATEGORY_META.prose.hex,
 			tokens: proseTokens,
@@ -568,7 +569,7 @@ export function analyzeSubagentDistribution(
 
 	return {
 		name: summary.id,
-		role: summary.prompt || "子任务执行",
+		role: summary.prompt || tNow("heatmap.subagentDefaultRole"),
 		totalTokens,
 		model: modelName,
 		contextGauge: {
@@ -577,7 +578,7 @@ export function analyzeSubagentDistribution(
 			pct,
 			modelName,
 			status: "ok",
-			statusText: "● 沙箱独立上下文",
+			statusText: tNow("heatmap.subagentStatusText"),
 		},
 		distribution,
 		drilldown: {

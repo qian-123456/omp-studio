@@ -7,6 +7,7 @@ import { gitLog } from "../../lib/ipc";
 import { shortPath } from "../../lib/paths";
 import { useSessions } from "../../stores/sessions";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { useT } from "../../stores/language";
 
 export interface WorktreeHoverCardProps {
 	/** Worktree information or null */
@@ -116,6 +117,8 @@ export function WorktreeHoverCard({
 	onMouseLeaveCard,
 	onClose,
 }: WorktreeHoverCardProps) {
+	const { t, locale } = useT();
+	const isZh = locale.startsWith("zh");
 	const home = useHomeDir();
 	const sessions = useSessions((s) => s.sessions);
 	const visible = open && !!anchorRect;
@@ -125,7 +128,7 @@ export function WorktreeHoverCard({
 
 	const targetPath = wt?.path ?? path ?? "";
 	const detached = !!wt && !wt.branch;
-	const targetBranch = wt ? (wt.branch ?? `分离 HEAD · ${wt.head.slice(0, 7)}`) : (title ?? "main");
+	const targetBranch = wt ? (wt.branch ?? t("worktree.detachedHead", { head: wt.head.slice(0, 7) })) : (title ?? "main");
 	const sessionIds = wt?.sessionIds ?? [];
 	const effectiveSessionCount = wt ? sessionIds.length : (sessionCount ?? 0);
 	const known = sessionIds.map((id) => sessions[id]).filter((s) => !!s);
@@ -134,20 +137,20 @@ export function WorktreeHoverCard({
 	const isBase = wt?.branch === baseBranch;
 
 	const tag = isCurrent ? (
-		<Tag tone="emerald">当前环境</Tag>
+		<Tag tone="emerald">{t("worktree.hover.tagCurrent")}</Tag>
 	) : detached ? (
-		<Tag tone="amber">分离 HEAD</Tag>
+		<Tag tone="amber">{t("worktree.hover.tagDetached")}</Tag>
 	) : isIdle ? (
-		<Tag tone="muted">闲置</Tag>
+		<Tag tone="muted">{t("worktree.hover.tagIdle")}</Tag>
 	) : null;
 
 	const syncText = (() => {
 		if (!wt || isBase) return null;
-		if (wt.ahead === 0 && wt.behind === 0) return `与 ${baseBranch} 一致`;
+		if (wt.ahead === 0 && wt.behind === 0) return t("worktree.hover.inSync", { base: baseBranch });
 		const parts: string[] = [];
-		if (wt.ahead > 0) parts.push(`领先 ${baseBranch} ${wt.ahead} 个提交`);
-		if (wt.behind > 0) parts.push(`落后 ${baseBranch} ${wt.behind} 个提交`);
-		return parts.join("，");
+		if (wt.ahead > 0) parts.push(t("worktree.hover.aheadCommits", { base: baseBranch, count: wt.ahead }));
+		if (wt.behind > 0) parts.push(t("worktree.hover.behindCommits", { base: baseBranch, count: wt.behind }));
+		return parts.join(isZh ? "，" : ", ");
 	})();
 
 	return (
@@ -171,22 +174,22 @@ export function WorktreeHoverCard({
 
 			<div className="space-y-1.5 border-t border-[var(--border-divider)] pt-2">
 				{wt ? (
-					<Row label="状态">
+					<Row label={t("common.status")}>
 						<div className={wt.dirty > 0 ? "text-amber-300" : undefined}>
-							{wt.dirty > 0 ? `${wt.dirty} 个文件未提交` : "工作区干净"}
+							{wt.dirty > 0 ? t("worktree.hover.dirtyFiles", { count: wt.dirty }) : t("worktree.hover.clean")}
 						</div>
 						{syncText && <div>{syncText}</div>}
 					</Row>
 				) : (
 					worktreeCount !== undefined && (
-						<Row label="工作树">
-							<div>{worktreeCount} 个</div>
+						<Row label={t("worktree.hover.worktrees")}>
+							<div>{t("worktree.hover.worktreeCount", { count: worktreeCount })}</div>
 						</Row>
 					)
 				)}
 
 				{services && services.length > 0 && (
-					<Row label="运行中">
+					<Row label={t("worktree.hover.running")}>
 						{services.map((s) => (
 							<div key={`${s.pid}-${s.port}`} className="flex min-w-0 gap-1.5" title={s.command}>
 								<span className="shrink-0 font-mono text-emerald-300">:{s.port}</span>
@@ -197,7 +200,7 @@ export function WorktreeHoverCard({
 				)}
 
 				{wt && (
-					<Row label="最近提交">
+					<Row label={t("worktree.hover.recentCommit")}>
 						{commit ? (
 							<div className="flex min-w-0 gap-1.5" title={commit.subject}>
 								<span className="shrink-0 font-mono text-neutral-500">{commit.short}</span>
@@ -211,13 +214,13 @@ export function WorktreeHoverCard({
 				)}
 
 				{(wt || sessionCount !== undefined) && (
-					<Row label="会话">
+					<Row label={t("worktree.hover.sessions")}>
 						<div>
 							{effectiveSessionCount === 0
-								? "暂无会话"
+								? t("worktree.noSessions")
 								: running > 0
-									? `${effectiveSessionCount} 个，${running} 个运行中`
-									: `${effectiveSessionCount} 个`}
+									? t("worktree.hover.sessionCountWithRunning", { total: effectiveSessionCount, running })
+									: t("worktree.hover.sessionCount", { count: effectiveSessionCount })}
 						</div>
 						{recent.map((s) => (
 							<div key={s.id} className="truncate text-neutral-400">

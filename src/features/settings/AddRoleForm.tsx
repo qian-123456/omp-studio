@@ -4,6 +4,8 @@
  * edited in the table instead, so their names are refused here.
  */
 import { useState } from "react";
+import { useT } from "../../stores/language";
+import { richT } from "./modelRoleScope";
 import { isComposing } from "../../lib/hooks";
 import { ModelSelect } from "../../components/ModelSelect";
 import { parseSelection } from "../../components/modelSelectLogic";
@@ -24,12 +26,13 @@ export function AddRoleForm({
 	onAdded: (name: string) => void;
 	onCancel: () => void;
 }) {
+	const { t } = useT();
 	const [name, setName] = useState("");
 	const [value, setValue] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const locked = pending || ctx.busy;
-	const target = ctx.scope === "global" ? "全局配置" : `项目「${ctx.projectName || "项目"}」的配置`;
+	const target = ctx.scope === "global" ? t("settingsModels.targetGlobalConfig") : t("settingsModels.targetProjectConfig", { name: ctx.projectName || t("settingsModels.scopeProject") });
 
 	const pickModel = (raw: string) => {
 		const check = checkAssignmentValue(raw);
@@ -49,11 +52,11 @@ export function AddRoleForm({
 			return;
 		}
 		if (existing.has(checked.name)) {
-			setError(`已有角色「${checked.name}」，请在下方列表里直接修改它`);
+			setError(t("settingsModels.roleAlreadyExistsError", { name: checked.name }));
 			return;
 		}
 		if (value === null) {
-			setError("请先为新角色选择一个模型");
+			setError(t("settingsModels.selectModelFirstError"));
 			return;
 		}
 		setPending(true);
@@ -62,7 +65,7 @@ export function AddRoleForm({
 			await ctx.write(ctx.scope, "modelRoles", checked.name, value);
 			onAdded(checked.name);
 		} catch (e) {
-			setError(`添加失败：${errMsg(e)}`);
+			setError(t("settingsModels.addRoleFailedError", { error: errMsg(e) }));
 		} finally {
 			setPending(false);
 		}
@@ -72,12 +75,12 @@ export function AddRoleForm({
 		<div data-testid="add-role-form" className="space-y-2 border-b border-[var(--border-divider)] bg-[var(--well-bg)]/40 px-4 py-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<input
-					aria-label="新角色名称"
+					aria-label={t("settingsModels.roleNameAria")}
 					value={name}
 					autoFocus
 					spellCheck={false}
 					disabled={locked}
-					placeholder="角色名，如 reviewer"
+					placeholder={t("settingsModels.roleNamePlaceholder")}
 					onChange={(e) => {
 						setName(e.target.value);
 						setError(null);
@@ -101,7 +104,7 @@ export function AddRoleForm({
 					direction="down"
 					align="start"
 					widthClass="w-[360px]"
-					label={value === null ? "选择模型" : parseSelection(value).selector}
+					label={value === null ? t("settingsModels.selectModelBtn") : parseSelection(value).selector}
 					buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${value === null ? "italic text-[var(--text-muted)]" : ""}`}
 					models={ctx.models}
 					currentValue={value ?? ""}
@@ -110,18 +113,20 @@ export function AddRoleForm({
 					onSelect={pickModel}
 				/>
 				<Button variant="primary" size="sm" loading={pending} disabled={locked} onClick={() => void submit()}>
-					添加
+					{t("settingsModels.addRoleSubmitBtn")}
 				</Button>
 				<Button size="sm" disabled={pending} onClick={onCancel}>
-					取消
+					{t("common.cancel")}
 				</Button>
 			</div>
 			<p className="text-[11px] text-[var(--text-muted)]">
-				新角色不会自己被调用，只有被 <code className="font-mono">@角色名</code> 引用时才会用到：比如在下方子代理的「复用角色模型」里选它、让别的角色复用它、在子代理定义文件里写{" "}
-				<code className="font-mono">model: "@角色名"</code>，或在「备用模型与重试」页把它加入模型切换轮换。添加后，列表里这一行会显示有没有被引用。
+				{richT(t, "settingsModels.addRoleExplainer1", {
+					role: <code className="font-mono">{t("settingsModels.roleRefExample")}</code>,
+					model: <code className="font-mono">model: "{t("settingsModels.roleRefExample")}"</code>,
+				})}
 			</p>
 			<p className="text-[11px] text-[var(--text-dim)]">
-				将写入{target}。名称只允许字母、数字与 - _ .，添加后可在下方列表里继续修改或清除。
+				{t("settingsModels.addRoleExplainer2", { target })}
 			</p>
 			{error && (
 				<p role="alert" className="select-text break-all text-[11px] text-[var(--status-error)]">

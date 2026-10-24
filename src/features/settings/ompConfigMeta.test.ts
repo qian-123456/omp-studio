@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ompConfigOptionLabel, ompConfigOptions } from "./ompConfigMeta";
+import { ompConfigDescription, ompConfigOptionLabel, ompConfigOptions, ompConfigTitle } from "./ompConfigMeta";
 
 describe("ompConfigOptions", () => {
 	it("returns strict enum candidates with schema labels", () => {
@@ -40,5 +40,13 @@ describe("ompConfigOptionLabel", () => {
 			"10%",
 		);
 		expect(ompConfigOptionLabel("unknown.key", { value: "af_heart" })).toBe("af_heart");
+	});
+
+	it("skips Chinese overrides in en-US", () => {
+		expect(ompConfigOptionLabel("tools.approvalMode", { value: "yolo", label: "Yolo" }, "en-US")).toBe(
+			"Yolo",
+		);
+		expect(ompConfigTitle("tools.approvalMode", "en-US")).toBe("Tool Approval");
+		expect(ompConfigDescription("tools.approvalMode", "", "en-US")).toContain("approval");
 	});
 });

@@ -4,11 +4,13 @@
 
 import clsx from "clsx";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { useT } from "../../stores/language";
 
 /** About 14 lines of body text. */
 const CLAMP_PX = 320;
 
 export function ClampedProse({ children }: { children: ReactNode }) {
+	const { t } = useT();
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const [overflows, setOverflows] = useState(false);
 	const [expanded, setExpanded] = useState(false);
@@ -45,7 +47,7 @@ export function ClampedProse({ children }: { children: ReactNode }) {
 					onClick={() => setExpanded((v) => !v)}
 					className="mt-1 rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
-					{expanded ? "收起" : "展开全文"}
+					{expanded ? t("common.collapse") : t("chat.expandFull")}
 				</button>
 			)}
 		</div>

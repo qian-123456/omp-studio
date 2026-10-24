@@ -2,6 +2,7 @@
  * Maps omp retry / model-fallback events (`auto_retry_*`, `retry_fallback_*`)
  * to inline transcript status rows. Pure; used by the live reducer.
  */
+import { tNow, useLanguageStore } from "./language";
 
 export type RetryKind = "retry" | "retry_end" | "fallback" | "fallback_ok";
 
@@ -47,12 +48,12 @@ export function retrySummary(
 	const retries = notices.filter((n) => n.kind === "retry").length;
 	const failed = notices.some((n) => n.tone === "error");
 	const parts: string[] = [];
-	if (retries > 0) parts.push(`本轮重试 ${retries} 次`);
+	if (retries > 0) parts.push(tNow("shell.retryRoundCount", { count: retries }));
 	if (fallback || notices.some((n) => n.kind === "fallback")) {
-		parts.push(retries > 0 ? "已切换备用模型" : "本轮已切换备用模型");
+		parts.push(retries > 0 ? tNow("shell.retrySwitchedFallback") : tNow("shell.retrySwitchedFallbackThisRound"));
 	}
-	if (failed) parts.push("最终失败");
-	return parts.length > 0 ? parts.join(" · ") : "本轮出现请求重试";
+	if (failed) parts.push(tNow("shell.retryFinalFailed"));
+	return parts.length > 0 ? parts.join(" · ") : tNow("shell.retryOccurred");
 }
 
 const storageKey = (sessionId: string): string => `omp.retryHistory.${sessionId}`;
@@ -100,7 +101,7 @@ export function modelLabel(v: unknown): string {
 /** Collapse whitespace; long errors stay complete (rows wrap). */
 const oneLine = (s: string, max = 2000): string => {
 	const t = s.replace(/\s+/g, " ").trim();
-	return t.length > max ? `${t.slice(0, max)} [已截断]` : t;
+	return t.length > max ? `${t.slice(0, max)} ${tNow("shell.retryTruncated")}` : t;
 };
 
 /** Returns the notice (sans id) for a retry/fallback frame, else null. */
@@ -114,41 +115,49 @@ export function retryNoticeFromFrame(
 			const max = num(frame.maxAttempts);
 			const delay = num(frame.delayMs);
 			const err = oneLine(str(frame.errorMessage));
-			const count = attempt != null ? `第 ${attempt}${max != null ? `/${max}` : ""} 次` : "";
+			const count = attempt != null
+				? (max != null ? tNow("shell.retryAttemptOfMax", { attempt, max }) : tNow("shell.retryAttemptCount", { attempt }))
+				: "";
 			const wait =
-				delay != null ? `${delay >= 1000 ? Math.round(delay / 1000) : "<1"} 秒后` : "";
+				delay != null ? tNow("shell.retryWaitSeconds", { seconds: delay >= 1000 ? Math.round(delay / 1000) : "<1" }) : "";
+			const isEn = useLanguageStore.getState().locale === "en-US";
+			const errFmt = err ? (isEn ? ` (${err})` : `（${err}）`) : "";
 			return {
 				kind: "retry",
 				tone: "warn",
-				text: `请求失败${err ? `（${err}）` : ""}，${wait}自动重试${count ? `（${count}）` : ""}`,
+				text: tNow("shell.retryRequestFailedRetryWait", { error: errFmt, wait, count }),
 				ts: now,
 			};
 		}
 		case "auto_retry_end": {
 			const attempt = num(frame.attempt);
 			if (frame.success === true) {
+				const count = attempt != null ? tNow("shell.retryAttemptCount", { attempt }) : "";
 				return {
 					kind: "retry_end",
 					tone: "ok",
-					text: `重试成功${attempt != null ? `（第 ${attempt} 次）` : ""}`,
+					text: tNow("shell.retrySuccessNotice", { count }),
 					ts: now,
 				};
 			}
 			const err = oneLine(str(frame.finalError));
+			const count = attempt != null ? tNow("shell.retryTotalCount", { count: attempt }) : "";
+			const isEn = useLanguageStore.getState().locale === "en-US";
+			const errFmt = err ? (isEn ? `: ${err}` : `：${err}`) : "";
 			return {
 				kind: "retry_end",
 				tone: "error",
-				text: `重试失败${attempt != null ? `（共 ${attempt} 次）` : ""}${err ? `：${err}` : ""}`,
+				text: tNow("shell.retryFailedNotice", { count, error: errFmt }),
 				ts: now,
 			};
 		}
 		case "retry_fallback_applied": {
-			const from = modelLabel(frame.from);
-			const to = modelLabel(frame.to);
+			const from = modelLabel(frame.from) || tNow("shell.retryCurrentModel");
+			const to = modelLabel(frame.to) || tNow("shell.retryUnknown");
 			return {
 				kind: "fallback",
 				tone: "warn",
-				text: `${from || "当前模型"} 请求失败，已切换到备用模型 ${to || "（未知）"}`,
+				text: tNow("shell.retrySwitchedFallbackNotice", { from, to }),
 				ts: now,
 			};
 		}
@@ -157,7 +166,7 @@ export function retryNoticeFromFrame(
 			return {
 				kind: "fallback_ok",
 				tone: "ok",
-				text: `备用模型${model ? ` ${model}` : ""} 请求成功`,
+				text: tNow("shell.retryFallbackSuccessNotice", { model: model ? ` ${model}` : "" }),
 				ts: now,
 			};
 		}

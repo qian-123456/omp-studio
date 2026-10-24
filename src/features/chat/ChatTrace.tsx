@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import type { TranscriptItem } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
 import { collectChatTraceEntries, type ChatTraceEntry } from "./messageTrace";
+import { tNow, useT } from "../../stores/language";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: TranscriptItem[] = [];
@@ -51,6 +52,7 @@ export function ChatTrace({
 	sessionId: string;
 	scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
+	const { t, locale } = useT();
 	const items = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
@@ -59,14 +61,17 @@ export function ChatTrace({
 		(s) => Boolean(s.sessions[sessionId]?.streaming),
 	);
 
+	// `locale` re-derives the label (built via tNow) when the language changes;
+	// `t` is a fresh closure every render, so it can't be a memo dep.
 	const entries = useMemo(
 		() =>
 			collectChatTraceEntries(
 				items,
 				pendingEchoes,
-				isStreaming ? "正在思考 / 回复…" : null,
+				isStreaming ? tNow("chat.trace.thinkingOrReplying") : null,
 			),
-		[items, pendingEchoes, isStreaming],
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[items, pendingEchoes, isStreaming, locale],
 	);
 	const dashIds = useMemo(
 		() => new Set(entries.map((e) => e.id)),
@@ -209,7 +214,7 @@ export function ChatTrace({
 
 	return (
 		<nav
-			aria-label="对话问题导航"
+			aria-label={t("chat.trace.navAria")}
 			className="pointer-events-none hidden md:block absolute inset-y-0 left-0 z-10"
 		>
 			<div
@@ -254,7 +259,7 @@ export function ChatTrace({
 										}}
 										type="button"
 										aria-current={isActive ? "location" : undefined}
-										aria-label={`跳转到第 ${i + 1} 条问题`}
+										aria-label={t("chat.trace.jumpToQuestion", { index: i + 1 })}
 										aria-posinset={i + 1}
 										aria-setsize={entries.length}
 										onClick={() => jump(entry)}

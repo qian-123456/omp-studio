@@ -9,40 +9,42 @@ import { useUi } from "../../stores/ui";
 import { useTodos } from "../todos/store";
 import { INBOX_ORDER, type InboxEntry, type InboxKind, type InboxSessionKind } from "./attention";
 import { useInboxGroups } from "./useInboxBadge";
+import { useT } from "../../stores/language";
 
 type Tab = "all" | Exclude<InboxKind, "running">;
 
-const TABS: { id: Tab; label: string }[] = [
-	{ id: "all", label: "全部" },
-	{ id: "approval", label: "待审批" },
-	{ id: "question", label: "提问" },
-	{ id: "error", label: "报错" },
-	{ id: "interrupted", label: "中断" },
-	{ id: "unread", label: "未读" },
-	{ id: "schedule", label: "定时任务" },
+const TABS: { id: Tab; labelKey: string }[] = [
+	{ id: "all", labelKey: "inbox.tabAll" },
+	{ id: "approval", labelKey: "inbox.tabApproval" },
+	{ id: "question", labelKey: "inbox.tabQuestion" },
+	{ id: "error", labelKey: "inbox.tabError" },
+	{ id: "interrupted", labelKey: "inbox.tabInterrupted" },
+	{ id: "unread", labelKey: "inbox.tabUnread" },
+	{ id: "schedule", labelKey: "inbox.tabSchedule" },
 ];
 
 const SECTION_LABEL: Record<InboxKind, string> = {
-	approval: "待审批",
-	question: "提问",
-	error: "报错",
-	interrupted: "中断",
-	unread: "未读（已完成，未查看）",
-	schedule: "定时任务",
-	running: "运行中",
+	approval: "inbox.secApproval",
+	question: "inbox.secQuestion",
+	error: "inbox.secError",
+	interrupted: "inbox.secInterrupted",
+	unread: "inbox.secUnread",
+	schedule: "inbox.secSchedule",
+	running: "inbox.secRunning",
 };
 
 const EMPTY_TEXT: Record<Tab, string> = {
-	all: "暂时没有需要你处理的事项",
-	approval: "没有待审批的会话",
-	question: "没有等你回答的提问",
-	error: "没有报错的会话",
-	interrupted: "没有中断的会话",
-	unread: "没有未查看的已完成会话",
-	schedule: "没有待处理的定时任务",
+	all: "inbox.emptyAll",
+	approval: "inbox.emptyApproval",
+	question: "inbox.emptyQuestion",
+	error: "inbox.emptyError",
+	interrupted: "inbox.emptyInterrupted",
+	unread: "inbox.emptyUnread",
+	schedule: "inbox.emptySchedule",
 };
 
 export function InboxPage() {
+	const { t } = useT();
 	const groups = useInboxGroups();
 	const selectSession = useUi((s) => s.selectSession);
 	const setCenter = useUi((s) => s.setCenter);
@@ -103,7 +105,7 @@ export function InboxPage() {
 		.flatMap((k) => groups.byKind[k]);
 	const markAllRead = async () => {
 		await Promise.all(readable.map((s) => markSessionSeen(s.id)));
-		toast.info(`已将 ${readable.length} 个会话标为已读`);
+		toast.info(t("inbox.markAllReadToast", { count: readable.length }));
 	};
 	const headerBtn =
 		"inline-flex items-center gap-1 rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)] px-2 py-1 text-xs text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]";
@@ -133,9 +135,9 @@ export function InboxPage() {
 			<div className="shrink-0 border-b border-[var(--border-divider)] px-6 pt-3.5">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-3">
-						<h2 className="text-sm font-semibold">收件箱</h2>
+						<h2 className="text-sm font-semibold">{t("inbox.title")}</h2>
 						<span className="hidden text-[11px] text-[var(--text-dim)] sm:inline">
-							j/k 切换 · Enter 打开
+							{t("inbox.shortcutHint")}
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
@@ -144,20 +146,20 @@ export function InboxPage() {
 							onClick={markAllRead}
 							disabled={readable.length === 0}
 							className={`${headerBtn} disabled:cursor-not-allowed disabled:opacity-40`}
-							title="将当前列表中的未读、报错与中断会话全部标为已读"
+							title={t("inbox.markAllReadTitle")}
 						>
 							<CheckCheck className="h-3.5 w-3.5" />
-							全部已读
+							{t("inbox.markAllRead")}
 						</button>
 						<button
 							type="button"
 							onClick={async () => {
 								await loadSessions();
 								await useTodos.getState().refresh();
-								toast.info("已刷新数据");
+								toast.info(t("inbox.refreshedToast"));
 							}}
 							className={headerBtn}
-							title="刷新列表"
+							title={t("inbox.refreshTitle")}
 						>
 							<RefreshCw className="h-3.5 w-3.5" />
 						</button>
@@ -165,31 +167,31 @@ export function InboxPage() {
 							type="button"
 							onClick={() => openSettings("inbox")}
 							className={headerBtn}
-							title="收件箱设置"
+							title={t("inbox.settingsTitle")}
 						>
 							<SettingsIcon className="h-3.5 w-3.5" />
 						</button>
 					</div>
 				</div>
 				<div className="mt-2 flex gap-1" role="tablist">
-					{TABS.map((t) => (
+					{TABS.map((tabItem) => (
 						<button
-							key={t.id}
+							key={tabItem.id}
 							type="button"
 							role="tab"
-							aria-selected={tab === t.id}
+							aria-selected={tab === tabItem.id}
 							onClick={() => {
-								setTab(t.id);
+								setTab(tabItem.id);
 								setFocusedIndex(0);
 							}}
 							className={`-mb-px border-b-2 px-2.5 pb-2 text-xs transition-colors ${
-								tab === t.id
+								tab === tabItem.id
 									? "border-[var(--primary)] text-[var(--text)]"
 									: "border-transparent text-[var(--text-dim)] hover:text-[var(--text)]"
 							}`}
 						>
-							{t.label}
-							<span className="ml-1 font-mono text-[10px] text-[var(--text-dim)]">{count(t.id)}</span>
+							{t(tabItem.labelKey)}
+							<span className="ml-1 font-mono text-[10px] text-[var(--text-dim)]">{count(tabItem.id)}</span>
 						</button>
 					))}
 				</div>
@@ -200,14 +202,14 @@ export function InboxPage() {
 					{rows.length === 0 ? (
 						<div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border-divider)] py-16 text-center">
 							<CheckCircle2 className="mb-3 h-8 w-8 text-[var(--text-dim)]" />
-							<h3 className="text-sm font-semibold">{EMPTY_TEXT[tab]}</h3>
+							<h3 className="text-sm font-semibold">{t(EMPTY_TEXT[tab])}</h3>
 						</div>
 					) : tab === "all" ? (
 						<div className="space-y-5">
 							{INBOX_ORDER.filter((k) => groups.entries[k].length > 0).map((k) => (
 								<section key={k}>
 									<h4 className="mb-1 flex items-center gap-1.5 px-2 text-xs font-semibold text-[var(--text-dim)]">
-										{SECTION_LABEL[k]}
+										{t(SECTION_LABEL[k])}
 										<span className="font-mono text-[10px]">{groups.entries[k].length}</span>
 									</h4>
 									<div>{groups.entries[k].map(renderRow)}</div>
@@ -225,25 +227,26 @@ export function InboxPage() {
 
 /** Sidebar-matching status symbol for an inbox session kind. */
 function KindMark({ kind }: { kind: InboxSessionKind }) {
+	const { t } = useT();
 	switch (kind) {
 		case "approval":
 			return (
 				<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
-					待审批
+					{t("inbox.badgeApproval")}
 				</span>
 			);
 		case "question":
 			return (
 				<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
-					提问
+					{t("inbox.badgeQuestion")}
 				</span>
 			);
 		case "error":
-			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500" title="报错" />;
+			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500" title={t("inbox.badgeError")} />;
 		case "interrupted":
-			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-amber-500" title="中断" />;
+			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-amber-500" title={t("inbox.badgeInterrupted")} />;
 		case "unread":
-			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-blue-500" title="未读" />;
+			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-blue-500" title={t("inbox.badgeUnread")} />;
 		case "running":
 			return <Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />;
 	}
@@ -264,6 +267,7 @@ function InboxRow({
 	focused: boolean;
 	onOpen: () => void;
 }) {
+	const { t } = useT();
 	const s = entry.session;
 	const kind = entry.kind;
 	const pendingTitle = useLive((st) => {
@@ -288,13 +292,13 @@ function InboxRow({
 			break;
 		case "error":
 		case "interrupted":
-			detail = `${kind === "interrupted" ? "中断" : "报错"}${resultText ? ` · ${resultText}` : ""}`;
+			detail = `${kind === "interrupted" ? t("inbox.detailInterrupted") : t("inbox.detailError")}${resultText ? ` · ${resultText}` : ""}`;
 			break;
 		case "unread":
 			detail = s.lastAssistant ?? "";
 			break;
 		case "running":
-			detail = `运行中…${s.model ? ` · ${s.model}` : ""}`;
+			detail = `${t("inbox.detailRunning")}${s.model ? ` · ${s.model}` : ""}`;
 			break;
 	}
 
@@ -338,6 +342,7 @@ function ScheduleRow({
 	onOpen: () => void;
 	onAct: (action: "done" | "ignore") => void;
 }) {
+	const { t } = useT();
 	const actBtn =
 		"inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--border-divider)] px-1.5 py-0.5 text-[11px] text-[var(--text-dim)] hover:bg-[var(--bg-panel)] hover:text-[var(--text)]";
 	return (
@@ -350,20 +355,20 @@ function ScheduleRow({
 			<div className="flex w-full min-w-0 items-center gap-2">
 				<button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
 					<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-blue-500/15 px-1 text-[9px] font-semibold leading-[14px] text-blue-300">
-						定时任务
+						{t("inbox.badgeSchedule")}
 					</span>
 					<span className="min-w-0 flex-1 truncate text-sm font-medium">{todo.title}</span>
 					<span className="shrink-0 text-[11px] tabular-nums text-[var(--text-dim)]">
 						{relativeTime(todo.createdAt)}
 					</span>
 				</button>
-				<button type="button" className={actBtn} onClick={() => onAct("done")} title="标为完成">
+				<button type="button" className={actBtn} onClick={() => onAct("done")} title={t("inbox.markDoneTitle")}>
 					<Check className="h-3 w-3" />
-					完成
+					{t("inbox.markDone")}
 				</button>
-				<button type="button" className={actBtn} onClick={() => onAct("ignore")} title="忽略">
+				<button type="button" className={actBtn} onClick={() => onAct("ignore")} title={t("inbox.ignoreTitle")}>
 					<X className="h-3 w-3" />
-					忽略
+					{t("inbox.ignore")}
 				</button>
 			</div>
 			<div className="w-full truncate pl-[15px] text-xs text-[var(--text-dim)]">

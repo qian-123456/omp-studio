@@ -1,3 +1,5 @@
+import { tNow } from "../stores/language";
+
 export interface ModelOption {
 	provider: string;
 	id: string;
@@ -149,13 +151,13 @@ export function resolveCurrentModel(
 	availableModels?: ModelOption[] | null,
 ): CurrentModelSelection {
 	if (!modelState) {
-		return { value: "", label: "模型…" };
+		return { value: "", label: tNow("models.placeholder") };
 	}
 
 	if (typeof modelState === "string") {
 		const trimmed = modelState.trim();
 		if (!trimmed) {
-			return { value: "", label: "模型…" };
+			return { value: "", label: tNow("models.placeholder") };
 		}
 		const slashIndex = trimmed.indexOf("/");
 		if (slashIndex > 0) {
@@ -200,7 +202,7 @@ export function resolveCurrentModel(
 		const rawName = typeof o.name === "string" ? o.name.trim() : undefined;
 
 		if (!id && !provider) {
-			return { value: "", label: "模型…" };
+			return { value: "", label: tNow("models.placeholder") };
 		}
 
 		// If provider missing, resolve from availableModels by id
@@ -252,7 +254,7 @@ export function resolveCurrentModel(
 		}
 	}
 
-	return { value: "", label: "模型…" };
+	return { value: "", label: tNow("models.placeholder") };
 }
 
 export function buildSetModelPayload(

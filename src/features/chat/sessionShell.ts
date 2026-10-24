@@ -1,5 +1,6 @@
 import { ensureLive } from "../../lib/ensureLive";
 import { rpcSend } from "../../lib/ipc";
+import { tNow } from "../../stores/language";
 
 /** POSIX single-quote escaping for shell arguments. */
 export function shellQuote(s: string): string {
@@ -21,12 +22,12 @@ export async function runSessionBash(
 		data?: { output?: string; exitCode?: number };
 	} | null;
 	if (resp && resp.success === false) {
-		throw new Error(resp.error ?? "命令执行失败");
+		throw new Error(resp.error ?? tNow("chatView.shell.commandFailed"));
 	}
 	const output = resp?.data?.output ?? "";
 	const code = resp?.data?.exitCode;
 	if (typeof code === "number" && code !== 0) {
-		throw new Error(output.trim() || `退出码 ${code}`);
+		throw new Error(output.trim() || tNow("chatView.shell.exitCode", { code }));
 	}
 	return output;
 }

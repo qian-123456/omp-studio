@@ -10,20 +10,29 @@ import { useRef } from "react";
 import { openSettingsTarget } from "../features/settings/settingsTargets";
 import { thinkingChipState } from "../lib/models";
 import { FloatingLayer } from "./FloatingLayer";
-
-const THINKING_DESCS: Record<string, string> = {
-	auto: "跟随模型的默认力度",
-	off: "不启用深度推理思考",
-	minimal: "轻度推理，适合简单问答",
-	low: "较少推理步骤，响应较快",
-	medium: "均衡推理与响应速度",
-	high: "完整多步推理，适合复杂分析",
-	xhigh: "高强度推理，适合复杂推演",
-	max: "无限制深度推理，耗费最多预算",
-};
+import { tNow, useT } from "../stores/language";
 
 export function thinkingLabel(level: string): { label: string; desc: string } {
-	return { label: level, desc: THINKING_DESCS[level] ?? "" };
+	switch (level) {
+		case "auto":
+			return { label: level, desc: tNow("components.thinkingAuto") };
+		case "off":
+			return { label: level, desc: tNow("components.thinkingOff") };
+		case "minimal":
+			return { label: level, desc: tNow("components.thinkingMinimal") };
+		case "low":
+			return { label: level, desc: tNow("components.thinkingLow") };
+		case "medium":
+			return { label: level, desc: tNow("components.thinkingMedium") };
+		case "high":
+			return { label: level, desc: tNow("components.thinkingHigh") };
+		case "xhigh":
+			return { label: level, desc: tNow("components.thinkingXhigh") };
+		case "max":
+			return { label: level, desc: tNow("components.thinkingMax") };
+		default:
+			return { label: level, desc: "" };
+	}
 }
 
 export function ThinkingLevelPicker({
@@ -52,13 +61,14 @@ export function ThinkingLevelPicker({
 	/** Visual style: "ghost" for flat toolbars (Composer), "pill" for forms & settings. */
 	variant?: "ghost" | "pill";
 }) {
+	const { t } = useT();
 	const ref = useRef<HTMLDivElement>(null);
 	const cur = thinkingLabel(value);
 	const chip = thinkingChipState(levels, reasoning);
 	if (chip.kind === "unsupported") {
 		return (
 			<span
-				title="这个模型不支持思考，没有可调的思考等级"
+				title={t("components.thinkingUnsupportedTip")}
 				className={clsx(
 					"shrink-0 select-none",
 					variant === "pill"
@@ -66,7 +76,7 @@ export function ThinkingLevelPicker({
 						: "rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]",
 				)}
 			>
-				不支持思考
+				{t("components.thinkingUnsupported")}
 			</span>
 		);
 	}
@@ -75,7 +85,7 @@ export function ThinkingLevelPicker({
 			<button
 				type="button"
 				onClick={onConfigure}
-				title="这个模型能思考，但没有配置思考等级。点击去供应商设置里补上"
+				title={t("components.thinkingUnconfiguredTip")}
 				className={clsx(
 					"shrink-0 select-none transition-colors",
 					variant === "pill"
@@ -83,7 +93,7 @@ export function ThinkingLevelPicker({
 						: "rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
 				)}
 			>
-				未配置思考等级
+				{t("components.thinkingUnconfigured")}
 			</button>
 		);
 	}
@@ -92,7 +102,7 @@ export function ThinkingLevelPicker({
 			<button
 				type="button"
 				onClick={() => onOpenChange(!open)}
-				title={`思考等级: ${cur.label}${cur.desc ? ` (${cur.desc})` : ""}`}
+				title={t("components.thinkingLevelTitle", { label: cur.label, desc: cur.desc ? ` (${cur.desc})` : "" })}
 				className={clsx(
 					"flex select-none items-center transition-colors",
 					variant === "pill"
@@ -105,7 +115,7 @@ export function ThinkingLevelPicker({
 			>
 				{variant === "pill" ? (
 					<>
-						<span className="text-neutral-400">思考</span>
+						<span className="text-neutral-400">{t("components.thinking")}</span>
 						<span className="font-mono text-neutral-200">{cur.label}</span>
 						<ChevronDown size={11} className="shrink-0 text-neutral-500" />
 					</>
@@ -127,7 +137,7 @@ export function ThinkingLevelPicker({
 					className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 				>
 					<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
-						思考等级
+						{t("components.thinkingLevel")}
 					</div>
 					<div className="py-0.5">
 						{levels.map((level) => {
@@ -180,23 +190,24 @@ export function ThinkingLevelStrip({
 	onSelect: (level: string) => void;
 	onConfigure?: () => void;
 }) {
+	const { t } = useT();
 	const chip = thinkingChipState(levels, reasoning);
 	return (
 		<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-2">
-			<div className="pb-1 text-[11px] text-[var(--text-40,var(--text-dim))]">思考等级</div>
+			<div className="pb-1 text-[11px] text-[var(--text-40,var(--text-dim))]">{t("components.thinkingLevel")}</div>
 			{chip.kind === "unsupported" && (
 				<span className="inline-block shrink-0 whitespace-nowrap rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]">
-					不支持思考
+					{t("components.thinkingUnsupported")}
 				</span>
 			)}
 			{chip.kind === "unconfigured" && (
 				<button
 					type="button"
 					onClick={onConfigure}
-					title="这个模型能思考，但没有配置思考等级。点击去供应商设置里补上"
+					title={t("components.thinkingUnconfiguredTip")}
 					className="shrink-0 whitespace-nowrap rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
 				>
-					未配置思考等级
+					{t("components.thinkingUnconfigured")}
 				</button>
 			)}
 			{chip.kind === "levels" && (

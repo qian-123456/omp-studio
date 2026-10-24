@@ -10,6 +10,7 @@ import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 import { planEnvImport } from "./envImport";
 import { maskKey } from "./envparse";
@@ -41,6 +42,7 @@ const labelCls = "block text-xs font-medium text-neutral-200";
 const hintCls = "mt-0.5 text-[11px] text-neutral-400";
 
 export function ProviderDialog({ target, onClose }: Props) {
+	const { t } = useT();
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const rows = useProviders((s) => s.rows);
 	const upsert = useProviders((s) => s.upsert);
@@ -125,9 +127,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (isDirty) {
 			isClosingRef.current = true;
 			try {
-				const ok = await confirmDialog("当前有未保存的修改，确定要放弃吗？", {
+				const ok = await confirmDialog(t("providers.discardConfirmMessage"), {
 					danger: true,
-					okLabel: "放弃修改",
+					okLabel: t("providers.discardConfirmOk"),
 				});
 				if (!ok) {
 					isClosingRef.current = false;
@@ -174,11 +176,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const handleFetchModels = async () => {
 		const trimmedUrl = baseUrl.trim() || (isBuiltin ? (defaultBaseUrl ?? "") : "");
 		if (!trimmedUrl) {
-			toast.error("请先填写地址");
+			toast.error(t("providers.enterUrlToast"));
 			return;
 		}
 		if (!api) {
-			toast.error("请先填写协议");
+			toast.error(t("providers.enterApiToast"));
 			return;
 		}
 		setFetchingModels(true);
@@ -191,7 +193,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			);
 			setDiscoveredModels(models);
 		} catch (err) {
-			toast.error(`获取模型失败：${errMsg(err)}`);
+			toast.error(t("providers.fetchModelsFailedToast", { error: errMsg(err) }));
 		} finally {
 			setFetchingModels(false);
 		}
@@ -213,17 +215,17 @@ export function ProviderDialog({ target, onClose }: Props) {
 		const title = editing.displayName ?? editing.id;
 		const ok = await confirmDialog(
 			isOverride
-				? "会删除你对这个供应商的所有修改，包括密钥"
-				: `删除供应商「${title}」？它会从 ~/.omp/agent/models.yml 移除，已加密的密钥也会一并删除。`,
+				? t("providers.resetOverrideConfirmMessage")
+				: t("providers.deleteConfirmMessage", { title }),
 			isOverride
-				? { title: "恢复 OMP 默认", danger: true, okLabel: "恢复默认" }
-				: { title: "删除供应商", danger: true, okLabel: "删除" },
+				? { title: t("providers.resetOverrideConfirmTitle"), danger: true, okLabel: t("providers.resetOverrideConfirmOk") }
+				: { title: t("providers.deleteConfirmTitle"), danger: true, okLabel: t("providers.deleteConfirmOk") },
 		);
 		if (!ok) return;
 		setRemoving(true);
 		try {
 			await remove(editing.id);
-			toast.success(isOverride ? "已恢复 OMP 默认" : "已删除");
+			toast.success(isOverride ? t("providers.resetSuccessToast") : t("providers.deleteSuccessToast"));
 			onClose();
 		} catch (err) {
 			setFormError(errMsg(err));
@@ -238,7 +240,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (editing && isBuiltin) {
 			const extra = rowsToModelEntries(modelRows);
 			if (extra.length > 0 && !url && !defaultBaseUrl) {
-				setFormError("添加模型需要先填写地址");
+				setFormError(t("providers.addModelNeedUrlError"));
 				return;
 			}
 			setSaving(true);
@@ -252,8 +254,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 					key || null,
 					keyMode,
 				);
-				toast.success(key && keyMode === "encrypted" ? "已保存，密钥已加密" : "已保存");
-				if (count > 0) toast.success(`按规则/目录为 ${count} 个模型设置了窗口`);
+				toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
+				if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 				onClose();
 			} catch (err) {
 				setFormError(errMsg(err));
@@ -264,20 +266,20 @@ export function ProviderDialog({ target, onClose }: Props) {
 		}
 		const newId = id.trim();
 		const missing: string[] = [];
-		if (!newId) missing.push("名称");
-		if (!url) missing.push("地址");
-		if (!api) missing.push("协议");
+		if (!newId) missing.push(t("providers.fieldName"));
+		if (!url) missing.push(t("providers.fieldUrl"));
+		if (!api) missing.push(t("providers.fieldApi"));
 		if (missing.length > 0) {
-			setFormError(`请填写${missing.join("、")}`);
+			setFormError(t("providers.missingFieldsError", { fields: missing.join(t("providers.fieldListSeparator")) }));
 			return;
 		}
 		if (rows.some((r) => r.id === newId && r.id !== editing?.id)) {
-			setFormError(`已有名为「${newId}」的供应商，请换一个名称`);
+			setFormError(t("providers.duplicateIdError", { id: newId }));
 			return;
 		}
 		const models = rowsToModelEntries(modelRows);
 		if (models.length === 0) {
-			setFormError("请至少填写一个模型 ID，才能在 OMP 中选择");
+			setFormError(t("providers.atLeastOneModelError"));
 			return;
 		}
 		setSaving(true);
@@ -299,8 +301,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 				key || null,
 				keyMode,
 			);
-			toast.success(key && keyMode === "encrypted" ? "已保存，密钥已加密" : "已保存");
-			if (count > 0) toast.success(`按规则/目录为 ${count} 个模型设置了窗口`);
+			toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
+			if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 			onClose();
 		} catch (err) {
 			setFormError(errMsg(err));
@@ -341,11 +343,14 @@ export function ProviderDialog({ target, onClose }: Props) {
 				count++;
 			}
 			toast.success(
-				`已导入 ${count} 个供应商密钥（${importMode === "encrypted" ? "加密保存" : "明文写入 OMP 配置"}）`,
+				t("providers.importSuccessToast", {
+					count,
+					mode: importMode === "encrypted" ? t("providers.importModeEncrypted") : t("providers.importModePlaintext"),
+				}),
 			);
 			onClose();
 		} catch (err) {
-			toast.error(`导入失败: ${errMsg(err)}`);
+			toast.error(t("providers.importFailedToast", { error: errMsg(err) }));
 			setImporting(false);
 		}
 	};
@@ -375,7 +380,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			const selected = await openFileDialog({
 				directory: false,
 				multiple: false,
-				title: "选择 .env 文件",
+				title: t("providers.selectEnvFileTitle"),
 				defaultPath,
 			});
 			if (selected && typeof selected === "string") {
@@ -423,7 +428,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 		<Modal
 			onClose={() => void handleDismiss()}
 			size="lg"
-			ariaLabel={editing ? "编辑供应商" : isImport ? "从 .env 文件导入" : "添加供应商"}
+			ariaLabel={editing ? t("providers.titleEdit") : isImport ? t("providers.titleImport") : t("providers.titleAdd")}
 		>
 			<div
 				ref={dialogRef}
@@ -448,12 +453,12 @@ export function ProviderDialog({ target, onClose }: Props) {
 			>
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
 					<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
-						{editing ? "编辑供应商" : isImport ? "从 .env 文件导入" : "添加供应商"}
+						{editing ? t("providers.titleEdit") : isImport ? t("providers.titleImport") : t("providers.titleAdd")}
 					</div>
 					<button
 						type="button"
 						onClick={() => void handleDismiss()}
-						aria-label="关闭"
+						aria-label={t("common.close")}
 						className="rounded-md p-1 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
 					>
 						<X className="h-3.5 w-3.5" />
@@ -469,7 +474,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 									: "rounded-lg border border-dashed border-transparent p-2"
 							}
 						>
-							<div className={labelCls}>从文件读取</div>
+							<div className={labelCls}>{t("providers.readFileSection")}</div>
 							<div className="mt-1.5 flex items-center gap-1.5">
 								<input
 									type="text"
@@ -482,7 +487,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 										}
 									}}
 									placeholder="~/project/.env"
-									aria-label=".env 文件路径"
+									aria-label={t("providers.envFilePathAria")}
 									spellCheck={false}
 									className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none"
 								/>
@@ -493,7 +498,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 									className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-40"
 								>
 									{readingFile && <Loader2 className="h-3 w-3 animate-spin" />}
-									<span>读取</span>
+									<span>{t("providers.readFileBtn")}</span>
 								</button>
 								<button
 									type="button"
@@ -501,11 +506,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 									className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)]"
 								>
 									<FolderOpen className="h-3 w-3" />
-									<span>选择文件</span>
+									<span>{t("providers.selectFileBtn")}</span>
 								</button>
 							</div>
 							<div className={hintCls}>
-								看不到 .env？在选择窗口按 ⌘⇧.（Command + Shift + 句号）显示隐藏文件，或把文件拖进来 / 粘贴路径
+								{t("providers.hiddenFileHint")}
 							</div>
 							{fileError && (
 								<div className="mt-1 select-text whitespace-pre-wrap break-words text-[11px] text-red-400">
@@ -515,11 +520,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 						</div>
 						<div>
 							<label htmlFor="provider-import" className={labelCls}>
-								粘贴 .env 内容
+								{t("providers.pasteEnvLabel")}
 							</label>
 							<div className={hintCls}>
-								支持多行，格式 <code className="font-mono">ANTHROPIC_API_KEY=sk-ant-xxx</code>；
-								能对上已有供应商或预设的变量会自动匹配
+								{t("providers.pasteEnvHint")}
 							</div>
 							<textarea
 								id="provider-import"
@@ -535,7 +539,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 						{importPlan.length > 0 && (
 							<div className="space-y-1.5">
-								<div className="text-xs font-medium text-neutral-300">预览（{importable} 个可导入）</div>
+								<div className="text-xs font-medium text-neutral-300">{t("providers.previewCount", { count: importable })}</div>
 								{importPlan.map((item) => (
 									<div
 										key={item.entry.key}
@@ -544,12 +548,12 @@ export function ProviderDialog({ target, onClose }: Props) {
 										<span className="font-mono text-neutral-300">{item.entry.key}</span>
 										<span className="flex items-center gap-2 text-[11px]">
 											<span className="font-mono text-neutral-500">{maskKey(item.entry.value)}</span>
-											{item.kind === "unknown" && <span className="text-neutral-500">未识别，跳过</span>}
+											{item.kind === "unknown" && <span className="text-neutral-500">{t("providers.importUnknown")}</span>}
 											{item.kind === "create" && (
-												<span className="text-emerald-400">新建 {item.preset.name}</span>
+												<span className="text-emerald-400">{t("providers.importCreate", { name: item.preset.name })}</span>
 											)}
 											{item.kind === "setKey" && (
-												<span className="text-amber-400">更新 {item.row.displayName ?? item.row.id} 的密钥</span>
+												<span className="text-amber-400">{t("providers.importUpdate", { name: item.row.displayName ?? item.row.id })}</span>
 											)}
 										</span>
 									</div>
@@ -562,7 +566,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					<div className="flex-1 space-y-4 overflow-y-auto p-4">
 						{!editing && (
 							<div>
-								<div className={labelCls}>从预设开始</div>
+								<div className={labelCls}>{t("providers.startFromPreset")}</div>
 								<div className="mt-2 flex flex-wrap gap-1.5">
 									{PROVIDER_PRESETS.map((p) => (
 										<button
@@ -586,7 +590,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div>
 								<label htmlFor="provider-name" className={labelCls}>
-									名称
+									{t("providers.nameLabel")}
 								</label>
 								<input
 									id="provider-name"
@@ -596,15 +600,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 									readOnly={isBuiltin}
 									spellCheck={false}
 									className={`${inputCls} font-mono ${isBuiltin ? "cursor-default opacity-70" : ""}`}
-									placeholder="例如: my-gateway"
+									placeholder={t("providers.namePlaceholder")}
 								/>
 								<div className={hintCls}>
-									{isBuiltin ? "OMP 自带的供应商，名称不能改" : "就是 OMP 里的供应商名，选模型时显示为 名称/模型 ID"}
+									{isBuiltin ? t("providers.builtinNameHint") : t("providers.customNameHint")}
 								</div>
 							</div>
 							<div>
 								<label htmlFor="provider-url" className={labelCls}>
-									地址
+									{t("providers.urlLabel")}
 								</label>
 								<input
 									id="provider-url"
@@ -614,7 +618,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 									className={`${inputCls} font-mono`}
 									placeholder={isBuiltin ? (defaultBaseUrl ?? "https://api.example.com/v1") : "https://api.example.com/v1"}
 								/>
-								{isBuiltin && <div className={hintCls}>留空就用 OMP 默认地址</div>}
+								{isBuiltin && <div className={hintCls}>{t("providers.builtinUrlHint")}</div>}
 								{insecureHttpWarning(baseUrl) && (
 									<p
 										role="status"
@@ -628,14 +632,14 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 						<div>
 							<label htmlFor="provider-api" className={labelCls}>
-								协议
+								{t("providers.apiLabel")}
 							</label>
 							{isBuiltin ? (
 								<div
 									id="provider-api"
 									className="mt-1.5 select-text break-all rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-300"
 								>
-									{editing?.api ?? "未知"}
+									{editing?.api ?? t("providers.unknownApi")}
 								</div>
 							) : (
 								<>
@@ -650,17 +654,17 @@ export function ProviderDialog({ target, onClose }: Props) {
 												{a.label}
 											</option>
 										))}
-										<option value={OTHER_API}>其他 OMP 支持的协议</option>
+										<option value={OTHER_API}>{t("providers.otherApiOption")}</option>
 									</NativeSelect>
 									{apiChoice === OTHER_API && (
 										<input
 											type="text"
 											value={apiOther}
 											onChange={(e) => setApiOther(e.target.value)}
-											aria-label="其他 OMP 支持的协议"
+											aria-label={t("providers.otherApiAria")}
 											spellCheck={false}
 											className={`${inputCls} font-mono`}
-											placeholder="OMP 的 api 字段原文，如 azure-openai-responses"
+											placeholder={t("providers.otherApiPlaceholder")}
 										/>
 									)}
 								</>
@@ -674,14 +678,14 @@ export function ProviderDialog({ target, onClose }: Props) {
 								onChange={(e) => setAuthNone(e.target.checked)}
 								className="h-3.5 w-3.5 accent-[var(--accent)]"
 							/>
-							<span>这个服务不需要密钥（本机模型常见）</span>
+							<span>{t("providers.authNoneCheck")}</span>
 						</label>
 
 						{!authNone && (
 							<>
 								<div>
 									<label htmlFor="provider-key" className={labelCls}>
-										API 密钥
+										{t("providers.apiKeyLabel")}
 									</label>
 									<div className="relative">
 										<input
@@ -697,15 +701,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 											className={`${inputCls} pr-9`}
 											placeholder={
 												editing && editing.key.kind !== "missing" && editing.key.kind !== "none"
-													? "留空保持不变"
+													? t("providers.keepUnchangedPlaceholder")
 													: "sk-xxx"
 											}
 										/>
 										<button
 											type="button"
 											onClick={() => setShowKey((value) => !value)}
-											title={showKey ? "隐藏密钥" : "显示密钥"}
-											aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+											title={showKey ? t("providers.hideKey") : t("providers.showKey")}
+											aria-label={showKey ? t("providers.hideKey") : t("providers.showKey")}
 											className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-neutral-500 transition-all hover:text-neutral-200 active:scale-95"
 										>
 											{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -718,7 +722,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 						<div className="border-t border-[var(--border-divider)] pt-3">
 							<div className="flex items-center justify-between">
-								<span className={labelCls}>{isBuiltin ? "额外添加的模型" : "模型列表"}</span>
+								<span className={labelCls}>{isBuiltin ? t("providers.modelsHeaderExtra") : t("providers.modelsHeaderAll")}</span>
 								<div className="flex items-center gap-2">
 									<button
 										type="button"
@@ -731,7 +735,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 										) : (
 											<RefreshCw className="h-3 w-3" />
 										)}
-										<span>获取模型列表</span>
+										<span>{t("providers.fetchModelsBtn")}</span>
 									</button>
 									<button
 										type="button"
@@ -739,22 +743,22 @@ export function ProviderDialog({ target, onClose }: Props) {
 										className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs text-[var(--accent)] transition-all hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95"
 									>
 										<Plus className="h-3 w-3" />
-										<span>添加模型</span>
+										<span>{t("providers.addModelBtn")}</span>
 									</button>
 								</div>
 							</div>
 							<p className={hintCls}>
 								{isBuiltin
-									? `OMP 自带的 ${Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0))} 个模型会保留。模型 ID 必填；上下文窗口和输出上限留空则用 OMP 默认值。`
-									: "模型 ID 必填；上下文窗口和输出上限留空则用 OMP 默认值。"}
+									? t("providers.builtinModelsHint", { count: Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0)) })
+									: t("providers.customModelsHint")}
 							</p>
 
 							<div className="mt-2 space-y-1.5">
 								{modelRows.length > 0 && (
 									<div className="grid grid-cols-[1fr_88px_88px_28px] gap-2 px-1 text-[11px] font-medium text-neutral-400">
-										<span>模型 ID</span>
-										<span>上下文窗口</span>
-										<span>输出上限</span>
+										<span>{t("providers.colModelId")}</span>
+										<span>{t("providers.colContextWindow")}</span>
+										<span>{t("providers.colMaxTokens")}</span>
 										<span />
 									</div>
 								)}
@@ -768,9 +772,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 											type="text"
 											value={row.id}
 											onChange={(e) => handleModelRowChange(index, "id", e.target.value)}
-											aria-label={`第 ${index + 1} 个模型 ID`}
+											aria-label={t("providers.modelIdAria", { index: index + 1 })}
 											className={cellCls}
-											placeholder="例如: gpt-4o"
+											placeholder={t("providers.modelIdPlaceholder")}
 										/>
 										<input
 											type="number"
@@ -778,9 +782,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 											max={2000000}
 											value={row.contextWindow}
 											onChange={(e) => handleModelRowChange(index, "contextWindow", e.target.value)}
-											aria-label={`第 ${index + 1} 个模型的上下文窗口`}
+											aria-label={t("providers.contextWindowAria", { index: index + 1 })}
 											className={cellCls}
-											placeholder="默认"
+											placeholder={t("providers.contextWindowPlaceholder")}
 										/>
 										<input
 											type="number"
@@ -788,15 +792,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 											max={2000000}
 											value={row.maxTokens}
 											onChange={(e) => handleModelRowChange(index, "maxTokens", e.target.value)}
-											aria-label={`第 ${index + 1} 个模型的输出上限`}
+											aria-label={t("providers.maxTokensAria", { index: index + 1 })}
 											className={cellCls}
-											placeholder="默认"
+											placeholder={t("providers.maxTokensPlaceholder")}
 										/>
 										<button
 											type="button"
 											onClick={() => setModelRows((prev) => prev.filter((_, i) => i !== index))}
-											aria-label={`删除第 ${index + 1} 个模型`}
-											title="删除模型"
+											aria-label={t("providers.deleteModelAria", { index: index + 1 })}
+											title={t("providers.deleteModelTitle")}
 											className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
 										>
 											<X className="h-3.5 w-3.5" />
@@ -805,7 +809,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 								))}
 								{modelRows.length === 0 && (
 									<div className="rounded-lg hairline border-dashed border-neutral-700 p-3 text-center text-xs text-neutral-500">
-										{isBuiltin ? "没有额外模型，点击右上角「添加模型」可补充" : "暂无模型，点击右上角「添加模型」"}
+										{isBuiltin ? t("providers.builtinNoExtraModels") : t("providers.customNoModels")}
 									</div>
 								)}
 							</div>
@@ -829,7 +833,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 								type="button"
 								onClick={() => void runTest(editing.id)}
 								disabled={!editing.testable || test?.state === "testing"}
-								title={editing.testable ? "测试已保存的配置" : "暂不能测试：需要已知的地址、受支持的协议和可用的密钥"}
+								title={editing.testable ? t("providers.testSavedConfig") : t("providers.cannotTestReason")}
 								className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
 							>
 								{test?.state === "testing" ? (
@@ -837,13 +841,13 @@ export function ProviderDialog({ target, onClose }: Props) {
 								) : (
 									<Activity className="h-3 w-3" />
 								)}
-								<span>测试连接</span>
+								<span>{t("providers.testConnBtn")}</span>
 							</button>
 							{test?.state === "done" && (
 								<span
 									className={`whitespace-nowrap text-[11px] ${test.result.ok ? "text-emerald-400" : "text-rose-400"}`}
 								>
-									{test.result.ok ? "连接正常" : "连接失败"}
+									{test.result.ok ? t("providers.connSuccess") : t("providers.connFailed")}
 								</span>
 							)}
 							{editing.origin !== "builtin" && (
@@ -854,7 +858,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 									className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 disabled:opacity-40"
 								>
 									{isOverride ? <RotateCcw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
-									<span>{isOverride ? "恢复 OMP 默认" : "删除"}</span>
+									<span>{isOverride ? t("providers.resetOverrideBtn") : t("common.delete")}</span>
 								</button>
 							)}
 						</div>
@@ -864,7 +868,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 						onClick={() => void handleDismiss()}
 						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 					{isImport ? (
 						<button
@@ -874,7 +878,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-40"
 						>
 							{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-							<span>确认导入（{importable}）</span>
+							<span>{t("providers.confirmImportBtn", { count: importable })}</span>
 						</button>
 					) : (
 						<button
@@ -884,7 +888,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-40"
 						>
 							{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-							<span>保存</span>
+							<span>{t("common.save")}</span>
 						</button>
 					)}
 				</div>

@@ -31,6 +31,7 @@ import { confirmDialog, copyTextWithImages, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
 import { collectUserImages, queuedEchoIds, useLive, type CommandOutputEntry, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
@@ -175,6 +176,7 @@ const UserRow = React.memo(function UserRow({
 	sessionId: string;
 	item: TranscriptItem;
 }) {
+	const { t } = useT();
 	const rawText = item.text ?? "";
 	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
@@ -208,7 +210,7 @@ const UserRow = React.memo(function UserRow({
 			await sendPrompt(sessionId, text);
 			closeEditor();
 		} catch (e) {
-			if (!isResumeCancelled(e)) toast.error(`重新发送失败: ${errMsg(e)}`);
+			if (!isResumeCancelled(e)) toast.error(t("chat.message.resendFailed", { error: errMsg(e) }));
 		} finally {
 			setResending(false);
 		}
@@ -263,7 +265,7 @@ const UserRow = React.memo(function UserRow({
 				<ImagePreviewModal
 					images={validImages.map((img, idx) => ({
 						path: img.path,
-						marker: img.marker ?? `图片 #${idx + 1}`,
+						marker: img.marker ?? t("chat.execution.imageMarker", { num: idx + 1 }),
 					}))}
 					initialIndex={previewIndex}
 					onClose={() => setPreviewIndex(null)}
@@ -294,7 +296,7 @@ const UserRow = React.memo(function UserRow({
 							onClick={closeEditor}
 							className="rounded-md px-2.5 py-1 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
-							取消
+							{t("common.cancel")}
 						</button>
 						<button
 							type="button"
@@ -302,7 +304,7 @@ const UserRow = React.memo(function UserRow({
 							onClick={() => void resendEdited()}
 							className="rounded-md bg-[var(--text)] px-2.5 py-1 text-[var(--bg)] transition-opacity hover:opacity-90 disabled:opacity-40"
 						>
-							{resending ? "发送中" : "重新发送"}
+							{resending ? t("chat.message.resending") : t("chat.message.resend")}
 						</button>
 					</div>
 				</div>
@@ -329,7 +331,7 @@ const UserRow = React.memo(function UserRow({
 							onClick={() => setExpanded((v) => !v)}
 							className="mt-1 rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
-							{expanded ? "收起" : "查看更多"}
+							{expanded ? t("common.collapse") : t("chat.message.viewMore")}
 						</button>
 					)}
 				</div>
@@ -348,8 +350,8 @@ const UserRow = React.memo(function UserRow({
 							setEditing(true);
 						}}
 						className={USER_ACTION_BTN}
-						title="编辑并重新发送"
-						aria-label="编辑并重新发送"
+						title={t("chat.message.editAndResend")}
+						aria-label={t("chat.message.editAndResend")}
 					>
 						<Pencil size={12} />
 					</button>
@@ -358,21 +360,21 @@ const UserRow = React.memo(function UserRow({
 						onClick={async () => {
 							if (!userText.trim()) return;
 							const ok = await confirmDialog(
-								`确认重新发送该消息？\n\n"${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}"`,
-								{ okLabel: "重新发送" },
+								t("chat.message.confirmResend", { text: `${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}` }),
+								{ okLabel: t("chat.message.resend") },
 							);
 							if (!ok) return;
 							try {
 								await sendPrompt(sessionId, userText);
-								toast.success("正在重新发送…");
+								toast.success(t("chat.message.resendingToast"));
 							} catch (e) {
 								if (!isResumeCancelled(e))
-									toast.error(`重新发送失败: ${errMsg(e)}`);
+									toast.error(t("chat.message.resendFailed", { error: errMsg(e) }));
 							}
 						}}
 						className={USER_ACTION_BTN}
-						title="重新发送此消息"
-						aria-label="重新发送此消息"
+						title={t("chat.message.resendThisMessage")}
+						aria-label={t("chat.message.resendThisMessage")}
 					>
 						<RotateCcw size={12} />
 					</button>
@@ -387,16 +389,16 @@ const UserRow = React.memo(function UserRow({
 								);
 								toast.success(
 									validImages.length > 0
-										? `已复制文字和 ${validImages.length} 张图片`
-										: "已复制用户消息",
+										? t("chat.message.copiedWithImages", { count: validImages.length })
+										: t("chat.message.copiedUserMessage"),
 								);
 							} catch (e) {
-								toast.error(`复制失败: ${errMsg(e)}`);
+								toast.error(t("chat.message.copyFailed", { error: errMsg(e) }));
 							}
 						}}
 						className={USER_ACTION_BTN}
-						title="复制消息"
-						aria-label="复制消息"
+						title={t("chat.message.copyMessage")}
+						aria-label={t("chat.message.copyMessage")}
 					>
 						<Copy size={12} />
 					</button>
@@ -436,6 +438,7 @@ const ProtocolRow = React.memo(function ProtocolRow({
 	sessionId: string;
 	item: TranscriptItem;
 }) {
+	const { t } = useT();
 	if (isLocalRowItem(item)) {
 		const row = item.localRow;
 		return row.type === "echo" ? (
@@ -465,7 +468,7 @@ const ProtocolRow = React.memo(function ProtocolRow({
 				title={text}
 			>
 				{text}
-				{running && <Loader2 size={11} className="animate-spin" aria-label="进行中" />}
+				{running && <Loader2 size={11} className="animate-spin" aria-label={t("chat.message.inProgress")} />}
 			</span>
 			<div className="h-px flex-1 bg-[var(--line)]" />
 		</div>
@@ -560,6 +563,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	/** Latest end among the turn's finished subagents (epoch ms). */
 	subagentEndedAt?: number;
 }) {
+	const { t } = useT();
 	const streamingThisTurn = useLive(
 		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
 	);
@@ -726,9 +730,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						id={`msg-${block.answerItem.id}`}
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]"
 					>
-						已停止{block.durationMs ? ` · ${formatDurationCompact(block.durationMs)}` : ""}
+						{block.durationMs ? t("chat.message.stoppedWithTime", { time: formatDurationCompact(block.durationMs) }) : t("chat.message.stopped")}
 						{answerTime && (
-							<span className="ml-2 tabular-nums text-[11px] text-[var(--text-30)]" title="回复时间">
+							<span className="ml-2 tabular-nums text-[11px] text-[var(--text-30)]" title={t("chat.message.responseTime")}>
 								{answerTime}
 							</span>
 						)}
@@ -761,7 +765,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						{answerText ? (
 							<Markdown text={answerText} sessionId={sessionId} />
 						) : (
-							<span className="italic text-[var(--text-40)]">空回复</span>
+							<span className="italic text-[var(--text-40)]">{t("chat.message.emptyReply")}</span>
 						)}
 					</div>
 					{block.answerItem.stopReason === "error" &&
@@ -801,6 +805,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 /** Hint under a context-overflow error: jump to the model's context-window row. */
 function ContextOverflowHint({ modelRef }: { modelRef: string | null | undefined }) {
+	const { t } = useT();
 	const onClick = () => {
 		const ref = splitModelRef(modelRef);
 		if (ref) openContextWindowForModel(ref.providerId, ref.modelId);
@@ -808,13 +813,13 @@ function ContextOverflowHint({ modelRef }: { modelRef: string | null | undefined
 	};
 	return (
 		<div className="mt-1 text-[12px] text-[var(--text-60)]">
-			可能是该模型的上下文窗口设得过大 →{" "}
+			{t("chat.message.contextTooLargeHint")}
 			<button
 				type="button"
 				onClick={onClick}
 				className="cursor-pointer text-[var(--accent)] hover:underline"
 			>
-				去调整
+				{t("chat.message.goToAdjust")}
 			</button>
 		</div>
 	);
@@ -1316,6 +1321,7 @@ export function MessageList({
 	 * center the composer under the empty-state hero. */
 	onEmptyChange?: (empty: boolean) => void;
 }) {
+	const { t } = useT();
 	// Narrow subscriptions — NOT subscribing to whole session object!
 	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
 	// Side chats inherit the parent's history; show only their own turns.
@@ -1922,7 +1928,7 @@ export function MessageList({
 				),
 		);
 		if (idx < 0) {
-			toast.info("没有在当前对话里找到这次调用");
+			toast.info(t("chat.message.callNotFoundInChat"));
 			return;
 		}
 		followRef.current = detach(followRef.current);
@@ -1935,7 +1941,7 @@ export function MessageList({
 					?.scrollIntoView({ behavior: "smooth", block: "center" });
 			}, delay);
 		}
-	}, [locateTarget, blocks, virtualizer, isLoadingTranscript, flashHighlight]);
+	}, [locateTarget, blocks, virtualizer, isLoadingTranscript, flashHighlight, t]);
 	// Anchor the pill to the (non-scrolling) scroll container, not the list root
 	// that moves with scrollTop.
 	const [locateHost, setLocateHost] = useState<HTMLElement | null>(null);
@@ -1947,7 +1953,7 @@ export function MessageList({
 			{/* Loading transcript affordance */}
 			{isLoadingTranscript && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
-					<span className="shimmer-text text-[13px]">正在加载会话记录…</span>
+					<span className="shimmer-text text-[13px]">{t("chat.message.loadingTranscript")}</span>
 				</div>
 			)}
 
@@ -1955,7 +1961,7 @@ export function MessageList({
 			{!isLoadingTranscript && transcriptError && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
 					<p className="text-[13px] font-medium text-[var(--text-60)]">
-						加载会话记录失败
+						{t("chat.message.loadTranscriptFailed")}
 					</p>
 					<p className="mt-1 max-w-sm text-[12px] leading-normal text-[var(--status-error)]">
 						{transcriptError}
@@ -1967,7 +1973,7 @@ export function MessageList({
 							className="mt-3 flex items-center gap-1 rounded px-2 py-1 text-[12px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
 							<RotateCcw size={12} />
-							<span>重试加载</span>
+							<span>{t("chat.message.retryLoading")}</span>
 						</button>
 					)}
 				</div>

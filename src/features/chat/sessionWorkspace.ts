@@ -6,6 +6,7 @@
  */
 import type { SessionMeta, Workspace } from "../../lib/contracts";
 import { basename, isInside } from "../../lib/paths";
+import { tNow } from "../../stores/language";
 
 export type SessionLocation =
 	/** Registered project workspace (by stored id, or matched from repoRoot/cwd). */
@@ -17,7 +18,7 @@ export type SessionLocation =
 	/** No cwd recorded at all. */
 	| { kind: "unknown"; label: string };
 
-const UNKNOWN_LABEL = "未关联目录";
+const UNKNOWN_LABEL = () => tNow("chatView.workspace.noDirectory");
 
 /** Last path segment, or the whole path when it has none. */
 export const baseName = basename;
@@ -52,7 +53,7 @@ export function resolveSessionLocation(
 	meta: Pick<SessionMeta, "cwd" | "repoRoot" | "workspaceId" | "mode"> | null | undefined,
 	workspaces: readonly Workspace[],
 ): SessionLocation {
-	if (!meta) return { kind: "unknown", label: UNKNOWN_LABEL };
+	if (!meta) return { kind: "unknown", label: UNKNOWN_LABEL() };
 	const cwd = meta.cwd ?? "";
 	const stored = meta.workspaceId
 		? (workspaces.find((w) => w.id === meta.workspaceId) ?? null)
@@ -77,7 +78,7 @@ export function resolveSessionLocation(
 		return { kind: "global", workspace: stored, label: stored.name };
 	}
 	if (cwd) return { kind: "location", path: cwd, label: baseName(cwd) };
-	return { kind: "unknown", label: UNKNOWN_LABEL };
+	return { kind: "unknown", label: UNKNOWN_LABEL() };
 }
 
 /** Directory the Git panel should inspect for `meta`: cwd, else its repo root. */

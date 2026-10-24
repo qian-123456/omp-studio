@@ -4,6 +4,7 @@
  * use these instead of receiving props from SettingsPage.
  */
 import { useEffect, useMemo } from "react";
+import { tNow } from "../../stores/language";
 import type { Model, Settings } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { pickCurrentModel, toModelKey } from "../../lib/models";
@@ -18,7 +19,7 @@ import { useSettings } from "./store";
 export class SettingsValidationError extends Error {}
 
 function validatePatch(patch: Partial<Settings>): string | null {
-	if (patch.ompBinary !== undefined && !patch.ompBinary.trim()) return "OMP 命令行程序不能为空";
+	if (patch.ompBinary !== undefined && !patch.ompBinary.trim()) return tNow("settingsCore.useAppSettings.ompBinaryRequired");
 	return null;
 }
 
@@ -35,7 +36,7 @@ export async function saveAppSettings(patch: Partial<Settings>): Promise<void> {
 	try {
 		await useSettings.getState().update(patch);
 	} catch (err) {
-		toast.error(`保存失败: ${errMsg(err)}`);
+		toast.error(tNow("settingsCore.useAppSettings.saveFailed", { error: errMsg(err) }));
 		throw err;
 	}
 }

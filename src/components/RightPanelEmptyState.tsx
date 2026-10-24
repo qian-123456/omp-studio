@@ -13,12 +13,14 @@ import { deriveLoadState } from "../lib/loadState";
 import { useSessions } from "../stores/sessions";
 import { type RightTab, useUi } from "../stores/ui";
 import { openNewSideChat } from "../features/sidechat/viewStore";
+import { useT } from "../stores/language";
 
 interface RightPanelEmptyStateProps {
 	tabBadges: Record<RightTab, number>;
 }
 
 export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
+	const { t } = useT();
 	const setRightTab = useUi((s) => s.setRightTab);
 	const selectedId = useUi((s) => s.selectedSessionId);
 	const toggleRight = useUi((s) => s.toggleRight);
@@ -31,46 +33,15 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 
 	const PRIMARY_OPTIONS: {
 		id: RightTab;
-		label: string;
 		icon: React.ComponentType<{ size?: number; className?: string }>;
 		iconColor: string;
 	}[] = [
-		{
-			id: "explorer",
-			label: "文件",
-			icon: Folder,
-			iconColor: "text-amber-400",
-		},
-		{
-			id: "git",
-			label: "Git",
-			icon: GitBranch,
-			iconColor: "text-orange-400",
-		},
-			{
-			id: "sidechat",
-			label: "辅助对话",
-			icon: MessageSquare,
-			iconColor: "text-sky-400",
-		},
-		{
-			id: "services",
-			label: "服务",
-			icon: Cpu,
-			iconColor: "text-purple-400",
-		},
-		{
-			id: "heatmap",
-			label: "Token 用量",
-			icon: Coins,
-			iconColor: "text-amber-400",
-		},
-		{
-			id: "terminal",
-			label: "终端",
-			icon: SquareTerminal,
-			iconColor: "text-emerald-400",
-		},
+		{ id: "explorer", icon: Folder, iconColor: "text-amber-400" },
+		{ id: "git", icon: GitBranch, iconColor: "text-orange-400" },
+		{ id: "sidechat", icon: MessageSquare, iconColor: "text-sky-400" },
+		{ id: "services", icon: Cpu, iconColor: "text-purple-400" },
+		{ id: "heatmap", icon: Coins, iconColor: "text-amber-400" },
+		{ id: "terminal", icon: SquareTerminal, iconColor: "text-emerald-400" },
 	];
 
 	return (
@@ -81,8 +52,8 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 					type="button"
 					onClick={toggleRight}
 					className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-					title="收起侧边面板 (⌘J)"
-					aria-label="收起侧边面板 (⌘J)"
+					title={t("rightPanel.collapsePanel")}
+					aria-label={t("rightPanel.collapsePanel")}
 				>
 					<PanelRightClose size={15} />
 				</button>
@@ -94,10 +65,10 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 					{/* Header titles */}
 					<div className="text-center space-y-1.5">
 						<h2 className="text-lg font-bold text-neutral-100 tracking-tight">
-							打开标签页
+							{t("rightPanel.openTabsTitle")}
 						</h2>
 						<p className="text-xs text-neutral-400">
-							选择要在侧边面板中打开的标签。
+							{t("rightPanel.openTabsDesc")}
 						</p>
 					</div>
 
@@ -112,7 +83,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 									key={opt.id}
 									type="button"
 									disabled={blocked}
-									title={blocked ? "请先选择一个会话，辅助对话依附于当前会话" : undefined}
+									title={blocked ? t("rightPanel.sideChatNeedSession") : undefined}
 									onClick={() => {
 										// A side-chat group only exists while it has chats: open a blank one.
 										if (opt.id === "sidechat") {
@@ -135,14 +106,14 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 											)}
 										/>
 										<span className="text-xs font-medium text-neutral-200 group-hover:text-neutral-100">
-											{opt.label}
+											{t(`rightPanel.${opt.id}`)}
 										</span>
 									</div>
 
 									{badgesLoading && (
 										<span
 											role="status"
-											title="正在加载中"
+											title={t("rightPanel.loading")}
 											className="h-4 w-6 animate-pulse rounded-full bg-neutral-700/60"
 										/>
 									)}

@@ -10,6 +10,7 @@
 import { create } from "zustand";
 import type { ModelKindEntry, ModelProbeKind } from "../../../lib/contracts";
 import { modelKindCatalog } from "../../../lib/ipc";
+import { tNow } from "../../../stores/language";
 
 /** Display groups. `missing` = not in the catalog at all (likely dead). */
 export type KindGroup = "missing" | "chat" | "search" | "judge" | "other";
@@ -17,13 +18,24 @@ export type KindGroup = "missing" | "chat" | "search" | "judge" | "other";
 /** Section order in the overview: the actionable "missing" group first. */
 export const KIND_GROUP_ORDER: readonly KindGroup[] = ["missing", "chat", "search", "judge", "other"];
 
-export const KIND_GROUP_TITLES: Record<KindGroup, string> = {
-	missing: "模型目录中找不到（可能已失效）",
-	chat: "对话模型",
-	search: "搜索服务",
-	judge: "判断模型",
-	other: "其他类型（图像 / 语音 / 向量等）",
+export const KIND_GROUP_KEYS: Record<KindGroup, string> = {
+	missing: "modelReplace.kindGroup.missing",
+	chat: "modelReplace.kindGroup.chat",
+	search: "modelReplace.kindGroup.search",
+	judge: "modelReplace.kindGroup.judge",
+	other: "modelReplace.kindGroup.other",
 };
+
+export function kindGroupTitle(group: KindGroup): string {
+	return tNow(KIND_GROUP_KEYS[group]);
+}
+
+export const KIND_GROUP_TITLES: Record<KindGroup, string> = new Proxy({} as Record<KindGroup, string>, {
+	get(_target, prop: string) {
+		const key = KIND_GROUP_KEYS[prop as KindGroup];
+		return key ? tNow(key) : undefined;
+	},
+});
 
 /** Group of an omp catalog kind; `undefined` (not in catalog) → `missing`. */
 export function kindGroup(kind: string | undefined): KindGroup {

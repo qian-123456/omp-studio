@@ -35,6 +35,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT, tNow } from "../../stores/language";
 import { Markdown } from "../../components/Markdown";
 import { formatRelativeTime } from "../schedules/humanCadence";
 import { Switch } from "../settings/Switch";
@@ -54,26 +55,22 @@ function stripFrontmatter(text: string): string {
 	return m ? text.slice(m[0].length).trimStart() : text;
 }
 
-const ISSUE_META: Record<SkillIssue, { label: string; explain: string }> = {
+const ISSUE_META_KEYS: Record<SkillIssue, { labelKey: string; explainKey: string }> = {
 	missing_description: {
-		label: "缺描述",
-		explain:
-			"SKILL.md 的 frontmatter 缺少 description，模型难以判断何时该调用它。",
+		labelKey: "skills.issueMissingDescriptionLabel",
+		explainKey: "skills.issueMissingDescriptionExplain",
 	},
 	description_too_long: {
-		label: "描述超长",
-		explain:
-			"description 超过 1024 字符上限（Agent Skills 规范），注入系统提示时会被截断并白白占用上下文。",
+		labelKey: "skills.issueDescriptionTooLongLabel",
+		explainKey: "skills.issueDescriptionTooLongExplain",
 	},
 	unreadable: {
-		label: "不可读",
-		explain:
-			"SKILL.md 读取或 frontmatter 解析失败（也可能是目录符号链接失效），该技能大概率无法正常工作。",
+		labelKey: "skills.issueUnreadableLabel",
+		explainKey: "skills.issueUnreadableExplain",
 	},
 	missing_skill_md: {
-		label: "缺少 SKILL.md",
-		explain:
-			"这个文件夹放在技能目录里，但里面没有 SKILL.md 文件，OMP 会直接忽略它。补上 SKILL.md 后才会被识别。",
+		labelKey: "skills.issueMissingSkillMdLabel",
+		explainKey: "skills.issueMissingSkillMdExplain",
 	},
 };
 
@@ -84,16 +81,13 @@ const ISSUE_ORDER: SkillIssue[] = [
 	"missing_description",
 ];
 
-const TRIGGERS_HINT =
-	"模型从技能目录自动识别并调用的次数（含手动 /skill: 调用）";
-
 const sourceLabel = (source: string) =>
-	source === "project" ? "项目级" : "全局";
+	source === "project" ? tNow("skills.sourceProject") : tNow("skills.sourceGlobal");
 
-const SORT_OPTIONS: { value: SkillSort; label: string }[] = [
-	{ value: "count", label: "按触发次数" },
-	{ value: "lastUsed", label: "按最后触发" },
-	{ value: "name", label: "按名称" },
+const SORT_OPTIONS: { value: SkillSort; labelKey: string }[] = [
+	{ value: "count", labelKey: "skills.sortCount" },
+	{ value: "lastUsed", labelKey: "skills.sortLastUsed" },
+	{ value: "name", labelKey: "skills.sortName" },
 ];
 
 /** Short badge + explanatory text for why a skill is off for new sessions. */
@@ -103,38 +97,38 @@ function describeDisabledReason(reason: SkillDisabledReason): {
 } {
 	switch (reason.kind) {
 		case "disabled":
-			return { badge: "已停用", detail: "已在 disabledExtensions 中停用" };
+			return { badge: tNow("skills.reasonDisabledBadge"), detail: tNow("skills.reasonDisabledDetail") };
 		case "source":
 			return {
-				badge: "来源已关闭",
-				detail: `来源已关闭：${reason.key} = false`,
+				badge: tNow("skills.reasonSourceBadge"),
+				detail: tNow("skills.reasonSourceDetail", { key: reason.key }),
 			};
 		case "ignored":
 			return reason.exact
 				? {
-						badge: "已忽略",
-						detail: "已被 skills.ignoredSkills 按名称忽略",
+						badge: tNow("skills.reasonIgnoredExactBadge"),
+						detail: tNow("skills.reasonIgnoredExactDetail"),
 					}
 				: {
-						badge: "已忽略",
-						detail: `被忽略规则 ${reason.pattern} 匹配`,
+						badge: tNow("skills.reasonIgnoredPatternBadge"),
+						detail: tNow("skills.reasonIgnoredPatternDetail", { pattern: reason.pattern }),
 					};
 		case "not_included":
 			return {
-				badge: "未纳入",
-				detail: "不在 skills.includeSkills 白名单内",
+				badge: tNow("skills.reasonNotIncludedBadge"),
+				detail: tNow("skills.reasonNotIncludedDetail"),
 			};
 		case "all_off":
 			return {
-				badge: "全部关闭",
-				detail: "skills.enabled = false，所有技能已整体关闭",
+				badge: tNow("skills.reasonAllOffBadge"),
+				detail: tNow("skills.reasonAllOffDetail"),
 			};
 	}
 }
 
-const GLOBAL_SCOPE_CHIP = "对所有项目生效";
-const PROJECT_OVERRIDE_TITLE =
-	"这个项目的 .omp/config.yml 自带一份停用名单，这里的全局开关在本项目里不起作用";
+const GLOBAL_SCOPE_CHIP = () => tNow("skills.globalScopeChip");
+const PROJECT_OVERRIDE_TITLE = () =>
+	tNow("skills.projectOverrideTitle");
 
 /** A locked Switch can't take a title — wrap it so tooltips still work. */
 function SkillSwitch({
@@ -162,13 +156,13 @@ function SkillSwitch({
 			className="inline-flex"
 			title={
 				pending
-					? "更新中…"
+					? tNow("skills.switchUpdating")
 					: overridden
-						? PROJECT_OVERRIDE_TITLE
+						? PROJECT_OVERRIDE_TITLE()
 						: reason
 							? describeDisabledReason(reason).detail
 							: enabled
-								? "停用后新会话不再加载该技能（对所有项目生效）"
+								? tNow("skills.switchDisableGlobalHint")
 								: undefined
 			}
 		>
@@ -194,10 +188,11 @@ function DeleteConfirmBody({
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
+	const { t } = useT();
 	return (
 		<div className="w-64">
 			<p className="text-xs leading-relaxed text-neutral-200">
-				将把「{skill.name}」整个目录移到废纸篓，可从废纸篓恢复。
+				{t("skills.deleteDialogTitle", { name: skill.name })}
 			</p>
 			<p
 				className="mt-1.5 truncate font-mono text-[11px] text-neutral-500"
@@ -207,7 +202,7 @@ function DeleteConfirmBody({
 			</p>
 			{skill.copies > 1 && (
 				<p className="mt-1.5 text-[11px] leading-relaxed text-amber-400/90">
-					另有 {skill.copies - 1} 处同名副本不受影响，删除后可能由它们生效
+					{t("skills.deleteCopiesWarning", { count: skill.copies - 1 })}
 				</p>
 			)}
 			<div className="mt-3 flex items-center justify-end gap-1.5">
@@ -217,7 +212,7 @@ function DeleteConfirmBody({
 					disabled={busy}
 					className="rounded-md px-2.5 py-1 text-xs font-medium text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 disabled:opacity-50"
 				>
-					取消
+					{t("common.cancel")}
 				</button>
 				<button
 					type="button"
@@ -226,7 +221,7 @@ function DeleteConfirmBody({
 					className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
 				>
 					<Trash2 size={12} />
-					移到废纸篓
+					{t("skills.moveToTrash")}
 				</button>
 			</div>
 		</div>
@@ -241,7 +236,7 @@ function DeleteConfirmBody({
 function insertSkillIntoComposer(skill: SkillItem, enabled: boolean): boolean {
 	const selectedSessionId = useUi.getState().selectedSessionId;
 	if (!selectedSessionId) {
-		toast.error("当前未选择会话，请先在侧边栏选择一个会话");
+		toast.error(tNow("skills.noSessionSelected"));
 		return false;
 	}
 	const existingDraft = useComposer.getState().drafts[selectedSessionId] ?? "";
@@ -258,8 +253,8 @@ function insertSkillIntoComposer(skill: SkillItem, enabled: boolean): boolean {
 	useUi.getState().setCenter("session");
 	toast.success(
 		enabled
-			? `已插入 /skill:${skill.name} 到会话输入框`
-			: `「${skill.name}」已停用，已插入“读取该 Skill 文件”的指令`,
+			? tNow("skills.insertedSkill", { name: skill.name })
+			: tNow("skills.insertedDisabledSkill", { name: skill.name }),
 	);
 	return true;
 }
@@ -271,19 +266,20 @@ const skillUsable = (skill: SkillItem) =>
 const ROW_ACTION =
 	"flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-divider)] bg-neutral-800/60 text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30";
 
-const DISABLED_FILE_HINT = "启用（去掉文件名里的 .disabled）";
+const DISABLED_FILE_HINT = () => tNow("skills.disabledFileHint");
 
 const skillUseTitle = (skill: SkillItem, enabled: boolean, hasSession: boolean) =>
 	!skillUsable(skill)
-		? "该文件夹缺少 SKILL.md，OMP 会忽略它，无法使用"
+		? tNow("skills.skillUseMissingSkillMd")
 		: !hasSession
-			? "请先在侧边栏选择一个会话"
+			? tNow("skills.skillUseNoSession")
 			: enabled
-				? `在当前会话插入 /skill:${skill.name}`
-				: "已停用：/skill 命令不可用，将插入“读取该 Skill 文件”的指令临时使用";
+				? tNow("skills.skillUseEnabled", { name: skill.name })
+				: tNow("skills.skillUseDisabled");
 
 /** Info circle next to the 启用 column header explaining what the switch does. */
 function EnableInfoButton() {
+	const { t } = useT();
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const [hover, setHover] = useState(false);
 	const [pinned, setPinned] = useState(false);
@@ -308,7 +304,7 @@ function EnableInfoButton() {
 			<button
 				ref={btnRef}
 				type="button"
-				aria-label="启用开关说明"
+				aria-label={t("skills.enableInfoAriaLabel")}
 				onMouseEnter={enter}
 				onMouseLeave={leave}
 				onClick={() => setPinned((p) => !p)}
@@ -329,15 +325,15 @@ function EnableInfoButton() {
 				onMouseEnter={enter}
 				onMouseLeave={leave}
 				role="dialog"
-				aria-label="启用开关说明"
+				aria-label={t("skills.enableInfoAriaLabel")}
 				className="w-[260px] rounded-xl border border-neutral-700 bg-neutral-900 p-3 text-left text-[12px] font-normal normal-case leading-relaxed tracking-normal text-neutral-300 shadow-2xl"
 			>
-				<div className="mb-1.5 font-semibold text-neutral-100">这个开关做什么</div>
+				<div className="mb-1.5 font-semibold text-neutral-100">{t("skills.enableInfoTitle")}</div>
 				<ul className="list-disc space-y-1 pl-4 text-neutral-400">
-					<li>关掉后，新开的对话里 AI 用不了这个 Skill</li>
-					<li>不删文件，不影响正在进行的对话</li>
-					<li>开关点不动：这一整类 Skill 在设置里被统一关了，鼠标放上去能看到是哪一项</li>
-					<li>想临时用一次：点 ▶</li>
+					<li>{t("skills.enableInfoItem1")}</li>
+					<li>{t("skills.enableInfoItem2")}</li>
+					<li>{t("skills.enableInfoItem3")}</li>
+					<li>{t("skills.enableInfoItem4")}</li>
 				</ul>
 			</FloatingLayer>
 		</>
@@ -348,17 +344,18 @@ async function revealInFinder(path: string) {
 	try {
 		await revealItemInDir(path);
 	} catch (err) {
-		toast.error(`在访达中显示失败: ${errMsg(err)}`);
+		toast.error(tNow("skills.revealInFinderFailed", { error: errMsg(err) }));
 	}
 }
 
 function IssueBadges({ issues }: { issues: SkillIssue[] }) {
+	const { t } = useT();
 	return (
 		<>
 			{ISSUE_ORDER.filter((i) => issues.includes(i)).map((issue) => (
 				<span
 					key={issue}
-					title={ISSUE_META[issue].explain}
+					title={t(ISSUE_META_KEYS[issue].explainKey)}
 					className={clsx(
 						"shrink-0 rounded border px-1 py-px text-[10px] font-medium",
 						issue === "unreadable"
@@ -366,7 +363,7 @@ function IssueBadges({ issues }: { issues: SkillIssue[] }) {
 							: "border-amber-500/25 bg-amber-500/10 text-amber-400",
 					)}
 				>
-					{ISSUE_META[issue].label}
+					{t(ISSUE_META_KEYS[issue].labelKey)}
 				</span>
 			))}
 		</>
@@ -393,6 +390,7 @@ function DetailDrawer({
 	onTrashSkill: (skill: SkillItem) => void;
 	trashingDirs: string[];
 }) {
+	const { t } = useT();
 	const catalog = useSkillsStore((s) => s.catalog);
 	const skillConfig = useSkillsStore((s) => s.skillConfig);
 	const listOverridden = useSkillsStore((s) => s.skillConfigOverrides.includes("disabledExtensions"));
@@ -507,7 +505,7 @@ function DetailDrawer({
 									)}
 								>
 									<Power size={10} />
-									{extension.enabled ? "已启用" : "已停用"}
+									{extension.enabled ? t("skills.extensionStatusEnabled") : t("skills.extensionStatusDisabled")}
 								</span>
 							)}
 						</div>
@@ -521,7 +519,7 @@ function DetailDrawer({
 								)}
 								title={
 									enablement?.enabled === false
-										? "已停用：OMP 不会注册这个命令"
+										? t("skills.extensionDisabledHint")
 										: undefined
 								}
 							>
@@ -532,7 +530,7 @@ function DetailDrawer({
 					<button
 						type="button"
 						onClick={onClose}
-						title="关闭 (Esc)"
+						title={t("skills.closeEsc")}
 						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 					>
 						<X size={14} />
@@ -543,9 +541,9 @@ function DetailDrawer({
 				<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 					{/* Copyable paths */}
 					{[
-						{ label: "安装位置", value: skill ? skill.root : null },
+						{ label: t("skills.installLocation"), value: skill ? skill.root : null },
 						{
-							label: skill ? "SKILL.md 路径" : "文件路径",
+							label: skill ? t("skills.skillMdPath") : t("skills.filePath"),
 							value: (skill ?? extension)?.path ?? null,
 						},
 					]
@@ -561,7 +559,7 @@ function DetailDrawer({
 								</span>
 								<CopyButton
 									text={r.value}
-									title={`复制${r.label}`}
+									title={t("skills.copyField", { label: r.label })}
 									className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 								/>
 							</div>
@@ -571,52 +569,52 @@ function DetailDrawer({
 					{skill ? (
 						<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl hairline bg-[var(--well-bg)]/40 p-3.5 text-xs">
 							<div>
-								<dt className="text-neutral-500">目录名</dt>
+								<dt className="text-neutral-500">{t("skills.dirName")}</dt>
 								<dd className="mt-0.5 font-mono text-neutral-200">{dirName}</dd>
 							</div>
 							<div>
-								<dt className="text-neutral-500">来源</dt>
+								<dt className="text-neutral-500">{t("skills.sourceLabel")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
 									{sourceLabel(skill.source)}
 								</dd>
 							</div>
 							<div>
-								<dt className="text-neutral-500">触发统计</dt>
+								<dt className="text-neutral-500">{t("skills.triggerStats")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
 									{usageError ? (
-										<span title={usageError}>统计不可用</span>
+										<span title={usageError}>{t("skills.statsUnavailable")}</span>
 									) : (itemUsage?.count ?? 0) > 0 ? (
 										<>
-											{days} 天内 {itemUsage?.count} 次
+											{t("skills.statsDaysCount", { days, count: itemUsage?.count ?? 0 })}
 											{itemUsage?.lastUsedAt && (
 												<span className="text-neutral-500">
 													{" "}
-													· 最后 {formatRelativeTime(itemUsage.lastUsedAt)}
+													{t("skills.statsLastUsed", { time: formatRelativeTime(itemUsage.lastUsedAt) })}
 												</span>
 											)}
 										</>
 									) : itemUsage?.lastUsedAt ? (
 										<span className="text-neutral-400">
-											最后 {formatRelativeTime(itemUsage.lastUsedAt)}
+											{t("skills.statsLastUsedOnly", { time: formatRelativeTime(itemUsage.lastUsedAt) })}
 										</span>
 									) : (
-										<span className="text-neutral-500">从未触发</span>
+										<span className="text-neutral-500">{t("skills.statsNeverTriggered")}</span>
 									)}
 								</dd>
 							</div>
 							<div>
-								<dt className="text-neutral-500">副本数</dt>
+								<dt className="text-neutral-500">{t("skills.copiesCount")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
 									{skill.copies > 1
-										? `${skill.copies} 处（按优先级生效此处）`
+										? t("skills.copiesPriority", { count: skill.copies })
 										: "1"}
 								</dd>
 							</div>
 							<div className="col-span-2">
-								<dt className="text-neutral-500">问题</dt>
+								<dt className="text-neutral-500">{t("skills.issues")}</dt>
 								<dd className="mt-0.5">
 									{issues.length === 0 ? (
-										<span className="text-emerald-400/90">无</span>
+										<span className="text-emerald-400/90">{t("skills.noIssues")}</span>
 									) : (
 										<span className="flex flex-wrap gap-1">
 											<IssueBadges issues={issues} />
@@ -629,23 +627,23 @@ function DetailDrawer({
 						extension && (
 							<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl hairline bg-[var(--well-bg)]/40 p-3.5 text-xs">
 								<div>
-									<dt className="text-neutral-500">扩展标识</dt>
+									<dt className="text-neutral-500">{t("skills.extensionId")}</dt>
 									<dd className="mt-0.5 font-mono text-neutral-200">
 										{extension.name}
 									</dd>
 								</div>
 								<div>
-									<dt className="text-neutral-500">来源</dt>
+									<dt className="text-neutral-500">{t("skills.sourceLabel")}</dt>
 									<dd className="mt-0.5 text-neutral-200">
 										{sourceLabel(extension.source)}
 									</dd>
 								</div>
 								<div className="col-span-2">
-									<dt className="text-neutral-500">状态</dt>
+									<dt className="text-neutral-500">{t("skills.status")}</dt>
 									<dd className="mt-0.5 text-neutral-200">
 										{extension.enabled
-											? "已启用（将在会话启动时加载）"
-											: "已停用（在 disabledExtensions 配置中）"}
+											? t("skills.extensionEnabledStatus")
+											: t("skills.extensionDisabledStatus")}
 									</dd>
 								</div>
 							</dl>
@@ -658,9 +656,9 @@ function DetailDrawer({
 							{ISSUE_ORDER.filter((i) => issues.includes(i)).map((issue) => (
 								<p key={issue} className="text-[11px] leading-relaxed text-amber-200/80">
 									<span className="font-medium text-amber-300">
-										{ISSUE_META[issue].label}：
+										{t("skills.issueLabelPrefix", { label: t(ISSUE_META_KEYS[issue].labelKey) })}
 									</span>
-									{ISSUE_META[issue].explain}
+									{t(ISSUE_META_KEYS[issue].explainKey)}
 								</p>
 							))}
 						</div>
@@ -684,7 +682,7 @@ function DetailDrawer({
 								)}
 							>
 								<MessageSquarePlus size={13} />
-								<span>在当前会话中使用</span>
+								<span>{t("skills.useInSession")}</span>
 							</button>
 						)}
 						{skill && enablement && (
@@ -692,10 +690,10 @@ function DetailDrawer({
 								className="inline-flex"
 								title={
 									listOverridden
-										? PROJECT_OVERRIDE_TITLE
+										? PROJECT_OVERRIDE_TITLE()
 										: skillLocked && enablement.reason
 											? describeDisabledReason(enablement.reason).detail
-											: "启用/停用写入全局 OMP 配置，对所有项目的新会话生效"
+											: t("skills.globalScopeToggleHint")
 								}
 							>
 								<button
@@ -710,19 +708,19 @@ function DetailDrawer({
 									)}
 								>
 									<Power size={13} />
-									<span>{enablement.enabled ? "停用" : "启用"}</span>
+									<span>{enablement.enabled ? t("skills.disable") : t("skills.enable")}</span>
 								</button>
 							</span>
 						)}
 						{skill && (
-							<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP}</span>
+							<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP()}</span>
 						)}
 						{extension && (
 							<>
 								<button
 									type="button"
 									disabled={togglingPath === extension.path || listOverridden}
-									title={listOverridden ? PROJECT_OVERRIDE_TITLE : undefined}
+									title={listOverridden ? PROJECT_OVERRIDE_TITLE() : undefined}
 									onClick={() => onToggleExtension(extension)}
 									className={clsx(
 										"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95 disabled:opacity-50",
@@ -732,11 +730,11 @@ function DetailDrawer({
 									)}
 								>
 									<Power size={13} />
-									<span>{extension.enabled ? "停用扩展" : "启用扩展"}</span>
+									<span>{extension.enabled ? t("skills.disableExtension") : t("skills.enableExtension")}</span>
 								</button>
-								<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP}</span>
+								<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP()}</span>
 								{!extension.enabled && extension.path.endsWith(".disabled") && (
-									<span className="text-[11px] text-neutral-500">{DISABLED_FILE_HINT}</span>
+									<span className="text-[11px] text-neutral-500">{DISABLED_FILE_HINT()}</span>
 								)}
 							</>
 						)}
@@ -750,18 +748,18 @@ function DetailDrawer({
 							className="flex items-center gap-1.5 rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
 						>
 							<FolderOpen size={13} />
-							<span>在访达中显示</span>
+							<span>{t("skills.revealInFinder")}</span>
 						</button>
 						{skill && (
 							<button
 								type="button"
 								disabled={trashingDirs.includes(skill.dir)}
 								onClick={() => setConfirmDelete(true)}
-								title="把该技能目录移到废纸篓"
+								title={t("skills.trashSkillTitle")}
 								className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
 							>
 								<Trash2 size={13} />
-								<span>删除</span>
+								<span>{t("common.delete")}</span>
 							</button>
 						)}
 					</div>
@@ -791,7 +789,7 @@ function DetailDrawer({
 								<div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-xs text-red-300">
 									<div className="flex items-center gap-2 font-medium">
 										<AlertCircle size={14} />
-										<span>读取技能文档失败</span>
+										<span>{t("skills.readSkillDocFailed")}</span>
 									</div>
 									<p className="mt-1 text-neutral-400">{doc.error}</p>
 								</div>
@@ -799,7 +797,7 @@ function DetailDrawer({
 								<Markdown text={doc.text} />
 							) : (
 								<div className="flex h-24 items-center justify-center text-xs text-neutral-500">
-									文档内容为空
+									{t("skills.emptyDocContent")}
 								</div>
 							)}
 						</div>
@@ -807,14 +805,13 @@ function DetailDrawer({
 
 					{extension && (
 						<div className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3.5 text-xs leading-relaxed text-neutral-400">
-							<p className="mb-1 font-medium text-sky-300">关于 OMP 扩展机制</p>
+							<p className="mb-1 font-medium text-sky-300">{t("skills.aboutOmpExtensionsTitle")}</p>
 							<p>
-								扩展通过 OMP 原生扩展系统运行，能够介入工具调用、拦截消息流并增强模型能力。
-								启用/停用状态通过 OMP 配置项{" "}
+								{t("skills.aboutOmpExtensionsP1")}
 								<code className="rounded bg-sky-950/60 px-1 py-0.5 font-mono text-sky-200">
 									disabledExtensions
-								</code>{" "}
-								实时同步。
+								</code>
+								{t("skills.aboutOmpExtensionsP2")}
 							</p>
 						</div>
 					)}
@@ -831,6 +828,7 @@ const EXT_COLS =
 	"grid-cols-[minmax(0,1.8fr)_minmax(80px,0.4fr)_minmax(0,2fr)_minmax(110px,0.6fr)]";
 
 export function SkillsPage() {
+	const { t } = useT();
 	const catalog = useSkillsStore((s) => s.catalog);
 	const loading = useSkillsStore((s) => s.loading);
 	const error = useSkillsStore((s) => s.error);
@@ -976,27 +974,27 @@ export function SkillsPage() {
 	}[] = [
 		{
 			key: "all",
-			label: "全部 skills",
+			label: t("skills.statCardAll"),
 			value: stats.total,
-			sub: `全局 ${stats.userCount} + 项目级 ${stats.projectCount}`,
+			sub: t("skills.statCardAllSub", { user: stats.userCount, project: stats.projectCount }),
 		},
 		{
 			key: "active",
-			label: "近期活跃",
+			label: t("skills.statCardActive"),
 			value: usageUnavailable ? "—" : usagePending ? "…" : stats.active,
-			sub: usageUnavailable ? "统计不可用" : `共 ${stats.totalTriggers} 次触发`,
+			sub: usageUnavailable ? t("skills.statsUnavailable") : t("skills.statCardActiveSub", { count: stats.totalTriggers }),
 		},
 		{
 			key: "idle",
-			label: "在吃灰",
+			label: t("skills.statCardIdle"),
 			value: usageUnavailable ? "—" : usagePending ? "…" : stats.idle,
-			sub: `${days} 天零触发`,
+			sub: t("skills.statCardIdleSub", { days }),
 		},
 		{
 			key: "issues",
-			label: "有问题",
+			label: t("skills.statCardIssues"),
 			value: stats.withIssues,
-			sub: "缺描述 / 超长 / 不可读",
+			sub: t("skills.statCardIssuesSub"),
 			alert: stats.withIssues > 0,
 		},
 	];
@@ -1014,10 +1012,10 @@ export function SkillsPage() {
 						value={activeTab}
 						onChange={setActiveTab}
 						options={[
-							{ value: "skills", label: `我的 Skill ${stats.total}` },
+							{ value: "skills", label: t("skills.tabMySkills", { count: stats.total }) },
 							{
 								value: "extensions",
-								label: `扩展 ${catalog?.extensions.length ?? 0}`,
+								label: t("skills.tabExtensions", { count: catalog?.extensions.length ?? 0 }),
 							},
 						]}
 					/>
@@ -1025,7 +1023,7 @@ export function SkillsPage() {
 					<SearchInput
 						value={searchQuery}
 						onChange={setSearchQuery}
-						placeholder={activeTab === "skills" ? "搜索 Skill…" : "搜索扩展…"}
+						placeholder={activeTab === "skills" ? t("skills.searchPlaceholderSkill") : t("skills.searchPlaceholderExtension")}
 						iconSize={13}
 						className="w-56 sm:w-64"
 						inputClassName="h-8 w-full rounded-lg hairline bg-[var(--well-bg)] pl-8 pr-7 text-xs text-neutral-100 placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-amber-500/50"
@@ -1034,7 +1032,7 @@ export function SkillsPage() {
 						type="button"
 						onClick={() => refresh(projectCwd)}
 						disabled={loading}
-						title="刷新 Skill 列表与触发统计"
+						title={t("skills.refreshSkillsTitle")}
 						className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 disabled:opacity-50"
 					>
 						<RefreshCw
@@ -1052,7 +1050,7 @@ export function SkillsPage() {
 						{projectCwd ? (
 							<>
 								<span className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
-									当前项目：{projectCwd.split("/").filter(Boolean).pop() ?? projectCwd}
+									{t("skills.currentProjectLabel", { name: projectCwd.split("/").filter(Boolean).pop() ?? projectCwd })}
 								</span>
 								<span className="min-w-0 select-text break-all font-mono text-neutral-500">
 									{projectCwd}
@@ -1060,7 +1058,7 @@ export function SkillsPage() {
 							</>
 						) : (
 							<span className="text-neutral-500">
-								项目级技能需要先选中一个会话，目前只显示全局技能
+								{t("skills.projectSkillsNeedSession")}
 							</span>
 						)}
 					</div>
@@ -1069,9 +1067,9 @@ export function SkillsPage() {
 				{/* Switches write the global config; show scope + project overrides */}
 				<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
 					<span className="shrink-0 rounded-md border border-[var(--border-divider)] bg-neutral-800/60 px-2 py-0.5 font-medium text-neutral-300">
-						{GLOBAL_SCOPE_CHIP}
+						{GLOBAL_SCOPE_CHIP()}
 					</span>
-					<span>这里的启用/停用开关写入全局配置，会影响所有项目的新会话</span>
+					<span>{t("skills.globalConfigNotice")}</span>
 				</div>
 				{listOverridden && (
 					<div
@@ -1080,10 +1078,10 @@ export function SkillsPage() {
 					>
 						<AlertCircle size={14} className="mt-0.5 shrink-0" />
 						<span className="min-w-0 whitespace-pre-wrap break-words">
-							{PROJECT_OVERRIDE_TITLE}
+							{PROJECT_OVERRIDE_TITLE()}
 							{projectConfigPath && (
 								<>
-									{"\n"}配置文件：
+									{t("skills.configFilePrefix")}
 									<span className="select-text break-all font-mono">{projectConfigPath}</span>
 								</>
 							)}
@@ -1113,11 +1111,11 @@ export function SkillsPage() {
 									onClick={() => refresh(projectCwd)}
 									className="shrink-0 rounded-md border border-[var(--hairline-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)]"
 								>
-									重试
+									{t("common.retry")}
 								</button>
 							}
 						>
-							<span className="select-text whitespace-pre-wrap break-words">加载失败：{error}</span>
+							<span className="select-text whitespace-pre-wrap break-words">{t("skills.loadFailed", { error })}</span>
 						</Notice>
 					</div>
 				)}
@@ -1165,11 +1163,11 @@ export function SkillsPage() {
 									value={sourceFilter}
 									onChange={setSourceFilter}
 									options={[
-										{ value: "all", label: `全部来源 ${stats.total}` },
-										{ value: "user", label: `全局 ${stats.userCount}` },
+										{ value: "all", label: t("skills.filterSourceAll", { count: stats.total }) },
+										{ value: "user", label: t("skills.filterSourceUser", { count: stats.userCount }) },
 										{
 											value: "project",
-											label: `项目级 ${stats.projectCount}`,
+											label: t("skills.filterSourceProject", { count: stats.projectCount }),
 										},
 									]}
 								/>
@@ -1178,17 +1176,17 @@ export function SkillsPage() {
 								value={statusFilter}
 								onChange={setStatusFilter}
 								options={[
-									{ value: "all", label: `全部状态 ${stats.total}` },
+									{ value: "all", label: t("skills.filterStatusAll", { count: stats.total }) },
 									{
 										value: "active",
-										label: `活跃 ${usageUnavailable || usagePending ? "-" : stats.active}`,
+										label: t("skills.filterStatusActive", { count: usageUnavailable || usagePending ? "-" : stats.active }),
 									},
 									{
 										value: "idle",
-										label: `未触发 ${usageUnavailable || usagePending ? "-" : stats.idle}`,
+										label: t("skills.filterStatusIdle", { count: usageUnavailable || usagePending ? "-" : stats.idle }),
 									},
-									{ value: "issues", label: `有问题 ${stats.withIssues}` },
-									{ value: "disabled", label: `已停用 ${stats.disabled}` },
+									{ value: "issues", label: t("skills.filterStatusIssues", { count: stats.withIssues }) },
+									{ value: "disabled", label: t("skills.filterStatusDisabled", { count: stats.disabled }) },
 								]}
 							/>
 							<div className="flex-1" />
@@ -1205,7 +1203,7 @@ export function SkillsPage() {
 							>
 								<ArrowUpDown size={12} />
 								<span>
-									{SORT_OPTIONS.find((o) => o.value === sort)?.label}
+									{t(SORT_OPTIONS.find((o) => o.value === sort)?.labelKey ?? "skills.sortName")}
 								</span>
 								<ChevronDown size={12} className="text-neutral-500" />
 							</button>
@@ -1228,7 +1226,7 @@ export function SkillsPage() {
 										}}
 										className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
-										<span>{o.label}</span>
+										<span>{t(o.labelKey)}</span>
 										{sort === o.value && (
 											<Check size={12} className="text-sky-400" />
 										)}
@@ -1238,7 +1236,7 @@ export function SkillsPage() {
 						</div>
 
 						<p className="mt-2 px-1 text-[11px] text-neutral-600">
-							启用/停用写入 OMP 配置，对新会话生效
+							{t("skills.skillsSyncHint")}
 						</p>
 
 						{/* Skills table */}
@@ -1249,28 +1247,28 @@ export function SkillsPage() {
 									SKILL_COLS,
 								)}
 							>
-								<span>SKILL</span>
-								<span>安装位置</span>
+								<span>{t("skills.thSkill")}</span>
+								<span>{t("skills.thLocation")}</span>
 								<span
 									className="flex items-center justify-end gap-1"
-									title={TRIGGERS_HINT}
+									title={t("skills.triggersHint")}
 								>
-									{days} 天触发
+									{t("skills.thTriggers", { days })}
 									<Info size={11} className="text-neutral-600" />
 								</span>
-								<span className="text-right">最后触发</span>
+								<span className="text-right">{t("skills.thLastTriggered")}</span>
 								<span className="flex items-center justify-end gap-1">
-									启用
+									{t("skills.thEnable")}
 									<EnableInfoButton />
 								</span>
-								<span className="text-right">操作</span>
+								<span className="text-right">{t("skills.thAction")}</span>
 							</div>
 
 							{!catalog ? (
 								error ? (
 									// Load failed — the error banner above carries the message.
 									<div className="px-4 py-8 text-center text-[11px] text-neutral-600">
-										无法加载技能目录
+										{t("skills.cannotLoadCatalog")}
 									</div>
 								) : (
 									<div className="space-y-px p-1">
@@ -1294,11 +1292,11 @@ export function SkillsPage() {
 							) : visibleSkills.length === 0 ? (
 								<EmptyState
 									icon={Sparkles}
-									title={hasSkillFilters ? "没有符合筛选的 Skill" : "没有发现任何 Skill"}
+									title={hasSkillFilters ? t("skills.noMatchingSkillsTitle") : t("skills.noSkillsFoundTitle")}
 									description={
 										hasSkillFilters
-											? "换个关键词试试吧"
-											: "将 SKILL.md 放入 ~/.omp/agent/skills 或项目 .omp/skills 目录即可被发现"
+											? t("skills.tryAnotherKeyword")
+											: t("skills.noSkillsFoundDesc")
 									}
 								/>
 							) : (
@@ -1338,9 +1336,9 @@ export function SkillsPage() {
 													{skill.copies > 1 && (
 														<span
 															className="shrink-0 rounded bg-neutral-800 px-1 py-px text-[10px] text-neutral-500"
-															title="多个发现位置包含同名技能，按优先级生效此处"
+															title={t("skills.copiesTooltip")}
 														>
-															{skill.copies} 处副本
+															{t("skills.copiesBadge", { count: skill.copies })}
 														</span>
 													)}
 													{reason && (
@@ -1360,7 +1358,7 @@ export function SkillsPage() {
 															: "italic text-neutral-600",
 													)}
 												>
-													{skill.description || "暂无描述"}
+													{skill.description || t("skills.noDescription")}
 												</p>
 											</div>
 
@@ -1377,7 +1375,7 @@ export function SkillsPage() {
 											{/* Trigger count */}
 											<div
 												className="text-right text-xs tabular-nums text-neutral-200"
-												title={usageUnavailable ? "统计不可用" : undefined}
+												title={usageUnavailable ? t("skills.statsUnavailable") : undefined}
 											>
 												{usagePending ? (
 													<span className="inline-block h-3 w-6 animate-pulse rounded bg-neutral-700/50" />
@@ -1397,7 +1395,7 @@ export function SkillsPage() {
 													u?.lastUsedAt
 														? absoluteTime(u.lastUsedAt)
 														: usageUnavailable
-															? "统计不可用"
+															? t("skills.statsUnavailable")
 															: undefined
 												}
 											>
@@ -1442,7 +1440,7 @@ export function SkillsPage() {
 														e.stopPropagation();
 														revealInFinder(skill.dir || skill.path);
 													}}
-													title="在访达中显示"
+													title={t("skills.revealInFinder")}
 													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
 												>
 													<FolderOpen size={13} />
@@ -1454,7 +1452,7 @@ export function SkillsPage() {
 														e.stopPropagation();
 														setDeleteAnchor({ skill, el: e.currentTarget });
 													}}
-													title="移到废纸篓"
+													title={t("skills.moveToTrash")}
 													className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
 												>
 													<Trash2 size={13} />
@@ -1465,7 +1463,7 @@ export function SkillsPage() {
 														e.stopPropagation();
 														openDrawer({ kind: "skill", path: skill.path });
 													}}
-													title="查看详情"
+													title={t("skills.viewDetails")}
 													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
 												>
 													<ChevronRight size={14} />
@@ -1481,7 +1479,7 @@ export function SkillsPage() {
 							<div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-amber-500/80">
 								<AlertTriangle size={11} />
 								<span title={usageError ?? undefined}>
-									触发统计不可用（{days} 天扫描失败），列表按目录排序显示
+									{t("skills.statsUnavailableNotice", { days })}
 								</span>
 							</div>
 						)}
@@ -1496,15 +1494,15 @@ export function SkillsPage() {
 								EXT_COLS,
 							)}
 						>
-							<span>名称</span>
-							<span>来源</span>
-							<span>路径</span>
-							<span className="text-right">状态</span>
+							<span>{t("skills.thName")}</span>
+							<span>{t("skills.thSource")}</span>
+							<span>{t("skills.thPath")}</span>
+							<span className="text-right">{t("skills.thStatus")}</span>
 						</div>
 						{!catalog ? (
 							error ? (
 								<div className="px-4 py-8 text-center text-[11px] text-neutral-600">
-									无法加载扩展列表
+									{t("skills.cannotLoadExtensions")}
 								</div>
 							) : (
 								<div className="space-y-px p-1">
@@ -1519,8 +1517,8 @@ export function SkillsPage() {
 						) : filteredExtensions.length === 0 ? (
 							<EmptyState
 								icon={Puzzle}
-								title={searchQuery ? "没有符合筛选的扩展" : "暂无可用的扩展"}
-								description={searchQuery ? "换个关键词试试吧" : undefined}
+								title={searchQuery ? t("skills.noMatchingExtensionsTitle") : t("skills.noExtensionsAvailableTitle")}
+								description={searchQuery ? t("skills.tryAnotherKeyword") : undefined}
 							/>
 						) : (
 							filteredExtensions.map((ext) => (
@@ -1573,14 +1571,14 @@ export function SkillsPage() {
 													: "text-neutral-500",
 											)}
 										>
-											{ext.enabled ? "已启用" : "已停用"}
+											{ext.enabled ? t("skills.extensionStatusEnabled") : t("skills.extensionStatusDisabled")}
 										</span>
 										<span
 											title={
 												listOverridden
-													? PROJECT_OVERRIDE_TITLE
+													? PROJECT_OVERRIDE_TITLE()
 													: ext.path.endsWith(".disabled") && !ext.enabled
-														? DISABLED_FILE_HINT
+														? DISABLED_FILE_HINT()
 														: undefined
 											}
 										>

@@ -17,6 +17,7 @@ import type { ModelOption } from "../../../lib/models";
 import { splitRoleValue } from "../modelRoles";
 import { formatHumanWindowName, KNOWN_BRAND_CONFIGS } from "../sections/quotaHelpers";
 
+import { tNow } from "../../../stores/language";
 // ── scope ────────────────────────────────────────────────────────────
 
 /** Backend scope string of the global layer; every other scope is a project's absolute path. */
@@ -35,7 +36,7 @@ export function projectBasename(dir: string): string {
 
 /** 「全局」, or the project's registered name (falling back to its directory name). */
 export function scopeDisplayName(scope: string, projects: ScopeProject[]): string {
-	if (scope === GLOBAL_SCOPE) return "全局";
+	if (scope === GLOBAL_SCOPE) return tNow("modelTemplates.scopeGlobal");
 	return projects.find((p) => p.path === scope)?.name ?? projectBasename(scope);
 }
 
@@ -55,8 +56,8 @@ export function currentForScope(
 /** One-line statement of what applying a template writes in `scope`. */
 export function scopeWriteHint(scope: string, projects: ScopeProject[]): string {
 	return scope === GLOBAL_SCOPE
-		? "应用时写入全局模型角色，项目自己的覆盖不受影响。"
-		: `应用时只写入 ${scopeDisplayName(scope, projects)} 的 .omp/config.yml，其余项目与全局不变。`;
+		? tNow("modelTemplates.writeHintGlobal")
+		: tNow("modelTemplates.writeHintProject", { project: scopeDisplayName(scope, projects) });
 }
 
 /**
@@ -137,7 +138,7 @@ export function ruleConditionText(rule: ModelSwitchRule, providers: ProviderStat
 	const brand = KNOWN_BRAND_CONFIGS[rule.provider]?.name ?? rule.provider;
 	const pct = Number.isFinite(rule.thresholdPct) ? Math.round(rule.thresholdPct * 10) / 10 : 0;
 	const pctText = Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
-	return `「${brand} · ${windowLabel} ≥ ${pctText}%」`;
+	return tNow("modelTemplates.ruleCondition", { brand, window: windowLabel, pct: pctText });
 }
 
 // ── switch status ────────────────────────────────────────────────────
@@ -152,23 +153,25 @@ const STATUS_TONE: Record<string, "ok" | "warn" | "error" | "muted"> = {
 	failed: "error",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-	applied: "已切换",
-	partial: "部分切换",
-	refused: "已拒绝",
-	skipped: "无需切换",
-	reverted: "已切回",
-	undone: "已撤销",
-	failed: "失败",
+const STATUS_KEYS: Record<string, string> = {
+	applied: "modelTemplates.status.applied",
+	partial: "modelTemplates.status.partial",
+	refused: "modelTemplates.status.refused",
+	skipped: "modelTemplates.status.skipped",
+	reverted: "modelTemplates.status.reverted",
+	undone: "modelTemplates.status.undone",
+	failed: "modelTemplates.status.failed",
 };
+
+export function statusLabel(status: string): string {
+	const key = STATUS_KEYS[status];
+	return key ? tNow(key) : status;
+}
 
 export function statusTone(status: string): "ok" | "warn" | "error" | "muted" {
 	return STATUS_TONE[status] ?? "muted";
 }
 
-export function statusLabel(status: string): string {
-	return STATUS_LABEL[status] ?? status;
-}
 
 // ── recommendations ──────────────────────────────────────────────────
 
@@ -211,7 +214,7 @@ export function driftSummary(current: CurrentTemplateState): string | null {
 	const count = current.driftedRoles.length;
 	if (count === 0) return null;
 	const name = current.templateName?.trim() || current.templateId?.trim() || "";
-	return `模板「${name}」已被手动修改：${count} 个角色`;
+	return tNow("modelTemplates.driftSummary", { name, count: String(count) });
 }
 
 /** True when the rule may auto-revert now: enabled, opted in, and the window is at or below its threshold. */
@@ -226,13 +229,14 @@ export function canAutoRevert(rule: ModelSwitchRule, providers: ProviderStatus[]
 	return window.usedPct <= threshold;
 }
 
-const CONFLICT_TEXT: Record<string, string> = {
-	"self-eating": "切过去仍是同一供应商，等于没切",
-	"mutual-escape": "两个供应商同时用尽时无模板可用",
-	"no-bottom-line": "尚未设置保底模板，额度耗尽时可能无模板可用",
+const CONFLICT_KEYS: Record<string, string> = {
+	"self-eating": "modelTemplates.conflictSelfEating",
+	"mutual-escape": "modelTemplates.conflictMutualEscape",
+	"no-bottom-line": "modelTemplates.conflictNoBottomLine",
 };
 
-/** Readable Chinese sentence for a rule conflict; unknown kinds fall back to the backend message. */
+/** Readable sentence for a rule conflict; unknown kinds fall back to the backend message. */
 export function conflictText(conflict: RuleConflict): string {
-	return CONFLICT_TEXT[conflict.kind] ?? conflict.message;
+	const key = CONFLICT_KEYS[conflict.kind];
+	return key ? tNow(key) : conflict.message;
 }

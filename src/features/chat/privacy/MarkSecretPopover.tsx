@@ -8,14 +8,7 @@ import { isComposing } from "../../../lib/hooks";
 import { privacyClassify, privacyMark } from "../../../lib/ipc";
 import { defaultMarkScope, needsScopeChoice } from "./composerPrivacy";
 import { claimEscape } from "../../../lib/escapeClaim";
-
-const REASON_TEXT: Record<string, string> = {
-	TOO_SHORT: "内容太短（至少 3 个字符），无法标记",
-	INVALID_VALUE: "内容不能包含换行，且不能超过 4096 个字符",
-	SHORT: "比较短",
-	COMMON: "比较常见",
-	LABEL_CONTAINS_VALUE: "名称里不能包含隐私内容本身",
-};
+import { useT } from "../../../stores/language";
 
 export function MarkSecretPopover({
 	sessionId,
@@ -30,6 +23,23 @@ export function MarkSecretPopover({
 	onMarked: (entry: SecretEntry, scope: PrivacyMarkScope) => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
+	const reasonText = (code: string | null | undefined): string | undefined => {
+		switch (code) {
+			case "TOO_SHORT":
+				return t("chatPrivacy.reasonTooShort");
+			case "INVALID_VALUE":
+				return t("chatPrivacy.reasonInvalidValue");
+			case "SHORT":
+				return t("chatPrivacy.reasonShort");
+			case "COMMON":
+				return t("chatPrivacy.reasonCommon");
+			case "LABEL_CONTAINS_VALUE":
+				return t("chatPrivacy.reasonLabelContainsValue");
+			default:
+				return undefined;
+		}
+	};
 	const [cls, setCls] = useState<SecretClassification | null>(null);
 	const [label, setLabel] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -65,7 +75,7 @@ export function MarkSecretPopover({
 			onMarked(entry, scope);
 		} catch (err) {
 			const msg = errMsg(err);
-			setError(REASON_TEXT[msg] ?? msg);
+			setError(reasonText(msg) ?? msg);
 		} finally {
 			setSaving(false);
 		}
@@ -84,16 +94,16 @@ export function MarkSecretPopover({
 			onDismiss={onClose}
 			className="w-[300px] rounded-xl border border-[var(--line,var(--border))] bg-[var(--bg-panel)] p-3 text-[12px] text-[var(--text)] shadow-lg"
 		>
-			<div className="mb-2 font-medium">标记为隐私</div>
-			{!cls && !error && <div className="text-[var(--text-40,var(--text-dim))]">检查中…</div>}
+			<div className="mb-2 font-medium">{t("chatPrivacy.markSecretTitle")}</div>
+			{!cls && !error && <div className="text-[var(--text-40,var(--text-dim))]">{t("chatPrivacy.checking")}</div>}
 			{cls?.level === "reject" && (
 				<>
 					<div className="mb-2 text-red-500">
-						{REASON_TEXT[cls.reason ?? ""] ?? "无法标记这段内容"}
+						{reasonText(cls.reason) ?? t("chatPrivacy.reasonDefaultReject")}
 					</div>
 					<div className="flex justify-end">
 						<button type="button" className={btn} onClick={onClose}>
-							关闭
+							{t("chatPrivacy.close")}
 						</button>
 					</div>
 				</>
@@ -103,7 +113,7 @@ export function MarkSecretPopover({
 					<input
 						ref={inputRef}
 						value={label}
-						placeholder="名称（选填），如 数据库密码"
+						placeholder={t("chatPrivacy.labelPlaceholder")}
 						onChange={(e) => setLabel(e.target.value)}
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
@@ -118,33 +128,36 @@ export function MarkSecretPopover({
 						className="w-full rounded-md border border-[var(--line,var(--border))] bg-transparent px-2 py-1 outline-none"
 					/>
 					<div className="mt-1 text-[11px] text-[var(--text-40,var(--text-dim))]">
-						名称会被 AI 看到，不要填敏感内容
+						{t("chatPrivacy.labelHint")}
 					</div>
 					{cls.level === "risky" && (
 						<>
 							<div className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-600">
-								⚠ “{shown}” {REASON_TEXT[cls.reason ?? ""] ?? "比较短/常见"}，可能误伤普通文字
+								{t("chatPrivacy.riskyWarning", {
+									shown,
+									reason: reasonText(cls.reason) ?? t("chatPrivacy.reasonShortOrCommon"),
+								})}
 							</div>
 							<label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
 								<input type="checkbox" checked={!track} onChange={(e) => setTrack(!e.target.checked)} />
-								只替换这一处，不追踪
+								{t("chatPrivacy.dontTrack")}
 							</label>
 						</>
 					)}
 					{sent && (
 						<div className="mt-2 rounded-md bg-red-500/10 px-2 py-1.5 leading-relaxed text-red-500">
-							⚠ “{shown}” 已在本会话中出现 {cls.sessionOccurrences} 次，这些内容已经发给上游，标记无法撤回。
-							替换旧历史会改变请求前缀，可能使缓存失效、增加费用。如果无法接受，请更换这个密钥，并在新会话中继续。
+							{t("chatPrivacy.alreadySentWarning", { shown, count: cls.sessionOccurrences })}
+							{t("chatPrivacy.alreadySentDetail")}
 						</div>
 					)}
 					{error && <div className="mt-2 text-red-500">{error}</div>}
 					<div className="mt-2 flex flex-wrap justify-end gap-1">
 						<button type="button" className={btn} onClick={onClose}>
-							取消
+							{t("chatPrivacy.cancel")}
 						</button>
 						{sent && (
 							<button type="button" className={btn} disabled={saving} onClick={() => void confirm("all")}>
-								同时替换旧历史
+								{t("chatPrivacy.replaceHistory")}
 							</button>
 						)}
 						<button
@@ -153,7 +166,7 @@ export function MarkSecretPopover({
 							onClick={() => void confirm(sent ? "future" : "all")}
 							className="rounded-md bg-[var(--text)] px-2.5 py-1 text-[12px] text-[var(--bg-panel)] disabled:opacity-50"
 						>
-							{sent ? "仅保护后续内容" : cls.level === "risky" ? "仍然标记" : "标记"}
+							{sent ? t("chatPrivacy.protectFutureOnly") : cls.level === "risky" ? t("chatPrivacy.markAnyway") : t("chatPrivacy.mark")}
 						</button>
 					</div>
 				</>

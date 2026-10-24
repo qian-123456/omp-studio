@@ -31,7 +31,6 @@ vi.mock("../../../lib/events", () => ({
 vi.mock("./openSearchRow", () => ({ openSearchRow: h.openSearchRow }));
 
 import { useLive } from "../../../stores/live";
-import { useLanguageStore } from "../../../stores/language";
 import { useSessions } from "../../../stores/sessions";
 import { useSidebarStore } from "../sidebarStore";
 import { SessionSearchDialog } from "./SessionSearchDialog";
@@ -58,7 +57,6 @@ const options = () => screen.getAllByRole("option");
 const selectedOption = () => options().find((o) => o.getAttribute("aria-selected") === "true");
 
 beforeEach(() => {
-	useLanguageStore.setState({ locale: "zh-CN" });
 	h.searchSessions.mockReset().mockResolvedValue([]);
 	h.searchIndexStatus.mockReset().mockResolvedValue({ indexed: 0, total: 0, building: false });
 	h.openSearchRow.mockReset();

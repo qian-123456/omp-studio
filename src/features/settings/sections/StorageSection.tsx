@@ -2,6 +2,7 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronRight, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useT } from "../../../stores/language";
 import type { StorageOverview, StorageProjectRow, StorageSessionsOverview } from "../../../lib/contracts";
 import { confirmDialog } from "../../../lib/dialogs";
 import { formatBytes, relativeTime } from "../../../lib/format";
@@ -33,8 +34,15 @@ import { Button, Chip, SectionHeader, SettingRow, SettingsCard } from "../ui";
 function drafts(): string[] {
 	return collectDraftTexts(useComposer.getState(), window.localStorage);
 }
+function formatSkipReason(reason: string, t: (k: string) => string): string {
+	if (reason === "正在运行") return t("settingsSectionsStorage.storage.skipRunning");
+	if (reason === "已置顶") return t("settingsSectionsStorage.storage.skipPinned");
+	if (reason === "终端运行中" || reason.includes("终端")) return t("settingsSectionsStorage.storage.skipTerminal");
+	return reason;
+}
 
 export function StorageSection() {
+	const { t } = useT();
 	const [overview, setOverview] = useState<StorageOverview | null>(null);
 	const [sessions, setSessions] = useState<StorageSessionsOverview | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -77,49 +85,49 @@ export function StorageSection() {
 		run("images", async () => {
 			const preview = await storageImagesPreview(drafts());
 			if (preview.count === 0) {
-				toast.info("没有可清理的图片（只清理超过 30 天且没被任何地方引用的图片）");
+				toast.info(t("settingsSectionsStorage.storage.cleanImagesNoOp"));
 				return;
 			}
 			const ok = await confirmDialog(
-				`将删除 ${preview.count} 张图片，释放 ${formatBytes(preview.bytes)}。\n只包含超过 30 天、且没被想法、定时任务、草稿或任何会话引用的图片，删除后无法恢复。`,
-				{ danger: true, okLabel: "清理", title: "清理没用到的图片" },
+				t("settingsSectionsStorage.storage.cleanImagesConfirm", { count: preview.count, bytes: formatBytes(preview.bytes) }),
+				{ danger: true, okLabel: t("settingsSectionsStorage.storage.cleanImagesOk"), title: t("settingsSectionsStorage.storage.cleanImagesTitle") },
 			);
 			if (!ok) return;
 			const done = await storageImagesClean(drafts());
-			toast.success(`已清理 ${done.count} 张图片，释放 ${formatBytes(done.bytes)}`);
+			toast.success(t("settingsSectionsStorage.storage.cleanImagesDone", { count: done.count, bytes: formatBytes(done.bytes) }));
 			await refresh();
 		});
 
 	const clearWebCache = () =>
 		run("web", async () => {
 			const freed = await storageClearWebCache();
-			toast.success(`已清空缓存，释放 ${formatBytes(freed)}`);
+			toast.success(t("settingsSectionsStorage.storage.clearWebCacheDone", { bytes: formatBytes(freed) }));
 			await refresh();
 		});
 
 	const cleanStatus = () =>
 		run("status", async () => {
 			const done = await storageCleanStatusRecords();
-			toast.success(`已清理 ${done.count} 条过期记录，释放 ${formatBytes(done.bytes)}`);
+			toast.success(t("settingsSectionsStorage.storage.cleanStatusDone", { count: done.count, bytes: formatBytes(done.bytes) }));
 			await refresh();
 		});
 
 	const compactDb = () =>
 		run("db", async () => {
 			const r = await storageCompactDb();
-			toast.success(`数据库已压缩：${formatBytes(r.beforeBytes)} → ${formatBytes(r.afterBytes)}`);
+			toast.success(t("settingsSectionsStorage.storage.compactDbDone", { before: formatBytes(r.beforeBytes), after: formatBytes(r.afterBytes) }));
 			await refresh();
 		});
 
 	const trash = async (ids: string[], bytes: number, what: string) => {
 		const ok = await confirmDialog(
-			`将 ${what}（${ids.length} 个会话，约 ${formatBytes(bytes)}）移到废纸篓。\n正在运行、已置顶或被终端占用的会话会自动跳过；可在废纸篓中恢复文件，但会话不会再出现在列表里。`,
-			{ danger: true, okLabel: "移到废纸篓", title: "删除会话" },
+			t("settingsSectionsStorage.storage.trashSessionsConfirm", { what, count: ids.length, bytes: formatBytes(bytes) }),
+			{ danger: true, okLabel: t("settingsSectionsStorage.storage.trashOk"), title: t("settingsSectionsStorage.storage.deleteSessionsTitle") },
 		);
 		if (!ok) return;
 		const report = await storageTrashSessions(ids);
-		const skipped = report.skipped.length > 0 ? `，跳过 ${report.skipped.length} 个` : "";
-		toast.success(`已移到废纸篓 ${report.trashed} 个会话，释放 ${formatBytes(report.freedBytes)}${skipped}`);
+		const skipped = report.skipped.length > 0 ? t("settingsSectionsStorage.storage.skippedCount", { count: report.skipped.length }) : "";
+		toast.success(t("settingsSectionsStorage.storage.trashSessionsDone", { count: report.trashed, bytes: formatBytes(report.freedBytes), skipped }));
 		setSelected(new Set());
 		await refresh();
 	};
@@ -129,7 +137,7 @@ export function StorageSection() {
 			if (!sessions) return;
 			const ids = [...selected];
 			const bytes = sessions.projects.reduce((n, p) => n + selectedBytes(p, selected), 0);
-			await trash(ids, bytes, "选中的会话");
+			await trash(ids, bytes, t("settingsSectionsStorage.storage.selectedSessions"));
 		});
 
 	const deleteStale = () =>
@@ -137,10 +145,10 @@ export function StorageSection() {
 			const n = parseStaleDays(days);
 			const preview = await storageStaleSessionsPreview(n);
 			if (preview.count === 0) {
-				toast.info(`没有超过 ${n} 天没更新的可删除会话`);
+				toast.info(t("settingsSectionsStorage.storage.staleDaysNoOp", { days: n }));
 				return;
 			}
-			await trash(preview.ids, preview.bytes, `超过 ${n} 天没更新的会话`);
+			await trash(preview.ids, preview.bytes, t("settingsSectionsStorage.storage.staleSessionsWhat", { days: n }));
 		});
 
 	const toggle = (set: ReadonlySet<string>, id: string): Set<string> => {
@@ -150,33 +158,33 @@ export function StorageSection() {
 	};
 
 	const reveal = (path: string) =>
-		void revealItemInDir(path).catch((e) => toast.error(`无法在访达中显示：${describeStorageError(e)}`));
+		void revealItemInDir(path).catch((e) => toast.error(t("settingsSectionsStorage.storage.revealError", { error: describeStorageError(e) })));
 
 	const selectedTotal = sessions ? sessions.projects.reduce((n, p) => n + selectedBytes(p, selected), 0) : 0;
 
 	return (
 		<div className="space-y-6">
 			<SectionHeader
-				title="存储空间"
-				description="本应用和 omp 占用了多少磁盘，以及哪些内容可以安全清理"
+				title={t("settingsSectionsStorage.storage.title")}
+				description={t("settingsSectionsStorage.storage.description")}
 				actions={
 					<Button icon={RefreshCw} onClick={() => void refresh()} disabled={busy !== null}>
-						刷新
+						{t("settingsSectionsStorage.storage.refresh")}
 					</Button>
 				}
 			/>
 			{error && (
-				<Notice tone="danger" title="无法读取存储用量">
+				<Notice tone="danger" title={t("settingsSectionsStorage.storage.readUsageError")}>
 					{error}
 				</Notice>
 			)}
 
 			<SectionJumpBar />
-			<SettingsCard jump="图片" title="图片" description="粘贴、拖入的图片与旧版剪贴板缓存">
+			<SettingsCard jump={t("settingsSectionsStorage.storage.jumpImages")} title={t("settingsSectionsStorage.storage.titleImages")} description={t("settingsSectionsStorage.storage.descImages")}>
 				<SettingRow
-					label="没用到的图片"
-					description="只清理超过 30 天、且没被想法、定时任务、未发送草稿或任何会话引用的图片。每天启动后会在后台自动清理一次。"
-					hint={overview ? `当前共 ${overview.images.count} 张，占用 ${formatBytes(overview.images.bytes)}` : "读取中"}
+					label={t("settingsSectionsStorage.storage.unusedImagesLabel")}
+					description={t("settingsSectionsStorage.storage.unusedImagesDesc")}
+					hint={overview ? t("settingsSectionsStorage.storage.currentImagesHint", { count: overview.images.count, bytes: formatBytes(overview.images.bytes) }) : t("settingsSectionsStorage.storage.loading")}
 					control={
 						<Button
 							icon={Trash2}
@@ -184,34 +192,34 @@ export function StorageSection() {
 							disabled={busy !== null || !overview}
 							onClick={() => void cleanImages()}
 						>
-							清理没用到的图片
+							{t("settingsSectionsStorage.storage.cleanImagesBtn")}
 						</Button>
 					}
 				/>
 			</SettingsCard>
 
-			<SettingsCard jump="缓存与记录" title="缓存与记录">
+			<SettingsCard jump={t("settingsSectionsStorage.storage.jumpCacheAndLogs")} title={t("settingsSectionsStorage.storage.titleCacheAndLogs")}>
 				<SettingRow
-					label="网页缓存"
-					description="界面加载产生的临时网络缓存，清空后会自动重新生成。不会影响设置、草稿和登录状态。"
-					hint={overview ? `占用 ${formatBytes(overview.webCacheBytes)}` : "读取中"}
+					label={t("settingsSectionsStorage.storage.webCacheLabel")}
+					description={t("settingsSectionsStorage.storage.webCacheDesc")}
+					hint={overview ? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.webCacheBytes) }) : t("settingsSectionsStorage.storage.loading")}
 					control={
 						<Button
 							loading={busy === "web"}
 							disabled={busy !== null || !overview || overview.webCacheBytes === 0}
 							onClick={() => void clearWebCache()}
 						>
-							清空缓存
+							{t("settingsSectionsStorage.storage.clearCacheBtn")}
 						</Button>
 					}
 				/>
 				<SettingRow
-					label="过期的运行记录"
-					description="已经结束的 omp 进程留下的状态文件（超过一天且进程已退出）。"
+					label={t("settingsSectionsStorage.storage.expiredStatusLabel")}
+					description={t("settingsSectionsStorage.storage.expiredStatusDesc")}
 					hint={
 						overview
-							? `共 ${overview.status.count} 条，其中 ${overview.status.expiredCount} 条已过期（${formatBytes(overview.status.expiredBytes)}）`
-							: "读取中"
+							? t("settingsSectionsStorage.storage.expiredStatusHint", { count: overview.status.count, expiredCount: overview.status.expiredCount, bytes: formatBytes(overview.status.expiredBytes) })
+							: t("settingsSectionsStorage.storage.loading")
 					}
 					control={
 						<Button
@@ -219,42 +227,42 @@ export function StorageSection() {
 							disabled={busy !== null || !overview || overview.status.expiredCount === 0}
 							onClick={() => void cleanStatus()}
 						>
-							清理过期记录
+							{t("settingsSectionsStorage.storage.cleanStatusBtn")}
 						</Button>
 					}
 				/>
 				<SettingRow
-					label="应用数据库"
-					description="整理数据库文件、回收已删除内容留下的空位，数据不会丢失。"
-					hint={overview ? `占用 ${formatBytes(overview.dbBytes)}` : "读取中"}
+					label={t("settingsSectionsStorage.storage.appDbLabel")}
+					description={t("settingsSectionsStorage.storage.appDbDesc")}
+					hint={overview ? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.dbBytes) }) : t("settingsSectionsStorage.storage.loading")}
 					control={
 						<Button loading={busy === "db"} disabled={busy !== null || !overview} onClick={() => void compactDb()}>
-							压缩数据库
+							{t("settingsSectionsStorage.storage.compactDbBtn")}
 						</Button>
 					}
 				/>
 			</SettingsCard>
 
 			<SettingsCard
-				jump="omp 会话"
-				title="omp 会话"
-				description="会话记录和工具输出。从这里删除会移到废纸篓，可以恢复文件。"
-				aside={sessions ? `共 ${formatBytes(sessions.totalBytes)} · ${sessions.sessionCount} 个会话` : undefined}
+				jump={t("settingsSectionsStorage.storage.jumpOmpSessions")}
+				title={t("settingsSectionsStorage.storage.titleOmpSessions")}
+				description={t("settingsSectionsStorage.storage.descOmpSessions")}
+				aside={sessions ? t("settingsSectionsStorage.storage.totalSessionsAside", { bytes: formatBytes(sessions.totalBytes), count: sessions.sessionCount }) : undefined}
 			>
 				<SettingRow
-					label="删除久未更新的会话"
-					description="正在运行、已置顶、被终端里的 omp 占用的会话不会被删除。"
+					label={t("settingsSectionsStorage.storage.deleteStaleLabel")}
+					description={t("settingsSectionsStorage.storage.deleteStaleDesc")}
 					control={
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--text-muted)]">超过</span>
+							<span className="text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.daysOver")}</span>
 							<input
-								aria-label="天数"
+								aria-label={t("settingsSectionsStorage.storage.daysAria")}
 								inputMode="numeric"
 								className="w-16 rounded-md hairline bg-[var(--bg-input)] px-2 py-1 text-xs text-[var(--text)]"
 								value={days}
 								onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))}
 							/>
-							<span className="text-xs text-[var(--text-muted)]">天没更新</span>
+							<span className="text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.daysUnupdated")}</span>
 							<Button
 								icon={Trash2}
 								variant="danger"
@@ -262,17 +270,17 @@ export function StorageSection() {
 								disabled={busy !== null || !sessions}
 								onClick={() => void deleteStale()}
 							>
-								删除这些会话
+								{t("settingsSectionsStorage.storage.deleteStaleBtn")}
 							</Button>
 						</div>
 					}
 				/>
 				<SettingRow
-					label="会话文件夹"
+					label={t("settingsSectionsStorage.storage.sessionFolderLabel")}
 					description={sessions?.root}
 					control={
 						<Button icon={FolderOpen} disabled={!sessions} onClick={() => sessions && reveal(sessions.root)}>
-							在访达中显示
+							{t("settingsSectionsStorage.storage.revealInFinder")}
 						</Button>
 					}
 				/>
@@ -280,14 +288,14 @@ export function StorageSection() {
 
 			{sessions && (
 				<SettingsCard
-					jump="按项目查看"
-					title="按项目查看"
-					description="展开项目，勾选会话后移到废纸篓。"
+					jump={t("settingsSectionsStorage.storage.jumpByProject")}
+					title={t("settingsSectionsStorage.storage.titleByProject")}
+					description={t("settingsSectionsStorage.storage.descByProject")}
 					footer={
 						selected.size > 0 ? (
 							<span className="flex items-center gap-3">
 								<span>
-									已选 {selected.size} 个，约 {formatBytes(selectedTotal)}
+									{t("settingsSectionsStorage.storage.selectedCount", { count: selected.size, bytes: formatBytes(selectedTotal) })}
 								</span>
 								<Button
 									size="sm"
@@ -297,13 +305,13 @@ export function StorageSection() {
 									disabled={busy !== null}
 									onClick={() => void deleteSelected()}
 								>
-									移到废纸篓
+									{t("settingsSectionsStorage.storage.moveToTrashBtn")}
 								</Button>
 							</span>
 						) : undefined
 					}
 				>
-					{sessions.projects.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">没有会话</div>}
+					{sessions.projects.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.noSessions")}</div>}
 					{sessions.projects.map((p) => (
 						<ProjectBlock
 							key={p.dir}
@@ -348,6 +356,7 @@ function ProjectBlock({
 	onSelectAll: (all: boolean) => void;
 	onReveal: () => void;
 }) {
+	const { t } = useT();
 	const selectable = selectableSessions(project);
 	const allSelected = selectable.length > 0 && selectable.every((s) => selected.has(s.id));
 	const Chevron = expanded ? ChevronDown : ChevronRight;
@@ -366,12 +375,12 @@ function ProjectBlock({
 						{label}
 					</span>
 				</button>
-				<Chip>{project.sessions.length} 个会话</Chip>
+				<Chip>{t("settingsSectionsStorage.storage.projectSessionsCount", { count: project.sessions.length })}</Chip>
 				<span className="w-20 shrink-0 text-right text-xs tabular-nums text-[var(--text-muted)]">
 					{formatBytes(project.bytes)}
 				</span>
 				<Button size="sm" icon={FolderOpen} onClick={onReveal}>
-					在访达中显示
+					{t("settingsSectionsStorage.storage.revealInFinder")}
 				</Button>
 			</div>
 			{expanded && (
@@ -379,7 +388,7 @@ function ProjectBlock({
 					{selectable.length > 0 && (
 						<label className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--text-muted)]">
 							<input type="checkbox" checked={allSelected} onChange={(e) => onSelectAll(e.target.checked)} />
-							全选可删除的会话
+							{t("settingsSectionsStorage.storage.selectAllDeletable")}
 						</label>
 					)}
 					{project.sessions.map((s) => (
@@ -393,7 +402,7 @@ function ProjectBlock({
 							<span className="min-w-0 flex-1 break-all text-xs text-[var(--text)]" title={s.title}>
 								{s.title}
 							</span>
-							{s.skipReason && <Chip tone="warning">{s.skipReason}</Chip>}
+							{s.skipReason && <Chip tone="warning">{formatSkipReason(s.skipReason, t)}</Chip>}
 							<span className="w-24 shrink-0 text-right text-[11px] text-[var(--text-dim)]">
 								{s.updatedAt ? relativeTime(s.updatedAt) : ""}
 							</span>

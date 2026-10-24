@@ -4,19 +4,20 @@
  * thinking level; on = new side chats use the model picked here.
  */
 import { useState } from "react";
+import { useT } from "../../stores/language";
 import { ModelSelect, type ModelExtraOption } from "../../components/ModelSelect";
 import { parseSelection, roleIdOf } from "../../components/modelSelectLogic";
 import { sideChatModelLabel } from "../sidechat/modelDefault";
 import { useAppSettings, useCatalogModels } from "./useAppSettings";
 import { MODEL_PICKER_BUTTON_CLASS, SettingRow, SettingsCard, ToggleRow, useSaveStatus } from "./ui";
 
-const ROLE_EXTRAS: ModelExtraOption[] = [
-	{ value: "smol", label: "快速模型", hint: "内置默认" },
-	{ value: "default", label: "主力模型", hint: "主力角色" },
-	{ value: "slow", label: "深度模型", hint: "深度角色" },
-];
-
 export function SideChatModelCard() {
+	const { t } = useT();
+	const roleExtras: ModelExtraOption[] = [
+		{ value: "smol", label: t("settingsModels.sideChatSmolLabel"), hint: t("settingsModels.sideChatSmolHint") },
+		{ value: "default", label: t("settingsModels.sideChatDefaultLabel"), hint: t("settingsModels.sideChatDefaultHint") },
+		{ value: "slow", label: t("settingsModels.sideChatSlowLabel"), hint: t("settingsModels.sideChatSlowHint") },
+	];
 	const { settings, save } = useAppSettings();
 	const { models, catalogKeys } = useCatalogModels();
 	const pickSave = useSaveStatus();
@@ -27,13 +28,13 @@ export function SideChatModelCard() {
 	const enabled = current !== "" || armed;
 	const selector = parseSelection(current).selector;
 	const pickerValue = catalogKeys.has(selector) || roleIdOf(selector) ? current : "";
-	const label = current ? sideChatModelLabel(selector, models) : "选择模型";
+	const label = current ? sideChatModelLabel(selector, models) : t("settingsModels.selectModelPrompt");
 
 	return (
-		<SettingsCard title="侧边对话" fieldId="sideChatModel" jump="侧边对话">
+		<SettingsCard title={t("settingsModels.sideChatCardTitle")} fieldId="sideChatModel" jump={t("settingsModels.sideChatCardJump")}>
 			<ToggleRow
-				label="侧边对话专用模型"
-				description="关闭时，侧边对话继承主对话的模型与思考级别；开启后新建的侧边对话使用下方选择的模型。侧边对话面板里仍可临时更改。"
+				label={t("settingsModels.dedicatedModelLabel")}
+				description={t("settingsModels.dedicatedModelDesc")}
 				checked={enabled}
 				onChange={async (next) => {
 					if (next) {
@@ -46,8 +47,8 @@ export function SideChatModelCard() {
 			/>
 			{enabled && (
 				<SettingRow
-					label="模型"
-					description="模型右侧可单独选择思考等级；所选模型不在列表中时自动回退为主对话模型。"
+					label={t("settingsModels.modelRowLabel")}
+					description={t("settingsModels.modelRowDesc")}
 					status={pickSave.status}
 					statusError={pickSave.error}
 					control={
@@ -58,7 +59,7 @@ export function SideChatModelCard() {
 							buttonClass={MODEL_PICKER_BUTTON_CLASS}
 							models={models}
 							currentValue={pickerValue}
-							extras={ROLE_EXTRAS}
+							extras={roleExtras}
 							thinking
 							allowCustom
 							onSelect={(v) => {

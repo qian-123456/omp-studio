@@ -4,14 +4,16 @@ import { OmpSections } from "../OmpSettingsList";
 import { SectionJumpBar } from "../SectionJumpBar";
 import { useSettingsNav } from "../settingsNav";
 import { SectionHeader } from "../ui";
+import { useT } from "../../../stores/language";
 
 export function FallbackSection() {
+	const { t } = useT();
 	const { query } = useSettingsNav();
 	return (
 		<div className="space-y-6" data-field-id="fallbackChainsPanel">
 			<SectionHeader
-				title="备用模型与重试"
-				description="模型出错或额度用完时：自动换备用模型、重试、超时与防死循环"
+				title={t("settingsSections.fallback.title")}
+				description={t("settingsSections.fallback.description")}
 			/>
 			<SectionJumpBar />
 			<FallbackChainsSection query={query} />

@@ -34,6 +34,7 @@ import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "../featur
 import { MermaidBlock } from "../features/chat/MermaidBlock";
 import { healStreamingMarkdown, splitStableBlocks } from "../features/chat/streamingMarkdown";
 import { useRevealText } from "../features/chat/useRevealText";
+import { tNow, useT } from "../stores/language";
 
 /** Per-render context for component overrides (kept stable per Markdown). */
 interface MarkdownContextValue {
@@ -117,7 +118,7 @@ function PreBlock({
 	node,
 	...props
 }: React.ComponentPropsWithoutRef<"pre"> & { node?: HastNodeLike }) {
-
+	const { t } = useT();
 	const codeChild = React.isValidElement<{ className?: string }>(children)
 		? children
 		: null;
@@ -164,7 +165,7 @@ function PreBlock({
 		if (mdCtx.exportMode) {
 			return (
 				<div className="my-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-3 py-4 text-center text-[12px] text-[var(--text-40)]">
-					此处为交互式可视化内容，图片中不包含
+					{t("components.interactiveVisualNotice")}
 				</div>
 			);
 		}
@@ -195,9 +196,9 @@ function PreBlock({
 				{!mdCtx.exportMode && (
 				<CopyButton
 					text={codeText}
-					label="复制"
-					copiedLabel="已复制"
-					title="复制代码"
+					label={t("common.copy")}
+					copiedLabel={t("common.copied")}
+					title={t("components.copyCode")}
 					resetMs={2000}
 					className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
 				/>
@@ -220,19 +221,19 @@ function PreBlock({
 						className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
 						title={
 							expanded
-								? "收起代码"
-								: `共 ${totalLines} 行，展开剩余 ${hiddenCount} 行`
+								? t("components.collapseCode")
+								: t("components.expandCode", { total: totalLines, hidden: hiddenCount })
 						}
 					>
 						{expanded ? (
 							<>
 								<ChevronUp size={12} />
-								<span>收起</span>
+								<span>{t("components.collapse")}</span>
 							</>
 						) : (
 							<>
 								<ChevronDown size={12} />
-								<span>展开剩余 {hiddenCount} 行</span>
+								<span>{t("components.expandRemaining", { count: hiddenCount })}</span>
 							</>
 						)}
 					</button>
@@ -303,10 +304,10 @@ function MarkdownLink({
 			} else {
 				// A relative non-file href has nowhere safe to go: never hand an
 				// agent-written path to the system opener (it would execute it).
-				toast.error(`无法打开链接：${href}`);
+				toast.error(tNow("components.cannotOpenLink", { href }));
 			}
 		} catch (err) {
-			toast.error(`打开链接失败: ${errMsg(err)}`);
+			toast.error(tNow("components.openLinkFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -335,20 +336,21 @@ function MarkdownFileLink(props: {
 	const raw = props["data-file-link-text"] ?? extractText(props.children).trim();
 	const fromCode = props["data-file-link-code"] === "true";
 	const { cwd, home } = useLinkBase();
+	const { t } = useT();
 	const handleClick = async (e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		try {
 			await openFileLink(raw, { cwd, home });
 		} catch (err) {
-			toast.error(`打开文件失败: ${errMsg(err)}`);
+			toast.error(tNow("components.openFileFailed", { error: errMsg(err) }));
 		}
 	};
 	return (
 		<a
 			href={raw}
 			onClick={handleClick}
-			title={`在右侧预览：${raw}`}
+			title={t("components.previewOnRight", { raw })}
 			className={clsx(
 				"cursor-pointer text-[var(--accent)] underline decoration-[var(--accent)]/50 underline-offset-2 hover:decoration-[var(--accent)]",
 				fromCode &&
@@ -488,6 +490,7 @@ function localImagePath(src: string, cwd: string | null, home: string | null): s
  */
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
 	const { cwd, home } = useLinkBase();
+	const { t } = useT();
 	const [failedSrc, setFailedSrc] = useState<string | null>(null);
 	const [loadedRemote, setLoadedRemote] = useState<string | null>(null);
 	if (typeof src !== "string" || !src) return null;
@@ -498,10 +501,10 @@ function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) 
 			<button
 				type="button"
 				onClick={() => setLoadedRemote(src)}
-				title={`加载远程图片：${src}`}
+				title={t("components.loadRemoteImage", { src })}
 				className="my-1 inline-flex max-w-full items-start gap-1.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] px-3 py-1 text-left text-[12px] text-[var(--accent)] transition-colors hover:bg-[var(--ghost-hover)]"
 			>
-				<span className="shrink-0">远程图片</span>
+				<span className="shrink-0">{t("components.remoteImage")}</span>
 				<span className="min-w-0 break-all">{alt || src}</span>
 			</button>
 		);
@@ -514,7 +517,7 @@ function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) 
 				if (remote) await openUrl(src);
 				else await openFileLink(src, { cwd, home });
 			} catch (err) {
-				toast.error(`打开图片失败: ${errMsg(err)}`);
+				toast.error(tNow("components.openImageFailed", { error: errMsg(err) }));
 			}
 		};
 		return (
@@ -524,8 +527,8 @@ function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) 
 				title={inlineData ? alt : src}
 				className="my-1 inline-flex max-w-full items-start gap-1.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] px-3 py-1 text-left text-[12px] text-[var(--accent)] transition-colors hover:bg-[var(--ghost-hover)]"
 			>
-				<span className="shrink-0">图片</span>
-				<span className="min-w-0 break-all">{alt || (inlineData ? "无法显示" : src)}</span>
+				<span className="shrink-0">{t("components.image")}</span>
+				<span className="min-w-0 break-all">{alt || (inlineData ? t("components.cannotDisplay") : src)}</span>
 			</button>
 		);
 	}
@@ -548,6 +551,7 @@ function MathBlock({
 	...props
 }: React.ComponentPropsWithoutRef<"div"> & { node?: unknown; "data-tex"?: string }) {
 	const tex = props["data-tex"] ?? "";
+	const { t } = useT();
 	return (
 		<div className="group/codeblock my-2 overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)]">
 			<div className="flex h-7 items-center justify-between border-b border-[var(--line)] px-3 font-mono text-[11px] text-[var(--text-40)]">
@@ -555,9 +559,9 @@ function MathBlock({
 				{tex && (
 					<CopyButton
 						text={tex}
-						label="复制"
-						copiedLabel="已复制"
-						title="复制 LaTeX 源码"
+						label={t("common.copy")}
+						copiedLabel={t("common.copied")}
+						title={t("components.copyLatex")}
 						resetMs={2000}
 						className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
 					/>

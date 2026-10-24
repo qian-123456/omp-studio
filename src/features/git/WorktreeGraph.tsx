@@ -11,6 +11,7 @@ import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { addTerminalTabWithCwd } from "../terminal/terminalTabs";
 import { startSessionInWorktree } from "../sessions/newSession";
 
@@ -118,6 +119,7 @@ export function WorktreeGraph({
 	setSessionMenuWt: (path: string | null) => void;
 	onClean: (wt: WorktreeInfo) => void;
 }) {
+	const { t } = useT();
 	const sessions = useSessions((s) => s.sessions);
 	const selectSession = useUi((s) => s.selectSession);
 	const openModal = useUi((s) => s.openModal);
@@ -133,7 +135,7 @@ export function WorktreeGraph({
 			setExplorerWorkspace(ws.id);
 			setRightTab("explorer");
 		} catch (e) {
-			toast.error(`在侧边栏打开失败: ${errMsg(e)}`);
+			toast.error(t("worktree.graph.openInSidebarFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -237,9 +239,9 @@ export function WorktreeGraph({
 				{/* Section Header 1: Concise + Info Circle */}
 				<div className="flex items-center gap-1.5 px-1 py-1 text-neutral-400 font-medium text-[11px]">
 					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-					<span>已建工作树</span>
+					<span>{t("worktree.graph.activeWorktrees")}</span>
 					<span
-						title="每个工作树都是磁盘上的独立文件夹，支持多任务并行修改代码，互不干扰、互不踩文件"
+						title={t("worktree.graph.activeWorktreesDesc")}
 						className="cursor-help text-neutral-500 hover:text-neutral-300 transition-colors"
 					>
 						<Info size={11} />
@@ -264,7 +266,7 @@ export function WorktreeGraph({
 								// Friendly display name: avoid detached jargon
 								const displayName = wt.branch
 									? wt.branch
-									: `历史测试 (版本 ${wt.head.slice(0, 7)})`;
+									: t("worktree.graph.historyVersion", { head: wt.head.slice(0, 7) });
 
 								return (
 									<div key={wt.path} className="relative flex flex-col">
@@ -340,8 +342,8 @@ export function WorktreeGraph({
 														dismissHover();
 														openInExplorer(wt.path);
 													}}
-													title="在右侧文件浏览器中打开该工作树目录"
-													aria-label="在右侧文件浏览器中打开该工作树目录"
+													title={t("worktree.graph.openExplorer")}
+													aria-label={t("worktree.graph.openExplorer")}
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
 													<PanelRight size={12} />
@@ -354,11 +356,11 @@ export function WorktreeGraph({
 														const name = wt.branch || wt.path.split(/[\\/]/).filter(Boolean).pop() || wt.path;
 														if (addTerminalTabWithCwd(wt.path, name)) {
 															setRightTab("terminal");
-															toast.success(`已在「${name}」工作树打开终端`);
+															toast.success(t("worktree.openedTerminal", { name }));
 														}
 													}}
-													title="在此工作树打开终端 / 运行开发服务"
-													aria-label="在此工作树打开终端 / 运行开发服务"
+													title={t("worktree.graph.openTerminal")}
+													aria-label={t("worktree.graph.openTerminal")}
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
 													<SquareTerminal size={12} />
@@ -370,8 +372,8 @@ export function WorktreeGraph({
 														dismissHover();
 														void startSessionInWorktree(wt.path);
 													}}
-													title="在此工作树新建会话"
-													aria-label="在此工作树新建会话"
+													title={t("worktree.newSessionInWorktree")}
+													aria-label={t("worktree.newSessionInWorktree")}
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
 													<Plus size={12} />
@@ -387,13 +389,13 @@ export function WorktreeGraph({
 														}}
 														title={
 															isCurrent
-																? "当前工作树使用中，无法清理"
-																: "清理此工作树"
+																? t("worktree.graph.inUseCannotClean")
+																: t("worktree.graph.cleanWorktree")
 														}
 														aria-label={
 															isCurrent
-																? "当前工作树使用中，无法清理"
-																: "清理此工作树"
+																? t("worktree.graph.inUseCannotClean")
+																: t("worktree.graph.cleanWorktree")
 														}
 														className={clsx(
 															"rounded p-0.5 text-neutral-400 transition-colors",
@@ -417,31 +419,31 @@ export function WorktreeGraph({
 												{isMain && (
 													<span
 														className="shrink-0 rounded bg-neutral-800/90 border border-neutral-700/60 px-1.5 py-0.2 text-[9px] text-neutral-400"
-														title="项目的原始文件夹，未进行分支隔离"
+														title={t("worktree.graph.mainRootTitle")}
 													>
-														原始目录
+														{t("worktree.graph.mainRoot")}
 													</span>
 												)}
 
 												{isCurrent && (
 													<span
 														className="shrink-0 rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[9px] font-semibold text-emerald-300"
-														title="当前窗口正在查看和使用的工作树"
+														title={t("worktree.graph.currentTitle")}
 													>
-														当前
+														{t("worktree.currentBadge")}
 													</span>
 												)}
 
 												{wt.dirty > 0 ? (
 													<span
 														className="shrink-0 rounded bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 text-[9px] font-medium text-amber-400"
-														title="还没提交（git commit）保存的修改数量"
+														title={t("worktree.graph.dirtyTitle")}
 													>
-														{wt.dirty} 处未提交
+														{t("worktree.graph.dirtyCount", { count: wt.dirty })}
 													</span>
 												) : (
 													<span className="shrink-0 text-[9px] text-neutral-500">
-														无改动
+														{t("worktree.graph.noChanges")}
 													</span>
 												)}
 
@@ -459,9 +461,9 @@ export function WorktreeGraph({
 															}
 														}}
 														className="shrink-0 rounded bg-indigo-950/70 border border-indigo-700/40 px-1.5 py-0.2 text-[10px] text-indigo-300 hover:bg-indigo-900 hover:text-indigo-100 transition-colors"
-														title={`关联 ${wt.sessionIds.length} 个会话，点击切换或查看`}
+														title={t("worktree.graph.linkedSessionTitle", { count: wt.sessionIds.length })}
 													>
-														{wt.sessionIds.length} 会话{wt.sessionIds.length > 1 ? " ▾" : ""}
+														{t("worktree.sessionsCount", { count: wt.sessionIds.length })}{wt.sessionIds.length > 1 ? " ▾" : ""}
 													</button>
 												)}
 											</div>
@@ -482,25 +484,25 @@ export function WorktreeGraph({
 										className="w-64 p-1 shadow-2xl"
 									>
 										<div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-neutral-400 border-b border-[var(--border-divider)]">
-											<span>选择该工作树关联的会话 ({wt.sessionIds.length})</span>
+											<span>{t("worktree.graph.selectSessionTitle", { count: wt.sessionIds.length })}</span>
 											<button
 												type="button"
 												onClick={() => {
 													setSessionMenuWt(null);
 													setSessionMenuAnchor(null);
 												}}
-												title="关闭"
-												aria-label="关闭"
+												title={t("common.close")}
+												aria-label={t("common.close")}
 												className="text-neutral-500 hover:text-neutral-300 text-[10px]"
 											>
-												关闭
+												{t("common.close")}
 											</button>
 										</div>
 										<div className="max-h-48 overflow-y-auto py-1 space-y-0.5">
 											{wt.sessionIds.map((id) => {
 												const s = sessions[id];
 												const label = s?.label ?? id.slice(0, 6);
-												const title = s?.title || "未命名会话";
+												const title = s?.title || t("git.timeline.unnamedSession");
 												return (
 													<button
 														key={id}
@@ -521,7 +523,7 @@ export function WorktreeGraph({
 														</span>
 														{s?.archived && (
 															<span className="shrink-0 text-[9px] text-neutral-500 rounded bg-neutral-800 px-1 py-0.5">
-																已归档
+																{t("worktree.graph.archivedBadge")}
 															</span>
 														)}
 													</button>
@@ -536,7 +538,7 @@ export function WorktreeGraph({
 												}}
 												className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] text-indigo-400 hover:bg-[var(--bg-hover)] hover:text-indigo-300 transition-colors border-t border-[var(--border-divider)] pt-1.5"
 											>
-												<Plus size={11} /> 在此工作树新建会话…
+												<Plus size={11} /> {t("worktree.graph.newSessionInWorktreeDots")}
 											</button>
 										</div>
 									</FloatingLayer>
@@ -555,7 +557,7 @@ export function WorktreeGraph({
 								className="ml-1 flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
 							>
 								<ChevronDown size={12} />
-								<span>还有 {hiddenWtCount} 个工作树 · 展开剩余 {hiddenWtCount} 个</span>
+								<span>{t("worktree.graph.moreWorktrees", { count: hiddenWtCount })}</span>
 							</button>
 						</div>
 					)}
@@ -566,7 +568,7 @@ export function WorktreeGraph({
 								onClick={() => setWtExpanded(false)}
 								className="rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
 							>
-								收起工作树
+								{t("worktree.graph.collapseWorktrees")}
 							</button>
 						</div>
 					)}
@@ -580,10 +582,10 @@ export function WorktreeGraph({
 					{/* Section Header 2: Concise + Info Circle */}
 					<div className="flex items-center gap-1.5 px-1 py-1 text-neutral-400 font-medium text-[11px]">
 						<span className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
-						<span>未建工作树的分支</span>
+						<span>{t("worktree.graph.idleBranches")}</span>
 						<span className="font-mono text-[10px] text-neutral-500">({idleBranches.length + hiddenIdleCount})</span>
 						<span
-							title="仅为 Git 分支指针，尚未在磁盘创建独立文件夹；点击右侧「+ 建工作树」即可开启隔离环境"
+							title={t("worktree.graph.idleBranchesDesc")}
 							className="cursor-help text-neutral-500 hover:text-neutral-300 transition-colors"
 						>
 							<Info size={11} />
@@ -616,16 +618,16 @@ export function WorktreeGraph({
 											{/^(remotes\/)?origin\//.test(branch) ? (
 												<span
 													className="shrink-0 rounded border border-sky-500/30 bg-sky-500/10 px-1 text-[9px] text-sky-300"
-													title="云端（远程）分支"
+													title={t("worktree.graph.cloudBranchTitle")}
 												>
-													云端
+													{t("worktree.graph.cloudBadge")}
 												</span>
 											) : (
 												<span
 													className="shrink-0 rounded border border-neutral-700/60 bg-neutral-800/60 px-1 text-[9px] text-neutral-400"
-													title="本地分支"
+													title={t("worktree.graph.localBranchTitle")}
 												>
-													本地
+													{t("worktree.graph.localBadge")}
 												</span>
 											)}
 										</div>
@@ -639,12 +641,12 @@ export function WorktreeGraph({
 													useWorktree: true,
 												});
 											}}
-											title="基于此分支新建工作树并开启会话"
-											aria-label="基于此分支新建工作树并开启会话"
+											title={t("worktree.graph.spawnWorktreeTitle")}
+											aria-label={t("worktree.graph.spawnWorktreeTitle")}
 											className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded bg-neutral-800 hover:bg-indigo-600 px-2 py-0.5 text-[10px] font-medium text-neutral-300 hover:text-white transition-all shadow-md opacity-0 group-hover:opacity-100 focus-within:opacity-100"
 										>
 											<Plus size={10} />
-											<span>建工作树</span>
+											<span>{t("worktree.graph.buildWorktree")}</span>
 										</button>
 									</div>
 								</div>
@@ -660,7 +662,7 @@ export function WorktreeGraph({
 									onClick={() => setIdleExpanded(true)}
 									className="ml-1 rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
 								>
-									还有 {hiddenIdleCount} 个未检出分支 · 展开全部…
+									{t("worktree.graph.moreIdleBranches", { count: hiddenIdleCount })}
 								</button>
 							</div>
 						)}

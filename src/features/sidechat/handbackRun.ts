@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { errMsg } from "../../lib/dialogs";
 import { getTranscript } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 import { useLive } from "../../stores/live";
 import { sendPrompt } from "../chat/send";
 import { extractHandbackDraft, HANDBACK_PROMPT, transcriptText } from "./handbackLogic";
@@ -129,10 +130,10 @@ export async function startHandback(childId: string): Promise<void> {
 			if (!res.pending) throw new Error(res.error);
 			await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
 		}
-		throw new Error("没有收到辅助对话的回复");
+		throw new Error(tNow("sidechat.noResponseFromSideChat"));
 	} catch (err) {
 		const msg = errMsg(err);
 		useHandback.getState().set(childId, { phase: "error", error: msg });
-		toast.error(`整理结论失败: ${msg}`);
+		toast.error(tNow("sidechat.handbackRunFailed", { error: msg }));
 	}
 }

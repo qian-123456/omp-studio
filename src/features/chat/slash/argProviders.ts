@@ -6,26 +6,27 @@
 import { Puzzle, Server } from "lucide-react";
 import type { PluginItem } from "../../../lib/contracts";
 import { mcpConfigList, pluginsList } from "../../../lib/ipc";
+import { tNow } from "../../../stores/language";
 import type { ArgCandidate, ArgProvider } from "./argComplete";
 import { MCP_SERVER_ARG_SUBS, toMcpCandidate } from "./mcpServers";
 
 export function describePlugin(p: PluginItem): string {
-	const state = p.enabled ? "已启用" : "已禁用";
+	const state = p.enabled ? tNow("slash.enabled") : tNow("slash.disabled");
 	const parts = [state, p.kind];
 	if (p.version) parts.push(`v${p.version}`);
 	const head = parts.join(" · ");
-	const tail = [p.description, p.scope ? `来源: ${p.scope}` : ""].filter(Boolean);
+	const tail = [p.description, p.scope ? tNow("slash.sourceScope", { scope: p.scope }) : ""].filter(Boolean);
 	return [head, ...tail].join(" · ");
 }
 
 const mcpProvider: ArgProvider = {
-	groupLabel: "MCP 服务器",
+	groupKey: "mcp",
 	icon: Server,
 	load: async (cwd) => (await mcpConfigList(cwd)).servers.map(toMcpCandidate),
 };
 
 const pluginProvider: ArgProvider = {
-	groupLabel: "插件",
+	groupKey: "plugin",
 	icon: Puzzle,
 	load: async (cwd): Promise<ArgCandidate[]> =>
 		(await pluginsList(cwd)).plugins.map((p) => ({

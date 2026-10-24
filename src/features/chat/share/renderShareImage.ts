@@ -1,5 +1,5 @@
 import { toPng } from "html-to-image";
-
+import { tNow } from "../../../stores/language";
 const PIXEL_RATIO = 2;
 /** Conservative browser canvas edge limit (WebKit caps around 16384px). */
 const MAX_CANVAS_EDGE = 16000;
@@ -65,7 +65,7 @@ export async function renderShareImage(node: HTMLElement): Promise<ShareImage> {
 		const width = node.offsetWidth;
 		const height = node.offsetHeight;
 		if (height * PIXEL_RATIO > MAX_CANVAS_EDGE) {
-			throw new Error("内容过长，请减少选择的消息数量");
+			throw new Error(tNow("share.contentTooLong"));
 		}
 		const backgroundColor = getComputedStyle(node).backgroundColor;
 		const options = { cacheBust: true, backgroundColor };

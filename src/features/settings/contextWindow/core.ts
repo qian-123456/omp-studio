@@ -183,8 +183,9 @@ const BRANDS: readonly { name: string; test: RegExp }[] = [
 	{ name: "Muse", test: /^muse/ },
 ];
 
-export const OTHER_FAMILY = "其他";
-/** Brands sorted alphabetically at load time (adding a BRANDS entry needs no manual ordering); "其他" always last. */
+/** Stable id of the catch-all family; display it via `settingsModels.familyOther`. */
+export const OTHER_FAMILY = "other";
+/** Brands sorted alphabetically at load time (adding a BRANDS entry needs no manual ordering); OTHER_FAMILY always last. */
 export const FAMILIES: readonly string[] = [
 	...BRANDS.map((b) => b.name).sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })),
 	OTHER_FAMILY,

@@ -3105,13 +3105,18 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	}
 };
 
+import type { Locale } from "../../lib/i18n";
+import { useLanguageStore } from "../../stores/language";
 import { OMP_CONFIG_KEY_ZH, OMP_CONFIG_OPTION_ZH, OMP_CONFIG_OPTION_PAIR_ZH } from "./ompConfigZh";
 import { OMP_CONFIG_DESC_ZH } from "./ompConfigDescZh";
 
-/** Readable title for a config key: curated Chinese, else schema label, else derived. */
-export function ompConfigTitle(key: string): string {
-	const zh = OMP_CONFIG_KEY_ZH[key];
-	if (zh) return zh;
+/** Readable title for a config key: curated Chinese (in non-en-US), else schema label, else derived. */
+export function ompConfigTitle(key: string, locale?: Locale): string {
+	const loc = locale ?? useLanguageStore.getState().locale;
+	if (loc !== "en-US") {
+		const zh = OMP_CONFIG_KEY_ZH[key];
+		if (zh) return zh;
+	}
 	const label = OMP_CONFIG_META[key]?.label;
 	if (label) return label;
 	const seg = key.includes(".") ? key.slice(key.lastIndexOf(".") + 1) : key;
@@ -3124,11 +3129,21 @@ export function ompConfigTitle(key: string): string {
 }
 
 /**
- * Long description for a config key: curated Chinese, else the English schema
+ * Long description for a config key: curated Chinese (in non-en-US), else the English schema
  * description, else the runtime-listing fallback passed by the caller.
  */
-export function ompConfigDescription(key: string, fallback = ""): string {
-	return OMP_CONFIG_DESC_ZH[key] ?? OMP_CONFIG_META[key]?.description ?? fallback;
+export function ompConfigDescription(key: string, fallback = "", locale?: Locale): string {
+	const loc = locale ?? useLanguageStore.getState().locale;
+	if (loc !== "en-US") {
+		const zh = OMP_CONFIG_DESC_ZH[key];
+		if (zh) return zh;
+	}
+	const metaDesc = OMP_CONFIG_META[key]?.description;
+	if (metaDesc) return metaDesc;
+	if (loc === "en-US" && /[\u4e00-\u9fa5]/.test(fallback)) {
+		return "";
+	}
+	return fallback;
 }
 
 /**
@@ -3147,11 +3162,14 @@ export function ompConfigOptions(key: string): OmpConfigOption[] | null {
 	return null;
 }
 
-/** Label for a dropdown choice: curated Chinese pair, shared Chinese value, schema label, raw value. */
-export function ompConfigOptionLabel(key: string, opt: OmpConfigOption): string {
-	const pair = OMP_CONFIG_OPTION_PAIR_ZH[`${key}:${opt.value}`];
-	if (pair) return pair;
-	const shared = OMP_CONFIG_OPTION_ZH[opt.value];
-	if (shared) return shared;
+/** Label for a dropdown choice: curated Chinese pair/shared (in non-en-US), schema label, raw value. */
+export function ompConfigOptionLabel(key: string, opt: OmpConfigOption, locale?: Locale): string {
+	const loc = locale ?? useLanguageStore.getState().locale;
+	if (loc !== "en-US") {
+		const pair = OMP_CONFIG_OPTION_PAIR_ZH[`${key}:${opt.value}`];
+		if (pair) return pair;
+		const shared = OMP_CONFIG_OPTION_ZH[opt.value];
+		if (shared) return shared;
+	}
 	return opt.label ?? opt.value;
 }

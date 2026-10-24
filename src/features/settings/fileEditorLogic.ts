@@ -1,3 +1,4 @@
+import { tNow } from "../../stores/language";
 /** Pure helpers for the shared settings file editor. */
 
 /** Files larger than this open read-only. */
@@ -23,7 +24,7 @@ export function isConflictError(e: unknown): boolean {
 export function describeFileCommandError(e: unknown): string {
 	const msg = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
 	if (/not found|unknown command|did not find/i.test(msg) && /omp_(memory|rule)/.test(msg)) {
-		return "当前运行的应用还不包含这项功能，请重启应用后再试";
+		return tNow("settingsCore.fileEditor.restartRequired");
 	}
 	return msg;
 }

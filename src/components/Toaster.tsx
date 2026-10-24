@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import clsx from "clsx";
 import { useToasts, type ToastKind } from "../lib/toast";
+import { useT } from "../stores/language";
 
 const ICONS: Record<ToastKind, typeof Info> = {
 	info: Info,
@@ -16,6 +17,7 @@ const TINT: Record<ToastKind, string> = {
 
 /** Fixed bottom-right stack; mount once in App. */
 export function Toaster() {
+	const { t: tr } = useT();
 	const items = useToasts((s) => s.items);
 	const dismiss = useToasts((s) => s.dismiss);
 	if (items.length === 0) return null;
@@ -51,8 +53,8 @@ export function Toaster() {
 						)}
 						<button
 							type="button"
-							title="关闭"
-							aria-label="关闭通知"
+							title={tr("common.close")}
+							aria-label={tr("components.closeNotice")}
 							onClick={() => dismiss(t.id)}
 							className="shrink-0 rounded p-0.5 text-neutral-500 hover:text-neutral-200"
 						>

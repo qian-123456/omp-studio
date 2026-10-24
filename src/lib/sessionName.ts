@@ -1,4 +1,5 @@
 import type { SessionMeta } from "./contracts";
+import { tNow } from "../stores/language";
 
 /**
  * Display name for a session row/header.
@@ -14,7 +15,7 @@ export function sessionDisplayName(
 ): string {
 	const title = (session.title ?? "").trim();
 	const label = (session.label ?? "").trim();
-	if (!title) return "新建的草稿";
+	if (!title) return tNow("shell.newDraft");
 
 	// Legacy forks stored a "分支：" / "分支 " prefix; the fork chip replaces it.
 	let rest = title.replace(/^分支[：:\s]\s*(?=\S)/, "");
@@ -54,5 +55,5 @@ export function sessionDisplayNameOr<
 >(session: T | null | undefined, fallback: string): string {
 	if (!session) return fallback;
 	const name = sessionDisplayName(session);
-	return name === "新建的草稿" && !session.title ? fallback : name;
+	return !session.title ? fallback : name;
 }

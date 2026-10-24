@@ -1,5 +1,6 @@
 import type { SessionMeta, SessionSearchHit, Workspace } from "../../../lib/contracts";
 import { isEmptySideChat, matchesSearch } from "../grouping";
+import { tNow } from "../../../stores/language";
 
 /** Max rows shown for the empty-query "最近会话" list. */
 export const RECENT_LIMIT = 100;
@@ -58,11 +59,11 @@ export function bucketRecent(
 	const start30 = day(29);
 
 	const buckets: RecentBucket[] = [
-		{ key: "today", label: "今天", sessions: [] },
-		{ key: "yesterday", label: "昨天", sessions: [] },
-		{ key: "last7Days", label: "过去 7 天", sessions: [] },
-		{ key: "last30Days", label: "过去 30 天", sessions: [] },
-		{ key: "earlier", label: "更早", sessions: [] },
+		{ key: "today", label: tNow("time.today"), sessions: [] },
+		{ key: "yesterday", label: tNow("time.yesterday"), sessions: [] },
+		{ key: "last7Days", label: tNow("time.past7Days"), sessions: [] },
+		{ key: "last30Days", label: tNow("time.past30Days"), sessions: [] },
+		{ key: "earlier", label: tNow("time.earlier"), sessions: [] },
 	];
 	const sorted = [...sessions].sort((a, b) => sessionTime(b) - sessionTime(a));
 	for (const s of sorted) {

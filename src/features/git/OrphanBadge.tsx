@@ -11,6 +11,7 @@ import { removeWorktreeFlow } from "./removeWorktree";
 import { HoverScrollText } from "../../components/HoverScrollText";
 import { Notice } from "../../components/Notice";
 import { useWorktrees } from "../../stores/worktrees";
+import { useT } from "../../stores/language";
 
 // In-memory dismissal tracked per repository root.
 const dismissedRepos = new Set<string>();
@@ -31,6 +32,7 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 	const [cleaningPath, setCleaningPath] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const home = useHomeDir();
+	const { t } = useT();
 
 	useEffect(() => {
 		let cancelled = false;
@@ -84,16 +86,19 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 		const dirty = orphans.filter((o) => o.dirty > 0);
 		const dirtyList =
 			dirty.length > 0
-				? `\n其中 ${dirty.length} 个有未提交的改动（确认后一并丢弃）：\n${dirty
-						.map((o) => `· ${o.branch ?? basename(o.path)} (${shortPath(o.path, home)})`)
-						.join("\n")}`
+				? t("worktree.orphan.dirtyWarning", {
+						count: dirty.length,
+						list: dirty
+							.map((o) => `· ${o.branch ?? basename(o.path)} (${shortPath(o.path, home)})`)
+							.join("\n"),
+					})
 				: "";
 		const ok = await confirmDialog(
-			`确定回收这 ${orphans.length} 个闲置的工作树吗？${dirtyList}\n关联的分支会一并删除。`,
+			t("worktree.orphan.reclaimAllConfirm", { count: orphans.length, dirtyList }),
 			{
 				danger: true,
-				title: "全部回收",
-				okLabel: "全部回收",
+				title: t("worktree.orphan.reclaimAllTitle"),
+				okLabel: t("worktree.orphan.reclaimAllTitle"),
 			},
 		);
 		if (!ok) return;
@@ -156,6 +161,7 @@ export function OrphanInlinePanel({
 	onClose: () => void;
 	onDismiss: () => void;
 }) {
+	const { t } = useT();
 	const [showAll, setShowAll] = useState(false);
 
 	if (orphans.length === 0) return null;
@@ -166,7 +172,7 @@ export function OrphanInlinePanel({
 			<div className="flex items-center justify-between pb-1.5 border-b border-neutral-800">
 				<div className="flex items-center gap-1.5 font-medium text-neutral-100">
 					<AlertTriangle size={12} className="text-amber-400 shrink-0" />
-					<span>闲置工作树 ({orphans.length})</span>
+					<span>{t("worktree.orphan.panelHeader", { count: orphans.length })}</span>
 				</div>
 				<div className="flex items-center gap-1.5">
 					<button
@@ -174,16 +180,16 @@ export function OrphanInlinePanel({
 						disabled={busy}
 						onClick={onReclaimAll}
 						className="rounded bg-amber-800/80 hover:bg-amber-700 px-2 py-0.5 text-[10px] font-medium text-amber-100 disabled:opacity-50 transition-colors"
-						title="一键回收所有闲置工作树"
+						title={t("worktree.orphan.reclaimAllBtnTitle")}
 					>
-						{busy ? "回收中…" : "全部回收"}
+						{busy ? t("worktree.orphan.reclaiming") : t("worktree.orphan.reclaimAllBtn")}
 					</button>
 					<button
 						type="button"
 						onClick={onClose}
 						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-						title="收起此面板"
-						aria-label="收起此面板"
+						title={t("worktree.orphan.collapsePanel")}
+						aria-label={t("worktree.orphan.collapsePanel")}
 					>
 						<X size={13} />
 					</button>
@@ -191,7 +197,7 @@ export function OrphanInlinePanel({
 			</div>
 
 			<p className="mt-1.5 mb-2 text-[10px] text-neutral-400 leading-relaxed">
-				这些工作树已无关联会话，可清理释放磁盘空间并删除废弃分支。
+				{t("worktree.orphan.panelDesc")}
 			</p>
 
 			{error && (
@@ -214,11 +220,11 @@ export function OrphanInlinePanel({
 								<HoverScrollText
 									text={name}
 									className="min-w-0 flex-1 font-mono text-[11px] font-medium text-neutral-200"
-									title={`分支: ${o.branch ?? "无"}\n路径: ${shortPath(o.path, home)}`}
+									title={t("worktree.orphan.itemTitle", { branch: o.branch ?? t("common.none"), path: shortPath(o.path, home) })}
 								/>
 								{o.dirty > 0 && (
 									<span className="shrink-0 rounded bg-amber-950/70 border border-amber-800/50 px-1 py-0.2 text-amber-300 font-sans text-[9px] font-medium">
-										{o.dirty} 未提交
+										{t("worktree.orphan.dirtyBadge", { count: o.dirty })}
 									</span>
 								)}
 							</div>
@@ -227,14 +233,14 @@ export function OrphanInlinePanel({
 								disabled={busy || cleaningPath === o.path}
 								onClick={() => onReclaim(o)}
 								className="flex shrink-0 items-center gap-1 rounded bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400 hover:bg-rose-950/60 hover:text-rose-300 border border-neutral-800 hover:border-rose-800/40 transition-colors disabled:opacity-50"
-								title={`回收工作树「${name}」`}
+								title={t("worktree.orphan.reclaimWorktreeTitle", { name })}
 							>
 								{cleaningPath === o.path ? (
 									<Loader2 size={10} className="animate-spin text-amber-400" />
 								) : (
 									<Trash2 size={10} />
 								)}
-								<span>回收</span>
+								<span>{t("worktree.orphan.reclaim")}</span>
 							</button>
 						</li>
 					);
@@ -247,7 +253,6 @@ export function OrphanInlinePanel({
 						n={orphans.length - 5}
 						expanded={showAll}
 						onToggle={() => setShowAll((v) => !v)}
-						unit="个"
 						className="text-amber-400/80 hover:bg-amber-900/40 hover:text-amber-200"
 					/>
 				</div>
@@ -258,11 +263,11 @@ export function OrphanInlinePanel({
 					type="button"
 					onClick={onDismiss}
 					className="hover:text-neutral-300 hover:underline transition-colors"
-					title="本次不再提醒此仓库的闲置工作树"
+					title={t("worktree.orphan.dismissTitle")}
 				>
-					对此仓库不再提醒
+					{t("worktree.orphan.dismiss")}
 				</button>
-				<span className="font-mono">共 {orphans.length} 个</span>
+				<span className="font-mono">{t("worktree.orphan.totalCount", { count: orphans.length })}</span>
 			</div>
 		</div>
 	);
@@ -281,6 +286,7 @@ export function OrphanBadge({
 	open: boolean;
 	onToggle: () => void;
 }) {
+	const { t } = useT();
 	if (count <= 0) return null;
 
 	return (
@@ -288,8 +294,8 @@ export function OrphanBadge({
 			type="button"
 			onClick={onToggle}
 			aria-expanded={open}
-			aria-label={`${count} 个工作树闲置`}
-			title={`检测到 ${count} 个工作树闲置中（未关联任何会话），点击查看或清理`}
+			aria-label={t("worktree.orphan.badgeAria", { count })}
+			title={t("worktree.orphan.badgeTitle", { count })}
 			className={clsx(
 				"flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium transition-all select-none",
 				open
@@ -298,7 +304,7 @@ export function OrphanBadge({
 			)}
 		>
 			<AlertTriangle size={11} className="shrink-0 text-amber-400" />
-			<span>{count} 闲置</span>
+			<span>{t("worktree.orphan.badgeText", { count })}</span>
 		</button>
 	);
 }

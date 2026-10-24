@@ -6,6 +6,7 @@
  * rules and the switch log all read the same scope.
  */
 import { type ReactNode, useMemo, useState } from "react";
+import { useT } from "../../stores/language";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
 import type { Workspace } from "../../lib/contracts";
@@ -66,6 +67,19 @@ export function useRoleScope(): RoleScope {
 	};
 }
 
+/** Translate a message whose `{placeholders}` are filled with React nodes (e.g. <code>). */
+export function richT(
+	t: (key: string, params?: Record<string, string | number>) => string,
+	key: string,
+	nodes: Record<string, ReactNode>,
+): ReactNode[] {
+	const marks: Record<string, string> = {};
+	for (const name of Object.keys(nodes)) marks[name] = `\u0001${name}\u0001`;
+	return t(key, marks)
+		.split(/\u0001(\w+)\u0001/)
+		.map((part, i) => (i % 2 === 1 ? <span key={i}>{nodes[part]}</span> : part));
+}
+
 /**
  * The scope row. One scope at a time: the project defaults to the session's
  * project and can be switched to any registered one. Without any project to
@@ -74,9 +88,9 @@ export function useRoleScope(): RoleScope {
  */
 export function RoleScopeBar({
 	roleScope,
-	label = "配置范围",
+	label,
 	description,
-	projectTitle = "只写入所选项目的配置，未设置的角色继承全局",
+	projectTitle,
 }: {
 	roleScope: RoleScope;
 	label?: string;
@@ -85,6 +99,9 @@ export function RoleScopeBar({
 	/** Tooltip of the 项目 option when a project is available. */
 	projectTitle?: string;
 }) {
+	const { t } = useT();
+	const displayLabel = label ?? t("settingsModels.scopeLabel");
+	const displayProjectTitle = projectTitle ?? t("settingsModels.projectTitleDefault");
 	const { scope, setScope, pick, setPicked, sessionCwd, workspaces, projects } = roleScope;
 	// A picked path that is no longer registered stays selectable so the select never shows a blank value.
 	const unlisted = pick !== null && pick !== sessionCwd && !workspaces.some((w) => w.path === pick);
@@ -92,50 +109,52 @@ export function RoleScopeBar({
 	return (
 		<SettingsCard clip>
 			<SettingRow
-				label={label}
+				label={displayLabel}
 				description={
 					scope === "project" && pick === null ? (
-						"先在侧栏添加一个项目或打开一个会话。"
+						t("settingsModels.scopeNoProjectHint")
 					) : description !== undefined ? (
 						description
 					) : scope === "project" ? (
 						<span title={pick ?? undefined}>
-							只写入「<span className="font-medium text-[var(--text)]">{pickName}</span>」，未设置的角色继承全局。
+							{richT(t, "settingsModels.scopeProjectDesc", {
+								name: <span className="font-medium text-[var(--text)]">{pickName}</span>,
+							})}
 						</span>
 					) : (
-						"对所有项目生效，不受当前会话所在项目影响。"
+						t("settingsModels.scopeGlobalDesc")
 					)
 				}
 				control={
 					<>
 						<Segmented<AssignmentScope>
 							size="sm"
-							aria-label={label}
+							aria-label={displayLabel}
 							value={scope}
 							onChange={setScope}
 							options={[
-								{ value: "global", label: "全局", title: "写入全局配置，对所有项目生效" },
+								{ value: "global", label: t("settingsModels.scopeGlobalRadio"), title: t("settingsModels.scopeGlobalRadioTitle") },
 								{
 									value: "project",
-									label: "项目",
+									label: t("settingsModels.scopeProjectRadio"),
 									disabled: pick === null,
 									title:
 										pick === null
-											? "先在侧栏添加一个项目或打开一个会话"
-											: projectTitle,
+											? t("settingsModels.scopeNoProjectRadioTitle")
+											: displayProjectTitle,
 								},
 							]}
 						/>
 						{scope === "project" && pick !== null && (
 							<NativeSelect
-								aria-label="选择要配置的项目"
+								aria-label={t("settingsModels.selectProjectAria")}
 								value={pick}
 								onChange={(e) => setPicked(e.target.value === "" ? null : e.target.value)}
 								className="text-[11px]"
 								containerClassName="w-[220px]"
 							>
 								{sessionCwd !== null && (
-									<option value={sessionCwd}>当前会话项目（{projectBasename(sessionCwd)}）</option>
+									<option value={sessionCwd}>{t("settingsModels.currentSessionProjectOption", { name: projectBasename(sessionCwd) })}</option>
 								)}
 								{unlisted && (
 									<option value={pick}>

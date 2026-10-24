@@ -1,50 +1,60 @@
+import { useT } from "../../../stores/language";
 import { AgentDefsPanel } from "./AgentDefsPanel";
 import { MemoryFilesPanel } from "./MemoryFilesPanel";
 import { OmpSettingsPage } from "../OmpSettingsList";
 
 export function ThinkingSection() {
-	return <OmpSettingsPage page="thinking" title="思考与采样" description="思考深度与预算、温度等采样参数、回复风格" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="thinking" title={t("settings.nav.thinking")} description={t("settings.nav.thinkingLead")} />;
 }
 
 export function HelperModelsSection() {
-	return <OmpSettingsPage page="helper-models" title="辅助模型" description="顾问模型、预探、图片识别等会额外调用模型的功能" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="helper-models" title={t("settings.nav.helperModels")} description={t("settings.nav.helperModelsLead")} />;
 }
 
 export function ToolsSection() {
-	return <OmpSettingsPage page="tools" title="工具" description="AI 能用哪些工具、哪些要先审批、输出多长" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="tools" title={t("settings.nav.tools")} description={t("settings.nav.toolsLead")} />;
 }
 
 export function FilesSection() {
-	return <OmpSettingsPage page="files" title="文件读写" description="AI 读取和编辑文件的方式，以及代码诊断（LSP）" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="files" title={t("settings.nav.files")} description={t("settings.nav.filesLead")} />;
 }
 
 export function ShellSection() {
-	return <OmpSettingsPage page="shell" title="命令行" description="AI 执行 Shell 命令、运行 Python / JS 代码的方式" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="shell" title={t("settings.nav.shell")} description={t("settings.nav.shellLead")} />;
 }
 
 export function SubagentsSection() {
+	const { t } = useT();
 	return (
 		<OmpSettingsPage
 			page="subagents"
-			title="子代理"
-			description="子代理的提示词与定义，以及并发、时长和深度限制和隔离运行方式"
+			title={t("settings.nav.subagents")}
+			description={t("agentDefs.subagentsPageLead")}
 			lead={<AgentDefsPanel />}
 		/>
 	);
 }
 
 export function MemorySection() {
+	const { t } = useT();
 	return (
-		<OmpSettingsPage page="memory" title="记忆" description="AI 跨会话记住什么、存在哪里">
+		<OmpSettingsPage page="memory" title={t("settings.nav.memory")} description={t("settings.nav.memoryLead")}>
 			<MemoryFilesPanel />
 		</OmpSettingsPage>
 	);
 }
 
 export function SkillsSection() {
-	return <OmpSettingsPage page="skills" title="技能与命令" description="从哪些目录加载技能和自定义命令" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="skills" title={t("settings.nav.skills")} description={t("settings.nav.skillsLead")} />;
 }
 
 export function WebSection() {
-	return <OmpSettingsPage page="web" title="联网搜索" description="AI 联网搜索和抓取网页时用的服务" />;
+	const { t } = useT();
+	return <OmpSettingsPage page="web" title={t("settings.nav.web")} description={t("settings.nav.webLead")} />;
 }

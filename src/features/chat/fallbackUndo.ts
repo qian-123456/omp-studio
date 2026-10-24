@@ -9,6 +9,7 @@ import { errMsg } from "../../lib/dialogs";
 import { rpcSend } from "../../lib/ipc";
 import { buildSetModelPayload, resolveCurrentModel } from "../../lib/models";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 import { useLive } from "../../stores/live";
 import type { FallbackInfo } from "../../stores/retryNotice";
 
@@ -22,7 +23,7 @@ export function canUndoFallback(fb: FallbackInfo | undefined, stateModel: unknow
 export async function undoFallback(sessionId: string, fb: FallbackInfo): Promise<void> {
 	const payload = buildSetModelPayload(fb.from);
 	if (!payload) {
-		toast.error(`无法切回原模型: ${fb.from}`);
+		toast.error(tNow("chat.fallback.cannotSwitchBack", { model: fb.from }));
 		return;
 	}
 	try {
@@ -33,8 +34,8 @@ export async function undoFallback(sessionId: string, fb: FallbackInfo): Promise
 		}
 		await rpcSend(sessionId, { type: "get_state" });
 		useLive.getState().markFallbackUndone(sessionId, fb.id);
-		toast.success("已切回原模型");
+		toast.success(tNow("chat.fallback.switchedBack"));
 	} catch (err) {
-		if (!isResumeCancelled(err)) toast.error(`切回原模型失败: ${errMsg(err)}`);
+		if (!isResumeCancelled(err)) toast.error(tNow("chat.fallback.switchBackFailed", { error: errMsg(err) }));
 	}
 }

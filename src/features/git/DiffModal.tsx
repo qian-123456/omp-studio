@@ -25,6 +25,7 @@ import { dispatchPrompt } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import {
 	type DiffFile,
 	type DiffLine,
@@ -46,12 +47,6 @@ const ROW_STYLE: Record<DiffLine["kind"], string> = {
 	meta: "text-neutral-500",
 };
 
-const STATUS_LABEL: Record<DiffFile["status"], string | null> = {
-	added: "新增",
-	deleted: "删除",
-	renamed: "重命名",
-	modified: null,
-};
 
 const STATUS_STYLE: Record<DiffFile["status"], string> = {
 	added: "text-emerald-400 bg-emerald-500/10",
@@ -87,7 +82,14 @@ function Counts({ adds, dels }: { adds: number; dels: number }) {
 }
 
 function StatusBadge({ file }: { file: DiffFile }) {
-	const label = file.binary ? "二进制" : STATUS_LABEL[file.status];
+	const { t } = useT();
+	const statusLabels: Record<DiffFile["status"], string | null> = {
+		added: t("git.diff.statusAdded"),
+		deleted: t("git.diff.statusDeleted"),
+		renamed: t("git.diff.statusRenamed"),
+		modified: null,
+	};
+	const label = file.binary ? t("git.diff.binary") : statusLabels[file.status];
 	if (!label) return null;
 	return (
 		<span
@@ -111,6 +113,7 @@ function Gutter({
 	onAdd: (() => void) | null;
 	group: "row" | "left" | "right";
 }) {
+	const { t } = useT();
 	return (
 		<div className="relative flex shrink-0 select-none self-stretch">
 			{nos.map((n, k) => (
@@ -140,8 +143,8 @@ function Gutter({
 						group === "left" && "group-hover/left:opacity-100",
 						group === "right" && "group-hover/right:opacity-100",
 					)}
-					title="为此行添加批注"
-					aria-label="为此行添加批注"
+					title={t("git.diff.annotateLine")}
+					aria-label={t("git.diff.annotateLine")}
 				>
 					<Plus size={10} />
 				</button>
@@ -165,6 +168,7 @@ export function DiffModal({
 	load: () => Promise<string>;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const [text, setText] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [sel, setSel] = useState<[number, number] | null>(null);
@@ -427,7 +431,7 @@ export function DiffModal({
 					? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-sm"
 					: "text-neutral-400 hover:text-neutral-200",
 			)}
-			title={mode === "unified" ? "单栏合并视图 (Unified)" : "双栏对比视图 (Split)"}
+			title={mode === "unified" ? t("git.diff.viewUnifiedTitle") : t("git.diff.viewSplitTitle")}
 		>
 			{mode === "unified" ? <Rows size={13} /> : <Columns2 size={13} />}
 			{mode === "unified" ? "Unified" : "Split"}
@@ -449,9 +453,9 @@ export function DiffModal({
 
 		const fileDesc = segments[0]?.file ? `：${segments[0].file}` : "";
 		if (segments.length > 1) {
-			toast.success(`已添加 ${segments.length} 条分段批注${fileDesc}`);
+			toast.success(t("git.diff.addedSegmentsAnnotation", { count: segments.length, fileDesc }));
 		} else {
-			toast.success(`已添加批注${fileDesc}`);
+			toast.success(t("git.diff.addedAnnotation", { fileDesc }));
 		}
 
 		setSel(null);
@@ -464,7 +468,11 @@ export function DiffModal({
 				.filter(Boolean)
 				.join(", ");
 			setNote(
-				`已添加${segments.length > 1 ? ` ${segments.length} 条分段` : ""}批注${fileDesc}${lineRanges ? ` 第 ${lineRanges} 行` : ""}`,
+				t("git.diff.noteAdded", {
+					segmentDesc: segments.length > 1 ? t("git.diff.segmentDesc", { count: segments.length }) : "",
+					fileDesc,
+					lineDesc: lineRanges ? t("git.diff.lineRangeDesc", { lines: lineRanges }) : "",
+				}),
 			);
 		}
 	};
@@ -487,8 +495,8 @@ export function DiffModal({
 			await dispatchPrompt(sessionId, promptText);
 			toast.success(
 				segments.length > 1
-					? `已发送 ${segments.length} 个分段批注给 Agent`
-					: "已发送批注给 Agent",
+					? t("git.diff.sentSegmentsToAgent", { count: segments.length })
+					: t("git.diff.sentToAgent"),
 			);
 			setSel(null);
 			setComment("");
@@ -526,8 +534,8 @@ export function DiffModal({
 							type="button"
 							onClick={() => setSidebarOpen((v) => !v)}
 							className="press-scale rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
-							title={sidebarOpen ? "隐藏文件列表" : "显示文件列表"}
-							aria-label={sidebarOpen ? "隐藏文件列表" : "显示文件列表"}
+							title={sidebarOpen ? t("git.diff.hideFileList") : t("git.diff.showFileList")}
+							aria-label={sidebarOpen ? t("git.diff.hideFileList") : t("git.diff.showFileList")}
 						>
 							{sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
 						</button>
@@ -537,7 +545,7 @@ export function DiffModal({
 					</span>
 					{realFiles.length > 0 && (
 						<span className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
-							<span>{realFiles.length} 个文件</span>
+							<span>{t("git.diff.filesCount", { count: realFiles.length })}</span>
 							<Counts adds={totals.adds} dels={totals.dels} />
 						</span>
 					)}
@@ -556,11 +564,11 @@ export function DiffModal({
 						)}
 						title={
 							viewMode === "split"
-								? "双栏视图总是自动换行，保证左右两栏都能看全"
-								: "长行自动换行；关闭时可横向滚动"
+								? t("git.diff.wrapSplitHint")
+								: t("git.diff.wrapUnifiedHint")
 						}
 					>
-						<WrapText size={13} /> 自动换行
+						<WrapText size={13} /> {t("git.diff.wrapText")}
 					</button>
 
 					{/* View mode toggle - Apple Segmented Control */}
@@ -571,8 +579,8 @@ export function DiffModal({
 
 					<button
 						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭 (Esc)"
+						title={t("git.diff.close")}
+						aria-label={t("git.diff.close")}
 						onClick={onClose}
 						className="press-scale rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 					>
@@ -623,10 +631,10 @@ export function DiffModal({
 					>
 						{error && <div className="p-3 text-rose-400">{error}</div>}
 						{text === null && !error && (
-							<div className="p-3 text-neutral-500">加载中…</div>
+							<div className="p-3 text-neutral-500">{t("common.loading")}</div>
 						)}
 						{text !== null && lines.length === 0 && (
-							<div className="p-3 text-neutral-500">没有差异</div>
+							<div className="p-3 text-neutral-500">{t("git.diff.noDiff")}</div>
 						)}
 
 						{files.map((f, fi) => {
@@ -646,8 +654,8 @@ export function DiffModal({
 												type="button"
 												onClick={() => toggleCollapsed(fi)}
 												className="press-scale rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100"
-												title={isCollapsed ? "展开此文件" : "折叠此文件"}
-												aria-label={isCollapsed ? "展开此文件" : "折叠此文件"}
+												title={isCollapsed ? t("git.diff.expandFile") : t("git.diff.collapseFile")}
+												aria-label={isCollapsed ? t("git.diff.expandFile") : t("git.diff.collapseFile")}
 												aria-expanded={!isCollapsed}
 											>
 												<ChevronRight
@@ -693,7 +701,7 @@ export function DiffModal({
 									}
 									className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-4 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] transition-colors"
 								>
-									显示更多（还有 {remaining} 行）
+									{t("git.diff.showMoreLines", { remaining })}
 								</button>
 							</div>
 						)}
@@ -716,17 +724,17 @@ export function DiffModal({
 											submitAnnotation(true);
 										}
 									}}
-									placeholder="对所选行的批注（支持 Cmd+Enter 快速提交并关闭）"
+									placeholder={t("git.diff.commentPlaceholder")}
 									rows={2}
 									className="min-w-0 w-full resize-none rounded-xl hairline bg-[var(--bg-panel)] p-2.5 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors"
 								/>
 								<div className="flex items-center justify-between gap-2">
 									<div className="text-[11px] text-neutral-400">
-										提示：按{" "}
+										{t("git.diff.shortcutHintPrefix")}
 										<kbd className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-neutral-300 font-mono text-[10px]">
 											Cmd+Enter
 										</kbd>{" "}
-										提交并关闭
+										{t("git.diff.shortcutHintSuffix")}
 									</div>
 									<div className="flex items-center gap-2">
 										<button
@@ -734,32 +742,32 @@ export function DiffModal({
 											onClick={() => setSel(null)}
 											className="press-scale rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 										>
-											取消
+											{t("common.cancel")}
 										</button>
 										<button
 											type="button"
 											onClick={() => submitAnnotation(false)}
 											className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] transition-colors"
-											title="加入当前会话草稿箱，保持弹窗开启"
+											title={t("git.diff.draftOnlyTitle")}
 										>
-											仅加到草稿
+											{t("git.diff.draftOnly")}
 										</button>
 										<button
 											type="button"
 											disabled={sending}
 											onClick={sendToAgent}
 											className="press-scale flex items-center gap-1 rounded-lg bg-[#FF9F0A] px-3 py-1 text-xs font-medium text-white hover:bg-[#FF9F0A]/90 disabled:opacity-40 transition-colors"
-											title="立即发送给 Agent 审查"
+											title={t("git.diff.sendToAgentTitle")}
 										>
-											<Send size={13} /> {sending ? "发送中…" : "发给 Agent"}
+											<Send size={13} /> {sending ? t("git.diff.sending") : t("git.diff.sendToAgent")}
 										</button>
 										<button
 											type="button"
 											onClick={() => submitAnnotation(true)}
 											className="press-scale flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 transition-colors"
-											title="添加批注并关闭窗口 (Cmd+Enter)"
+											title={t("git.diff.submitAndCloseTitle")}
 										>
-											<MessageSquarePlus size={14} /> 批注并关闭
+											<MessageSquarePlus size={14} /> {t("git.diff.submitAndClose")}
 										</button>
 									</div>
 								</div>
@@ -767,14 +775,14 @@ export function DiffModal({
 						) : (
 							<div className="flex items-center justify-between">
 								<span className="text-xs text-neutral-400">
-									先在左侧选择一个会话，才能添加批注
+									{t("git.diff.selectSessionFirst")}
 								</span>
 								<button
 									type="button"
 									onClick={() => setSel(null)}
 									className="press-scale rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] transition-colors"
 								>
-									取消
+									{t("common.cancel")}
 								</button>
 							</div>
 						)}

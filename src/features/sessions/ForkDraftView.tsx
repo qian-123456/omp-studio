@@ -9,11 +9,13 @@ import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { Composer } from "../chat/Composer";
 import { MessageList } from "../chat/MessageList";
 import { closeForkDraft, cutItemsAtEntry, useForkDraft } from "./forkDraft";
 
 export function ForkDraftView() {
+	const { t } = useT();
 	const draft = useForkDraft((s) => s.draft);
 	const parentCwd = useSessions((s) => (draft ? (s.sessions[draft.parentId]?.cwd ?? "") : ""));
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -71,10 +73,10 @@ export function ForkDraftView() {
 				<div className="flex items-center justify-between gap-3 px-5 pb-1 text-[12px] text-[var(--text-40)]">
 					<span>
 						{draft.sending
-							? "正在创建分支…"
+							? t("sessions.forkDraftCreating")
 							: draft.entryId
-								? "发送第一条消息时将从所选回复处创建分支"
-								: "发送第一条消息时将从这里创建分支"}
+								? t("sessions.forkDraftFromEntry")
+								: t("sessions.forkDraftFromHere")}
 					</span>
 					{!draft.sending && (
 						<button
@@ -86,7 +88,7 @@ export function ForkDraftView() {
 								useUi.getState().selectSession(back);
 							}}
 						>
-							放弃分支
+							{t("sessions.discardFork")}
 						</button>
 					)}
 				</div>

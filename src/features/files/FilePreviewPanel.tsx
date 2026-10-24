@@ -20,38 +20,41 @@ import { SelectionToolbar } from "../chat/SelectionToolbar";
 import { Segmented } from "../../components/Segmented";
 import { Markdown } from "../../components/Markdown";
 import { useFileBuffer } from "../editor/useFileBuffer";
+import { useT } from "../../stores/language";
 
 const FileEditor = React.lazy(() => import("./FileEditor"));
 
 function ExternalActions({ path }: { path: string }) {
+	const { t } = useT();
 	const run = (fn: () => Promise<void>, what: string) => {
-		void fn().catch((e: unknown) => toast.error(`${what}失败: ${errMsg(e)}`));
+		void fn().catch((e: unknown) => toast.error(t("files.actionFailed", { action: what, error: errMsg(e) })));
 	};
 	return (
 		<>
 			<button
 				type="button"
-				onClick={() => run(() => openPath(path), "打开")}
-				title="用系统默认应用打开"
+				onClick={() => run(() => openPath(path), t("files.actionOpen"))}
+				title={t("files.openWithSystemDefault")}
 				className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 			>
 				<ExternalLink size={13} />
-				系统打开
+				{t("files.systemOpen")}
 			</button>
 			<button
 				type="button"
-				onClick={() => run(() => revealItemInDir(path), "在访达中显示")}
-				title="在访达中显示"
+				onClick={() => run(() => revealItemInDir(path), t("files.actionReveal"))}
+				title={t("files.actionReveal")}
 				className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 			>
 				<FolderOpen size={13} />
-				访达
+				{t("files.finder")}
 			</button>
 		</>
 	);
 }
 
 function ImageBody({ path }: { path: string }) {
+	const { t } = useT();
 	const home = useHomeDir();
 	const resolved = path.startsWith("~/") && home ? `${home.replace(/\/+$/, "")}${path.slice(1)}` : path;
 	return (
@@ -61,7 +64,7 @@ function ImageBody({ path }: { path: string }) {
 			</div>
 			<div className="min-h-0 flex-1 overflow-auto p-3">
 				{path.startsWith("~/") && !home ? (
-					<div className="text-xs text-[var(--text-60)]">无法解析 ~ 路径：{path}</div>
+					<div className="text-xs text-[var(--text-60)]">{t("files.cannotResolveTildePath", { path })}</div>
 				) : (
 					<img
 						src={convertFileSrc(resolved)}
@@ -75,6 +78,7 @@ function ImageBody({ path }: { path: string }) {
 }
 
 function TextBody({ tab }: { tab: FileTab }) {
+	const { t } = useT();
 	const buffer = useFileBuffer(tab.path);
 	const { saved, draft, setDraft, error, external, saving, dirty } = buffer;
 	const setMode = useFilePreview((s) => s.setMode);
@@ -104,7 +108,7 @@ function TextBody({ tab }: { tab: FileTab }) {
 							<span className="font-medium text-xs text-[var(--text)]">{basename(tab.path)}</span>
 							{dirty && (
 								<span className="whitespace-nowrap rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
-									未保存
+									{t("files.unsaved")}
 								</span>
 							)}
 						</div>
@@ -116,33 +120,33 @@ function TextBody({ tab }: { tab: FileTab }) {
 				<div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
 					<Segmented
 						size="sm"
-						aria-label="查看方式"
+						aria-label={t("files.viewMode")}
 						value={tab.mode}
 						onChange={(mode) => setMode(tab.path, mode)}
 						options={[
-							{ value: "preview", label: "预览" },
-							{ value: "edit", label: "编辑" },
+							{ value: "preview", label: t("files.tabPreview") },
+							{ value: "edit", label: t("files.tabEdit") },
 						]}
 					/>
 					<span className="flex-1" />
 					<button
 						type="button"
-						title="保存 (⌘S)"
+						title={t("files.saveShortcut")}
 						disabled={!dirty || saving}
 						onClick={() => void buffer.save()}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40"
 					>
 						<Save size={13} />
-						保存
+						{t("common.save")}
 					</button>
 					<button
 						type="button"
-						title="从磁盘重新加载"
+						title={t("files.reloadFromDisk")}
 						onClick={() => void buffer.reload()}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 					>
 						<RefreshCw size={13} />
-						重新加载
+						{t("editor.reload")}
 					</button>
 					<ExternalActions path={tab.path} />
 				</div>
@@ -155,21 +159,21 @@ function TextBody({ tab }: { tab: FileTab }) {
 			)}
 			{external && (
 				<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-amber-800/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-200">
-					<span className="flex-1">文件已在磁盘上被修改</span>
+					<span className="flex-1">{t("files.fileModifiedOnDisk")}</span>
 					<button type="button" onClick={() => void buffer.reload()} className="rounded bg-amber-800/60 px-2 py-0.5 hover:bg-amber-700/60">
-						重新加载
+						{t("editor.reload")}
 					</button>
 					<button type="button" onClick={buffer.dismissExternal} className="px-1.5 text-amber-300/80">
-						保留我的修改
+						{t("files.keepMyChanges")}
 					</button>
 				</div>
 			)}
 
 			{saved === null && !error ? (
-				<div className="py-6 text-center text-xs text-[var(--text-40)]">加载中…</div>
+				<div className="py-6 text-center text-xs text-[var(--text-40)]">{t("files.loading")}</div>
 			) : tab.mode === "edit" ? (
 				<div className="min-h-0 flex-1 overflow-hidden [&_.cm-editor]:h-full [&_.cm-editor]:bg-neutral-950 [&_.cm-scroller]:font-mono [&_.cm-scroller]:text-xs">
-					<Suspense fallback={<div className="py-6 text-center text-xs text-[var(--text-40)]">加载编辑器…</div>}>
+					<Suspense fallback={<div className="py-6 text-center text-xs text-[var(--text-40)]">{t("files.loadingEditor")}</div>}>
 						<FileEditor path={tab.path} value={draft} onChange={setDraft} />
 					</Suspense>
 				</div>
@@ -190,6 +194,7 @@ function TextBody({ tab }: { tab: FileTab }) {
 }
 
 export function FilePreviewPanel() {
+	const { t } = useT();
 	const tabs = useFilePreview((s) => s.tabs);
 	const activePath = useFilePreview((s) => s.activePath);
 	const active = tabs.find((t) => t.path === activePath) ?? tabs[0] ?? null;
@@ -198,8 +203,8 @@ export function FilePreviewPanel() {
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-[var(--text-40)]">
 				<FileText size={20} className="text-neutral-500" />
-				<div>还没有打开的文件</div>
-				<div className="text-[11px]">在对话里点击文件路径，即可在这里预览</div>
+				<div>{t("files.noOpenFile")}</div>
+				<div className="text-[11px]">{t("files.clickPathToPreview")}</div>
 			</div>
 		);
 	}

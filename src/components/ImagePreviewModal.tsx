@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Z_LAYER } from "./FloatingLayer";
 import { claimEscape } from "../lib/escapeClaim";
-
+import { useT } from "../stores/language";
 export interface PreviewImageItem {
 	path: string;
 	name?: string;
@@ -22,6 +22,7 @@ export function ImagePreviewModal({
 	initialIndex = 0,
 	onClose,
 }: ImagePreviewModalProps) {
+	const { t } = useT();
 	const [index, setIndex] = useState(
 		Math.max(0, Math.min(initialIndex, images.length - 1)),
 	);
@@ -133,7 +134,7 @@ export function ImagePreviewModal({
 					type="button"
 					onClick={onClose}
 					className="flex h-9 w-9 items-center justify-center rounded-full bg-black/75 text-white/80 backdrop-blur-md border border-white/10 shadow-sm hover:scale-110 hover:bg-black hover:text-white transition-all cursor-pointer pointer-events-auto"
-					title="关闭 (Esc)"
+					title={t("components.closeEsc")}
 				>
 					<X size={18} strokeWidth={2} />
 				</button>
@@ -148,7 +149,7 @@ export function ImagePreviewModal({
 						prev();
 					}}
 					className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white/80 backdrop-blur-md border border-white/10 shadow-lg hover:scale-110 hover:bg-black/90 hover:text-white transition-all cursor-pointer group"
-					title="上一张 (←)"
+					title={t("components.prevImage")}
 				>
 					<ChevronLeft
 						size={24}
@@ -165,7 +166,7 @@ export function ImagePreviewModal({
 			>
 				{failedPath === current.path ? (
 					<div className="flex min-h-32 min-w-64 max-w-full flex-col items-center justify-center gap-1 px-6 py-8 text-center text-[13px] text-[var(--text-60)]">
-						<span>无法加载这张图片</span>
+						<span>{t("components.imageLoadFailed")}</span>
 						<span className="select-text break-all text-[12px] text-[var(--text-40)]">
 							{current.path}
 						</span>
@@ -174,7 +175,7 @@ export function ImagePreviewModal({
 					<img
 						key={current.path}
 						src={convertFileSrc(current.path)}
-						alt={`图片 ${index + 1}`}
+						alt={t("components.imageIndex", { index: index + 1 })}
 						onError={() => setFailedPath(current.path)}
 						className="max-h-[78vh] max-w-full rounded-xl object-contain animate-in fade-in zoom-in-95 duration-150"
 					/>
@@ -190,7 +191,7 @@ export function ImagePreviewModal({
 						next();
 					}}
 					className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white/80 backdrop-blur-md border border-white/10 shadow-lg hover:scale-110 hover:bg-black/90 hover:text-white transition-all cursor-pointer group"
-					title="下一张 (→)"
+					title={t("components.nextImage")}
 				>
 					<ChevronRight
 						size={24}
@@ -216,11 +217,11 @@ export function ImagePreviewModal({
 									? "border-amber-400 scale-105 shadow-md ring-2 ring-amber-400/30"
 									: "border-white/10 opacity-60 hover:opacity-100 hover:scale-100"
 							}`}
-							title={`跳转到第 ${i + 1} 张`}
+							title={t("components.jumpToImage", { index: i + 1 })}
 						>
 							<img
 								src={convertFileSrc(img.path)}
-								alt={`第 ${i + 1} 张`}
+								alt={t("components.imageNumber", { index: i + 1 })}
 								className="h-full w-full object-cover"
 							/>
 						</button>

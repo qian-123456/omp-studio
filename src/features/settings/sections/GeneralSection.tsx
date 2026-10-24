@@ -3,7 +3,8 @@
  * plus the omp 系统 section (sleep prevention).
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useT } from "../../../stores/language";
 import { Segmented } from "../../../components/Segmented";
 import { ompConfigSet } from "../../../lib/ipc";
 import { toModelKey } from "../../../lib/models";
@@ -26,13 +27,9 @@ import { SectionJumpBar } from "../SectionJumpBar";
 
 type ApprovalMode = "always-ask" | "write" | "yolo";
 
-const APPROVAL_OPTIONS: { value: ApprovalMode; label: string; desc: string }[] = [
-	{ value: "always-ask", label: "每步都问", desc: "AI 每次执行命令或改文件前都先询问确认，最稳妥。" },
-	{ value: "write", label: "改动前问", desc: "只读与搜索自动进行；改文件或跑命令前先询问确认（推荐）。" },
-	{ value: "yolo", label: "全自动", desc: "AI 直接修改文件与执行命令，无需确认（速度快，误操作不被拦截）。" },
-];
 
 export function GeneralSection() {
+	const { t } = useT();
 	const { settings, save } = useAppSettings();
 	const { models } = useCatalogModels();
 	const { navigate } = useSettingsNav();
@@ -76,28 +73,48 @@ export function GeneralSection() {
 	// ModelSelect appends " · <level>" itself when currentValue carries a suffix.
 	const modelLabel = defaultRole
 		? (matchedModel?.id ?? (fallbackShortName || defaultRole))
-		: (ompLoaded ? "OMP 内置默认" : "加载中");
+		: (ompLoaded ? t("settingsSections.general.defaultModelOmpBuiltin") : t("settingsSections.general.loading"));
+
+	const approvalOptions: { value: ApprovalMode; label: string; desc: string }[] = useMemo(
+		() => [
+			{
+				value: "always-ask",
+				label: t("settingsSections.general.approvalAlwaysAskLabel"),
+				desc: t("settingsSections.general.approvalAlwaysAskDesc"),
+			},
+			{
+				value: "write",
+				label: t("settingsSections.general.approvalWriteLabel"),
+				desc: t("settingsSections.general.approvalWriteDesc"),
+			},
+			{
+				value: "yolo",
+				label: t("settingsSections.general.approvalYoloLabel"),
+				desc: t("settingsSections.general.approvalYoloDesc"),
+			},
+		],
+		[t],
+	);
 
 	const approval = (settings?.defaultApprovalMode ?? "write") as ApprovalMode;
-	const currentApprovalOption = APPROVAL_OPTIONS.find((o) => o.value === approval) ?? APPROVAL_OPTIONS[1];
-
+	const currentApprovalOption = approvalOptions.find((o) => o.value === approval) ?? approvalOptions[1];
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="通用" description="新会话的默认设置与界面开关" />
+			<SectionHeader title={t("settingsSections.general.title")} description={t("settingsSections.general.description")} />
 			<SectionJumpBar />
 
-			<SettingsCard jump="新会话默认设置" title="新会话默认设置">
+			<SettingsCard jump={t("settingsSections.general.jumpNewSession")} title={t("settingsSections.general.titleNewSession")}>
 				<SettingRow
 					fieldId="newSessionModel"
-					label="全局默认模型"
-					description="新对话与常规问答默认使用的主力模型，在「模型角色」中修改。"
+					label={t("settingsSections.general.defaultModelLabel")}
+					description={t("settingsSections.general.defaultModelDesc")}
 					control={
 						<div className="flex min-w-0 items-center gap-2">
 							<span className="min-w-0 truncate text-xs text-[var(--text-muted)]" title={defaultRole ?? undefined}>
 								{modelLabel}
 							</span>
 							<Button size="sm" variant="ghost" onClick={() => openSettingsTarget("models")}>
-								去模型角色修改
+								{t("settingsSections.general.goToModelRoles")}
 								<ChevronRight className="h-3 w-3" />
 							</Button>
 						</div>
@@ -106,7 +123,7 @@ export function GeneralSection() {
 
 				<SettingRow
 					fieldId="defaultApprovalMode"
-					label="审批模式"
+					label={t("settingsSections.general.approvalModeLabel")}
 					description={currentApprovalOption.desc}
 					status={approvalSave.status}
 					statusError={approvalSave.error}
@@ -124,7 +141,7 @@ export function GeneralSection() {
 									}
 								})
 							}
-							options={APPROVAL_OPTIONS.map((o) => ({
+							options={approvalOptions.map((o) => ({
 								value: o.value,
 								title: o.desc,
 								label:
@@ -143,47 +160,47 @@ export function GeneralSection() {
 
 				<SettingRow
 					fieldId="agentsMdShortcut"
-					label="长期规则"
-					description="希望 AI 每次都遵守的习惯与约定（代码风格、回复语言等）写在 AGENTS.md 里。"
+					label={t("settingsSections.general.agentsMdLabel")}
+					description={t("settingsSections.general.agentsMdDesc")}
 					control={
 						<Button size="sm" variant="ghost" onClick={() => navigate("agents-md")}>
-							去规则文件编辑
+							{t("settingsSections.general.goToRulesFiles")}
 							<ChevronRight className="h-3 w-3" />
 						</Button>
 					}
 				/>
 			</SettingsCard>
 
-			<SettingsCard jump="界面" title="界面">
+			<SettingsCard jump={t("settingsSections.general.jumpUi")} title={t("settingsSections.general.titleUi")}>
 				<ToggleRow
 					fieldId="capsuleVisible"
-					label="顶部子代理胶囊"
-					description="会话派生并发子代理时，在窗口顶部栏显示胶囊，点击可查看各子代理的进度与详情。"
+					label={t("settingsSections.general.capsuleLabel")}
+					description={t("settingsSections.general.capsuleDesc")}
 					checked={settings?.capsuleVisible ?? true}
 					onChange={(v) => save({ capsuleVisible: v })}
 				/>
 				<ToggleRow
 					fieldId="windowWorktreeTitle"
-					label="窗口标题显示分支名"
-					description="在系统窗口标题中附加当前工作树的 Git 分支，同时打开多个实例时便于区分；立即生效。"
+					label={t("settingsSections.general.windowWorktreeTitleLabel")}
+					description={t("settingsSections.general.windowWorktreeTitleDesc")}
 					checked={settings?.windowWorktreeTitle ?? true}
 					onChange={(v) => save({ windowWorktreeTitle: v })}
 				/>
 				<ToggleRow
 					fieldId="smartContextRouting"
-					label="自动关联项目"
-					description="新开对话时自动识别你在做哪个项目，并把最近的相关工作告诉 AI。"
+					label={t("settingsSections.general.smartContextRoutingLabel")}
+					description={t("settingsSections.general.smartContextRoutingDesc")}
 					checked={settings?.smartContextRouting ?? true}
 					onChange={(v) => save({ smartContextRouting: v })}
 				/>
 			</SettingsCard>
 
-			<SettingsCard jump="Git" title="Git">
+			<SettingsCard jump={t("settingsSections.general.jumpGit")} title={t("settingsSections.general.titleGit")}>
 				<SettingRow
 					fieldId="gitDeliveryMode"
-					label="主干交付模式"
-					description="把功能分支交付到主干时的默认方式。"
-					hint="推荐发起 Pull Request，经网页审查后再合并"
+					label={t("settingsSections.general.gitDeliveryModeLabel")}
+					description={t("settingsSections.general.gitDeliveryModeDesc")}
+					hint={t("settingsSections.general.gitDeliveryModeHint")}
 					control={
 						<Segmented
 							value={(settings?.gitDeliveryMode as "pr" | "direct") ?? "pr"}
@@ -191,13 +208,13 @@ export function GeneralSection() {
 							options={[
 								{
 									value: "pr",
-									label: "发起 Pull Request（推荐）",
-									title: "推送到云端同名分支并自动打开 GitHub 网页发起 PR 评审",
+									label: t("settingsSections.general.gitDeliveryPrLabel"),
+									title: t("settingsSections.general.gitDeliveryPrTitle"),
 								},
 								{
 									value: "direct",
-									label: "本地合并并直接推送",
-									title: "本地合并入主干后直接推送到云端 origin/main（适合个人单人快速开发）",
+									label: t("settingsSections.general.gitDeliveryDirectLabel"),
+									title: t("settingsSections.general.gitDeliveryDirectTitle"),
 								},
 							]}
 						/>

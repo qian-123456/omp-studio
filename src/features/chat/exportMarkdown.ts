@@ -1,5 +1,6 @@
 import type { TranscriptItem } from "../../lib/contracts";
 import { stripImageMarkers } from "./userTextChips";
+import { tNow } from "../../stores/language";
 
 /**
  * Format session transcript items into readable Markdown.
@@ -20,7 +21,7 @@ export function formatSessionMarkdown(
 		} else if (item.kind === "assistant") {
 			const parts: string[] = [];
 			if (item.thinking?.trim()) {
-				parts.push(`> **思考过程**\n>\n> ${item.thinking.trim().replace(/\n/g, "\n> ")}`);
+				parts.push(`> **${tNow("chat.export.thinkingProcess")}**\n>\n> ${item.thinking.trim().replace(/\n/g, "\n> ")}`);
 			}
 			if (item.text?.trim()) {
 				parts.push(item.text.trim());
@@ -32,8 +33,8 @@ export function formatSessionMarkdown(
 							? tc.args
 							: JSON.stringify(tc.args, null, 2);
 					const header = tc.intent
-						? `**调用工具 \`${tc.name}\`** (${tc.intent})`
-						: `**调用工具 \`${tc.name}\`**`;
+						? `**${tNow("chat.export.callTool", { name: tc.name })}** (${tc.intent})`
+						: `**${tNow("chat.export.callTool", { name: tc.name })}**`;
 					return `${header}:\n\`\`\`json\n${argStr}\n\`\`\``;
 				});
 				parts.push(toolParts.join("\n\n"));

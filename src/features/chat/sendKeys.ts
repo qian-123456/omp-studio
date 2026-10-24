@@ -1,4 +1,5 @@
 /** [B] Composer send-key and follow-up decisions. Pure: no React, no stores. */
+import { tNow } from "../../stores/language";
 
 /** `enter`: Enter sends, Shift+Enter newline. `mod-enter`: ⌘/Ctrl+Enter sends, Enter newline. */
 export type SendShortcut = "enter" | "mod-enter";
@@ -57,12 +58,20 @@ export function resolveFollowUpAction(
 	return behavior;
 }
 
-/** Chinese UI label for what a follow-up action does. */
+/** UI label for what a follow-up action does. */
 export const FOLLOW_UP_LABEL: Record<FollowUpAction, string> = {
-	send: "发送消息",
-	steer: "引导当前回合",
-	queue: "本回合结束后发送",
-	interrupt: "打断并发送",
+	get send() {
+		return tNow("chatView.send.actionSend");
+	},
+	get steer() {
+		return tNow("chatView.send.actionSteer");
+	},
+	get queue() {
+		return tNow("chatView.send.actionQueue");
+	},
+	get interrupt() {
+		return tNow("chatView.send.actionInterrupt");
+	},
 };
 
 /** Shortcut that triggers the alternate follow-up, for hint text. */

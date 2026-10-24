@@ -14,6 +14,7 @@ import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/c
 import { resolveLinkScope } from "./privacy/composerPrivacy";
 import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
 import { emitPromptSend } from "../../stores/promptSendEvents";
+import { tNow } from "../../stores/language";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -69,8 +70,8 @@ export async function sendPrompt(
 	const external = meta?.status === "external";
 	if (external) {
 		const ok = await confirmDialog(
-			"当前会话正在外部终端运行，发送消息将接管该会话，确认接管？",
-			{ danger: true, okLabel: "接管" },
+			tNow("chatView.send.takeoverConfirm"),
+			{ danger: true, okLabel: tNow("chatView.send.takeoverAction") },
 		);
 		if (!ok) throw new ResumeCancelledError();
 	}
@@ -196,7 +197,7 @@ export async function abortTurn(sessionId: string): Promise<void> {
 		abortTimers.delete(sessionId);
 		if (useAbortState.getState().aborting[sessionId]) {
 			useAbortState.getState().setAborting(sessionId, false);
-			toast.error("停止请求超时，未收到后端响应，请重试或检查进程状态");
+			toast.error(tNow("chatView.send.stopTimeout"));
 		}
 	}, 10_000);
 	abortTimers.set(sessionId, timer);

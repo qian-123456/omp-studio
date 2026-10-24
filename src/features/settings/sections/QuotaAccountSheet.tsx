@@ -3,6 +3,7 @@
  */
 import { CheckCircle2, Clock, LogIn, LogOut, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useT } from "../../../stores/language";
 import { createPortal } from "react-dom";
 import type {
 	OmpUsageAccountWithoutUsage,
@@ -117,11 +118,16 @@ export function LimitBar({
 	now: number;
 	brandColor: string;
 }) {
+	const { t } = useT();
 	const usedPct = limitUsedPct(lim);
 	const status = formatLimitStatus(usedPct, lim.window?.resetsAt ?? null, now);
-	const title = `已用 ${usedPct.toFixed(1)}%，剩余 ${(100 - usedPct).toFixed(1)}%${
-		status.resetText ? `；${status.resetText}` : ""
-	}`;
+	const reset = status.resetText ? t("quota.sheet.resetSuffix", { text: status.resetText }) : "";
+	const title = t("quota.sheet.titlePercent", {
+		used: usedPct.toFixed(1),
+		remaining: (100 - usedPct).toFixed(1),
+		accountInfo: "",
+		reset,
+	});
 	return (
 		<QuotaBar
 			label={localizeQuotaLabel(lim.label)}
@@ -144,6 +150,7 @@ export function QuotaAccountSheet({
 	error,
 	onRefresh,
 }: QuotaAccountSheetProps) {
+	const { t } = useT();
 	const [loginOpen, setLoginOpen] = useState(false);
 	const [oauthIds, setOauthIds] = useState<Set<string>>(new Set());
 	const [loggingOutKey, setLoggingOutKey] = useState<string | null>(null);
@@ -183,14 +190,14 @@ export function QuotaAccountSheet({
 	) => {
 		if (loggingOutKey) return;
 		const ok = await confirmDialog(
-			`确定退出账号「${label}」？\n退出后该账号的授权凭据将从本地清除，需重新登录才能使用。`,
-			{ title: "退出登录", danger: true, okLabel: "退出登录" },
+			t("quota.sheet.logoutConfirm", { label }),
+			{ title: t("quota.sheet.logout"), danger: true, okLabel: t("quota.sheet.logout") },
 		);
 		if (!ok) return;
 		setLoggingOutKey(accountKey);
 		try {
 			await oauthLogout(provider.providerId, email, accountId);
-			toast.success(`已退出账号 ${label}`);
+			toast.success(t("quota.sheet.logoutSuccess", { label }));
 			if (totalAccounts <= 1) onClose();
 			await onRefresh();
 		} catch (err) {
@@ -202,14 +209,14 @@ export function QuotaAccountSheet({
 	const handleLogoutAll = async () => {
 		if (loggingOutKey) return;
 		const ok = await confirmDialog(
-			`这会清除「${brand.name}」保存在本地的全部授权凭据；如果有多个账号，它们都会退出。`,
-			{ title: "清除全部授权", danger: true, okLabel: "清除全部授权" },
+			t("quota.sheet.logoutAllConfirm", { brand: brand.name }),
+			{ title: t("quota.sheet.logoutAll"), danger: true, okLabel: t("quota.sheet.logoutAll") },
 		);
 		if (!ok) return;
 		setLoggingOutKey("all");
 		try {
 			await oauthLogout(provider.providerId, null, null, true);
-			toast.success(`已清除 ${brand.name} 的全部本地授权`);
+			toast.success(t("quota.sheet.logoutAllSuccess", { brand: brand.name }));
 			onClose();
 			await onRefresh();
 		} catch (err) {
@@ -240,7 +247,7 @@ export function QuotaAccountSheet({
 			<div
 				role="dialog"
 				aria-modal="true"
-				aria-label={`${brand.name} 账号明细`}
+				aria-label={t("quota.sheet.dialogAria", { brand: brand.name })}
 				className="animate-in fade-in zoom-in-95 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-2xl duration-200"
 				onClick={(e) => e.stopPropagation()}
 			>
@@ -266,11 +273,11 @@ export function QuotaAccountSheet({
 								</span>
 							</div>
 							<div className="mt-0.5 text-xs text-[var(--text-muted)]">
-								{totalAccounts} 个已绑定账号明细
+								{t("quota.sheet.boundAccountsCount", { count: totalAccounts })}
 							</div>
 						</div>
 					</div>
-					<IconButton icon={X} label="关闭" onClick={onClose} />
+					<IconButton icon={X} label={t("quota.sheet.closeAria")} onClick={onClose} />
 				</div>
 
 				<div className="flex-1 space-y-2.5 overflow-y-auto p-4">
@@ -279,7 +286,7 @@ export function QuotaAccountSheet({
 						const limits = dedupeLimits(report.limits ?? []);
 						const credits = report.resetCredits?.availableCount ?? 0;
 						const accountKey = meta?.email || meta?.accountId || `report-${idx}`;
-						const label = meta?.email || meta?.accountId || "主账号";
+						const label = meta?.email || meta?.accountId || t("quota.sheet.primaryAccount");
 						return (
 							<div
 								key={accountKey}
@@ -310,12 +317,12 @@ export function QuotaAccountSheet({
 											</span>
 											{credits > 0 && (
 												<span className="font-semibold text-[var(--accent)]">
-													{credits} 次重置券
+													{t("quota.sheet.creditsCount", { count: credits })}
 												</span>
 											)}
 											{meta?.overageBalanceUsd != null && (
 												<span className="text-[var(--text-muted)]">
-													超额余额 ${meta.overageBalanceUsd.toFixed(2)}
+													{t("quota.sheet.overageBalance", { amount: meta.overageBalanceUsd.toFixed(2) })}
 												</span>
 											)}
 										</div>
@@ -335,7 +342,7 @@ export function QuotaAccountSheet({
 												)
 											}
 										>
-											退出登录
+											{t("quota.sheet.logout")}
 										</Button>
 									</div>
 								</div>
@@ -351,7 +358,7 @@ export function QuotaAccountSheet({
 										))}
 									</div>
 								) : (
-									<div className="text-xs text-[var(--text-dim)]">暂无时间窗口限额</div>
+									<div className="text-xs text-[var(--text-dim)]">{t("quota.sheet.noWindowLimit")}</div>
 								)}
 							</div>
 						);
@@ -359,7 +366,7 @@ export function QuotaAccountSheet({
 
 					{provider.unmetered.map((u, idx) => {
 						const accountKey = `unmetered-${u.enterpriseUrl || idx}`;
-						const label = u.enterpriseUrl || `${brand.name} 关联账号`;
+						const label = u.enterpriseUrl || t("quota.sheet.connectedAccount", { brand: brand.name });
 						return (
 							<div
 								key={accountKey}
@@ -371,7 +378,7 @@ export function QuotaAccountSheet({
 								<span className="flex shrink-0 items-center gap-2 text-xs text-[var(--text-dim)]">
 									<span className="flex items-center gap-1 whitespace-nowrap">
 										<CheckCircle2 className="h-3 w-3" />
-										已连接 · 无独立配额
+										{t("quota.sheet.connectedNoQuota")}
 									</span>
 									<Button
 										variant="danger"
@@ -382,7 +389,7 @@ export function QuotaAccountSheet({
 										disabled={loggingOutKey !== null}
 										onClick={() => void handleLogout(accountKey, label, null, null)}
 									>
-										退出登录
+										{t("quota.sheet.logout")}
 									</Button>
 								</span>
 							</div>
@@ -393,14 +400,14 @@ export function QuotaAccountSheet({
 				<div className="space-y-2 border-t border-[var(--border-divider)] px-4 py-3">
 					{error ? (
 						<pre className="w-full select-text whitespace-pre-wrap break-words rounded-md border border-[var(--status-error)] p-2 text-xs text-[var(--status-error)]">
-							刷新用量失败：{error}
+							{t("quota.sheet.refreshFailed", { error })}
 						</pre>
 					) : null}
 					<div className="flex items-center gap-1 text-xs text-[var(--text-dim)]">
 						<Clock className="h-3 w-3" />
 						{latestFetchedAt != null
-							? `用量更新于 ${formatRelativeTime(latestFetchedAt, now)}`
-							: "暂无用量数据"}
+							? t("quota.sheet.updatedAt", { time: formatRelativeTime(latestFetchedAt, now) })
+							: t("quota.sheet.noUsageData")}
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
 						<Button
@@ -411,7 +418,7 @@ export function QuotaAccountSheet({
 							disabled={refreshing}
 							onClick={() => void onRefresh()}
 						>
-							{refreshing ? "刷新中" : "刷新用量"}
+							{refreshing ? t("quota.sheet.refreshing") : t("quota.sheet.refreshUsage")}
 						</Button>
 						{canRelogin && (
 							<Button
@@ -420,7 +427,7 @@ export function QuotaAccountSheet({
 								className="whitespace-nowrap"
 								onClick={() => setLoginOpen(true)}
 							>
-								{totalAccounts > 0 ? "添加账号" : "登录账号"}
+								{totalAccounts > 0 ? t("quota.sheet.addAccount") : t("quota.sheet.loginAccount")}
 							</Button>
 						)}
 						<Button
@@ -431,7 +438,7 @@ export function QuotaAccountSheet({
 							disabled={loggingOutKey !== null}
 							onClick={() => void handleLogoutAll()}
 						>
-							清除全部授权
+							{t("quota.sheet.logoutAll")}
 						</Button>
 					</div>
 				</div>

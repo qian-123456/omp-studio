@@ -25,12 +25,12 @@ import { Notice } from "../../../components/Notice";
 import { Button, Chip, IconButton, INPUT_CLASS, MODEL_PICKER_BUTTON_CLASS } from "../ui";
 import { GLOBAL_SCOPE } from "./logic";
 import { useModelTemplatesStore } from "./store";
+import { useT } from "../../../stores/language";
 
 /** Picker sentinel: declare the role as `null` (apply deletes the global key). */
 const UNSET = "__unset__";
 /** Picker sentinel: leave the key out of the template (apply keeps the current value). */
 const ABSENT = "__absent__";
-const ABSENT_LABEL = "保持当前";
 
 const BUILTIN_IDS = new Set(BUILTIN_ROLES.map((r) => r.id));
 
@@ -84,6 +84,7 @@ export function TemplateEditor({
 	templates: ModelTemplate[];
 	onClose: () => void;
 }) {
+	const { t, locale } = useT();
 	const models = useModelOptions();
 	const [name, setName] = useState(draft.name);
 	const [roles, setRoles] = useState<Record<string, string | null>>(draft.roles);
@@ -112,7 +113,7 @@ export function TemplateEditor({
 			...[...custom].sort().map((id) => ({
 				id,
 				label: id,
-				description: "自定义角色（模型角色中的非内置项）",
+				description: t("modelTemplates.customRoleDesc"),
 				isCustom: true,
 			})),
 		];
@@ -149,7 +150,7 @@ export function TemplateEditor({
 				scope: draft.scope,
 			});
 			useModelTemplatesStore.getState().setSnapshot(snapshot);
-			toast.success(draft.id ? `已保存模板「${trimmedName}」` : `已新建模板「${trimmedName}」`);
+			toast.success(draft.id ? t("modelTemplates.savedTemplate", { name: trimmedName }) : t("modelTemplates.createdTemplate", { name: trimmedName }));
 			onClose();
 		} catch (e) {
 			setError(errMsg(e));
@@ -186,19 +187,19 @@ export function TemplateEditor({
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
 					<div className="min-w-0">
 						<h2 id="model-template-editor-title" className="text-sm font-semibold text-[var(--text)]">
-							{draft.id ? "编辑模板" : "新建模板"}
+							{draft.id ? t("modelTemplates.editTemplate") : t("modelTemplates.newTemplate")}
 						</h2>
 						<p className="mt-0.5 text-[11px] leading-5 text-[var(--text-muted)]">
-							每个角色选一个模型，或保持「未配置」。
-							{isProject ? "应用模板时只改该项目的模型角色。" : "应用模板时只改全局模型角色。"}
+							{t("modelTemplates.editorSubtitle1")}
+							{isProject ? t("modelTemplates.editorSubtitleProject") : t("modelTemplates.editorSubtitleGlobal")}
 						</p>
 					</div>
-					<IconButton icon={X} label="关闭" onClick={onClose} disabled={saving} />
+					<IconButton icon={X} label={t("common.close")} onClick={onClose} disabled={saving} />
 				</div>
 
 				<div className="shrink-0 space-y-3 border-b border-[var(--border-divider)] py-3">
 					<label className="flex flex-wrap items-center gap-2">
-						<span className="text-xs font-medium text-[var(--text)]">模板名称</span>
+						<span className="text-xs font-medium text-[var(--text)]">{t("modelTemplates.templateNameLabel")}</span>
 						<input
 							type="text"
 							value={name}
@@ -211,53 +212,50 @@ export function TemplateEditor({
 									void save();
 								}
 							}}
-							placeholder="例如：省钱模式"
-							aria-label="模板名称"
+							placeholder={t("modelTemplates.templateNamePlaceholder")}
+							aria-label={t("modelTemplates.templateNameLabel")}
 							spellCheck={false}
 							className={`${INPUT_CLASS} w-64`}
 						/>
 						{trimmedName.length === 0 && (
-							<span className="text-[11px] text-[var(--text-dim)]">名称不能为空</span>
+							<span className="text-[11px] text-[var(--text-dim)]">{t("modelTemplates.nameRequired")}</span>
 						)}
 					</label>
 
 					<div className="flex flex-wrap items-center justify-between gap-2">
 						<div className="flex flex-wrap items-center gap-2">
-							<span className="text-xs font-medium text-[var(--text)]">保底模板</span>
+							<span className="text-xs font-medium text-[var(--text)]">{t("modelTemplates.bottomLineLabel")}</span>
 							<Switch
 								checked={isBottomLine}
 								onChange={setIsBottomLine}
 								disabled={saving}
-								ariaLabel="设为保底模板"
+								ariaLabel={t("modelTemplates.setBottomLineAria")}
 							/>
 							<span className="text-[11px] leading-4 text-[var(--text-muted)]">
-								额度全用尽时也会应用；同一范围只能有一个保底模板
+								{t("modelTemplates.bottomLineHint")}
 							</span>
 						</div>
 						<Chip tone={uncovered > 0 ? "warning" : "success"}>
-							{uncovered > 0 ? `${uncovered} 个角色未覆盖` : "全部角色已覆盖"}
+							{uncovered > 0 ? t("modelTemplates.uncoveredRoles", { count: String(uncovered) }) : t("modelTemplates.allCovered")}
 						</Chip>
 					</div>
 
 					{isBottomLine && otherBottomLine.length > 0 && (
 						<Notice tone="info">
 							<span className="break-words">
-								保存后「{otherBottomLine.map((t) => t.name).join("」「")}」将不再是保底模板。
+								{t("modelTemplates.bottomLineOverrideNotice", { names: otherBottomLine.map((o) => o.name).join(locale === "zh-CN" ? "」「" : "\", \"") })}
 							</span>
 						</Notice>
 					)}
 					{uncovered > 0 && (
 						<Notice tone="info">
 							<span className="break-words">
-								未覆盖的角色在应用时保持当前配置不变；
-								{isProject
-									? "选择「未配置」会在应用时从该项目配置删除该角色，继承全局。"
-									: "选择「未配置」会在应用时删除该角色的全局设置，恢复继承。"}
+								{isProject ? t("modelTemplates.uncoveredNoticeProject") : t("modelTemplates.uncoveredNoticeGlobal")}
 							</span>
 						</Notice>
 					)}
 					{error && (
-						<Notice tone="danger" title="保存失败">
+						<Notice tone="danger" title={t("modelTemplates.saveFailed")}>
 							<span className="select-text break-all">{error}</span>
 						</Notice>
 					)}
@@ -279,18 +277,18 @@ export function TemplateEditor({
 											{row.id}
 										</span>
 										{row.isCustom ? (
-											<Chip tone="accent">自定义</Chip>
+											<Chip tone="accent">{t("modelTemplates.customChip")}</Chip>
 										) : (
 											<span className="text-[11px] text-[var(--text-muted)]">{row.label}</span>
 										)}
 										{set && <Check className="h-3 w-3 text-[var(--status-success)]" />}
-										{declared && !set && <Chip tone="warning">应用时删除</Chip>}
+										{declared && !set && <Chip tone="warning">{t("modelTemplates.deleteOnApplyChip")}</Chip>}
 									</div>
 									<div className="text-[11px] leading-4 text-[var(--text-dim)]">{row.description}</div>
 								</div>
 								<ModelSelect
 									models={models}
-									label={set ? (value as string) : declared ? "未配置" : ABSENT_LABEL}
+									label={set ? (value as string) : declared ? t("modelTemplates.unconfigured") : t("modelTemplates.keepCurrent")}
 									currentValue={set ? (value as string) : declared ? UNSET : ABSENT}
 									buttonClass={set ? MODEL_PICKER_BUTTON_CLASS : UNSET_BUTTON_CLASS}
 									closeOnSelect
@@ -300,8 +298,8 @@ export function TemplateEditor({
 									widthClass="w-[380px]"
 									disabled={saving}
 									extras={[
-										{ value: UNSET, label: "未配置", hint: "应用时删除该角色" },
-										{ value: ABSENT, label: ABSENT_LABEL, hint: "应用时保持不变" },
+										{ value: UNSET, label: t("modelTemplates.unconfigured"), hint: t("modelTemplates.unconfiguredHint") },
+										{ value: ABSENT, label: t("modelTemplates.keepCurrent"), hint: t("modelTemplates.keepCurrentHint") },
 									]}
 									onSelect={(next) => setRole(row.id, next)}
 								/>
@@ -313,10 +311,10 @@ export function TemplateEditor({
 				<div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3">
 					{saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-dim)]" />}
 					<Button onClick={onClose} disabled={saving}>
-						取消
+						{t("common.cancel")}
 					</Button>
 					<Button variant="primary" onClick={() => void save()} disabled={!canSave} loading={saving}>
-						保存模板
+						{t("modelTemplates.saveTemplate")}
 					</Button>
 				</div>
 			</div>

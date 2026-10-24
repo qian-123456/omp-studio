@@ -11,9 +11,7 @@ import type { KindGroup } from "./kinds";
 import type { Plan, PlanRow, RowOverride } from "./logic";
 import { levelsForSelector, supportedLevel } from "./logic";
 import { BTN_GHOST, CHECKBOX_CLASS, Chip, LevelSelect, TargetPicker } from "./parts";
-
-/** Shown wherever the scan's project coverage matters. */
-export const PROJECT_SCOPE_NOTICE = "仅覆盖在本桌面端添加的项目";
+import { useT } from "../../../stores/language";
 
 const SMALL_PICKER_BUTTON =
 	"flex min-h-6 w-[340px] max-w-full items-center justify-between gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-left text-[10px] text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50";
@@ -39,6 +37,7 @@ function PlanRowView({
 	onOverride: (override: RowOverride | null) => void;
 	onToggle: (checked: boolean) => void;
 }) {
+	const { t } = useT();
 	const [editing, setEditing] = useState(false);
 	const open = editing || override !== undefined;
 	// The level options belong to this row's own target, not the shared one.
@@ -49,7 +48,7 @@ function PlanRowView({
 				type="checkbox"
 				checked={row.checked}
 				onChange={(e) => onToggle(e.target.checked)}
-				aria-label={`替换 ${row.title}`}
+				aria-label={t("modelReplace.replaceItemAria", { title: row.title })}
 				className={`${CHECKBOX_CLASS} mt-0.5`}
 			/>
 			<div className="min-w-0 flex-1">
@@ -57,18 +56,18 @@ function PlanRowView({
 					<span className="min-w-0 break-words font-medium text-neutral-200">{row.title}</span>
 					<Chip tone="neutral">{row.context}</Chip>
 					{row.conflict && (
-						<Chip tone="warn" title="目标回退链键已存在：勾选后把 X 的条目合并进去，不覆盖原有链">
-							冲突
+						<Chip tone="warn" title={t("modelReplace.conflictTitle")}>
+							{t("modelReplace.conflictBadge")}
 						</Chip>
 					)}
 					{row.deduped && (
-						<Chip tone="info" title="替换后移除了重复条目和等于链名的条目">
-							已去重
+						<Chip tone="info" title={t("modelReplace.dedupedTitle")}>
+							{t("modelReplace.dedupedBadge")}
 						</Chip>
 					)}
 					{override !== undefined && (
-						<Chip tone="good" title="这一行没有用统一目标，而是单独指定了模型或思考等级">
-							单独指定
+						<Chip tone="good" title={t("modelReplace.overrideTitle")}>
+							{t("modelReplace.overrideBadge")}
 						</Chip>
 					)}
 					{!open && (
@@ -76,13 +75,9 @@ function PlanRowView({
 							type="button"
 							onClick={() => setEditing(true)}
 							className={`${BTN_GHOST} ml-auto`}
-							title={
-								levels.length > 0
-									? "只有这一行换成和统一目标不同的模型（可同时选思考等级），其他行不受影响"
-									: "只有这一行换成和统一目标不同的模型，其他行不受影响"
-							}
+							title={levels.length > 0 ? t("modelReplace.overrideButtonTitle") : t("modelReplace.overrideButtonTitleNoLevel")}
 						>
-							换成别的模型
+							{t("modelReplace.overrideButton")}
 						</button>
 					)}
 				</div>
@@ -96,7 +91,7 @@ function PlanRowView({
 				</div>
 				{open && (
 					<div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--well-bg)] px-2 py-1.5">
-						<span className="shrink-0 text-[10px] text-neutral-500">这一行换成</span>
+						<span className="shrink-0 text-[10px] text-neutral-500">{t("modelReplace.overrideRowPrompt")}</span>
 						<TargetPicker
 							value={row.model}
 							entries={picker.entries}
@@ -104,7 +99,7 @@ function PlanRowView({
 							error={picker.error}
 							initialGroup={picker.group}
 							lockGroup={picker.group}
-							caption={`仅替换「${row.title}」`}
+							caption={t("modelReplace.overrideCaption", { title: row.title })}
 							buttonClass={SMALL_PICKER_BUTTON}
 							onSelect={(model) =>
 								onOverride({
@@ -118,7 +113,7 @@ function PlanRowView({
 							value={row.level}
 							levels={levels}
 							onChange={(level) => onOverride({ ...override, level })}
-							ariaLabel={`「${row.title}」的思考等级`}
+							ariaLabel={t("modelReplace.overrideLevelAria", { title: row.title })}
 							containerClassName="w-40"
 						/>
 						<button
@@ -128,9 +123,9 @@ function PlanRowView({
 								onOverride(null);
 							}}
 							className={BTN_GHOST}
-							title="这一行重新使用统一目标"
+							title={t("modelReplace.revertToUnifiedTitle")}
 						>
-							改回统一目标
+							{t("modelReplace.revertToUnified")}
 						</button>
 					</div>
 				)}
@@ -163,19 +158,20 @@ export function ModelReplacePlanPreview({
 	onOverride: (rowId: string, override: RowOverride | null) => void;
 	onToggle: (rowId: string, checked: boolean) => void;
 }) {
+	const { t } = useT();
 	const picker: PickerData = { entries, loading: kindsLoading, error: kindsError, group: targetGroup };
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-[11px] text-neutral-400">
 				<span>
-					将修改 <span className="font-medium text-neutral-200">{plan.edits.length}</span> 项
+					{t("modelReplace.willModifyCount", { count: String(plan.edits.length) })}
 				</span>
-				<span className="rounded-full bg-[var(--well-bg)] px-2 py-0.5 text-[10px] text-neutral-300" title="替换范围，在第一步选择">
-					范围：{scopeLabel}
+				<span className="rounded-full bg-[var(--well-bg)] px-2 py-0.5 text-[10px] text-neutral-300" title={t("modelReplace.scopePillTitle")}>
+					{t("modelReplace.scopePill", { scope: scopeLabel })}
 				</span>
 				<span className="flex items-center gap-1">
 					<Info className="h-3 w-3 shrink-0" />
-					{PROJECT_SCOPE_NOTICE}
+					{t("modelReplace.projectScopeNotice")}
 				</span>
 			</div>
 
@@ -183,7 +179,7 @@ export function ModelReplacePlanPreview({
 				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)] px-3 py-2 text-[11px] leading-5 text-[var(--status-warning)]">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 flex-1 break-all">
-						无法读取回退链，本次不会改动回退链：{plan.chainError}
+						{t("modelReplace.chainErrorNotice", { error: plan.chainError })}
 					</span>
 				</div>
 			)}
@@ -191,14 +187,14 @@ export function ModelReplacePlanPreview({
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
 				{plan.rows.length === 0 ? (
 					<p className="px-1 py-6 text-xs text-neutral-500">
-						「{scopeLabel}」范围内没有引用到「<span className="break-all font-mono text-neutral-300">{fromModel}</span>」的配置，换个来源模型或范围试试。
+						{t("modelReplace.emptyPlanNotice", { scope: scopeLabel, fromModel })}
 					</p>
 				) : (
 					plan.groups.map((group) => (
 						<div key={group.group} className="mb-3 rounded-xl hairline">
 							<div className="flex items-center justify-between rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[10px] text-neutral-500">
 								<span>{group.title}</span>
-								<span>{group.rows.length} 项</span>
+								<span>{t("modelReplace.itemsCount", { count: String(group.rows.length) })}</span>
 							</div>
 							{group.rows.map((row) => (
 								<PlanRowView
@@ -217,7 +213,7 @@ export function ModelReplacePlanPreview({
 				{plan.skippedProjects.length > 0 && (
 					<div className="rounded-xl hairline">
 						<div className="rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[10px] text-neutral-500">
-							未能扫描的位置（{plan.skippedProjects.length}）— 这些位置不会被修改
+							{t("modelReplace.skippedProjectsHeader", { count: String(plan.skippedProjects.length) })}
 						</div>
 						{plan.skippedProjects.map((project) => (
 							<div key={project.path} className="flex items-start gap-2 border-t border-[var(--border-divider)] px-3 py-1.5 text-[11px]">

@@ -12,6 +12,7 @@
 import { Sparkles } from "lucide-react";
 import { DYNAMIC_COMMAND_ICON, findSlashCommand } from "./registry";
 import type { SlashCommandDef } from "./types";
+import { tNow } from "../../../stores/language";
 
 export interface CommandChip {
 	/** Primary command name, without the leading slash. */
@@ -43,7 +44,7 @@ const GENERIC_ARG_HINT = "arguments";
 export function argHintLabel(name: string, hint: string | undefined): string {
 	if (!hint) return "";
 	if (hint !== GENERIC_ARG_HINT) return hint;
-	return isSkillChip({ name, title: name }) ? "" : "[补充说明]";
+	return isSkillChip({ name, title: name }) ? "" : tNow("slash.argHintSupplemental");
 }
 
 export interface ChipRange {

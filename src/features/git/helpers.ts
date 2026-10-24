@@ -6,9 +6,10 @@ import type { ReactNode } from "react";
 import { createElement } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { isInside } from "../../lib/paths";
+import { useT } from "../../stores/language";
 
 /**
- * Expander footer row for capped lists: `还有 N {unit} · 展开` toggling to `收起`.
+ * Expander footer row for capped lists: `还有 N 个 · 展开` toggling to `收起`.
  * Renders nothing when collapsed and nothing is hidden (n <= 0).
  * Lives in this .ts file, so it uses createElement instead of JSX.
  */
@@ -16,17 +17,15 @@ export function ListMore({
 	n,
 	expanded,
 	onToggle,
-	unit = "项",
 	className,
 }: {
 	/** Hidden item count while collapsed. */
 	n: number;
 	expanded: boolean;
 	onToggle: () => void;
-	/** Counter noun, e.g. "个文件" / "条". */
-	unit?: string;
 	className?: string;
 }): ReactNode {
+	const { t } = useT();
 	if (!expanded && n <= 0) return null;
 	return createElement(
 		"button",
@@ -42,7 +41,7 @@ export function ListMore({
 			size: 12,
 			className: clsx("transition-transform", expanded && "rotate-180"),
 		}),
-		expanded ? "收起" : `还有 ${n} ${unit} · 展开`,
+		expanded ? t("common.collapse") : t("git.moreItems", { n }),
 	);
 }
 

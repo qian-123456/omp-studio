@@ -8,6 +8,7 @@ import { useRef } from "react";
 import type React from "react";
 import type { BranchSubgroup } from "./grouping";
 import type { SessionMeta } from "../../lib/contracts";
+import { useT } from "../../stores/language";
 
 export interface GroupStatusCounts {
 	working: number;
@@ -46,6 +47,7 @@ export function getGroupStatusCounts(
 
 /** Renders status bubbles per RFC palette (V2, R15) - only shown when group is collapsed */
 export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
+	const { t } = useT();
 	const hasAny =
 		counts.working > 0 ||
 		counts.awaiting > 0 ||
@@ -57,7 +59,7 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 		<span className="flex items-center gap-1.5 ml-auto pl-1 pr-1 shrink-0">
 			{counts.working > 0 && (
 				<span
-					title={`${counts.working} 个运行中会话`}
+					title={t("sessions.workingSessionsCount", { count: counts.working })}
 					className="inline-flex items-center gap-0.5 text-neutral-400 font-mono text-[10px] @max-[220px]:hidden"
 				>
 					<Loader2 size={10} className="animate-spin shrink-0" />
@@ -66,16 +68,16 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 			)}
 			{counts.awaiting > 0 && (
 				<span
-					title={`${counts.awaiting} 个待回复会话`}
+					title={t("sessions.awaitingSessionsCount", { count: counts.awaiting })}
 					className="inline-flex items-center gap-0.5 bg-sky-500/15 text-sky-400 px-1 py-0.2 rounded-full font-mono text-[10px] font-medium"
 				>
 					<span>{counts.awaiting}</span>
-					<span className="@max-[220px]:hidden"> 待回复</span>
+					<span className="@max-[220px]:hidden"> {t("sessions.awaitingShort")}</span>
 				</span>
 			)}
 			{counts.unread > 0 && (
 				<span
-					title={`${counts.unread} 个未读会话`}
+					title={t("sessions.unreadSessionsCount", { count: counts.unread })}
 					className="inline-flex items-center gap-1 text-blue-400 font-mono text-[10px] font-medium"
 				>
 					<span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
@@ -84,7 +86,7 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 			)}
 			{counts.error > 0 && (
 				<span
-					title={`${counts.error} 个异常或中断会话`}
+					title={t("sessions.errorSessionsCount", { count: counts.error })}
 					className="inline-flex items-center gap-1 text-red-400 font-mono text-[10px] font-medium"
 				>
 					<span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />

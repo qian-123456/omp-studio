@@ -13,7 +13,8 @@ export interface WallpaperPalette {
 
 export interface PresetWallpaper {
   id: string;
-  name: string;
+  /** i18n key of the display name. */
+  nameKey: string;
   imageUrl: string;
   thumbnailUrl: string;
   palette: WallpaperPalette;
@@ -58,37 +59,37 @@ type PresetDef = Omit<PresetWallpaper, "imageUrl" | "thumbnailUrl">;
 const PRESET_DEFS: PresetDef[] = [
   {
     id: "preset-lakewood",
-    name: "雾林深境",
+    nameKey: "theme.presetMistyForest",
     palette: { mono: "#6b7270", neutral: "#adb5b3", soft: "#2e5a44", rich: "#146b27" },
     appearance: "dark",
   },
   {
     id: "preset-palm-shore",
-    name: "晴空花影",
+    nameKey: "theme.presetSunnyBloom",
     palette: { mono: "#78828a", neutral: "#b1c7d8", soft: "#5a92ba", rich: "#d96b27" },
     appearance: "light",
   },
   {
     id: "preset-ember-rock",
-    name: "月映暖筑",
+    nameKey: "theme.presetMoonlitWarmth",
     palette: { mono: "#7c858a", neutral: "#a3bdc4", soft: "#c68867", rich: "#d87e4b" },
     appearance: "light",
   },
   {
     id: "preset-atoll-blue",
-    name: "盐原金峰",
+    nameKey: "theme.presetGoldenFlats",
     palette: { mono: "#828785", neutral: "#ced3d0", soft: "#a99273", rich: "#d4921e" },
     appearance: "light",
   },
   {
     id: "preset-leaf-shadow",
-    name: "玄岩海门",
+    nameKey: "theme.presetBasaltGate",
     palette: { mono: "#636e6b", neutral: "#8b9c97", soft: "#1b4d3e", rich: "#007a99" },
     appearance: "dark",
   },
   {
     id: "preset-alpenglow",
-    name: "黑羽静栖",
+    nameKey: "theme.presetDarkPerch",
     palette: { mono: "#727578", neutral: "#9fa2a4", soft: "#5c6b73", rich: "#9e623a" },
     appearance: "dark",
   },

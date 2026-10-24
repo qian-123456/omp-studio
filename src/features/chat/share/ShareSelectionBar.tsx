@@ -1,5 +1,6 @@
 import { Share } from "lucide-react";
 import { useEffect, useMemo } from "react";
+import { useT } from "../../../stores/language";
 import { useLive } from "../../../stores/live";
 import { useUi } from "../../../stores/ui";
 import { listShareableIds } from "./shareEntries";
@@ -12,6 +13,7 @@ const EMPTY_ITEMS: never[] = [];
  * share as one image. Escape leaves the mode.
  */
 export function ShareSelectionBar({ sessionId }: { sessionId: string }) {
+	const { t } = useT();
 	const selectedIds = useShareSelection((s) => s.selectedIds);
 	const setSelected = useShareSelection((s) => s.setSelected);
 	const cancel = useShareSelection((s) => s.cancel);
@@ -46,7 +48,7 @@ export function ShareSelectionBar({ sessionId }: { sessionId: string }) {
 		<div className="shrink-0 px-3 pb-3 pt-1">
 			<div className="flex items-center justify-between gap-3 rounded-[22px] border border-[var(--line)] bg-[var(--bg-panel)] px-4 py-2.5">
 				<div className="text-[13px] text-[var(--text)]">
-					已选 <span className="font-semibold tabular-nums">{selectedCount}</span> 条消息
+					{t("share.selectedCountPrefix")}<span className="font-semibold tabular-nums">{selectedCount}</span>{t("share.selectedCountSuffix")}
 				</div>
 				<div className="flex items-center gap-1.5">
 					<button
@@ -55,14 +57,14 @@ export function ShareSelectionBar({ sessionId }: { sessionId: string }) {
 						disabled={shareable.length === 0}
 						className="rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:opacity-40"
 					>
-						{allSelected ? "取消全选" : "全选"}
+						{allSelected ? t("share.deselectAll") : t("share.selectAll")}
 					</button>
 					<button
 						type="button"
 						onClick={cancel}
 						className="rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 					>
-						取消
+						{t("share.cancel")}
 					</button>
 					<button
 						type="button"
@@ -71,7 +73,7 @@ export function ShareSelectionBar({ sessionId }: { sessionId: string }) {
 						className="flex items-center gap-1.5 rounded-lg bg-[var(--text)] px-3 py-1.5 text-xs font-medium text-[var(--bg-panel)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 					>
 						<Share size={13} />
-						生成图片
+						{t("share.generateImage")}
 					</button>
 				</div>
 			</div>

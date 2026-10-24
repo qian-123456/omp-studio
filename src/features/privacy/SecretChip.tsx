@@ -5,6 +5,7 @@ import type { SecretEntry } from "../../lib/contracts";
 import { usePrivacy } from "../../stores/privacy";
 import { useSettings } from "../settings/store";
 import { resolveReveal, segmentPrivacyText } from "./render";
+import { useT } from "../../stores/language";
 
 let initialLoad: Promise<void> | null = null;
 
@@ -24,8 +25,9 @@ function useEnsurePrivacyLoaded(): void {
 }
 
 export function SecretChip({ entry }: { entry: SecretEntry }) {
-	const revealDefault = useSettings((s) => s.settings?.privacyRevealDefault);
+	const { t } = useT();
 	const [override, setOverride] = useState<boolean | null>(null);
+	const revealDefault = useSettings((s) => s.settings?.privacyRevealDefault);
 	const revealed = resolveReveal(revealDefault, override);
 	return (
 		<button
@@ -34,10 +36,10 @@ export function SecretChip({ entry }: { entry: SecretEntry }) {
 				e.stopPropagation();
 				setOverride(!revealed);
 			}}
-			title={revealed ? `${entry.placeholder} · 点击隐藏` : "点击显示真实值"}
+			title={revealed ? t("components.secretClickToHide", { placeholder: entry.placeholder }) : t("components.secretClickToShow")}
 			className="mx-px inline rounded border border-[var(--line)] bg-[var(--well-bg)] px-1 align-baseline font-mono text-[0.92em] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
 		>
-			{revealed ? `🔓 ${entry.value}` : `🔒 ${entry.label ?? "已隐藏"}`}
+			{revealed ? `🔓 ${entry.value}` : `🔒 ${entry.label ?? t("components.secretHidden")}`}
 		</button>
 	);
 }

@@ -3,6 +3,7 @@ import { FloatingLayer } from "../../components/FloatingLayer";
 import { onQuickCapture } from "../../lib/events";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { useBacklog } from "./backlogStore";
 import { IdeaCaptureBox } from "./IdeaCaptureBox";
 
@@ -11,6 +12,7 @@ import { IdeaCaptureBox } from "./IdeaCaptureBox";
  * `quick-capture` and renders when `ui.modal?.name === "quick-capture"`.
  */
 export function QuickCapture() {
+	const { t } = useT();
 	const modal = useUi((s) => s.modal);
 	const openModal = useUi((s) => s.openModal);
 	const closeModal = useUi((s) => s.closeModal);
@@ -42,16 +44,16 @@ export function QuickCapture() {
 			layer="modal"
 			onDismiss={closeModal}
 			role="dialog"
-			aria-label="记到收集箱"
+			aria-label={t("backlog.quickCaptureAriaLabel")}
 			className="w-[520px] max-w-[calc(100vw-32px)] rounded-2xl !bg-[var(--bg-panel)] p-4"
 		>
-			<div className="mb-2 px-1 text-[13px] font-medium text-[var(--text)]">记到收集箱</div>
+			<div className="mb-2 px-1 text-[13px] font-medium text-[var(--text)]">{t("backlog.quickCaptureTitle")}</div>
 			<IdeaCaptureBox
 				variant="quick"
 				autoFocus
 				sessionId={targetSessionId}
 				onSubmitted={() => {
-					toast.success("已记入收集箱");
+					toast.success(t("backlog.quickCaptureSuccess"));
 					closeModal();
 				}}
 			/>

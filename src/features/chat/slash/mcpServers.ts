@@ -5,7 +5,8 @@ import { Server } from "lucide-react";
 import type { McpServerItem } from "../../../lib/contracts";
 import { applyArgName, buildArgItems, type ArgCandidate } from "./argComplete";
 import type { SlashMenuItem } from "./menu";
-
+import type { SlashGroup } from "./types";
+import { tNow } from "../../../stores/language";
 /** Which subcommands of which legacy command take an MCP server name as their
  * first argument, keyed `command -> sub[]`. Grow here for other commands. */
 export const MCP_SERVER_ARG_SUBS: Record<string, readonly string[]> = {
@@ -16,7 +17,10 @@ export function takesMcpServerArg(command: string, sub: string | undefined): boo
 	return !!sub && (MCP_SERVER_ARG_SUBS[command]?.includes(sub) ?? false);
 }
 
-const MCP_PROVIDER_VIEW = { groupLabel: "MCP 服务器", icon: Server } as const;
+const MCP_PROVIDER_VIEW: { readonly groupKey: SlashGroup; readonly icon: typeof Server } = {
+	groupKey: "mcp",
+	icon: Server,
+};
 
 /** Server → completion candidate. */
 export function toMcpCandidate(s: McpServerItem): ArgCandidate {
@@ -32,9 +36,9 @@ function endpointSummary(s: McpServerItem): string {
 
 /** Description line: state + transport, endpoint and source scope. */
 export function describeMcpServer(s: McpServerItem): string {
-	const state = s.enabled ? "已启用" : "已禁用";
+	const state = s.enabled ? tNow("slash.enabled") : tNow("slash.disabled");
 	const parts = [`${state} · ${endpointSummary(s)}`];
-	if (s.scope) parts.push(`来源: ${s.scope}`);
+	if (s.scope) parts.push(tNow("slash.sourceScope", { scope: s.scope }));
 	return parts.join(" · ");
 }
 

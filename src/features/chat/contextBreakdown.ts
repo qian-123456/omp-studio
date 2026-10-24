@@ -6,6 +6,7 @@
  * compaction) and scaling those estimates to the remainder omp reports.
  */
 import type { PromptComposition, TranscriptItem } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 
 export type PromptSegmentId = "tools" | "system" | "mcp" | "skills" | "rules" | "other";
 export type ChatSegmentId = "messages" | "thinking" | "toolCalls" | "mcpCalls" | "skillReads";
@@ -46,20 +47,22 @@ export const THEME_COLORS: Record<ContextSegmentId, string> = {
 	free: "var(--bg-selected)",
 };
 
-export const CLAUDE_NAMES_ZH: Record<ContextSegmentId, string> = {
-	tools: "系统工具",
-	system: "基础指令",
-	mcp: "MCP 工具",
-	skills: "Skills",
-	rules: "规则文件",
-	other: "其他",
-	messages: "对话消息",
-	thinking: "思考",
-	toolCalls: "工具调用",
-	mcpCalls: "MCP 调用",
-	skillReads: "读取的 Skills",
-	free: "剩余空间",
-};
+export function getContextSegmentName(id: ContextSegmentId): string {
+	switch (id) {
+		case "tools": return tNow("chat.context.tools");
+		case "system": return tNow("chat.context.system");
+		case "mcp": return tNow("chat.context.mcp");
+		case "skills": return tNow("chat.context.skills");
+		case "rules": return tNow("chat.context.rules");
+		case "other": return tNow("chat.context.other");
+		case "messages": return tNow("chat.context.messages");
+		case "thinking": return tNow("chat.context.thinking");
+		case "toolCalls": return tNow("chat.context.toolCalls");
+		case "mcpCalls": return tNow("chat.context.mcpCalls");
+		case "skillReads": return tNow("chat.context.skillReads");
+		case "free": return tNow("chat.context.free");
+	}
+}
 
 const PROMPT_IDS: PromptSegmentId[] = ["tools", "system", "mcp", "skills", "rules", "other"];
 const DETAIL_PROMPT_IDS: Partial<Record<PromptSegmentId, true>> = { mcp: true, skills: true, rules: true };
@@ -194,7 +197,7 @@ export function estimateConversation(items: TranscriptItem[]): ChatEstimate[] {
 
 	const rows = (m: Map<string, { tokens: number; count: number }>): DetailRow[] =>
 		[...m]
-			.map(([name, v]) => ({ name: v.count > 1 ? `${name} · ${v.count} 次` : name, tokens: v.tokens }))
+			.map(([name, v]) => ({ name: v.count > 1 ? tNow("chat.context.countTimes", { name, count: v.count }) : name, tokens: v.tokens }))
 			.sort((a, b) => b.tokens - a.tokens);
 	return (Object.keys(totals) as ChatSegmentId[]).map((id) => ({
 		id,
@@ -284,13 +287,13 @@ export function buildContextSegments(
 					tokens / promptW[i],
 				)
 			: undefined;
-		prompt.push({ id, group: "prompt", name: CLAUDE_NAMES_ZH[id], tokens, color: THEME_COLORS[id], details });
+		prompt.push({ id, group: "prompt", name: getContextSegmentName(id), tokens, color: THEME_COLORS[id], details });
 	});
 	if (pendingTokens > 0) {
 		prompt.push({
 			id: "system",
 			group: "prompt",
-			name: "系统提示词",
+			name: tNow("chat.context.systemPrompt"),
 			tokens: pendingTokens,
 			color: THEME_COLORS.system,
 			pending: true,
@@ -304,7 +307,7 @@ export function buildContextSegments(
 		conversation.push({
 			id: c.id,
 			group: "chat",
-			name: c.id === "messages" ? "对话文字" : CLAUDE_NAMES_ZH[c.id],
+			name: c.id === "messages" ? tNow("chat.context.chatText") : getContextSegmentName(c.id),
 			tokens,
 			color: THEME_COLORS[c.id],
 			details: c.details?.length ? scaleRows(c.details, tokens / c.tokens) : undefined,
@@ -314,7 +317,7 @@ export function buildContextSegments(
 		conversation.push({
 			id: "messages",
 			group: "chat",
-			name: CLAUDE_NAMES_ZH.messages,
+			name: getContextSegmentName("messages"),
 			tokens: fillMessages,
 			color: THEME_COLORS.messages,
 		});
@@ -328,7 +331,7 @@ export function buildContextSegments(
 
 	const freeTokens = Math.max(0, windowSize - usedClamped);
 	if (freeTokens > 0) {
-		segments.push({ id: "free", group: "free", name: CLAUDE_NAMES_ZH.free, tokens: freeTokens, color: THEME_COLORS.free });
+		segments.push({ id: "free", group: "free", name: getContextSegmentName("free"), tokens: freeTokens, color: THEME_COLORS.free });
 	}
 	return segments;
 }
@@ -348,7 +351,7 @@ export function ringSegments(segments: ContextSegment[]): ContextSegment[] {
 			continue;
 		}
 		if (!prompt) {
-			prompt = { id: "system", group: "prompt", name: "系统提示词", tokens: 0, color: THEME_COLORS.system };
+			prompt = { id: "system", group: "prompt", name: tNow("chat.context.systemPrompt"), tokens: 0, color: THEME_COLORS.system };
 			out.push(prompt);
 		}
 		prompt.tokens += s.tokens;

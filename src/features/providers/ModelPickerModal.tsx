@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { SearchInput } from "../../components/SearchInput";
 import type { DiscoveredModel } from "../../lib/contracts";
-
+import { useT } from "../../stores/language";
 interface Props {
 	models: DiscoveredModel[];
 	existingModelIds: Set<string>;
@@ -21,9 +21,9 @@ export function ModelPickerModal({
 	onAppend,
 	onReplace,
 }: Props) {
+	const { t } = useT();
 	const [search, setSearch] = useState("");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
-
 	const filtered = useMemo(() => {
 		const term = search.trim().toLowerCase();
 		if (!term) return models;
@@ -66,7 +66,7 @@ export function ModelPickerModal({
 	return (
 		<Modal
 			onClose={onClose}
-			title={`从供应商获取模型（已发现 ${models.length} 个模型）`}
+			title={t("providers.pickerTitle", { count: models.length })}
 		>
 			<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 				<div className="space-y-3 border-b border-[var(--border-divider)] p-4">
@@ -74,7 +74,7 @@ export function ModelPickerModal({
 						value={search}
 						onChange={setSearch}
 						autoFocus
-						placeholder="搜索模型 ID 或名称"
+						placeholder={t("providers.pickerSearchPlaceholder")}
 						inputClassName={`${inputCls} pl-8 pr-7`}
 					/>
 
@@ -85,18 +85,18 @@ export function ModelPickerModal({
 									onClick={handleSelectAll}
 									className="rounded px-2 py-1 text-xs text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95 transition-all"
 								>
-									全选
+									{t("providers.pickerSelectAll")}
 								</button>
 								<button
 									type="button"
 									onClick={handleDeselectAll}
 									className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 								>
-									取消全选
+									{t("providers.pickerDeselectAll")}
 								</button>
 							</div>
 							<div className="text-xs font-medium text-neutral-400">
-								已选 {selected.size} / {filtered.length} 个
+								{t("providers.pickerSelectedCount", { selected: selected.size, total: filtered.length })}
 							</div>
 						</div>
 					</div>
@@ -104,7 +104,7 @@ export function ModelPickerModal({
 					<div className="flex-1 overflow-y-auto p-4">
 						{filtered.length === 0 ? (
 							<div className="flex h-full items-center justify-center text-xs text-neutral-500">
-								{search.trim() ? "未找到匹配的模型" : "未发现任何模型"}
+								{search.trim() ? t("providers.pickerNoMatching") : t("providers.pickerNoModels")}
 							</div>
 						) : (
 							<div className="space-y-1">
@@ -148,7 +148,7 @@ export function ModelPickerModal({
 													</span>
 													{isExisting && (
 														<span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-950/40 text-emerald-300 border border-emerald-800/40">
-															已添加
+															{t("providers.pickerAdded")}
 														</span>
 													)}
 												</div>
@@ -171,7 +171,7 @@ export function ModelPickerModal({
 						onClick={onClose}
 						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 					<button
 						type="button"
@@ -179,7 +179,7 @@ export function ModelPickerModal({
 						onClick={handleAppend}
 						className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 active:scale-95 disabled:opacity-40 transition-all"
 					>
-						追加到列表
+						{t("providers.pickerAppend")}
 					</button>
 					<button
 						type="button"
@@ -187,7 +187,7 @@ export function ModelPickerModal({
 						onClick={handleReplace}
 						className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 					>
-						覆盖当前列表
+						{t("providers.pickerReplace")}
 					</button>
 				</div>
 		</Modal>

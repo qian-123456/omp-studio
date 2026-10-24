@@ -13,6 +13,7 @@ import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useTurnNav } from "../../stores/turnNav";
+import { useT } from "../../stores/language";
 import { ChangesSection } from "./ChangesSection";
 import { CheckpointsCard } from "./CheckpointsCard";
 import { keepIfEqual, useAutoRefresh } from "./useAutoRefresh";
@@ -37,6 +38,7 @@ export function GitPanel() {
 	// Same session the header/bottom bar describe: the selection, else the last
 	// session (a restored view can be on screen with nothing "selected").
 	const sid = useUi((s) => s.selectedSessionId || s.lastSessionId);
+	const { t } = useT();
 	const session = useSessions((s) => (sid ? s.sessions[sid] : undefined));
 	// Stored catalog facts only: the panel must show the selected session's repo
 	// whether or not its omp process is running. `repoRoot` covers a session
@@ -48,7 +50,7 @@ export function GitPanel() {
 				<RepoView key={dir} cwd={dir} tick={session?.file ?? ""} />
 			) : (
 				<div className="p-3 text-xs text-[var(--text-dim)]">
-					没有选中的会话，或该会话未关联工作目录
+					{t("git.panel.noSessionOrCwd")}
 				</div>
 			)}
 		</div>
@@ -62,6 +64,7 @@ interface DiffReq {
 
 /** Repo-level state: is-repo check, worktree map, time-machine runs, focus selection. */
 function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
+	const { t } = useT();
 	const [isRepo, setIsRepo] = useState<boolean | null>(null);
 	const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
 	const [runs, setRuns] = useState<TmRun[]>([]);
@@ -182,7 +185,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	const mainRoot = worktrees[0]?.path;
 	const repoRuns = runs.filter((r) => !mainRoot || r.repo === mainRoot);
 	const selectedName = selectedWt
-		? (selectedWt.branch ?? `历史版本 ${selectedWt.head.slice(0, 7)}`)
+		? (selectedWt.branch ?? t("git.panel.detachedHead", { head: selectedWt.head.slice(0, 7) }))
 		: null;
 
 	// Effective tab: manual pick wins; while the count is still loading keep the
@@ -270,15 +273,15 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							value={mode}
 							onChange={setMode}
 							options={[
-								{ value: "worktrees", label: "工作树" },
-								{ value: "branches", label: "分支" },
+								{ value: "worktrees", label: t("git.panel.modeWorktrees") },
+								{ value: "branches", label: t("git.panel.modeBranches") },
 							]}
 						/>
 					)}
 					<button
 						type="button"
-						title="刷新 (⌘R)"
-						aria-label="刷新"
+						title={t("git.panel.refreshTitle")}
+						aria-label={t("common.refresh")}
 						onClick={reloadAll}
 						className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
@@ -295,16 +298,16 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 						onClick={reloadAll}
 						className="ml-2 shrink-0 rounded bg-rose-900/60 px-2 py-0.5 text-[11px] font-medium text-rose-200 hover:bg-rose-800/80 transition-colors"
 					>
-						重试
+						{t("common.retry")}
 					</button>
 				</div>
 			)}
 
 			{(isRepo === null || (isRepo && mode === null)) && !error && (
-				<div className="p-3 text-xs text-[var(--text-dim)]">加载中…</div>
+				<div className="p-3 text-xs text-[var(--text-dim)]">{t("common.loading")}</div>
 			)}
 			{isRepo === false && (
-				<div className="p-3 text-xs text-[var(--text-dim)]">{short(cwd)} 不是 git 仓库</div>
+				<div className="p-3 text-xs text-[var(--text-dim)]">{t("git.panel.notRepo", { dir: short(cwd) })}</div>
 			)}
 
 			{isRepo && mode === "branches" && (
@@ -356,7 +359,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 						<div
 							role="separator"
 							aria-orientation="horizontal"
-							aria-label="拖动调整高度"
+							aria-label={t("git.panel.dragResizeHeight")}
 							tabIndex={-1}
 							onPointerDown={startDrag}
 							className="group relative h-1.5 shrink-0 cursor-row-resize touch-none border-y border-[var(--border-divider)] bg-[var(--bg-panel)] hover:bg-indigo-500/30"
@@ -377,11 +380,11 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 								<button
 									type="button"
 									onClick={() =>
-										setDiff({ title: "全部未提交的改动", load: () => gitDiff(selected) })
+										setDiff({ title: t("git.panel.allUncommittedChanges"), load: () => gitDiff(selected) })
 									}
 									className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 								>
-									全部 diff
+									{t("git.panel.allDiff")}
 								</button>
 							)}
 							<Segmented
@@ -389,8 +392,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 								value={tab}
 								onChange={(t) => setManualTab({ path: selected, tab: t })}
 								options={[
-									{ value: "changes", label: `改动 ${count ?? 0}` },
-									{ value: "history", label: "历史" },
+									{ value: "changes", label: t("git.panel.changesCount", { count: count ?? 0 }) },
+									{ value: "history", label: t("git.panel.history") },
 								]}
 							/>
 						</div>
@@ -454,6 +457,7 @@ function FocusPane({
 	onRepoChanged: () => void;
 	onDiff: (req: DiffReq) => void;
 }) {
+	const { t } = useT();
 	const [summary, setSummary] = useState<GitSummary | null>(null);
 	const [commits, setCommits] = useState<GitCommit[]>([]);
 	const [forkPoint, setForkPoint] = useState<string | null>(null);
@@ -522,7 +526,7 @@ function FocusPane({
 		<div>
 			<div role="tabpanel" className="px-2 pb-2">
 				{error && <div className="px-1 pt-2 text-[11px] text-rose-400">{error}</div>}
-				{!summary && !error && <div className="px-1 py-2 text-xs text-[var(--text-dim)]">加载中…</div>}
+				{!summary && !error && <div className="px-1 py-2 text-xs text-[var(--text-dim)]">{t("common.loading")}</div>}
 				{summary &&
 					(tab === "changes" ? (
 						<ChangesSection
@@ -531,7 +535,7 @@ function FocusPane({
 							toplevel={path}
 							onDiff={(file) =>
 								onDiff({
-									title: file ?? "全部未提交的改动",
+									title: file ?? t("git.panel.allUncommittedChanges"),
 									load: () => gitDiff(path, file),
 								})
 							}

@@ -50,6 +50,7 @@ import {
 	windowOptionsFor,
 } from "./logic";
 import { useModelTemplatesStore } from "./store";
+import { useT } from "../../../stores/language";
 
 const DEFAULT_REVERT_DROP = 10;
 const DEFAULT_POLL_MINUTES = 10;
@@ -109,6 +110,7 @@ function RuleFormView({
 	onCancel: () => void;
 	onSave: () => void;
 }) {
+	const { t } = useT();
 	const scopeTemplates = inScope(templates, form.scope);
 	const scopeMissing = form.scope !== GLOBAL_SCOPE && !projects.some((p) => p.path === form.scope);
 	const providerChoices = providerOptions(status?.providers ?? []);
@@ -145,15 +147,15 @@ function RuleFormView({
 							onSave();
 						}
 					}}
-					placeholder="规则名称，例如：Claude 五小时额度告急"
-					aria-label="规则名称"
+					placeholder={t("modelTemplates.ruleNamePlaceholder")}
+					aria-label={t("modelTemplates.ruleNameLabel")}
 					spellCheck={false}
 					className={`${INPUT_CLASS} w-64`}
 				/>
 				<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-					供应商
+					{t("modelTemplates.providerLabel")}
 					<NativeSelect
-						aria-label="额度供应商"
+						aria-label={t("modelTemplates.providerAria")}
 						value={form.provider}
 						disabled={busy || providerChoices.length === 0}
 						containerClassName="w-36"
@@ -164,8 +166,8 @@ function RuleFormView({
 							patch({ provider, windowKey: first?.key ?? "" });
 						}}
 					>
-						{providerChoices.length === 0 && !providerMissing && <option value="">没有额度报告</option>}
-						{providerMissing && <option value={form.provider}>{form.provider}（当前无额度报告）</option>}
+						{providerChoices.length === 0 && !providerMissing && <option value="">{t("modelTemplates.noQuotaReport")}</option>}
+						{providerMissing && <option value={form.provider}>{t("modelTemplates.providerNoReport", { provider: form.provider })}</option>}
 						{providerChoices.map((p) => (
 							<option key={p.value} value={p.value}>
 								{p.label}
@@ -174,17 +176,17 @@ function RuleFormView({
 					</NativeSelect>
 				</div>
 				<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-					窗口
+					{t("modelTemplates.windowLabel")}
 					<NativeSelect
-						aria-label="额度窗口"
+						aria-label={t("modelTemplates.windowAria")}
 						value={form.windowKey}
 						disabled={busy || windowChoices.length === 0}
 						containerClassName="w-32"
 						className="text-[11px]"
 						onChange={(e) => patch({ windowKey: e.target.value })}
 					>
-						{windowChoices.length === 0 && !windowMissing && <option value="">暂无窗口</option>}
-						{windowMissing && <option value={form.windowKey}>{form.windowKey}（当前无数据）</option>}
+						{windowChoices.length === 0 && !windowMissing && <option value="">{t("modelTemplates.noWindows")}</option>}
+						{windowMissing && <option value={form.windowKey}>{t("modelTemplates.windowNoData", { window: form.windowKey })}</option>}
 						{windowChoices.map((w) => (
 							<option key={w.key} value={w.key}>
 								{w.label}
@@ -193,7 +195,7 @@ function RuleFormView({
 					</NativeSelect>
 				</div>
 				<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-					达到
+					{t("modelTemplates.reachLabel")}
 					<input
 						type="number"
 						min={0}
@@ -203,22 +205,22 @@ function RuleFormView({
 						disabled={busy}
 						onChange={(e) => patch({ thresholdPct: e.target.value })}
 						onBlur={() => patch({ thresholdPct: clampPct(form.thresholdPct) })}
-						aria-label="阈值百分比"
+						aria-label={t("modelTemplates.thresholdAria")}
 						className={`${INPUT_CLASS} w-20 font-mono tabular-nums`}
 					/>
 					%
 				</div>
 				<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-					作用范围
+					{t("modelTemplates.scopeLabel")}
 					<NativeSelect
-						aria-label="作用范围"
+						aria-label={t("modelTemplates.scopeAria")}
 						value={form.scope}
 						disabled={busy}
 						containerClassName="w-40"
 						className="text-[11px]"
 						onChange={(e) => patch({ scope: e.target.value, templateId: "" })}
 					>
-						<option value={GLOBAL_SCOPE}>全局</option>
+						<option value={GLOBAL_SCOPE}>{t("modelTemplates.scopeGlobal")}</option>
 						{scopeMissing && <option value={form.scope}>{scopeDisplayName(form.scope, projects)}</option>}
 						{projects.map((p) => (
 							<option key={p.path} value={p.path}>
@@ -228,17 +230,17 @@ function RuleFormView({
 					</NativeSelect>
 				</div>
 				<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-					应用模板
+					{t("modelTemplates.applyTemplateLabel")}
 					<NativeSelect
-						aria-label="目标模板"
+						aria-label={t("modelTemplates.targetTemplateAria")}
 						value={form.templateId}
 						disabled={busy || scopeTemplates.length === 0}
 						containerClassName="w-40"
 						className="text-[11px]"
 						onChange={(e) => patch({ templateId: e.target.value })}
 					>
-						{scopeTemplates.length === 0 && <option value="">该范围还没有模板</option>}
-						{scopeTemplates.length > 0 && form.templateId === "" && <option value="">请选择模板</option>}
+						{scopeTemplates.length === 0 && <option value="">{t("modelTemplates.scopeNoTemplates")}</option>}
+						{scopeTemplates.length > 0 && form.templateId === "" && <option value="">{t("modelTemplates.selectTemplate")}</option>}
 						{scopeTemplates.map((t) => (
 							<option key={t.id} value={t.id}>
 								{t.name}
@@ -254,13 +256,13 @@ function RuleFormView({
 						checked={form.autoRevert}
 						onChange={(next) => patch({ autoRevert: next })}
 						disabled={busy}
-						ariaLabel="额度恢复后自动切回"
+						ariaLabel={t("modelTemplates.autoRevertAria")}
 					/>
-					额度恢复后自动切回
+					{t("modelTemplates.autoRevertLabel")}
 				</div>
 				{form.autoRevert && (
 					<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-						降到
+						{t("modelTemplates.dropsTo")}
 						<input
 							type="number"
 							min={0}
@@ -271,25 +273,25 @@ function RuleFormView({
 							onChange={(e) => patch({ revertThresholdPct: e.target.value })}
 							onBlur={() => patch({ revertThresholdPct: clampPct(form.revertThresholdPct) })}
 							placeholder={revertDefault}
-							aria-label="自动切回阈值百分比"
+							aria-label={t("modelTemplates.revertThresholdAria")}
 							className={`${INPUT_CLASS} w-20 font-mono tabular-nums`}
 						/>
-						% 以下
-						<span className="text-[var(--text-dim)]">留空则按阈值减 {DEFAULT_REVERT_DROP}%</span>
+						{t("modelTemplates.percentOrBelow")}
+						<span className="text-[var(--text-dim)]">{t("modelTemplates.revertDefaultHint", { drop: String(DEFAULT_REVERT_DROP) })}</span>
 					</div>
 				)}
 				<span className="flex-1" />
 				<Button size="sm" onClick={onCancel} disabled={busy}>
-					取消
+					{t("common.cancel")}
 				</Button>
 				<Button size="sm" variant="primary" onClick={onSave} disabled={busy || !canSave} loading={busy}>
-					{form.id ? "保存规则" : "添加规则"}
+					{form.id ? t("modelTemplates.saveRule") : t("modelTemplates.addRule")}
 				</Button>
 			</div>
 
 			{providerChoices.length === 0 && (
 				<Notice tone="info">
-					还没有读到额度报告，供应商和窗口暂时无法选择。请先在「模型与供应商」里确认额度账号可用。
+					{t("modelTemplates.noReportNotice")}
 				</Notice>
 			)}
 		</div>
@@ -319,6 +321,7 @@ function RuleRow({
 	onToggle: (next: boolean) => void;
 	onDelete: () => void;
 }) {
+	const { t } = useT();
 	const template = templates.find((t) => t.id === rule.templateId);
 	// The window is already at or below the revert threshold: the next check switches back.
 	const reverting = canAutoRevert(rule, status?.providers ?? []);
@@ -330,7 +333,7 @@ function RuleRow({
 					<IconButton
 						icon={ArrowUp}
 						size="sm"
-						label="提高优先级"
+						label={t("modelTemplates.moveUp")}
 						disabled={busy || index === 0}
 						onClick={() => onMove(-1)}
 					/>
@@ -338,7 +341,7 @@ function RuleRow({
 					<IconButton
 						icon={ArrowDown}
 						size="sm"
-						label="降低优先级"
+						label={t("modelTemplates.moveDown")}
 						disabled={busy || index === total - 1}
 						onClick={() => onMove(1)}
 					/>
@@ -347,28 +350,28 @@ function RuleRow({
 					checked={rule.enabled}
 					onChange={onToggle}
 					disabled={busy}
-					ariaLabel={rule.enabled ? `停用规则：${rule.name}` : `启用规则：${rule.name}`}
+					ariaLabel={rule.enabled ? t("modelTemplates.disableRuleAria", { name: rule.name }) : t("modelTemplates.enableRuleAria", { name: rule.name })}
 				/>
 				<div className="min-w-0">
 					<div className="flex flex-wrap items-center gap-1.5">
 						<span className="break-words text-[13px] font-medium leading-5 text-[var(--text)]">
 							{rule.name}
 						</span>
-						{rule.autoRevert && <Chip tone="neutral">自动切回 ≤ {revertPct}%</Chip>}
-						{reverting && <Chip tone="accent">下次检查会切回</Chip>}
+						{rule.autoRevert && <Chip tone="neutral">{t("modelTemplates.autoRevertChip", { pct: String(revertPct) })}</Chip>}
+						{reverting && <Chip tone="accent">{t("modelTemplates.willRevertNextCheck")}</Chip>}
 					</div>
 					<div className="break-words text-[11px] leading-4 text-[var(--text-muted)]">
 						{ruleConditionText(rule, status?.providers ?? [])} →{" "}
-						{template ? template.name : `（模板已删除：${rule.templateId}）`}
+						{template ? template.name : t("modelTemplates.templateDeleted", { id: rule.templateId })}
 					</div>
 				</div>
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
 				<Button size="sm" icon={Pencil} disabled={busy} onClick={onEdit}>
-					编辑
+					{t("common.edit")}
 				</Button>
 				<Button variant="danger" size="sm" icon={Trash2} disabled={busy} onClick={onDelete}>
-					删除
+					{t("common.delete")}
 				</Button>
 			</div>
 		</div>
@@ -387,6 +390,7 @@ export function RulesCard({
 	scope: string;
 	projects: ScopeProject[];
 }) {
+	const { t, locale } = useT();
 	const [editing, setEditing] = useState<RuleForm | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -436,7 +440,7 @@ export function RulesCard({
 		void run(async () => {
 			publish(await modelSwitchRuleSave(input));
 			setEditing(null);
-			toast.success(form.id ? `已保存规则「${input.name}」` : `已添加规则「${input.name}」`);
+			toast.success(form.id ? t("modelTemplates.savedRule", { name: input.name }) : t("modelTemplates.addedRule", { name: input.name }));
 		});
 	};
 
@@ -472,15 +476,15 @@ export function RulesCard({
 	};
 
 	const remove = async (rule: ModelSwitchRule) => {
-		const ok = await confirmDialog(`确定删除规则「${rule.name}」吗？`, {
-			title: "删除规则",
+		const ok = await confirmDialog(t("modelTemplates.deleteRuleConfirm", { name: rule.name }), {
+			title: t("modelTemplates.deleteRuleTitle"),
 			danger: true,
-			okLabel: "删除",
+			okLabel: t("common.delete"),
 		});
 		if (!ok) return;
 		void run(async () => {
 			publish(await modelSwitchRuleDelete(rule.id));
-			toast.success(`已删除规则「${rule.name}」`);
+			toast.success(t("modelTemplates.deletedRule", { name: rule.name }));
 		});
 	};
 
@@ -521,19 +525,19 @@ export function RulesCard({
 
 	return (
 		<SettingsCard
-			title="自动切换规则"
-			jump="自动切换规则"
-			description="额度达到阈值，自动应用对应模板。"
-			aside={rules.length > 0 ? `${rules.length} 条` : undefined}
+			title={t("modelTemplates.rulesCardTitle")}
+			jump={t("modelTemplates.rulesCardTitle")}
+			description={t("modelTemplates.rulesCardDesc")}
+			aside={rules.length > 0 ? t("modelTemplates.rulesCount", { count: String(rules.length) }) : undefined}
 			clip
 		>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 				<span className="text-xs leading-[18px] text-[var(--text-muted)]">
 					{templates.length === 0
-						? "先新建一个模板，再设置自动切换。"
+						? t("modelTemplates.rulesPromptNewTemplate")
 						: rules.length === 0 && !editing
-							? "还没有规则。例如：某个供应商额度用到 95% 时，自动切到「省钱模式」模板。"
-							: "按从上到下的顺序检查，第一条命中的规则生效。"}
+							? t("modelTemplates.rulesPromptEmpty")
+							: t("modelTemplates.rulesPromptOrder")}
 				</span>
 				<Button
 					variant="primary"
@@ -544,15 +548,15 @@ export function RulesCard({
 						setError(null);
 						setEditing(blankForm(status, allTemplates, scope));
 					}}
-					title={templates.length === 0 ? "先新建一个模板" : undefined}
+					title={templates.length === 0 ? t("modelTemplates.rulesPromptNewTemplate") : undefined}
 				>
-					新建规则
+					{t("modelTemplates.newRule")}
 				</Button>
 			</div>
 
 			{status?.lastError && (
 				<div className="px-4 pb-3">
-					<Notice tone="danger" title="上次检查额度失败">
+					<Notice tone="danger" title={t("modelTemplates.lastCheckFailed")}>
 						<span className="select-text break-all">{status.lastError}</span>
 					</Notice>
 				</div>
@@ -570,7 +574,7 @@ export function RulesCard({
 
 			{error && (
 				<div className="px-4 pb-3">
-					<Notice tone="danger" title="操作失败">
+					<Notice tone="danger" title={t("common.failed")}>
 						<span className="select-text break-all">{error}</span>
 					</Notice>
 				</div>
@@ -622,18 +626,18 @@ export function RulesCard({
 
 			<div className="border-t border-[var(--border-divider)]">
 				<SettingRow
-					label="保底模板"
-					description={`${scopeLabel}范围内所有供应商额度都用尽时，仍然应用这个模板。`}
+					label={t("modelTemplates.bottomLineLabel")}
+					description={t("modelTemplates.bottomLineScopeDesc", { scope: scopeLabel })}
 					control={
 						<NativeSelect
-							aria-label="保底模板"
+							aria-label={t("modelTemplates.bottomLineLabel")}
 							value={bottomLine?.id ?? ""}
 							disabled={busy || templates.length === 0}
 							containerClassName="w-44"
 							className="text-[11px]"
 							onChange={(e) => setBottomLine(e.target.value)}
 						>
-							<option value="">不设置</option>
+							<option value="">{t("modelTemplates.notSet")}</option>
 							{templates.map((t) => (
 								<option key={t.id} value={t.id}>
 									{t.name}
@@ -643,14 +647,14 @@ export function RulesCard({
 					}
 				/>
 				<SettingRow
-					label="额度检查频率"
+					label={t("modelTemplates.pollFrequencyLabel")}
 					description={
 						[
 							status?.lastCheckAt
-								? `上次检查 ${new Date(status.lastCheckAt).toLocaleString("zh-CN")}`
-								: "还没检查过额度",
+								? t("modelTemplates.lastCheckedAt", { time: new Date(status.lastCheckAt).toLocaleString(locale) })
+								: t("modelTemplates.neverChecked"),
 							status?.nextCheckAt
-								? `下次检查 ${new Date(status.nextCheckAt).toLocaleString("zh-CN")}`
+								? t("modelTemplates.nextCheckAt", { time: new Date(status.nextCheckAt).toLocaleString(locale) })
 								: null,
 						]
 							.filter(Boolean)
@@ -658,13 +662,13 @@ export function RulesCard({
 					}
 					control={
 						<div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-							每
+							{t("modelTemplates.every")}
 							<CommitInput
 								value={pollMinutes}
 								type="number"
 								min={MIN_POLL_MINUTES}
 								max={MAX_POLL_MINUTES}
-								aria-label="额度检查间隔（分钟）"
+								aria-label={t("modelTemplates.pollIntervalAria")}
 								className="w-16"
 								normalize={(draft) => {
 									const n = Number.parseInt(draft, 10);
@@ -675,11 +679,11 @@ export function RulesCard({
 									const n = Number.parseInt(next, 10);
 									return Number.isFinite(n) && n >= MIN_POLL_MINUTES && n <= MAX_POLL_MINUTES
 										? null
-										: `请输入 ${MIN_POLL_MINUTES}–${MAX_POLL_MINUTES} 之间的分钟数`;
+										: t("modelTemplates.pollIntervalValidation", { min: String(MIN_POLL_MINUTES), max: String(MAX_POLL_MINUTES) });
 								}}
 								onCommit={setPollMinutes}
 							/>
-							分钟
+							{t("modelTemplates.minutes")}
 						</div>
 					}
 				/>

@@ -12,6 +12,7 @@ import type {
 import { timeWithTitle } from "../../../lib/format";
 import { editsScopeLabel, invertEdit, type EditSummary, summarizeEdit } from "./logic";
 import { BTN_PRIMARY, Chip } from "./parts";
+import { useT } from "../../../stores/language";
 
 export interface UndoOutcome {
 	recordId: string;
@@ -19,6 +20,7 @@ export interface UndoOutcome {
 }
 
 function EditList({ record, projectNames }: { record: ModelReplaceRecord; projectNames: Record<string, string> }) {
+	const { t } = useT();
 	return (
 		<div className="border-t border-[var(--border-divider)] px-3 py-1.5">
 			{record.edits.map((edit, index) => {
@@ -39,7 +41,7 @@ function EditList({ record, projectNames }: { record: ModelReplaceRecord; projec
 							</div>
 						))}
 						{record.undoneAt === null && (
-							<div className="whitespace-pre-wrap break-all font-mono text-neutral-600">撤销后恢复为 {restored.after}</div>
+							<div className="whitespace-pre-wrap break-all font-mono text-neutral-600">{t("modelReplace.restoreAfterUndo", { after: restored.after })}</div>
 						)}
 					</div>
 				);
@@ -56,9 +58,10 @@ function UndoResults({
 	results: ModelReplaceItemResult[];
 	projectNames: Record<string, string>;
 }) {
+	const { t } = useT();
 	return (
 		<div className="border-t border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-1.5">
-			<div className="text-[10px] text-neutral-500">撤销结果</div>
+			<div className="text-[10px] text-neutral-500">{t("modelReplace.undoResultsTitle")}</div>
 			{results.map((result, index) => {
 				const summary = summarizeEdit(result.edit, projectNames);
 				return (
@@ -72,7 +75,7 @@ function UndoResults({
 							<span className="break-all text-neutral-300">{summary.title}</span>
 							<span className="ml-1 break-all text-neutral-500">{summary.context}</span>
 							<span className="ml-1 whitespace-pre-wrap break-all text-neutral-400">
-								{result.ok ? "已恢复" : (result.error ?? "撤销失败")}
+								{result.ok ? t("modelReplace.restored") : (result.error ?? t("modelReplace.undoFailed"))}
 							</span>
 						</span>
 					</div>
@@ -101,13 +104,14 @@ export function ModelReplaceHistory({
 	onReload: () => void;
 	onUndo: (recordId: string) => void;
 }) {
+	const { t } = useT();
 	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
 	if (loading && records.length === 0) {
 		return (
 			<div className="flex items-center gap-2 px-3 py-6 text-xs text-neutral-400">
 				<Loader2 className="h-3.5 w-3.5 animate-spin" />
-				正在读取历史记录…
+				{t("modelReplace.historyLoading")}
 			</div>
 		);
 	}
@@ -115,7 +119,7 @@ export function ModelReplaceHistory({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex items-center justify-between gap-2 px-3 pb-2 text-[11px] text-neutral-400">
-				<span>最近 10 次批量替换；撤销只会恢复本次替换写过的值。</span>
+				<span>{t("modelReplace.historyHeaderNotice")}</span>
 				<button
 					type="button"
 					onClick={onReload}
@@ -123,7 +127,7 @@ export function ModelReplaceHistory({
 					className="inline-flex shrink-0 items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
 				>
 					<RotateCcw className="h-3 w-3" />
-					刷新
+					{t("common.refresh")}
 				</button>
 			</div>
 
@@ -135,7 +139,7 @@ export function ModelReplaceHistory({
 			)}
 
 			{records.length === 0 && !loading && (
-				<div className="px-3 py-6 text-xs text-neutral-500">还没有批量替换记录。</div>
+				<div className="px-3 py-6 text-xs text-neutral-500">{t("modelReplace.emptyHistory")}</div>
 			)}
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
@@ -149,14 +153,14 @@ export function ModelReplaceHistory({
 									type="button"
 									onClick={() => setExpanded((prev) => ({ ...prev, [record.id]: !isOpen }))}
 									className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left"
-									title="展开本次替换的每一处改动"
+									title={t("modelReplace.expandRecordTitle")}
 								>
 									<span className="min-w-0 break-all font-mono text-neutral-300">
 										{record.fromModel} → {record.toModel}
 									</span>
-									<Chip tone="neutral">{record.edits.length} 项</Chip>
-									<Chip tone="neutral">范围：{editsScopeLabel(record.edits, projectNames)}</Chip>
-									{record.undoneAt !== null && <Chip tone="info">已撤销</Chip>}
+									<Chip tone="neutral">{t("modelReplace.itemsCount", { count: String(record.edits.length) })}</Chip>
+									<Chip tone="neutral">{t("modelReplace.historyScopeLabel", { scope: editsScopeLabel(record.edits, projectNames) })}</Chip>
+									{record.undoneAt !== null && <Chip tone="info">{t("modelReplace.undoneChip")}</Chip>}
 								</button>
 								<span className="shrink-0 text-[10px] text-neutral-500" title={time.title}>
 									{time.text}
@@ -165,11 +169,11 @@ export function ModelReplaceHistory({
 									type="button"
 									onClick={() => onUndo(record.id)}
 									disabled={record.undoneAt !== null || undoingId !== null}
-									title={record.undoneAt !== null ? "这条记录已经撤销过" : "恢复本次替换前的值"}
+									title={record.undoneAt !== null ? t("modelReplace.alreadyUndoneTitle") : t("modelReplace.undoTitle")}
 									className={BTN_PRIMARY}
 								>
 									{undoingId === record.id ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
-									撤销
+									{t("modelReplace.undo")}
 								</button>
 							</div>
 							{isOpen && <EditList record={record} projectNames={projectNames} />}

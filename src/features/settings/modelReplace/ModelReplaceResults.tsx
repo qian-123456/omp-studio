@@ -16,6 +16,7 @@ import { useModelOptions } from "../../../stores/modelCatalog";
 import { useSessions } from "../../../stores/sessions";
 import { liveSessionsOnModel, summarizeEdit } from "./logic";
 import { BTN_PRIMARY, CHECKBOX_CLASS, Chip } from "./parts";
+import { useT } from "../../../stores/language";
 
 /** Live sessions that still run the source model; switching is opt-in per session. */
 function LiveSessionsCard({
@@ -27,6 +28,7 @@ function LiveSessionsCard({
 	toModel: string;
 	level: string | null;
 }) {
+	const { t } = useT();
 	const live = useLive((s) => s.sessions);
 	const metas = useSessions((s) => s.sessions);
 	const models = useModelOptions();
@@ -54,7 +56,7 @@ function LiveSessionsCard({
 	const switchSelected = async () => {
 		const payload = buildSetModelPayload(toModel, models);
 		if (!payload) {
-			toast.error("无法解析目标模型");
+			toast.error(t("modelReplace.resolveTargetError"));
 			return;
 		}
 		setSwitching(true);
@@ -72,16 +74,16 @@ function LiveSessionsCard({
 			}
 		}
 		setSwitching(false);
-		if (switched > 0) toast.success(`已切换 ${switched} 个运行中的会话`);
-		if (failures.length > 0) toast.error(`切换失败 ${failures.length} 个：${failures[0]}`);
+		if (switched > 0) toast.success(t("modelReplace.switchedLiveSessions", { count: String(switched) }));
+		if (failures.length > 0) toast.error(t("modelReplace.switchLiveFailed", { count: String(failures.length), error: failures[0] }));
 	};
 
 	if (candidates.length === 0) return null;
 	return (
 		<div className="mx-3 mb-3 rounded-xl hairline">
 			<div className="flex items-center justify-between gap-2 rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[10px] text-neutral-500">
-				<span className="min-w-0 break-all">仍在「{fromModel}」上运行的会话（{candidates.length}）</span>
-				<span className="text-neutral-500">写入配置不会改变运行中的会话</span>
+				<span className="min-w-0 break-all">{t("modelReplace.liveCandidatesTitle", { model: fromModel, count: String(candidates.length) })}</span>
+				<span className="text-neutral-500">{t("modelReplace.liveCandidatesDesc")}</span>
 			</div>
 			{candidates.map((candidate) => (
 				<label
@@ -108,10 +110,10 @@ function LiveSessionsCard({
 					className={BTN_PRIMARY}
 				>
 					{switching ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
-					切换到 {toModel}
+					{t("modelReplace.switchLiveToModel", { model: toModel })}
 				</button>
 				<span className="text-[10px] text-neutral-500">
-					{level ? `同时设置思考等级 ${level}` : "不改变这些会话的思考等级"}
+					{level ? t("modelReplace.switchLevelAlso", { level }) : t("modelReplace.switchLevelKeep")}
 				</span>
 			</div>
 		</div>
@@ -138,6 +140,7 @@ export function ModelReplaceResults({
 	retrying: boolean;
 	onRetry: (edits: ModelReplaceEdit[]) => void;
 }) {
+	const { t } = useT();
 	const failed = results.filter((r) => !r.ok);
 	const succeeded = results.length - failed.length;
 
@@ -146,13 +149,13 @@ export function ModelReplaceResults({
 			<div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-[11px]">
 				<span className="flex items-center gap-1 text-emerald-300">
 					<CheckCircle2 className="h-3 w-3" />
-					成功 {succeeded}
+					{t("modelReplace.succeededCount", { count: String(succeeded) })}
 				</span>
 				{failed.length > 0 && (
 					<>
 						<span className="flex items-center gap-1 text-rose-300">
 							<XCircle className="h-3 w-3" />
-							失败 {failed.length}
+							{t("modelReplace.failedCount", { count: String(failed.length) })}
 						</span>
 						<button
 							type="button"
@@ -161,7 +164,7 @@ export function ModelReplaceResults({
 							className="inline-flex shrink-0 items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
 						>
 							<RefreshCw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
-							重试失败项
+							{t("modelReplace.retryFailed")}
 						</button>
 					</>
 				)}

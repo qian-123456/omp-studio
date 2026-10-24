@@ -7,7 +7,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { useLive, type CommandOutputEntry } from "../../../stores/live";
 import { Markdown } from "../../../components/Markdown";
-
+import { useT } from "../../../stores/language";
 const COLLAPSED_MAX_H = 132;
 
 export function CommandOutputRow({
@@ -28,6 +28,7 @@ function OutputBlock({
 	entry: CommandOutputEntry;
 	onDismiss(): void;
 }) {
+	const { t, locale } = useT();
 	const [expanded, setExpanded] = useState(false);
 	const [overflows, setOverflows] = useState(false);
 	const bodyRef = useRef<HTMLDivElement>(null);
@@ -37,7 +38,7 @@ function OutputBlock({
 		if (el) setOverflows(el.scrollHeight > COLLAPSED_MAX_H + 8);
 	}, [entry.text]);
 
-	const time = new Date(entry.ts).toLocaleTimeString("zh-CN", {
+	const time = new Date(entry.ts).toLocaleTimeString(locale, {
 		hour: "2-digit",
 		minute: "2-digit",
 	});
@@ -50,15 +51,15 @@ function OutputBlock({
 					</span>
 				)}
 				{entry.status === "running" && (
-					<Loader2 size={11} className="animate-spin" aria-label="进行中" />
+					<Loader2 size={11} className="animate-spin" aria-label={t("slash.outputRunning")} />
 				)}
 				<span>{time}</span>
 				{entry.status !== "running" && (
 				<button
 					type="button"
 					onClick={onDismiss}
-					title="关闭"
-					aria-label="关闭命令输出"
+					title={t("slash.outputClose")}
+					aria-label={t("slash.outputCloseAria")}
 					className="ml-auto flex h-4 w-4 items-center justify-center rounded text-[var(--text-30,var(--text-dim))] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/output:opacity-100"
 				>
 					<X size={11} />
@@ -88,7 +89,7 @@ function OutputBlock({
 							expanded && "rotate-180",
 						)}
 					/>
-					{expanded ? "收起" : "展开全部"}
+					{expanded ? t("slash.outputCollapse") : t("slash.outputExpandAll")}
 				</button>
 			)}
 		</div>

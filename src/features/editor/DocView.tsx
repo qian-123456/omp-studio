@@ -16,6 +16,7 @@ import { useUi } from "../../stores/ui";
 import { NativeSelect } from "../../components/NativeSelect";
 import { claimEscape } from "../../lib/escapeClaim";
 import { useFileBuffer } from "./useFileBuffer";
+import { tNow, useT } from "../../stores/language";
 
 type Tab = "preview" | "split" | "edit";
 
@@ -24,6 +25,7 @@ interface Selection {
 }
 
 export function DocView({ path }: { path: string }) {
+	const { t } = useT();
 	const buffer = useFileBuffer(path);
 	const { saved, draft, setDraft, error, external, saving, dirty } = buffer;
 	const [tab, setTab] = useState<Tab>("preview");
@@ -49,8 +51,9 @@ export function DocView({ path }: { path: string }) {
 
 	const save = useCallback(async () => {
 		if (!(await buffer.save())) return;
-		setNote("已保存");
-		setTimeout(() => setNote((n) => (n === "已保存" ? null : n)), 1500);
+		const saved = tNow("editor.saved");
+		setNote(saved);
+		setTimeout(() => setNote((n) => (n === saved ? null : n)), 1500);
 	}, [buffer]);
 
 	// Cmd+S / Ctrl+S saves while editing.
@@ -68,11 +71,11 @@ export function DocView({ path }: { path: string }) {
 		if (
 			dirty &&
 			!(await confirmDialog(
-				"当前文档有未保存的修改，确定要退出并放弃所有修改吗？",
+				t("editor.discardConfirm"),
 				{
 					danger: true,
-					title: "放弃未保存修改",
-					okLabel: "放弃并退出",
+					title: t("editor.discardTitle"),
+					okLabel: t("editor.discardAndExit"),
 				},
 			))
 		) {
@@ -85,7 +88,7 @@ export function DocView({ path }: { path: string }) {
 
 
 	const reload = async () => {
-		if (dirty && !(await confirmDialog("放弃未保存的修改并重新加载？", { danger: true }))) return;
+		if (dirty && !(await confirmDialog(t("editor.discardAndReloadConfirm"), { danger: true }))) return;
 		await buffer.reload();
 	};
 
@@ -132,10 +135,11 @@ export function DocView({ path }: { path: string }) {
 		});
 		const sLabel = sessions[target]?.label || target.slice(0, 6);
 		setLastAnnotatedSessionId(target);
-		setNote(`已添加批注到会话 ${sLabel}`);
-		toast.success(`已添加批注到会话 ${sLabel}`);
+		const added = t("editor.addedAnnotationToSession", { session: sLabel });
+		setNote(added);
+		toast.success(added);
 		setTimeout(() => {
-			setNote((n) => (n?.startsWith("已添加批注") ? null : n));
+			setNote((n) => (n === added ? null : n));
 		}, 2500);
 		setSel(null);
 		setComment("");
@@ -155,7 +159,7 @@ export function DocView({ path }: { path: string }) {
 					</span>
 					{dirty && (
 						<span className="shrink-0 whitespace-nowrap rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
-							未保存
+							{t("editor.unsaved")}
 						</span>
 					)}
 					{note && (
@@ -167,7 +171,7 @@ export function DocView({ path }: { path: string }) {
 									onClick={() => selectSession(lastAnnotatedSessionId)}
 									className="font-medium text-amber-400 hover:underline"
 								>
-									前往会话查看 →
+									{t("editor.goToSession")}
 								</button>
 							)}
 						</div>
@@ -177,9 +181,9 @@ export function DocView({ path }: { path: string }) {
 					<div className="flex shrink-0 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-0.5">
 						{(
 							[
-								{ id: "preview", label: "预览" },
-								{ id: "split", label: "分栏" },
-								{ id: "edit", label: "编辑" },
+								{ id: "preview", label: t("editor.tabPreview") },
+								{ id: "split", label: t("editor.tabSplit") },
+								{ id: "edit", label: t("editor.tabEdit") },
 							] as const
 						).map((t) => (
 							<button
@@ -200,31 +204,31 @@ export function DocView({ path }: { path: string }) {
 					<span className="flex-1" />
 					<button
 						type="button"
-						title="保存 (⌘S)"
+						title={t("editor.saveShortcut")}
 						disabled={!dirty || saving}
 						onClick={save}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
 					>
 						<Save size={13} />
-						保存
+						{t("common.save")}
 					</button>
 					<button
 						type="button"
-						title="从磁盘重新加载"
+						title={t("editor.reloadFromDisk")}
 						onClick={reload}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						<RefreshCw size={13} />
-						重新加载
+						{t("editor.reload")}
 					</button>
 					<button
 						type="button"
-						title="关闭 (Esc)"
+						title={t("editor.closeEsc")}
 						onClick={handleClose}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						<X size={13} />
-						关闭
+						{t("common.close")}
 					</button>
 				</div>
 			</div>
@@ -232,12 +236,12 @@ export function DocView({ path }: { path: string }) {
 			{error && <div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5 text-xs text-rose-400">{error}</div>}
 			{external && (
 				<div className="flex shrink-0 items-center gap-2 border-b border-amber-800/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-200">
-					<span className="flex-1">文件已在磁盘上被修改</span>
+					<span className="flex-1">{t("editor.fileModifiedOnDisk")}</span>
 					<button type="button" onClick={reload} className="rounded bg-amber-800/60 px-2 py-0.5 hover:bg-amber-700/60">
-						重新加载
+						{t("editor.reload")}
 					</button>
 					<button type="button" onClick={buffer.dismissExternal} className="px-1.5 text-amber-300/80">
-						保留我的修改
+						{t("editor.keepMyChanges")}
 					</button>
 				</div>
 			)}
@@ -262,7 +266,7 @@ export function DocView({ path }: { path: string }) {
 						className="flex-1 min-w-0 overflow-y-auto px-5 py-3 text-sm"
 					>
 						{saved === null && !error && (
-							<div className="py-6 text-center text-xs text-neutral-500">加载中…</div>
+							<div className="py-6 text-center text-xs text-neutral-500">{t("editor.loading")}</div>
 						)}
 						{saved !== null && (
 							<Markdown text={draft} />
@@ -275,7 +279,7 @@ export function DocView({ path }: { path: string }) {
 					onMouseUp={captureSelection}
 					className="min-h-0 flex-1 overflow-y-auto px-5 py-3 text-sm"
 				>
-					{saved === null && !error && <div className="py-6 text-center text-xs text-neutral-500">加载中…</div>}
+					{saved === null && !error && <div className="py-6 text-center text-xs text-neutral-500">{t("editor.loading")}</div>}
 					{saved !== null && (
 						<Markdown text={draft} />
 					)}
@@ -299,13 +303,13 @@ export function DocView({ path }: { path: string }) {
 				<div className="flex shrink-0 items-end gap-2 border-t border-[var(--border-divider)] bg-[var(--bg-panel)] p-2.5 shadow-lg">
 					<div className="min-w-0 flex-1">
 						<div className="mb-1 truncate text-[10px] text-neutral-400 font-mono" title={sel.text}>
-							划选片段: 「{sel.text.length > 80 ? `${sel.text.slice(0, 80)}…` : sel.text}」
+							{t("editor.selectedSnippet", { text: sel.text.length > 80 ? `${sel.text.slice(0, 80)}…` : sel.text })}
 						</div>
 						<textarea
 							autoFocus
 							value={comment}
 							onChange={(e) => setComment(e.target.value)}
-							placeholder="输入批注内容 (⌘+Enter 提交至会话输入框)..."
+							placeholder={t("editor.annotationInputPlaceholder")}
 							rows={2}
 							className="w-full resize-none rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 text-xs text-[var(--text)] outline-none focus:border-amber-500"
 							onKeyDown={(e) => {
@@ -330,7 +334,7 @@ export function DocView({ path }: { path: string }) {
 							onChange={(e) => setPickSession(e.target.value)}
 							containerClassName="max-w-36 shrink-0"
 						>
-							<option value="">选择目标会话…</option>
+							<option value="">{t("editor.selectTargetSession")}</option>
 							{sessionList.map((s) => (
 								<option key={s.id} value={s.id}>
 									{s.label} {s.title}
@@ -342,11 +346,11 @@ export function DocView({ path }: { path: string }) {
 						type="button"
 						disabled={!annTarget}
 						onClick={annotate}
-						title={annTarget ? "添加批注 (⌘+Enter)" : "先选择一个会话"}
+						title={annTarget ? t("editor.addAnnotationTip") : t("editor.firstSelectSession")}
 						className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
 					>
 						<MessageSquarePlus size={14} />
-						<span>批注 (⌘Enter)</span>
+						<span>{t("editor.annotateShortcut")}</span>
 					</button>
 					<button
 						type="button"
@@ -357,7 +361,7 @@ export function DocView({ path }: { path: string }) {
 						}}
 						className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 				</div>
 			)}

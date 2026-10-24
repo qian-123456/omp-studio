@@ -6,6 +6,7 @@
  */
 import { ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useT } from "../../../stores/language";
 import type {
 	OmpUsageCapacityWindow,
 	OmpUsageLimit,
@@ -39,6 +40,7 @@ interface ProviderGroup extends AccountSheetProvider {
 }
 
 export function QuotaDashboardCard() {
+	const { t } = useT();
 	const [data, setData] = useState<OmpUsageReportData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -117,10 +119,10 @@ export function QuotaDashboardCard() {
 		<div className="space-y-3" data-field-id="quotaDashboard">
 			<div className="flex items-center justify-between gap-3 px-1">
 				<div className="min-w-0">
-					<h3 className="text-[13px] font-semibold text-[var(--text)]">配额与用量概览</h3>
+					<h3 className="text-[13px] font-semibold text-[var(--text)]">{t("quota.dashboard.title")}</h3>
 					{data ? (
 						<p className="mt-0.5 text-xs text-[var(--text-muted)]">
-							{stats.totalProviders} 个供应商 · {stats.totalAccounts} 个已授权账号
+							{t("quota.dashboard.summary", { providers: stats.totalProviders, accounts: stats.totalAccounts })}
 						</p>
 					) : null}
 				</div>
@@ -135,7 +137,7 @@ export function QuotaDashboardCard() {
 						disabled={loading || refreshing}
 						onClick={() => void fetchReport(true)}
 					>
-						{refreshing ? "刷新中" : "刷新"}
+						{refreshing ? t("quota.dashboard.refreshing") : t("quota.dashboard.refresh")}
 					</Button>
 				</div>
 			</div>
@@ -143,10 +145,10 @@ export function QuotaDashboardCard() {
 			{error ? (
 				<Notice
 					tone="danger"
-					title={data ? "刷新配额快照失败，以下为上次获取的数据" : "无法获取 omp 配额快照"}
+					title={data ? t("quota.dashboard.errorSnapshotTitle") : t("quota.dashboard.errorFetchTitle")}
 					action={
 						<Button size="sm" onClick={() => void fetchReport(true)}>
-							重试
+							{t("quota.dashboard.retry")}
 						</Button>
 					}
 				>
@@ -154,14 +156,14 @@ export function QuotaDashboardCard() {
 				</Notice>
 			) : null}
 			{loading && !data ? (
-				<EmptyState icon={RefreshCw} spin title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
+				<EmptyState icon={RefreshCw} spin title={t("quota.dashboard.loadingTitle")} description={t("quota.dashboard.loadingDesc")} />
 			) : !data ? null : providers.length === 0 ? (
 				<EmptyState
-					title="暂无已激活的官方订阅或 Coding Plan"
+					title={t("quota.dashboard.emptyTitle")}
 					description={
 						<>
-							可在终端执行 <code className="rounded border border-[var(--border-divider)] bg-[var(--well-bg)] px-1.5 py-0.5 font-mono text-[var(--text)]">omp login</code>{" "}
-							登录账号，登录后即可在此实时查看官方配额与重置时间。普通 API 密钥按量计费，可在「接口与密钥」中配置。
+							{t("quota.dashboard.emptyDescPre")}<code className="rounded border border-[var(--border-divider)] bg-[var(--well-bg)] px-1.5 py-0.5 font-mono text-[var(--text)]">omp login</code>{" "}
+							{t("quota.dashboard.emptyDescPost")}
 						</>
 					}
 				/>
@@ -199,16 +201,17 @@ function ProviderQuotaCard({
 	now: number;
 	onOpen: () => void;
 }) {
+	const { t } = useT();
 	const multi = p.totalAccounts > 1;
 	const single = p.reports[0];
 	const subtitle = multi
-		? `${p.totalAccounts} 个已授权账号`
+		? t("quota.dashboard.authorizedAccountsCount", { count: p.totalAccounts })
 		: single
 			? formatAccountSubtitle(
 					single.metadata?.email || single.metadata?.accountId,
 					single.metadata?.orgName,
-				) || "已授权账号"
-			: p.unmetered[0]?.enterpriseUrl || "已连接账号";
+				) || t("quota.dashboard.authorizedAccount")
+			: p.unmetered[0]?.enterpriseUrl || t("quota.dashboard.connectedAccount");
 	const shortName = p.brand.name.split(" ").pop() ?? p.brand.name;
 	const rows = buildQuotaRows(p.reports, now);
 	const overage = p.reports
@@ -242,25 +245,25 @@ function ProviderQuotaCard({
 						label={`${shortName} ${formatHumanWindowName(cap.window)}`}
 						usedPct={usedPct}
 						statusText={status.usedText}
-						caption={status.resetText ?? "持续滚动"}
-						title="按账号汇总（数据来自 OMP）：已用比例 = 已用账号配额 / 账号总数"
+						caption={status.resetText ?? t("quota.dashboard.continuousRolling")}
+						title={t("quota.dashboard.capacityTitle")}
 						tone={status.color}
 						brandColor={p.brand.progressColor}
 					/>
 				);
 			})
 		) : (
-			<div className="text-xs text-[var(--text-dim)]">已连接，暂无时间窗口限额</div>
+			<div className="text-xs text-[var(--text-dim)]">{t("quota.dashboard.noWindowLimit")}</div>
 		);
 
 	const footnotes = [
 		p.reports.length > 0 && p.unmetered.length > 0
-			? `${p.unmetered.length} 个账号暂无用量数据`
+			? t("quota.dashboard.noUsageDataAccounts", { count: p.unmetered.length })
 			: null,
 		overage.length > 0
-			? `超额余额 ${overageTotal < 0 ? "-" : ""}$${Math.abs(overageTotal).toFixed(2)}`
+			? t("quota.dashboard.overageBalance", { sign: overageTotal < 0 ? "-" : "", amount: Math.abs(overageTotal).toFixed(2) })
 			: null,
-		multi ? `共 ${p.totalAccounts} 个账号` : null,
+		multi ? t("quota.dashboard.totalAccounts", { count: p.totalAccounts }) : null,
 	].filter(Boolean);
 
 	return (
@@ -281,7 +284,7 @@ function ProviderQuotaCard({
 						</span>
 					</div>
 					<Button size="sm" className="shrink-0 whitespace-nowrap" onClick={onOpen}>
-						查看明细
+						{t("quota.dashboard.viewDetails")}
 						<ChevronRight className="h-3.5 w-3.5" />
 					</Button>
 				</div>
@@ -291,7 +294,7 @@ function ProviderQuotaCard({
 					>
 						{p.brand.badge}
 					</span>
-					{p.totalCredits > 0 && <Chip tone="accent">{p.totalCredits} 次重置券</Chip>}
+					{p.totalCredits > 0 && <Chip tone="accent">{t("quota.dashboard.creditsCount", { count: p.totalCredits })}</Chip>}
 				</div>
 				<div className="w-full break-all text-xs text-[var(--text-muted)]" title={subtitle}>
 					{subtitle}

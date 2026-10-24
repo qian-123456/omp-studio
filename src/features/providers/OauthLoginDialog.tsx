@@ -24,8 +24,8 @@ import {
 	oauthLoginStatus,
 } from "../../lib/ipc";
 import { useProviders } from "./store";
+import { useT } from "../../stores/language";
 import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
-
 interface Props {
 	onClose: () => void;
 	/** When set, the login flow for this provider starts as soon as the list loads. */
@@ -58,8 +58,8 @@ interface FlowState {
 }
 
 export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
+	const { t } = useT();
 	const reloadProviders = useProviders((s) => s.load);
-
 	const [phase, setPhase] = useState<Phase>("list");
 	const [providers, setProviders] = useState<OauthLoginProvider[]>([]);
 	const [listLoading, setListLoading] = useState(true);
@@ -119,7 +119,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						next.pendingPrompt = {
 							requestId: event.requestId ?? "",
 							method: "input",
-							title: event.title ?? "请输入内容",
+							title: event.title ?? t("providers.oauthDefaultInputTitle"),
 							placeholder: event.placeholder ?? null,
 							timeoutMs: event.timeoutMs ?? null,
 							message: event.message ?? null,
@@ -282,7 +282,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 							...prev,
 							notifications: [
 								...prev.notifications,
-								`响应失败: ${errMsg(err)}`,
+								t("providers.oauthRespondFailed", { error: errMsg(err) }),
 							],
 						}
 					: prev,
@@ -296,10 +296,10 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 		if (isClosingRef.current) return;
 
 		if (phase === "flow" && flowState && !flowState.completed) {
-			const confirmed = await confirmDialog("登录正在进行中，确定要取消吗？", {
-				title: "取消登录",
+			const confirmed = await confirmDialog(t("providers.oauthCancelConfirmMessage"), {
+				title: t("providers.oauthCancelConfirmTitle"),
 				danger: true,
-				okLabel: "取消登录",
+				okLabel: t("providers.oauthCancelConfirmOk"),
 			});
 			if (!confirmed) return;
 			try {
@@ -364,7 +364,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 		<Modal
 			onClose={() => void handleDismiss()}
 			size="lg"
-			ariaLabel={phase === "flow" && flowState ? `登录 ${flowState.provider.name}` : "OAuth / 账号登录"}
+			ariaLabel={phase === "flow" && flowState ? t("providers.oauthTitleFlow", { name: flowState.provider.name }) : t("providers.oauthTitleList")}
 		>
 			<div
 				className="flex min-h-0 flex-1 flex-col"
@@ -399,14 +399,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						)}
 						<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
 							{phase === "flow" && flowState
-								? `登录 ${flowState.provider.name}`
-								: "OAuth / 账号登录"}
+								? t("providers.oauthTitleFlow", { name: flowState.provider.name })
+								: t("providers.oauthTitleList")}
 						</div>
 					</div>
 					<button
 						type="button"
 						onClick={() => void handleDismiss()}
-						aria-label="关闭"
+						aria-label={t("common.close")}
 						className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
 						<X className="h-3.5 w-3.5" />
@@ -417,8 +417,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 				{phase === "list" ? (
 					<div className="flex-1 space-y-3 overflow-y-auto p-4">
 						<p className="text-xs text-neutral-400 leading-relaxed">
-							通过 OMP 原生 RPC 授权流程快速完成登录。凭据将安全保存在 OMP
-							的系统配置与凭证库中。
+							{t("providers.oauthBannerDesc")}
 						</p>
 
 						{listLoading && (
@@ -442,16 +441,15 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 										className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs text-rose-200 hover:bg-rose-900/40"
 									>
 										<RefreshCw className="h-3 w-3" />
-										<span>重试</span>
+										<span>{t("common.retry")}</span>
 									</button>
 								</div>
 							</div>
 						)}
 
 						{!listLoading && !listError && providers.length === 0 && (
-							<EmptyState title="暂无支持登录的供应商" />
+							<EmptyState title={t("providers.oauthEmptyProviders")} />
 						)}
-
 						{!listLoading && !listError && providers.length > 0 && (
 							<div className="space-y-1.5">
 								{providers.map((p) => (
@@ -486,12 +484,12 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 											{p.authenticated && (
 												<span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-950/50 text-emerald-400 border border-emerald-700/40">
 													<Check className="h-2.5 w-2.5" />
-													<span>已登录</span>
+													<span>{t("providers.oauthLoggedIn")}</span>
 												</span>
 											)}
 											{!p.available && (
 												<span className="rounded px-1.5 py-0.5 text-[10px] text-neutral-500 bg-neutral-800">
-													不可用
+													{t("providers.oauthUnavailable")}
 												</span>
 											)}
 										</div>
@@ -511,8 +509,8 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 										<Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
 										<div className="text-xs text-neutral-300">
 											{flowState.url
-												? "已在浏览器打开授权页面，请完成登录…"
-												: "正在启动登录流程…"}
+												? t("providers.oauthBrowserOpened")
+												: t("providers.oauthStartingFlow")}
 										</div>
 									</div>
 								)}
@@ -522,7 +520,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 									<div className="rounded-xl hairline bg-[var(--well-bg)] p-3 space-y-2">
 										<div className="flex items-center justify-between gap-2">
 											<span className="text-xs font-medium text-neutral-200">
-												授权验证地址
+												{t("providers.oauthAuthUrl")}
 											</span>
 											<button
 												type="button"
@@ -532,7 +530,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 												}}
 												className="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline"
 											>
-												<span>在浏览器打开</span>
+												<span>{t("providers.oauthOpenInBrowser")}</span>
 												<ExternalLink className="h-3 w-3" />
 											</button>
 										</div>
@@ -568,7 +566,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 										{flowState.pendingPrompt.method === "input" ? (
 											<>
 												<label className="block text-xs font-medium text-neutral-200">
-													{flowState.pendingPrompt.title || "请输入内容"}
+													{flowState.pendingPrompt.title || t("providers.oauthDefaultInputTitle")}
 												</label>
 												{flowState.pendingPrompt.message && (
 													<p className="text-[11px] text-neutral-400">
@@ -593,7 +591,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 														}
 														className="rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 													>
-														跳过 / 取消
+														{t("providers.oauthSkipOrCancel")}
 													</button>
 													<button
 														type="button"
@@ -608,14 +606,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 														{submittingPrompt && (
 															<Loader2 className="h-3 w-3 animate-spin" />
 														)}
-														<span>提交</span>
+														<span>{t("providers.oauthSubmit")}</span>
 													</button>
 												</div>
 											</>
 										) : flowState.pendingPrompt.method === "confirm" ? (
 											<>
 												<div className="text-xs font-medium text-neutral-200">
-													{flowState.pendingPrompt.title || "需要确认"}
+													{flowState.pendingPrompt.title || t("providers.oauthDefaultConfirmTitle")}
 												</div>
 												{flowState.pendingPrompt.message && (
 													<p className="text-[11px] text-neutral-400">
@@ -631,7 +629,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 														}
 														className="rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 													>
-														取消
+														{t("common.cancel")}
 													</button>
 													<button
 														type="button"
@@ -644,14 +642,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 														{submittingPrompt && (
 															<Loader2 className="h-3 w-3 animate-spin" />
 														)}
-														<span>确认</span>
+														<span>{t("common.confirm")}</span>
 													</button>
 												</div>
 											</>
 										) : (
 											<>
 												<div className="text-xs font-medium text-neutral-200">
-													{flowState.pendingPrompt.title || "提示信息"}
+													{flowState.pendingPrompt.title || t("providers.oauthDefaultNoticeTitle")}
 												</div>
 												{flowState.pendingPrompt.message && (
 													<p className="text-[11px] font-mono whitespace-pre-wrap text-neutral-300">
@@ -667,7 +665,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 														}
 														className="rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 													>
-														关闭提示
+														{t("providers.oauthCloseNotice")}
 													</button>
 												</div>
 											</>
@@ -682,17 +680,17 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 											<div className="flex flex-col items-center justify-center space-y-2 text-center">
 												<CheckCircle2 className="h-10 w-10 text-emerald-400" />
 												<div className="text-sm font-semibold text-neutral-100">
-													登录成功
+													{t("providers.oauthLoginSuccess")}
 												</div>
 												<div className="text-xs text-neutral-400">
-													凭据已写入 OMP，列表已刷新
+													{t("providers.oauthLoginSuccessDesc")}
 												</div>
 											</div>
 										) : (
 											<div className="flex flex-col items-center justify-center space-y-3 text-center">
 												<AlertCircle className="h-10 w-10 text-rose-400" />
 												<div className="text-sm font-semibold text-neutral-100">
-													登录未完成
+													{t("providers.oauthLoginIncomplete")}
 												</div>
 												{flowState.completed.error && (
 													<div className="w-full rounded-xl border border-rose-800/40 bg-rose-950/20 p-3 text-left font-mono text-xs text-rose-300 break-words">
@@ -703,8 +701,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 													<div className="flex items-start gap-2.5 rounded-xl border border-amber-800/40 bg-amber-950/20 p-3 text-left text-xs text-amber-300">
 														<Terminal className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
 														<span>
-															该 Provider 需要在终端中完成登录，请运行 omp
-															后使用 /login
+															{t("providers.oauthTerminalHint")}
 														</span>
 													</div>
 												)}
@@ -725,7 +722,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 							onClick={() => void handleDismiss()}
 							className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						>
-							关闭
+							{t("common.close")}
 						</button>
 					) : flowState?.completed?.ok ? (
 						<button
@@ -733,7 +730,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 							onClick={() => void handleDismiss()}
 							className="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm"
 						>
-							完成
+							{t("common.finish")}
 						</button>
 					) : flowState?.completed ? (
 						<div className="flex items-center gap-2">
@@ -746,14 +743,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 								}}
 								className="rounded-lg px-3 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 							>
-								重试
+								{t("common.retry")}
 							</button>
 							<button
 								type="button"
 								onClick={() => void handleDismiss()}
 								className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 							>
-								关闭
+								{t("common.close")}
 							</button>
 						</div>
 					) : (
@@ -763,14 +760,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 								onClick={() => void handleBack()}
 								className="rounded-lg px-3 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 							>
-								上一步
+								{t("common.previousStep")}
 							</button>
 							<button
 								type="button"
 								onClick={() => void handleDismiss()}
 								className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 							>
-								取消
+								{t("common.cancel")}
 							</button>
 						</div>
 					)}

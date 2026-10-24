@@ -234,9 +234,9 @@ export const CenterHeader = React.memo(function CenterHeader({
 		if (!trimmed || !activeSession || trimmed === activeSession.title) return;
 		try {
 			await updateSessionMeta(activeSession.id, { customName: trimmed });
-			toast.success("会话标题已更新");
+			toast.success(t("shell.titleUpdated"));
 		} catch (err) {
-			toast.error(`重命名失败: ${errMsg(err)}`);
+			toast.error(t("shell.renameFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -248,7 +248,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 			try {
 				await openPath(activeSession.cwd);
 			} catch (e) {
-				toast.error(`在访达中打开失败: ${errMsg(e)}`);
+				toast.error(t("shell.openInFinderFailed", { error: errMsg(e) }));
 			}
 		}
 	};
@@ -258,7 +258,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 		if (!activeSession) return;
 		const items = useLive.getState().sessions[activeSession.id]?.items ?? [];
 		if (items.length === 0) {
-			toast.info("当前会话暂无消息");
+			toast.info(t("shell.noMessagesInSession"));
 			return;
 		}
 		const md = formatSessionMarkdown(
@@ -267,9 +267,9 @@ export const CenterHeader = React.memo(function CenterHeader({
 		);
 		try {
 			await copyText(md);
-			toast.success("已复制整场对话 Markdown");
+			toast.success(t("shell.copiedSessionMarkdown"));
 		} catch (e) {
-			toast.error(`复制失败: ${errMsg(e)}`);
+			toast.error(t("shell.copyFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -278,14 +278,14 @@ export const CenterHeader = React.memo(function CenterHeader({
 		if (!activeSession) return;
 		try {
 			const outPath = await sessionExportHtml(activeSession.id);
-			toast.success(`已导出 HTML: ${outPath}`);
+			toast.success(t("shell.exportedHtml", { path: outPath }));
 			try {
 				await revealItemInDir(outPath);
 			} catch {
 				// ignore reveal failure
 			}
 		} catch (err) {
-			toast.error(`导出 HTML 失败: ${errMsg(err)}`);
+			toast.error(t("shell.exportHtmlFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -293,17 +293,17 @@ export const CenterHeader = React.memo(function CenterHeader({
 		setShareOpen(false);
 		if (!activeSession) return;
 		const ok = await confirmDialog(
-			"将把本会话加密后上传到 OMP 分享服务（与 /share 相同）。拿到链接的任何人都能查看内容，已知密钥会自动脱敏。继续？",
-			{ title: "创建分享链接", okLabel: "创建并复制" },
+			t("shell.shareConfirm"),
+			{ title: t("shell.createShareLink"), okLabel: t("shell.createAndCopy") },
 		);
 		if (!ok) return;
-		toast.info("正在生成分享链接…");
+		toast.info(t("shell.generatingShareLink"));
 		try {
 			const url = await sessionShare(activeSession.id);
 			await copyText(url);
-			toast.success("分享链接已复制");
+			toast.success(t("shell.shareLinkCopied"));
 		} catch (err) {
-			toast.error(`创建分享链接失败: ${errMsg(err)}`);
+			toast.error(t("shell.createShareLinkFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -313,7 +313,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 			const info = await mobileCreatePairing("lan");
 			setQrPairing(info);
 		} catch (e) {
-			toast.error(`获取配对码失败: ${errMsg(e)}`);
+			toast.error(t("shell.getPairingCodeFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -395,11 +395,11 @@ export const CenterHeader = React.memo(function CenterHeader({
 										type="button"
 										onClick={() => selectSession(parentId)}
 										className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--bg-active-fill)] px-2 py-0.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
-										title={`返回父会话：${parentSession ? sessionDisplayName(parentSession) : parentId}`}
+										title={t("shell.backToParent", { name: parentSession ? sessionDisplayName(parentSession) : parentId })}
 									>
 										<span>←</span>
 										<span className="max-w-[120px] md:max-w-[160px] truncate text-neutral-300">
-											{parentSession ? sessionDisplayName(parentSession) : "父会话"}
+											{parentSession ? sessionDisplayName(parentSession) : t("shell.parentSession")}
 										</span>
 									</button>
 									<span className="text-neutral-600 shrink-0">/</span>
@@ -437,7 +437,10 @@ export const CenterHeader = React.memo(function CenterHeader({
 								<span
 									onDoubleClick={startEditTitle}
 									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-[var(--text)] hover:underline decoration-neutral-600 transition-colors"
-									title={`双击重命名会话\n${sessionDisplayName(activeSession)}${activeSession.cwd ? `\n路径: ${activeSession.cwd}` : ""}`}
+									title={t("shell.renameSessionTip", {
+										name: sessionDisplayName(activeSession),
+										cwd: activeSession.cwd ? t("shell.sessionPath", { path: activeSession.cwd }) : "",
+									})}
 								>
 									{sessionDisplayName(activeSession)}
 								</span>
@@ -452,7 +455,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 							)}
 						>
 							<span className="h-2 w-2 shrink-0 rounded-full bg-neutral-700" />
-							{sessionsLoadState === "error" ? "会话信息加载失败" : "正在加载中"}
+							{sessionsLoadState === "error" ? t("shell.loadSessionError") : t("shell.loading")}
 						</div>
 					) : (
 						<div data-tauri-drag-region className="flex min-w-0 items-center gap-2">
@@ -462,11 +465,11 @@ export const CenterHeader = React.memo(function CenterHeader({
 										type="button"
 										onClick={goBack}
 										className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md py-0.5 pl-1 pr-2 text-left text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-										title={`返回${backTarget.kind === "session" ? "会话" : ""}：${backText}（Esc）`}
+										title={t("shell.backToTarget", { target: backTarget.kind === "session" ? t("shell.targetSession") : t("shell.targetHome"), text: backText })}
 									>
 										<ArrowLeft size={14} strokeWidth={1.75} className="shrink-0" />
 										<span className="text-xs leading-[14px]">
-											{backTarget.kind === "session" ? "返回会话" : "返回首页"}
+											{backTarget.kind === "session" ? t("shell.backToSession") : t("shell.backToHome")}
 										</span>
 									</button>
 									<span className="shrink-0 text-neutral-600">/</span>
@@ -493,7 +496,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									type="button"
 									disabled={!activeSession.cwd}
 									onClick={handleOpenInFinder}
-									title={activeSession.cwd ? `在访达中显示 (${activeSession.cwd})` : "无工作目录"}
+									title={activeSession.cwd ? t("shell.revealInFinder", { path: activeSession.cwd }) : t("shell.noCwd")}
 									className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 disabled:opacity-30 transition-colors"
 								>
 									<FolderOpen size={14} />
@@ -504,7 +507,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									ref={shareBtnRef}
 									type="button"
 									onClick={() => setShareOpen((v) => !v)}
-									title="分享与导出"
+									title={t("shell.shareAndExport")}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
 										shareOpen
@@ -534,7 +537,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<ImageIcon size={13} />
-										<span>选择消息分享为图片</span>
+										<span>{t("shell.shareAsImage")}</span>
 									</button>
 									<button
 										type="button"
@@ -542,7 +545,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<Link2 size={13} />
-										<span>创建分享链接</span>
+										<span>{t("shell.createShareLinkAction")}</span>
 									</button>
 									<button
 										type="button"
@@ -550,7 +553,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<Copy size={13} />
-										<span>复制为 Markdown</span>
+										<span>{t("shell.copyAsMarkdown")}</span>
 									</button>
 									<button
 										type="button"
@@ -558,7 +561,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<FileDown size={13} />
-										<span>导出为 HTML</span>
+										<span>{t("shell.exportAsHtml")}</span>
 									</button>
 									<button
 										type="button"
@@ -566,7 +569,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<QrCode size={13} />
-										<span>手机扫码查看</span>
+										<span>{t("shell.mobileScan")}</span>
 									</button>
 								</FloatingLayer>
 							</>
@@ -606,14 +609,14 @@ export const CenterHeader = React.memo(function CenterHeader({
 
 			{/* Mobile QR Pairing modal portaled to body */}
 			{qrPairing && (
-				<Modal onClose={() => setQrPairing(null)} title="手机扫码查看" size="sm">
+				<Modal onClose={() => setQrPairing(null)} title={t("shell.mobileScan")} size="sm">
 					<div className="flex flex-col items-center gap-3 p-4">
 						<div
 							className="rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44"
 							dangerouslySetInnerHTML={{ __html: qrPairing.qrSvg }}
 						/>
 						<div className="text-center text-[11px] text-neutral-400">
-							手机与电脑在同一局域网下扫码即可接力查看
+							{t("shell.mobileScanTip")}
 						</div>
 					</div>
 				</Modal>

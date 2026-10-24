@@ -7,6 +7,7 @@ import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
+import { useT } from "../../stores/language";
 
 const CARD_CLASS =
 	"w-[min(360px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px] px-3 py-2";
@@ -34,6 +35,7 @@ export function AnnotationNotePopover({
 	scrollTarget?: HTMLElement | null;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const [draft, setDraft] = useState(annotation.comment ?? "");
 	const draftRef = useRef(draft);
 	draftRef.current = draft;
@@ -95,14 +97,14 @@ export function AnnotationNotePopover({
 		<FloatingLayer anchor={anchor} placement="bottom-start" className={CARD_CLASS}>
 			<div ref={popRef} data-testid="annotation-note-popover">
 				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-					<span className="tabular-nums">{n}.</span> 选中文本:
+					<span className="tabular-nums">{n}.</span> {t("chat.annotation.sourceMessage")}
 				</div>
 				<div className={`mt-0.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
 				<textarea
 					autoFocus
 					rows={2}
 					value={draft}
-					placeholder="输入批注 (Enter保存, Shift+Enter换行, Esc取消)"
+					placeholder={t("chat.annotation.inputPlaceholderShort")}
 					onChange={(e) => setDraft(e.target.value)}
 					onKeyDown={(e) => {
 						if (isComposing(e)) return;
@@ -125,7 +127,7 @@ export function AnnotationNotePopover({
 						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 					>
 						<Trash2 size={12} />
-						删除
+						{t("common.delete")}
 					</button>
 				</div>
 			</div>
@@ -143,6 +145,7 @@ export function AnnotationHoverCard({
 	annotation: Annotation;
 	n: number;
 }) {
+	const { t } = useT();
 	return (
 		<FloatingLayer
 			anchor={anchor}
@@ -152,12 +155,12 @@ export function AnnotationHoverCard({
 		>
 			<div data-testid="annotation-hover-card">
 				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-					<span className="tabular-nums">{n}.</span> 选中文本:
+					<span className="tabular-nums">{n}.</span> {t("chat.annotation.sourceMessage")}
 				</div>
 				<div className={`mt-0.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
 				{annotation.comment && (
 					<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
-						批注：{annotation.comment}
+						{t("chat.annotation.notePrefix", { comment: annotation.comment })}
 					</div>
 				)}
 			</div>

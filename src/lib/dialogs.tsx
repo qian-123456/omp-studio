@@ -14,7 +14,7 @@ import { Z_LAYER } from "../components/FloatingLayer";
 import { isComposing, useEscapeKey } from "./hooks";
 import { claimEscape } from "./escapeClaim";
 import { clipboardWriteMessage } from "./ipc";
-
+import { tNow } from "../stores/language";
 const CANCEL_BTN_CLASS =
 	"press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors";
 const OK_BTN_CLASS =
@@ -99,8 +99,8 @@ function ConfirmDialogView({
 					</span>
 					<button
 						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭对话框"
+						title={tNow("components.closeEsc")}
+						aria-label={tNow("shell.closeDialog")}
 						onClick={cancel}
 						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 					>
@@ -176,10 +176,10 @@ export function confirmDialog(
 	try {
 		const result = dialogQueue.then(() =>
 			showConfirmDialog(message, {
-				title: opts.title ?? "确认",
+				title: opts.title ?? tNow("shell.confirmTitle"),
 				danger: opts.danger ?? false,
-				okLabel: opts.okLabel ?? "确定",
-				cancelLabel: opts.cancelLabel ?? "取消",
+				okLabel: opts.okLabel ?? tNow("shell.confirmOk"),
+				cancelLabel: opts.cancelLabel ?? tNow("common.cancel"),
 			}),
 		);
 		dialogQueue = result.catch(() => {});
@@ -242,7 +242,7 @@ export function errMsg(err: unknown): string {
 				: String(err);
 	if (raw.startsWith(SESSION_HELD_PREFIX)) {
 		const pid = raw.slice(SESSION_HELD_PREFIX.length);
-		return `该会话正被另一个窗口/进程（PID ${pid}）占用，请在那个窗口操作或先关闭它`;
+		return tNow("shell.sessionLockedByPid", { pid });
 	}
 	return raw;
 }

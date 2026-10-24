@@ -14,6 +14,7 @@ import type {
 	ScheduleRunMode,
 } from "../../lib/contracts";
 import { composeSelection, parseSelection } from "../../components/modelSelectLogic";
+import { tNow } from "../../stores/language";
 
 /** 周期 menu modes: a one-shot date-time, or the recurring `每 N unit` composer. */
 export type RepeatMode = "once" | "recur";
@@ -21,12 +22,12 @@ export type RepeatMode = "once" | "recur";
 /** Units of the recurring composer; minutes/hours map to `interval`. */
 export type CadenceUnit = "minute" | "hour" | "day" | "week" | "month";
 
-export const CADENCE_UNITS: { value: CadenceUnit; label: string }[] = [
-	{ value: "minute", label: "分钟" },
-	{ value: "hour", label: "小时" },
-	{ value: "day", label: "天" },
-	{ value: "week", label: "周" },
-	{ value: "month", label: "月" },
+export const CADENCE_UNITS: { value: CadenceUnit; labelKey: string }[] = [
+	{ value: "minute", labelKey: "schedules.unitMinute" },
+	{ value: "hour", labelKey: "schedules.unitHour" },
+	{ value: "day", labelKey: "schedules.unitDay" },
+	{ value: "week", labelKey: "schedules.unitWeek" },
+	{ value: "month", labelKey: "schedules.unitMonth" },
 ];
 
 /** The `每 N unit` model a recurring ScheduleCadence maps to. */
@@ -90,13 +91,13 @@ export function timeSlotOptions(current: string): string[] {
 export const MONTH_DAYS: number[] = Array.from({ length: 31 }, (_, i) => i + 1);
 
 export const WEEKDAY_CHIPS = [
-	{ id: 1, label: "一" },
-	{ id: 2, label: "二" },
-	{ id: 3, label: "三" },
-	{ id: 4, label: "四" },
-	{ id: 5, label: "五" },
-	{ id: 6, label: "六" },
-	{ id: 0, label: "日" },
+	{ id: 1, label: "一", labelEn: "M" },
+	{ id: 2, label: "二", labelEn: "Tu" },
+	{ id: 3, label: "三", labelEn: "W" },
+	{ id: 4, label: "四", labelEn: "Th" },
+	{ id: 5, label: "五", labelEn: "F" },
+	{ id: 6, label: "六", labelEn: "Sa" },
+	{ id: 0, label: "日", labelEn: "Su" },
 ] as const;
 
 /**
@@ -124,15 +125,15 @@ export function formatRunDuration(run: ScheduleRun): string {
 	const start = new Date(run.startedAt).getTime();
 	const end = run.finishedAt ? new Date(run.finishedAt).getTime() : NaN;
 	if (Number.isNaN(start)) return "";
-	if (Number.isNaN(end)) return "进行中";
+	if (Number.isNaN(end)) return tNow("schedules.running");
 	let secs = Math.max(0, Math.round((end - start) / 1000));
 	const h = Math.floor(secs / 3600);
 	secs -= h * 3600;
 	const m = Math.floor(secs / 60);
 	const s = secs - m * 60;
-	if (h > 0) return `${h} 小时 ${m} 分`;
-	if (m > 0) return `${m} 分 ${s} 秒`;
-	return `${s} 秒`;
+	if (h > 0) return tNow("schedules.durationHoursMins", { h, m });
+	if (m > 0) return tNow("schedules.durationMinsSecs", { m, s });
+	return tNow("schedules.durationSecs", { s });
 }
 
 /** Local timezone label for display next to time pickers, e.g. "GMT+8 · Asia/Shanghai". */
@@ -384,17 +385,17 @@ export function validateForm(
 	const errors: FormErrors = {};
 	let cadence: ScheduleCadence | null = null;
 
-	if (!form.prompt.trim()) errors.prompt = "请填写任务指令";
-	if (!form.cwd.trim()) errors.cwd = "请选择项目目录";
+	if (!form.prompt.trim()) errors.prompt = tNow("schedules.errorPromptRequired");
+	if (!form.cwd.trim()) errors.cwd = tNow("schedules.errorCwdRequired");
 
 	if (!form.hasSchedule) {
-		errors.cadence = "请添加计划";
+		errors.cadence = tNow("schedules.errorCadenceRequired");
 	} else if (form.repeat === "once") {
 		const at = localInputToDate(form.onceAt);
 		if (!at) {
-			errors.cadence = "请选择未来的时间";
+			errors.cadence = tNow("schedules.errorFutureTimeRequired");
 		} else if (at.getTime() <= Date.now() && !opts.onceAtUnchanged) {
-			errors.cadence = "请选择未来的时间";
+			errors.cadence = tNow("schedules.errorFutureTimeRequired");
 		} else {
 			cadence = { kind: "once", at: at.toISOString() };
 		}
@@ -403,7 +404,7 @@ export function validateForm(
 		switch (form.unit) {
 		case "minute": {
 			if (!Number.isFinite(every) || every < 5) {
-				errors.cadence = "间隔至少 5 分钟";
+				errors.cadence = tNow("schedules.errorMinIntervalMinutes");
 			} else {
 				cadence = { kind: "interval", minutes: every };
 			}
@@ -411,7 +412,7 @@ export function validateForm(
 		}
 		case "hour": {
 			if (!Number.isFinite(every) || every < 1) {
-				errors.cadence = "间隔需为不小于 1 的整数";
+				errors.cadence = tNow("schedules.errorMinIntervalCount");
 			} else {
 				cadence = { kind: "interval", minutes: every * 60 };
 			}
@@ -420,11 +421,11 @@ export function validateForm(
 		case "day":
 		case "week": {
 			if (!Number.isFinite(every) || every < 1) {
-				errors.cadence = "间隔需为不小于 1 的整数";
+				errors.cadence = tNow("schedules.errorMinIntervalCount");
 				break;
 			}
 			if (!TIME_RE.test(form.time)) {
-				errors.cadence = "请选择时间";
+				errors.cadence = tNow("schedules.errorTimeRequired");
 				break;
 			}
 			const wd =
@@ -432,7 +433,7 @@ export function validateForm(
 					? []
 					: [...new Set(form.weekdays)].sort((a, b) => a - b);
 			if (form.unit === "week" && wd.length === 0) {
-				errors.cadence = "请至少选择一天";
+				errors.cadence = tNow("schedules.errorWeekdayRequired");
 				break;
 			}
 			cadence = {
@@ -446,15 +447,15 @@ export function validateForm(
 		}
 		case "month": {
 			if (!Number.isFinite(every) || every < 1) {
-				errors.cadence = "间隔需为不小于 1 的整数";
+				errors.cadence = tNow("schedules.errorMinIntervalCount");
 				break;
 			}
 			if (!TIME_RE.test(form.time)) {
-				errors.cadence = "请选择时间";
+				errors.cadence = tNow("schedules.errorTimeRequired");
 				break;
 			}
 			if (form.monthDay < 1 || form.monthDay > 31) {
-				errors.cadence = "日期需在 1-31 之间";
+				errors.cadence = tNow("schedules.errorDayRange");
 				break;
 			}
 			cadence = {
@@ -475,7 +476,7 @@ export function validateForm(
 	if (recurring && form.endMode === "date") {
 		const end = dateValueToEndOfDay(form.endDate);
 		if (!end || end.getTime() <= Date.now()) {
-			errors.endAt = "结束时间需晚于现在";
+			errors.endAt = tNow("schedules.errorEndTimeFuture");
 		} else {
 			endAt = end.toISOString();
 		}
@@ -483,7 +484,7 @@ export function validateForm(
 	if (recurring && form.endMode === "count") {
 		const runs = Math.floor(form.endRuns);
 		if (!Number.isFinite(runs) || runs < 1) {
-			errors.maxRuns = "次数需为不小于 1 的整数";
+			errors.maxRuns = tNow("schedules.errorMinRuns");
 		} else {
 			maxRuns = runs;
 		}
@@ -501,7 +502,7 @@ export function deriveName(prompt: string): string {
 			.split("\n")[0]
 			?.trim() ?? "";
 	const clipped = first.length > 24 ? `${first.slice(0, 24)}…` : first;
-	return clipped || "未命名定时任务";
+	return clipped || tNow("schedules.unnamedTask");
 }
 
 /** Build the IPC draft; splits the combined model selector into model+thinking. */
@@ -537,7 +538,7 @@ export function buildDraft(
 /** Draft used by the "复制" overflow action: same config, no id. */
 export function draftFromSchedule(s: Schedule): ScheduleDraft {
 	return {
-		name: `${s.name}（副本）`,
+		name: tNow("schedules.copySuffix", { name: s.name }),
 		prompt: s.prompt,
 		cwd: s.cwd,
 		runMode: s.runMode,
@@ -560,59 +561,67 @@ export function renameDraft(s: Schedule, name: string): ScheduleDraft {
 }
 
 export interface ScheduleTemplate {
+	id: string;
 	title: string;
 	desc: string;
 	draft: Partial<ScheduleDraft>;
 }
 
 /** Quick-fill templates shown in the empty state and as create-form chips. */
-export const TEMPLATES: ScheduleTemplate[] = [
-	{
-		title: "每天早上总结昨天的提交",
-		desc: "每工作日 09:00 自动拉取最近 24 小时提交并生成工作早报",
-		draft: {
-			name: "每天早上总结昨天的提交",
-			prompt:
-				"请查看仓库最近 24 小时（或昨天的所有 git commit 提交记录），分析各个改动的主要内容，生成一份简明的工作总结报告，列出完成的功能和修复的 Bug。",
-			cadence: {
-				kind: "daily",
-				time: "09:00",
-				weekdays: [1, 2, 3, 4, 5],
+export function getTemplates(t: (k: string) => string = tNow): ScheduleTemplate[] {
+	return [
+		{
+			id: "dailySummary",
+			title: t("schedules.templateDailySummaryTitle"),
+			desc: t("schedules.templateDailySummaryDesc"),
+			draft: {
+				name: t("schedules.templateDailySummaryTitle"),
+				prompt:
+					"请查看仓库最近 24 小时（或昨天的所有 git commit 提交记录），分析各个改动的主要内容，生成一份简明的工作总结报告，列出完成的功能和修复的 Bug。",
+				cadence: {
+					kind: "daily",
+					time: "09:00",
+					weekdays: [1, 2, 3, 4, 5],
+				},
+				approvalMode: "write",
+				runMode: "local",
 			},
-			approvalMode: "write",
-			runMode: "local",
 		},
-	},
-	{
-		title: "每工作日检查依赖安全更新",
-		desc: "每工作日 10:00 自动检查 package.json / Cargo.toml 漏洞与过时版本",
-		draft: {
-			name: "每工作日检查依赖安全更新",
-			prompt:
-				"请检查当前项目的依赖配置文件（如 package.json、Cargo.toml 等），分析是否有已知的安全漏洞、安全通告或主版本过期的依赖项，并输出一份安全评估简报与升级建议。",
-			cadence: {
-				kind: "daily",
-				time: "10:00",
-				weekdays: [1, 2, 3, 4, 5],
+		{
+			id: "securityCheck",
+			title: t("schedules.templateSecurityCheckTitle"),
+			desc: t("schedules.templateSecurityCheckDesc"),
+			draft: {
+				name: t("schedules.templateSecurityCheckTitle"),
+				prompt:
+					"请检查当前项目的依赖配置文件（如 package.json、Cargo.toml 等），分析是否有已知的安全漏洞、安全通告或主版本过期的依赖项，并输出一份安全评估简报与升级建议。",
+				cadence: {
+					kind: "daily",
+					time: "10:00",
+					weekdays: [1, 2, 3, 4, 5],
+				},
+				approvalMode: "write",
+				runMode: "local",
 			},
-			approvalMode: "write",
-			runMode: "local",
 		},
-	},
-	{
-		title: "每周五梳理待办与未完成任务",
-		desc: "每周五 17:00 自动扫描代码中的 TODO / FIXME 注释并整理清单",
-		draft: {
-			name: "每周五梳理待办与未完成任务",
-			prompt:
-				"请扫描当前代码库中的 TODO、FIXME 注释以及未完成的代码项，按模块梳理出本周待办清单，并给出优先级建议。",
-			cadence: {
-				kind: "daily",
-				time: "17:00",
-				weekdays: [5],
+		{
+			id: "todoReview",
+			title: t("schedules.templateTodoReviewTitle"),
+			desc: t("schedules.templateTodoReviewDesc"),
+			draft: {
+				name: t("schedules.templateTodoReviewTitle"),
+				prompt:
+					"请扫描当前代码库中的 TODO、FIXME 注释以及未完成的代码项，按模块梳理出本周待办清单，并给出优先级建议。",
+				cadence: {
+					kind: "daily",
+					time: "17:00",
+					weekdays: [5],
+				},
+				approvalMode: "write",
+				runMode: "local",
 			},
-			approvalMode: "write",
-			runMode: "local",
 		},
-	},
-];
+	];
+}
+
+

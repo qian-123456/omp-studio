@@ -10,6 +10,7 @@ import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isEditableTarget, resolveApprovalChoices } from "./approvalOptions";
+import { useT } from "../../stores/language";
 
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
@@ -21,6 +22,7 @@ export function PendingUiCard({
 	sessionId: string;
 	req: PendingUiRequest;
 }) {
+	const { t } = useT();
 	const request = asObj(req.request);
 	const id = typeof request.id === "string" ? request.id : "";
 	const method = typeof request.method === "string" ? request.method : "";
@@ -104,7 +106,7 @@ export function PendingUiCard({
 	const submitText = () => {
 		if (busy) return;
 		if (isRequired && !text.trim()) {
-			setValidationError("输入内容不能为空");
+			setValidationError(t("chatView.pendingUi.inputCannotBeEmpty"));
 			return;
 		}
 		const defaultValue =
@@ -152,7 +154,7 @@ export function PendingUiCard({
 			await rpcUiRespond(sessionId, payload);
 			dismissUi(sessionId, id);
 		} catch (err) {
-			toast.error(`响应失败: ${errMsg(err)}`);
+			toast.error(t("chatView.pendingUi.respondFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -188,10 +190,10 @@ export function PendingUiCard({
 						disabled={busy}
 						onClick={handleApprovalApprove}
 						className={btnPrimary}
-						title="仅允许本次执行 (快捷键: y)"
+						title={t("chatView.pendingUi.allowOnceTitle")}
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
-						仅本次
+						{t("chatView.pendingUi.allowOnce")}
 					</button>
 					{(method !== "select" || choices.session) && (
 						<button
@@ -205,10 +207,10 @@ export function PendingUiCard({
 								}
 							}}
 							className={btnGhost}
-							title={choices.session ?? "本会话内不再询问此工具"}
+							title={choices.session ?? t("chatView.pendingUi.allowSessionTitle")}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
-							本会话始终
+							{t("chatView.pendingUi.allowSession")}
 						</button>
 					)}
 					{(method === "select" ? choices.always : hasPermanent) && (
@@ -227,10 +229,10 @@ export function PendingUiCard({
 								}
 							}}
 							className={btnGhost}
-							title={choices.always ?? "永久加入全局允许名单"}
+							title={choices.always ?? t("chatView.pendingUi.allowAlwaysTitle")}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
-							永久允许
+							{t("chatView.pendingUi.allowAlways")}
 						</button>
 					)}
 					<button
@@ -238,9 +240,9 @@ export function PendingUiCard({
 						disabled={busy}
 						onClick={handleApprovalReject}
 						className={btnGhost}
-						title="拒绝本次执行 (快捷键: n)"
+						title={t("chatView.pendingUi.rejectTitle")}
 					>
-						拒绝
+						{t("chatView.pendingUi.reject")}
 					</button>
 				</div>
 			)}
@@ -277,7 +279,7 @@ export function PendingUiCard({
 							className={btnPrimary}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
-							确认
+							{t("chatView.pendingUi.confirm")}
 						</button>
 						<button
 							type="button"
@@ -285,7 +287,7 @@ export function PendingUiCard({
 							onClick={() => respond({ confirmed: false })}
 							className={btnGhost}
 						>
-							取消
+							{t("chatView.pendingUi.cancel")}
 						</button>
 					</div>
 				</div>
@@ -317,10 +319,10 @@ export function PendingUiCard({
 							typeof request.placeholder === "string" && request.placeholder
 								? request.placeholder
 								: method === "editor"
-									? "请输入内容 (⌘+Enter 提交，Esc 取消)…"
+									? t("chatView.pendingUi.placeholderEditor")
 									: isRequired
-										? "请输入内容 (必填，Enter 提交，Esc 取消)…"
-										: "请输入内容 (直接回车可跳过/默认，Esc 取消)…"
+										? t("chatView.pendingUi.placeholderRequired")
+										: t("chatView.pendingUi.placeholderOptional")
 						}
 						rows={method === "editor" ? 8 : 2}
 						className="w-full rounded-md border border-[var(--line)] bg-[var(--bg)] px-2 py-1 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[var(--text-30)]"
@@ -338,7 +340,7 @@ export function PendingUiCard({
 							className={btnPrimary}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
-							提交
+							{t("chatView.pendingUi.submit")}
 						</button>
 						<button
 							type="button"
@@ -346,7 +348,7 @@ export function PendingUiCard({
 							onClick={() => respond({ cancelled: true })}
 							className={btnGhost}
 						>
-							取消
+							{t("chatView.pendingUi.cancel")}
 						</button>
 					</div>
 				</div>

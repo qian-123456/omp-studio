@@ -5,6 +5,8 @@
  * - Project: `<cwd>/.omp/agents/<name>.md`
  */
 
+import { tNow } from "../../../stores/language";
+
 export type AgentScope = "global" | "project";
 
 export interface BuiltinAgentDef {
@@ -193,13 +195,16 @@ export interface NewAgentSpec {
 
 export type NameCheck = { ok: true; name: string } | { ok: false; error: string };
 
-/** Validate a new subagent name against omp's rules and the names this list already shows. */
-export function checkNewAgentName(raw: string, taken: ReadonlySet<string>): NameCheck {
+export function checkNewAgentName(
+	raw: string,
+	taken: ReadonlySet<string>,
+	tr: (k: string, p?: Record<string, string | number>) => string = tNow,
+): NameCheck {
 	const name = raw.trim();
-	if (!name) return { ok: false, error: "请填写子代理的名字" };
-	if (!isValidAgentName(name)) return { ok: false, error: "名字只能包含英文字母、数字、中划线和下划线" };
-	if (isReservedAgentName(name)) return { ok: false, error: `「${name}」是 OMP 保留的名字，请换一个` };
-	if (taken.has(name)) return { ok: false, error: `已有子代理「${name}」，请在下方列表里直接修改它` };
+	if (!name) return { ok: false, error: tr("agentDefs.validation.nameRequired") };
+	if (!isValidAgentName(name)) return { ok: false, error: tr("agentDefs.validation.nameInvalid") };
+	if (isReservedAgentName(name)) return { ok: false, error: tr("agentDefs.validation.nameReserved", { name }) };
+	if (taken.has(name)) return { ok: false, error: tr("agentDefs.validation.nameTaken", { name }) };
 	return { ok: true, name };
 }
 
@@ -214,52 +219,65 @@ export interface AgentToolOption {
  * the 「自己选」 picker. MCP, extension and custom tools are always added on top by omp, so they
  * are not listed. Re-check against `omp://tools/` after an omp upgrade.
  */
-export const AGENT_TOOL_GROUPS: readonly { title: string; tools: readonly AgentToolOption[] }[] = [
-	{
-		title: "查看与搜索",
-		tools: [
-			{ name: "read", label: "读取文件和网页" },
-			{ name: "grep", label: "按文字搜索文件内容" },
-			{ name: "glob", label: "按文件名找文件" },
-			{ name: "find", label: "用描述找代码位置" },
-			{ name: "ast_grep", label: "按代码结构搜索" },
-			{ name: "lsp", label: "查定义、引用和报错" },
-		],
-	},
-	{
-		title: "修改文件",
-		tools: [
-			{ name: "edit", label: "修改已有文件" },
-			{ name: "write", label: "新建或覆盖文件" },
-			{ name: "ast_edit", label: "按代码结构批量改写" },
-		],
-	},
-	{
-		title: "运行",
-		tools: [
-			{ name: "bash", label: "运行命令行" },
-			{ name: "eval", label: "运行 Python / JS 代码" },
-			{ name: "debug", label: "用调试器调试程序" },
-		],
-	},
-	{
-		title: "联网",
-		tools: [
-			{ name: "web_search", label: "网页搜索" },
-			{ name: "github", label: "操作 GitHub 仓库和 PR" },
-		],
-	},
-	{
-		title: "协作",
-		tools: [
-			{ name: "task", label: "再派自己的子代理" },
-			{ name: "wait", label: "等待后台任务结果" },
-			{ name: "todo", label: "维护任务清单" },
-		],
-	},
-];
+export interface AgentToolGroup {
+	title: string;
+	tools: readonly AgentToolOption[];
+}
 
-const TOOL_ORDER = AGENT_TOOL_GROUPS.flatMap((g) => g.tools.map((t) => t.name));
+export function getAgentToolGroups(tr: (k: string) => string = tNow): readonly AgentToolGroup[] {
+	return [
+		{
+			title: tr("agentDefs.toolGroups.viewAndSearch"),
+			tools: [
+				{ name: "read", label: tr("agentDefs.toolLabels.read") },
+				{ name: "grep", label: tr("agentDefs.toolLabels.grep") },
+				{ name: "glob", label: tr("agentDefs.toolLabels.glob") },
+				{ name: "find", label: tr("agentDefs.toolLabels.find") },
+				{ name: "ast_grep", label: tr("agentDefs.toolLabels.ast_grep") },
+				{ name: "lsp", label: tr("agentDefs.toolLabels.lsp") },
+			],
+		},
+		{
+			title: tr("agentDefs.toolGroups.modifyFiles"),
+			tools: [
+				{ name: "edit", label: tr("agentDefs.toolLabels.edit") },
+				{ name: "write", label: tr("agentDefs.toolLabels.write") },
+				{ name: "ast_edit", label: tr("agentDefs.toolLabels.ast_edit") },
+			],
+		},
+		{
+			title: tr("agentDefs.toolGroups.run"),
+			tools: [
+				{ name: "bash", label: tr("agentDefs.toolLabels.bash") },
+				{ name: "eval", label: tr("agentDefs.toolLabels.eval") },
+				{ name: "debug", label: tr("agentDefs.toolLabels.debug") },
+			],
+		},
+		{
+			title: tr("agentDefs.toolGroups.network"),
+			tools: [
+				{ name: "web_search", label: tr("agentDefs.toolLabels.web_search") },
+				{ name: "github", label: tr("agentDefs.toolLabels.github") },
+			],
+		},
+		{
+			title: tr("agentDefs.toolGroups.collaborate"),
+			tools: [
+				{ name: "task", label: tr("agentDefs.toolLabels.task") },
+				{ name: "wait", label: tr("agentDefs.toolLabels.wait") },
+				{ name: "todo", label: tr("agentDefs.toolLabels.todo") },
+			],
+		},
+	];
+}
+
+const TOOL_ORDER = [
+	"read", "grep", "glob", "find", "ast_grep", "lsp",
+	"edit", "write", "ast_edit",
+	"bash", "eval", "debug",
+	"web_search", "github",
+	"task", "wait", "todo",
+];
 
 /** The picked tools in catalog order, so the written file does not depend on click order. */
 export function orderPickedTools(picked: ReadonlySet<string>): string[] {
@@ -324,7 +342,16 @@ export function buildAgentDraftPrompt(spec: Partial<NewAgentSpec>, opts: { dir: 
 	return lines.join("\n");
 }
 
-export function buildAgentEntries(dir: string, diskNames: string[]): AgentEntry[] {
+const BUILTIN_KEYS: Record<string, string> = {
+	scout: "agentDefs.builtins.scout",
+	task: "agentDefs.builtins.task",
+	reviewer: "agentDefs.builtins.reviewer",
+	"security-reviewer": "agentDefs.builtins.securityReviewer",
+	sonic: "agentDefs.builtins.sonic",
+	tester: "agentDefs.builtins.tester",
+};
+
+export function buildAgentEntries(dir: string, diskNames: string[], tr: (k: string) => string = tNow): AgentEntry[] {
 	const diskSet = new Set(diskNames.filter(isAgentFileName));
 	const entries: AgentEntry[] = [];
 
@@ -332,12 +359,13 @@ export function buildAgentEntries(dir: string, diskNames: string[]): AgentEntry[
 	for (const b of BUILTIN_AGENTS) {
 		const filename = `${b.name}.md`;
 		diskSet.delete(filename);
+		const key = BUILTIN_KEYS[b.name];
 		entries.push({
 			id: b.name,
 			name: b.name,
 			label: b.label,
 			path: `${dir}/${filename}`,
-			description: b.description,
+			description: key ? tr(key) : b.description,
 			isBuiltin: true,
 			starter: b.starter,
 		});
@@ -352,7 +380,7 @@ export function buildAgentEntries(dir: string, diskNames: string[]): AgentEntry[
 			name,
 			label: filename,
 			path: `${dir}/${filename}`,
-			description: "自定义子代理定义文件",
+			description: tr("agentDefs.builtins.customDesc"),
 			isBuiltin: false,
 			starter: `---\nname: ${name}\ndescription: 自定义子代理\n---\n\n`,
 		});
@@ -366,11 +394,16 @@ export type AgentContents = Record<string, string | null | undefined>;
 /** Where an agent definition comes from. OMP uses the first one found: project, then global, then built-in. */
 export type AgentLayer = "project" | "global" | "builtin";
 
-export const AGENT_LAYER_LABEL: Record<AgentLayer, string> = {
-	builtin: "内置版本",
-	global: "全局版本",
-	project: "项目版本",
-};
+export function getAgentLayerLabel(layer: AgentLayer, tr: (k: string) => string = tNow): string {
+	switch (layer) {
+		case "builtin":
+			return tr("agentDefs.layers.builtin");
+		case "global":
+			return tr("agentDefs.layers.global");
+		case "project":
+			return tr("agentDefs.layers.project");
+	}
+}
 
 export interface AgentLayerInfo {
 	/** Layer OMP actually uses for this agent, or null when no definition exists anywhere. */

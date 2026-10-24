@@ -4,6 +4,7 @@
  * - CJK characters: 0.7 – 1.5 tokens each.
  * - Everything else: 1 token per 4 chars (plain English) up to 1 per 2.5 chars (code, paths, symbols).
  */
+import { tNow } from "../stores/language";
 
 const CJK_LOW = 0.7;
 const CJK_HIGH = 1.5;
@@ -42,5 +43,5 @@ export function formatTokenEstimate(text: string): string {
 	const { low, high } = estimateTokenRange(text);
 	const l = compact(low);
 	const h = compact(high);
-	return l === h ? `约 ${l} token` : `约 ${l}–${h} token`;
+	return l === h ? tNow("shell.approxToken", { count: l }) : tNow("shell.approxTokenRange", { low: l, high: h });
 }

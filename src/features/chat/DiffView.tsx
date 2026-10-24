@@ -8,6 +8,7 @@ import { buildSplitRows } from "../../lib/diff";
 import { isComposing } from "../../lib/hooks";
 import { useComposer } from "../../stores/composer";
 import { claimEscape } from "../../lib/escapeClaim";
+import { useT } from "../../stores/language";
 
 export interface DiffLine {
 	kind: "ctx" | "add" | "del";
@@ -189,6 +190,7 @@ export function DiffView({
 	file?: string;
 	sessionId: string;
 }) {
+	const { t } = useT();
 	const lines = useMemo(() => parseDiff(diff), [diff]);
 	const counts = useMemo(() => diffCounts(lines), [lines]);
 	const rootRef = useRef<HTMLDivElement>(null);
@@ -286,8 +288,8 @@ export function DiffView({
 		},
 		className:
 			"flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-[var(--text-30)] font-mono tabular-nums hover:text-[var(--accent)]",
-		title: "点击选中行添加批注",
-		"aria-label": `选中第 ${line ?? i + 1} 行添加批注`,
+		title: t("chat.diff.clickToAddNote"),
+		"aria-label": t("chat.diff.selectLineToAddNote", { line: line ?? i + 1 }),
 	});
 
 	return (
@@ -297,7 +299,7 @@ export function DiffView({
 				<span className="text-[10px] text-[var(--text-30)]">
 					<span className="text-[var(--status-success)]">+{counts.adds}</span>{" "}
 					<span className="text-[var(--status-error)]">−{counts.dels}</span>
-					（点击行号添加批注，拖选代码可复制）
+					{t("chat.diff.hint")}
 				</span>
 				<div className="flex items-center gap-0.5 text-[10px]">
 					<button
@@ -309,9 +311,9 @@ export function DiffView({
 								? "bg-[var(--ghost-hover)] text-[var(--text-60)]"
 								: "text-[var(--text-30)] hover:text-[var(--text-60)]",
 						)}
-						title="单栏视图"
+						title={t("chat.diff.unifiedView")}
 					>
-						<Rows size={11} /> 单栏
+						<Rows size={11} /> {t("chat.diff.unified")}
 					</button>
 					<button
 						type="button"
@@ -322,9 +324,9 @@ export function DiffView({
 								? "bg-[var(--ghost-hover)] text-[var(--text-60)]"
 								: "text-[var(--text-30)] hover:text-[var(--text-60)]",
 						)}
-						title="左右双栏分栏对比"
+						title={t("chat.diff.splitView")}
 					>
-						<Columns2 size={11} /> 分栏
+						<Columns2 size={11} /> {t("chat.diff.split")}
 					</button>
 				</div>
 			</div>
@@ -445,7 +447,7 @@ export function DiffView({
 					onClick={() => setShowAll(true)}
 					className="mt-1 rounded-md border border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
-					展开剩余 {lines.length - visibleLines.length} 行
+					{t("chat.diff.expandRemaining", { count: lines.length - visibleLines.length })}
 				</button>
 			)}
 
@@ -455,7 +457,7 @@ export function DiffView({
 					onClick={() => setCommenting(true)}
 					className="mt-1.5 flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
-					<MessageSquarePlus size={12} /> 批注选中行
+					<MessageSquarePlus size={12} /> {t("chat.diff.annotateSelected")}
 				</button>
 			)}
 
@@ -477,7 +479,7 @@ export function DiffView({
 								submit();
 							}
 						}}
-						placeholder="批注内容 (⌘+Enter 提交，Esc 取消)…"
+						placeholder={t("chat.diff.inputPlaceholder")}
 						rows={2}
 						className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)] transition-colors"
 					/>
@@ -487,7 +489,7 @@ export function DiffView({
 							onClick={submit}
 							className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] font-medium text-[var(--bg)] transition-opacity hover:opacity-90"
 						>
-							添加批注
+							{t("chat.diff.addNote")}
 						</button>
 						<button
 							type="button"
@@ -498,7 +500,7 @@ export function DiffView({
 							}}
 							className="rounded px-2.5 py-1 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
-							取消
+							{t("common.cancel")}
 						</button>
 					</div>
 				</div>

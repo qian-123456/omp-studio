@@ -8,10 +8,10 @@ import {
 	Terminal,
 } from "lucide-react";
 import type { SlashCommand } from "../../../stores/live";
+import { tNow } from "../../../stores/language";
 
 import { findSlashCommand, SLASH_COMMANDS } from "./registry";
 import type { SlashCommandDef, SlashGroup, SlashSubcommand } from "./types";
-
 export interface SlashMenuItem {
 	/** Slash name inserted/executed. */
 	name: string;
@@ -38,38 +38,52 @@ export interface SlashMenuItem {
 }
 
 export interface SlashMenuSection {
-	label: SlashGroup;
+	group: SlashGroup;
 	items: SlashMenuItem[];
 }
 
 const GROUP_ORDER: SlashGroup[] = [
-	"会话",
-	"模型",
-	"状态",
-	"集成",
-	"设置",
-	"技能",
-	"自定义命令",
-	"扩展",
-	"更多 OMP 命令",
-	"子命令",
+	"session",
+	"model",
+	"status",
+	"integration",
+	"settings",
+	"skill",
+	"custom",
+	"extension",
+	"omp",
+	"subcommand",
 ];
 
-const SOURCE_GROUP: Record<string, SlashGroup> = {
-	skill: "技能",
-	custom: "自定义命令",
-	file: "自定义命令",
-	extension: "扩展",
-	mcp_prompt: "扩展",
-};
+function sourceGroup(source: string | undefined): SlashGroup {
+	switch (source) {
+		case "skill":
+			return "skill";
+		case "custom":
+		case "file":
+			return "custom";
+		case "extension":
+		case "mcp_prompt":
+			return "extension";
+		default:
+			return "omp";
+	}
+}
 
-const GROUP_ICON: Record<string, SlashCommandDef["icon"]> = {
-	技能: BookMarked,
-	自定义命令: FileText,
-	扩展: Puzzle,
-	"更多 OMP 命令": Terminal,
+const GROUP_KEY_ICON: Record<SlashGroup, SlashCommandDef["icon"]> = {
+	session: BookMarked,
+	model: BookMarked,
+	status: BookMarked,
+	integration: BookMarked,
+	settings: BookMarked,
+	skill: BookMarked,
+	custom: FileText,
+	extension: Puzzle,
+	omp: Terminal,
+	subcommand: Terminal,
+	mcp: BookMarked,
+	plugin: BookMarked,
 };
-
 interface ScoredItem {
 	item: SlashMenuItem;
 	score: number;
@@ -141,11 +155,17 @@ function toItem(def: SlashCommandDef, commands: SlashCommand[]): SlashMenuItem {
 	const subcommands = subcommandsFor(def.name, commands);
 	return {
 		name: def.name,
-		title: def.title,
-		description: def.description,
+		get title() {
+			return def.title;
+		},
+		get description() {
+			return def.description;
+		},
 		icon: def.icon,
 		group: def.group,
-		argHint: def.argHint,
+		get argHint() {
+			return def.argHint;
+		},
 		settingsTarget: def.settingsTarget,
 		registry: true,
 		...(subcommands.length ? { subcommands } : {}),
@@ -153,15 +173,18 @@ function toItem(def: SlashCommandDef, commands: SlashCommand[]): SlashMenuItem {
 }
 
 function toDynamicItem(c: SlashCommand): SlashMenuItem {
-	const group = SOURCE_GROUP[c.source ?? ""] ?? "更多 OMP 命令";
 	const subs = runnableSubs(c.name, c.subcommands);
 	return {
 		name: c.name,
 		title: "",
 		description: c.description ?? "",
-		icon: GROUP_ICON[group],
-		group,
-		argHint: c.hint ?? c.input?.hint ?? (subs.length ? "<子命令>" : undefined),
+		get icon() {
+			return GROUP_KEY_ICON[sourceGroup(c.source)] ?? Terminal;
+		},
+		group: sourceGroup(c.source),
+		get argHint() {
+			return c.hint ?? c.input?.hint ?? (subs.length ? tNow("slash.subcommandHint") : undefined);
+		},
 		registry: false,
 		...(subs.length ? { subcommands: subs } : {}),
 	};
@@ -226,8 +249,8 @@ export function buildSlashSections(
 	const sections: SlashMenuSection[] = [];
 	const push = (item: SlashMenuItem) => {
 		const last = sections[sections.length - 1];
-		if (last && last.label === item.group) last.items.push(item);
-		else sections.push({ label: item.group, items: [item] });
+		if (last && last.group === item.group) last.items.push(item);
+		else sections.push({ group: item.group, items: [item] });
 	};
 	for (const { item, score } of scored) {
 		push(item);
@@ -263,7 +286,7 @@ export function subcommandsFor(name: string, commands: SlashCommand[]): SlashSub
 
 /** Ghost hint for a chip made from `item` (subcommand-only commands get `<子命令>`). */
 export function chipArgHint(item: SlashMenuItem): string | undefined {
-	return item.argHint ?? (item.subcommands?.length ? "<子命令>" : undefined);
+	return item.argHint ?? (item.subcommands?.length ? tNow("slash.subcommandHint") : undefined);
 }
 
 /** One menu item per subcommand, filtered by `query` (prefix matches first). */
@@ -279,9 +302,13 @@ export function buildSubcommandItems(parent: SlashMenuItem, query: string): Slas
 						name: "",
 						subOf: parent.name,
 						bare: true,
-						title: parent.title,
-						description: parent.description ? `直接运行：${parent.description}` : "直接运行",
-						group: "子命令",
+						get title() {
+							return parent.title;
+						},
+						get description() {
+							return parent.description ? tNow("slash.subcommandDirectRunDesc", { desc: parent.description }) : tNow("slash.subcommandDirectRun");
+						},
+						group: "subcommand",
 						icon: parent.icon,
 						registry: true,
 					},
@@ -295,7 +322,7 @@ export function buildSubcommandItems(parent: SlashMenuItem, query: string): Slas
 			title: "",
 			description: sub.description ?? "",
 			argHint: sub.usage,
-			group: "子命令",
+			group: "subcommand",
 			icon: parent.icon,
 			registry: parent.registry,
 		};

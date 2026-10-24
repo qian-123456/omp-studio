@@ -9,6 +9,7 @@ import { formatBytes } from "../../lib/format";
 import { errMsg } from "../../lib/dialogs";
 import { validatePath } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 
 /**
  * The single render path for image attachments (composer strip + sent user
@@ -33,8 +34,9 @@ export function AttachmentThumb({
 	onOpen?: () => void;
 	onRemove?: () => void;
 }) {
+	const { t } = useT();
 	const [failed, setFailed] = useState(false);
-	const label = `图片 #${index}`;
+	const label = t("chat.imageNum", { index });
 	const palette = getImageTokenPalette(index);
 
 	const removeBtn = onRemove && (
@@ -45,7 +47,7 @@ export function AttachmentThumb({
 				onRemove();
 			}}
 			className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white/80 opacity-0 transition-opacity duration-150 hover:bg-black hover:text-white group-hover/thumb:opacity-100"
-			title="移除图片"
+			title={t("chat.removeImage")}
 		>
 			<X size={10} strokeWidth={2.5} />
 		</button>
@@ -60,14 +62,14 @@ export function AttachmentThumb({
 				tabIndex={0}
 				onClick={() => {
 					void openPath(path).catch((e: unknown) =>
-						toast.error(`无法打开图片 ${path}：${errMsg(e)}`),
+						toast.error(t("chat.openImageFailed", { path, error: errMsg(e) })),
 					);
 				}}
 				onKeyDown={(e) => {
 					if (e.key === "Enter") e.currentTarget.click();
 				}}
 				className="group/thumb relative flex h-8 shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 pr-5 text-[12px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)]"
-				title={`无法预览，点击用系统应用打开：${path}`}
+				title={t("chat.cannotPreview", { path })}
 			>
 				<ImageOff size={13} className="shrink-0" />
 				<span>{label}</span>
@@ -87,7 +89,7 @@ export function AttachmentThumb({
 						: "h-20 w-20 rounded-xl",
 			)}
 			onClick={onOpen}
-			title={onOpen ? "点击放大查看" : label}
+			title={onOpen ? t("chat.clickToZoom") : label}
 		>
 			<img
 				src={convertFileSrc(path)}
@@ -146,6 +148,7 @@ export function FileChip({
 	onOpen?: () => void;
 	onRemove?: () => void;
 }) {
+	const { t } = useT();
 	const [size, setSize] = useState<number | null>(null);
 	useEffect(() => {
 		let alive = true;
@@ -165,7 +168,7 @@ export function FileChip({
 			return;
 		}
 		void openPath(path).catch((e: unknown) =>
-			toast.error(`打开文件失败: ${errMsg(e)}`),
+			toast.error(t("chat.openFileFailed", { error: errMsg(e) })),
 		);
 	};
 	const compact = variant === "inline";
@@ -208,7 +211,7 @@ export function FileChip({
 						onRemove();
 					}}
 					className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white/80 opacity-0 transition-opacity duration-150 hover:bg-black hover:text-white group-hover/thumb:opacity-100"
-					title="移除文件"
+					title={t("chat.removeFile")}
 				>
 					<X size={10} strokeWidth={2.5} />
 				</button>

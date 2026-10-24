@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useT } from "../../stores/language";
 import { isComposing } from "../../lib/hooks";
 import type { BacklogKind } from "../../lib/contracts";
 import { useBacklog } from "./backlogStore";
@@ -26,6 +27,7 @@ export function IdeaEditBox({
 	onSave: () => void;
 	onCancel: () => void;
 }) {
+	const { t } = useT();
 	const buf = useBacklog((s) => s.editBuffer);
 	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
 	const ref = useRef<IdeaEditorHandle>(null);
@@ -67,7 +69,7 @@ export function IdeaEditBox({
 					boxClass="rounded-xl border-[var(--accent)]"
 				/>
 				<div className="mt-1 flex items-center justify-between gap-2">
-					<div className="text-[10px] text-[var(--text-dim)]">Enter 保存 · Shift+Enter 换行 · Esc 取消</div>
+					<div className="text-[10px] text-[var(--text-dim)]">{t("backlog.editBufferHint")}</div>
 					<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
 						{KINDS.map((k) => {
 							const Icon = KIND_META[k].icon;
@@ -85,7 +87,7 @@ export function IdeaEditBox({
 									}`}
 								>
 									<Icon className="h-3 w-3" />
-									{KIND_META[k].label}
+									{t(KIND_META[k].labelKey)}
 								</button>
 							);
 						})}
