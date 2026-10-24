@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { hasLiveUserActivity } from "../../stores/live";
 import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
@@ -14,6 +15,7 @@ import {
 	computeRingArcs,
 	estimateConversation,
 	liveContextItems,
+	ringSegments,
 	THEME_COLORS,
 } from "./contextBreakdown";
 
@@ -70,7 +72,7 @@ function UsageDonut({
 	const stroke = 12;
 	const r = (size - stroke) / 2;
 	const c = 2 * Math.PI * r;
-	const arcs = computeRingArcs(segments, windowSize, c);
+	const arcs = computeRingArcs(ringSegments(segments), windowSize, c);
 	return (
 		<div className="relative shrink-0" style={{ width: size, height: size }}>
 			<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
@@ -317,7 +319,10 @@ export function ContextRing({
 	// Conversation estimates only while the popover is open (walks the whole live transcript).
 	const items = useLive((s) => (open && selectedSessionId ? s.sessions[selectedSessionId]?.items : undefined));
 	const chatEstimate = useMemo(() => (items ? estimateConversation(liveContextItems(items)) : null), [items]);
-	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, chatEstimate);
+	// A session without any user activity has no conversation: the gap between the
+	// prompt estimate and the reported usage must not show up as a 对话消息 row.
+	const sessionBlank = useLive((s) => !hasLiveUserActivity(selectedSessionId ? s.sessions[selectedSessionId] : undefined));
+	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, chatEstimate, sessionBlank);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (

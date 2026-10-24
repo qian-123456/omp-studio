@@ -6,6 +6,8 @@ import {
 	type ContextSegment,
 	estimateConversation,
 	liveContextItems,
+	ringSegments,
+	THEME_COLORS,
 } from "./contextBreakdown";
 
 const item = (p: Partial<TranscriptItem> & Pick<TranscriptItem, "id" | "kind">): TranscriptItem => ({
@@ -213,5 +215,40 @@ describe("computeRingArcs", () => {
 		const arcs = computeRingArcs(full, 1000, 300);
 		const last = arcs[arcs.length - 1];
 		expect(last.offset + last.length).toBeLessThanOrEqual(300 + 1e-9);
+	});
+});
+
+describe("buildContextSegments: blank session", () => {
+	it("scales the prompt parts to the reported usage instead of a 对话消息 fill row", () => {
+		const segs = buildContextSegments(10_000, 100_000, comp([["system", 6000], ["tools", 3000]]), null, true);
+		expect(segs.find((s) => s.id === "messages")).toBeUndefined();
+		expect(segs.filter((s) => s.group !== "free").reduce((a, s) => a + s.tokens, 0)).toBe(10_000);
+		expect(segs.find((s) => s.id === "system")!.tokens).toBeCloseTo(10_000 * (6000 / 9000), 0);
+	});
+});
+
+describe("ringSegments", () => {
+	it("collapses the prompt group into one system-colored 系统提示词 arc", () => {
+		const segs = buildContextSegments(50_000, 200_000, comp([["tools", 30_000], ["system", 20_000]]));
+		const ring = ringSegments(segs);
+		expect(ring.filter((s) => s.group === "prompt")).toHaveLength(1);
+		const prompt = ring.find((s) => s.group === "prompt")!;
+		expect(prompt.name).toBe("系统提示词");
+		expect(prompt.color).toBe(THEME_COLORS.system);
+		expect(prompt.tokens).toBe(50_000);
+	});
+
+	it("keeps chat and free segments in place with their own colors", () => {
+		const segs = buildContextSegments(60_000, 200_000, comp([["system", 20_000]]), [
+			{ id: "messages", tokens: 30_000 },
+			{ id: "thinking", tokens: 10_000 },
+		]);
+		const ring = ringSegments(segs);
+		expect(ring.map((s) => [s.id, s.color])).toEqual([
+			["messages", THEME_COLORS.messages],
+			["thinking", THEME_COLORS.thinking],
+			["system", THEME_COLORS.system],
+			["free", THEME_COLORS.free],
+		]);
 	});
 });

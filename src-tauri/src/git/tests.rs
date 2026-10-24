@@ -211,6 +211,30 @@ fn worktree_lifecycle_and_orphans() {
 }
 
 #[test]
+fn worktree_create_inherits_untracked_mcp_config_without_overwriting() {
+    let repo = temp_repo("wt-mcp");
+    commit(&repo, "a.txt", "a\n", "init");
+    std::fs::create_dir_all(repo.join(".omp")).unwrap();
+    // `.omp/mcp.json` is tracked (checked out by git itself); `.omp/.mcp.json` is untracked.
+    commit(&repo, ".omp/mcp.json", "{\"tracked\":true}\n", "track mcp");
+    std::fs::write(repo.join(".omp/mcp.json"), "{\"local\":true}\n").unwrap();
+    std::fs::write(repo.join(".omp/.mcp.json"), "{\"hidden\":true}\n").unwrap();
+
+    let wt = worktree::create(&repo, "mcp", None, None).unwrap();
+    let wt_omp = Path::new(&wt.path).join(".omp");
+    assert_eq!(
+        std::fs::read_to_string(wt_omp.join("mcp.json")).unwrap(),
+        "{\"tracked\":true}\n",
+        "existing file must not be overwritten"
+    );
+    assert_eq!(
+        std::fs::read_to_string(wt_omp.join(".mcp.json")).unwrap(),
+        "{\"hidden\":true}\n"
+    );
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
 fn worktree_create_honors_branch_and_base() {
     let repo = temp_repo("wt-branch");
     let first = commit(&repo, "a.txt", "a\n", "init");

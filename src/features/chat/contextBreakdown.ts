@@ -230,6 +230,9 @@ function apportion(weights: number[], total: number): number[] {
  * - Probe missing (loading or failed): the conversation keeps its raw
  *   estimates (capped at `used`) and the unattributed remainder becomes one
  *   `pending` 系统提示词 slice.
+ * - `sessionBlank` (no user activity yet): there is no conversation, so the
+ *   gap between the prompt estimate and `used` is prompt-side too — the prompt
+ *   parts are scaled up to fill `used` instead of becoming a 对话消息 fill row.
  * Groups are ordered by total, parts within a group by size; free space last.
  */
 export function buildContextSegments(
@@ -237,6 +240,7 @@ export function buildContextSegments(
 	windowSize: number,
 	comp: PromptComposition | null,
 	chat: ChatEstimate[] | null = null,
+	sessionBlank = false,
 ): ContextSegment[] {
 	const usedClamped = Math.round(Math.min(Math.max(0, used), windowSize));
 
@@ -260,11 +264,13 @@ export function buildContextSegments(
 		promptTokens = all.slice(0, promptW.length);
 		chatTokens = all.slice(promptW.length);
 	} else {
-		const promptTotal = Math.min(Math.round(promptRaw), usedClamped);
+		// Blank session: the reported usage is all prompt-side (estimate error,
+		// real tools/AGENTS.md differing from the probe), so scale up to fill it.
+		const promptTotal = sessionBlank ? usedClamped : Math.min(Math.round(promptRaw), usedClamped);
 		promptTokens = apportion(promptW, promptTotal);
 		const budget = usedClamped - promptTotal;
 		if (chatRaw > 0) chatTokens = apportion(chatW, budget);
-		else fillMessages = budget;
+		else if (!sessionBlank) fillMessages = budget;
 	}
 
 	const prompt: ContextSegment[] = [];
@@ -325,6 +331,29 @@ export function buildContextSegments(
 		segments.push({ id: "free", group: "free", name: CLAUDE_NAMES_ZH.free, tokens: freeTokens, color: THEME_COLORS.free });
 	}
 	return segments;
+}
+
+/**
+ * Ring view of the segments: the prompt group collapses into one 系统提示词 arc
+ * in the system color — the legend shows that group as a single row too, so the
+ * ring must not paint its per-category colors. Chat parts keep their own colors
+ * (one legend row each); free space stays in and is skipped by `computeRingArcs`.
+ */
+export function ringSegments(segments: ContextSegment[]): ContextSegment[] {
+	const out: ContextSegment[] = [];
+	let prompt: ContextSegment | null = null;
+	for (const s of segments) {
+		if (s.group !== "prompt") {
+			out.push(s);
+			continue;
+		}
+		if (!prompt) {
+			prompt = { id: "system", group: "prompt", name: "系统提示词", tokens: 0, color: THEME_COLORS.system };
+			out.push(prompt);
+		}
+		prompt.tokens += s.tokens;
+	}
+	return out;
 }
 
 export interface RingArc {

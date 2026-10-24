@@ -385,8 +385,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		id: "mcpServerList",
 		sectionId: "mcp",
 		label: "MCP 服务器列表",
-		description: "已配置的 MCP 服务器及其来源文件",
-		keywords: ["mcp", "server", "服务器", "stdio", "http", "工具服务"],
+		description: "已配置的 MCP 服务器，以及每个服务器用在所有项目还是指定的几个项目",
+		keywords: ["mcp", "server", "服务器", "stdio", "http", "工具服务", "项目", "全局", "导入", "分配"],
 	},
 	{
 		id: "mcpRuntimeOptions",

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { McpServerItem } from "../../lib/contracts";
-import { buildPatch, draftFrom, validateDraft } from "./mcpDraft";
+import {
+	buildPatch,
+	draftFrom,
+	splitCommandLine,
+	splitDraftCommand,
+	validateDraft,
+} from "./mcpDraft";
 
 const existing: McpServerItem = {
 	name: "fs",
@@ -26,20 +32,20 @@ const existing: McpServerItem = {
 
 describe("validateDraft", () => {
 	it("requires name and command for a new stdio server", () => {
-		const errors = validateDraft(draftFrom(null, "/u/mcp.json"), []);
+		const errors = validateDraft(draftFrom(null), []);
 		expect(errors.name).toBeDefined();
 		expect(errors.command).toBeDefined();
 	});
 
 	it("rejects duplicate names in the same file but allows keeping the original name", () => {
-		const add = { ...draftFrom(null, "/u/mcp.json"), name: "fs", command: "x" };
+		const add = { ...draftFrom(null), name: "fs", command: "x" };
 		expect(validateDraft(add, ["fs"]).name).toContain("已存在");
-		expect(validateDraft(draftFrom(existing, ""), ["fs"])).toEqual({});
+		expect(validateDraft(draftFrom(existing), ["fs"])).toEqual({});
 	});
 
 	it("validates remote url, timeout and header keys", () => {
 		const d = {
-			...draftFrom(null, "/u/mcp.json"),
+			...draftFrom(null),
 			name: "remote",
 			type: "http" as const,
 			url: "example.com/mcp",
@@ -54,7 +60,7 @@ describe("validateDraft", () => {
 	});
 
 	it("flags duplicate or nameless env rows but ignores fully empty rows", () => {
-		const base = { ...draftFrom(null, "/u/mcp.json"), name: "a", command: "npx" };
+		const base = { ...draftFrom(null), name: "a", command: "npx" };
 		expect(validateDraft({ ...base, envAdds: [{ key: "", value: "" }] }, [])).toEqual({});
 		expect(validateDraft({ ...base, envAdds: [{ key: "", value: "v" }] }, []).env).toBeDefined();
 		expect(
@@ -65,7 +71,7 @@ describe("validateDraft", () => {
 
 describe("buildPatch", () => {
 	it("merges env adds/removes and clears remote fields for stdio", () => {
-		const d = draftFrom(existing, "");
+		const d = draftFrom(existing);
 		d.envRemoves = new Set(["TOKEN"]);
 		d.envAdds = [{ key: "NEW", value: "v" }];
 		d.timeout = "";
@@ -77,8 +83,39 @@ describe("buildPatch", () => {
 	});
 
 	it("switching to http drops command/env", () => {
-		const d = { ...draftFrom(existing, ""), type: "http" as const, url: "https://x/mcp" };
+		const d = { ...draftFrom(existing), type: "http" as const, url: "https://x/mcp" };
 		const patch = buildPatch(d);
 		expect(patch).toMatchObject({ type: "http", url: "https://x/mcp", command: null, env: null, args: null });
+	});
+});
+
+describe("splitCommandLine", () => {
+	it("splits on whitespace and honours quotes", () => {
+		expect(splitCommandLine('npx -y @scope/pkg --flag "a b"')).toEqual([
+			"npx",
+			"-y",
+			"@scope/pkg",
+			"--flag",
+			"a b",
+		]);
+		expect(splitCommandLine("run --name='x y' --empty=''")).toEqual(["run", "--name=x y", "--empty="]);
+		expect(splitCommandLine('say "" end')).toEqual(["say", "", "end"]);
+		expect(splitCommandLine("a\\ b c")).toEqual(["a b", "c"]);
+		expect(splitCommandLine("  ")).toEqual([]);
+	});
+});
+
+describe("splitDraftCommand", () => {
+	const base = { ...draftFrom(null), command: 'npx -y pkg --flag "a b"' };
+	it("moves everything after the first token into args when args are empty", () => {
+		const next = splitDraftCommand(base);
+		expect(next?.command).toBe("npx");
+		expect(next?.args).toBe("-y\npkg\n--flag\na b");
+	});
+	it("leaves drafts alone when args exist, for remote servers, or for a single token", () => {
+		expect(splitDraftCommand({ ...base, args: "-y" })).toBeNull();
+		expect(splitDraftCommand({ ...base, type: "http" })).toBeNull();
+		expect(splitDraftCommand({ ...base, command: '"/My App/bin"' })).toBeNull();
+		expect(splitDraftCommand({ ...base, command: "npx" })).toBeNull();
 	});
 });
