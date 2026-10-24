@@ -107,6 +107,36 @@ export function flattenTree(roots: TreeNode[]): TreeNode[] {
 	return out;
 }
 
+/** Copy of the forest with the children of every `collapsed` node dropped. */
+export function collapseTree(roots: TreeNode[], collapsed: ReadonlySet<string>): TreeNode[] {
+	if (collapsed.size === 0) return roots;
+	const walk = (list: TreeNode[]): TreeNode[] =>
+		list.map((n) => ({ ...n, children: collapsed.has(n.id) ? [] : walk(n.children) }));
+	return walk(roots);
+}
+
+export interface DescendantStats {
+	total: number;
+	running: number;
+}
+
+/** Per node id: how many descendants (any depth) it has and how many of them are running. */
+export function descendantStats(roots: TreeNode[]): Map<string, DescendantStats> {
+	const out = new Map<string, DescendantStats>();
+	const walk = (n: TreeNode): DescendantStats => {
+		const s: DescendantStats = { total: 0, running: 0 };
+		for (const c of n.children) {
+			const cs = walk(c);
+			s.total += 1 + cs.total;
+			s.running += (c.state === "running" ? 1 : 0) + cs.running;
+		}
+		out.set(n.id, s);
+		return s;
+	};
+	for (const r of roots) walk(r);
+	return out;
+}
+
 export interface CappedTree {
 	roots: TreeNode[];
 	/** Rows folded away. */

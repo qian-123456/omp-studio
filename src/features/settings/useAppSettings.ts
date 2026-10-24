@@ -6,7 +6,7 @@
 import { useEffect, useMemo } from "react";
 import type { Model, Settings } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { resolveCurrentModel, toModelKey } from "../../lib/models";
+import { pickCurrentModel, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
@@ -92,6 +92,6 @@ export function useSettingsSessionModel(): string | null {
 	const models = useModelOptions();
 	return useMemo(() => {
 		if (!scopeSessionId) return null;
-		return resolveCurrentModel(liveModel ?? metaModel ?? null, models).value || null;
+		return pickCurrentModel([liveModel, metaModel], models).value || null;
 	}, [scopeSessionId, liveModel, metaModel, models]);
 }
