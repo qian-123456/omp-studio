@@ -4,6 +4,7 @@ import {
 	calculateStorageBreakdown,
 	collectDraftTexts,
 	describeStorageError,
+	groupProjectsByWorkspace,
 	parseStaleDays,
 	selectableSessions,
 	selectedBytes,
@@ -67,5 +68,37 @@ describe("storageLogic", () => {
 		expect(sortedBytes[0].name).toBe("a");
 		const sortedName = sortProjects([p1, p2], "nameAsc");
 		expect(sortedName[0].name).toBe("a");
+	});
+	it("groups projects and worktrees into workspaces like left sidebar", () => {
+		const main = {
+			...project,
+			dir: "/s/omp",
+			cwd: "/Users/qianhairui/Documents/omp-workspace",
+			name: "omp-workspace",
+			bytes: 400,
+		};
+		const wt = {
+			...project,
+			dir: "/s/omp-wt",
+			cwd: "/Users/qianhairui/Documents/omp-workspace/.worktrees/bug-fix",
+			name: "bug-fix",
+			bytes: 800,
+		};
+		const other = {
+			...project,
+			dir: "/s/other",
+			cwd: "/Users/qianhairui/Documents/other",
+			name: "other",
+			bytes: 200,
+		};
+		const workspaces = [{ path: "/Users/qianhairui/Documents/omp-workspace", name: "omp-workspace" }];
+		const groups = groupProjectsByWorkspace([main, wt, other], workspaces);
+		expect(groups).toHaveLength(2);
+		const ompGroup = groups.find((g) => g.name === "omp-workspace");
+		expect(ompGroup).toBeDefined();
+		expect(ompGroup?.bytes).toBe(1200);
+		expect(ompGroup?.worktrees).toHaveLength(2);
+		expect(ompGroup?.worktrees[0].isMain).toBe(true);
+		expect(ompGroup?.worktrees[1].worktreeName).toBe("bug-fix");
 	});
 });
