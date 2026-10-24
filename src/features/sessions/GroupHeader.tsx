@@ -8,46 +8,45 @@ import { useRef } from "react";
 import type React from "react";
 import type { BranchSubgroup } from "./grouping";
 import type { SessionMeta } from "../../lib/contracts";
+import { groupInbox } from "../inbox/attention";
+import { useInboxWindow } from "../inbox/useInboxBadge";
 import { useT } from "../../stores/language";
 
 export interface GroupStatusCounts {
 	working: number;
-	awaiting: number;
+	/** Sessions that need the user: same set and time window as the inbox bell. */
+	attention: number;
 }
 
 /**
- * Counts live-actionable sessions (working / awaiting an answer) for a group.
- * Unread and error/interrupted sessions are deliberately NOT counted: both are
- * sticky history flags on thousands of old transcripts (unread is set for any
- * turn written by a non-app process, error/interrupted comes from the transcript
- * tail) so a collapsed header would show permanent, unactionable numbers.
+ * Counts a group's working sessions and the ones that need the user. The
+ * attention part reuses `groupInbox` (window, archived, CLI-only and
+ * seen-awareness rules) so a collapsed header never disagrees with the bell:
+ * raw `unread` / `error` flags are sticky on old transcripts and would show
+ * permanent numbers the user cannot clear.
  */
 export function getGroupStatusCounts(
 	sessions: SessionMeta[] | BranchSubgroup[],
+	now: number,
+	windowHours: number,
 ): GroupStatusCounts {
-	let working = 0;
-	let awaiting = 0;
-
-	const check = (s: SessionMeta) => {
-		if (s.status === "working") working++;
-		else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") awaiting++;
-	};
-
+	const flat: SessionMeta[] = [];
 	for (const item of sessions) {
-		if ("sessions" in item) {
-			for (const s of item.sessions) check(s);
-		} else {
-			check(item);
-		}
+		if ("sessions" in item) flat.push(...item.sessions);
+		else flat.push(item);
 	}
-	return { working, awaiting };
+	return {
+		working: flat.filter((s) => s.status === "working").length,
+		attention: groupInbox(flat, now, windowHours).badge,
+	};
 }
 
-/** Renders status bubbles per RFC palette (V2, R15) - only shown when group is collapsed */
-export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
+/** Status bubbles - only rendered when the group is collapsed */
+export function StatusBubbles({ sessions }: { sessions: SessionMeta[] | BranchSubgroup[] }) {
 	const { t } = useT();
-	const hasAny = counts.working > 0 || counts.awaiting > 0;
-	if (!hasAny) return null;
+	const { now, windowHours } = useInboxWindow();
+	const counts = getGroupStatusCounts(sessions, now, windowHours);
+	if (counts.working === 0 && counts.attention === 0) return null;
 
 	return (
 		<span className="flex items-center gap-1.5 ml-auto pl-1 pr-1 shrink-0">
@@ -60,13 +59,13 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 					<span>{counts.working}</span>
 				</span>
 			)}
-			{counts.awaiting > 0 && (
+			{counts.attention > 0 && (
 				<span
-					title={t("sessions.awaitingSessionsCount", { count: counts.awaiting })}
-					className="inline-flex items-center gap-0.5 bg-sky-500/15 text-sky-400 px-1 py-0.2 rounded-full font-mono text-[10px] font-medium"
+					title={t("sessions.sessionsNeedAttention", { count: counts.attention })}
+					className="inline-flex items-center gap-0.5 whitespace-nowrap bg-indigo-500/15 text-indigo-300 px-1.5 py-0.2 rounded-full font-mono text-[10px] font-medium"
 				>
-					<span>{counts.awaiting}</span>
-					<span className="@max-[220px]:hidden"> {t("sessions.awaitingShort")}</span>
+					<span>{counts.attention}</span>
+					<span className="@max-[220px]:hidden"> {t("sessions.needsActionShort")}</span>
 				</span>
 			)}
 		</span>
@@ -80,7 +79,8 @@ export interface GroupHeaderProps {
 	icon: React.ReactNode;
 	isOpen: boolean;
 	onToggle: () => void;
-	statusCounts?: GroupStatusCounts;
+	/** Sessions of this group; their status bubbles show while it is collapsed. */
+	statusSessions?: SessionMeta[] | BranchSubgroup[];
 	actionButton?: React.ReactNode;
 	titleElement?: React.ReactNode;
 	onContextMenu?: (e: React.MouseEvent) => void;
@@ -94,7 +94,7 @@ export function GroupHeader({
 	icon,
 	isOpen,
 	onToggle,
-	statusCounts,
+	statusSessions,
 	actionButton,
 	titleElement,
 	onContextMenu,
@@ -135,7 +135,7 @@ export function GroupHeader({
 					</span>
 				)}
 				{/* V2: Show status bubbles only when header is COLLAPSED */}
-				{!isOpen && statusCounts && <StatusBubbles counts={statusCounts} />}
+				{!isOpen && statusSessions && <StatusBubbles sessions={statusSessions} />}
 			</button>
 
 			{actionButton && (

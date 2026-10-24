@@ -8,20 +8,26 @@ import { type InboxGroups, groupInbox } from "./attention";
 
 const TICK_MS = 60_000;
 
+/** Shared minute-tick clock + inbox window setting; entries age out without a session change. */
+export function useInboxWindow(): { now: number; windowHours: number } {
+	const windowHours = useSettings((s) => s.settings?.inboxWindowHours ?? 24);
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
+		return () => window.clearInterval(id);
+	}, []);
+	return { now, windowHours };
+}
+
 /** Live inbox groups across ALL space modes (code/work/study share one inbox);
  * re-evaluated every minute so entries age out of the time window without a
  * session change. */
 export function useInboxGroups(): InboxGroups {
 	const sessions = useSessions((s) => s.sessions);
 	const todos = useTodos((s) => s.todos);
-	const windowHours = useSettings((s) => s.settings?.inboxWindowHours ?? 24);
+	const { now, windowHours } = useInboxWindow();
 	useEffect(() => {
 		void startTodos();
-	}, []);
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
-		return () => window.clearInterval(id);
 	}, []);
 	return useMemo(
 		() =>
@@ -45,12 +51,7 @@ export interface ModeActivity {
 /** Per-mode activity, used to hint at changes in modes other than the active one. */
 export function useModeActivity(): Record<SpaceMode, ModeActivity> {
 	const sessions = useSessions((s) => s.sessions);
-	const windowHours = useSettings((s) => s.settings?.inboxWindowHours ?? 24);
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
-		return () => window.clearInterval(id);
-	}, []);
+	const { now, windowHours } = useInboxWindow();
 	return useMemo(() => {
 		const byMode = {} as Record<SpaceMode, SessionMeta[]>;
 		for (const mode of SPACE_MODES) byMode[mode] = [];

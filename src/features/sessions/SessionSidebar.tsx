@@ -86,7 +86,7 @@ import { ModeActivityDot } from "./ModeActivityDot";
 import { switchSpaceMode } from "./switchMode";
 import { ArchiveUndoBar } from "./ArchiveUndoBar";
 import { archiveSessions } from "./archiveUndo";
-import { GroupHeader, getGroupStatusCounts } from "./GroupHeader";
+import { GroupHeader } from "./GroupHeader";
 import { chunkSessionsByTime } from "./timeChunking";
 import {
 	type BranchSubgroup,
@@ -1378,7 +1378,7 @@ export function SessionSidebar() {
 									}
 									isOpen={isGroupOpen("__pinned", true)}
 									onToggle={() => toggleGroup("__pinned", true)}
-									statusCounts={getGroupStatusCounts(grouped.pinnedSessions)}
+									statusSessions={grouped.pinnedSessions}
 								/>
 
 								{isGroupOpen("__pinned", true) && (
@@ -1481,7 +1481,7 @@ export function SessionSidebar() {
 																}
 																isOpen={grpOpen}
 																onToggle={() => toggleGroup(grpKey, true)}
-																statusCounts={getGroupStatusCounts(grpSessions)}
+																statusSessions={grpSessions}
 																onContextMenu={(e) => handleGroupContextMenu(g, e)}
 																actionButton={
 																	<div className="flex items-center shrink-0 ml-1">
@@ -1692,7 +1692,6 @@ export function SessionSidebar() {
 										wg.workspace.id || wg.workspace.name,
 									);
 									const isOpen = isGroupOpen(wg.workspace.id, true);
-									const statusCounts = getGroupStatusCounts(wg.subgroups);
 									const isCreatingHeader =
 										creatingKey === `${wg.workspace.id}|${wg.workspace.path}`;
 
@@ -1723,7 +1722,7 @@ export function SessionSidebar() {
 												}
 												isOpen={isOpen}
 												onToggle={() => toggleGroup(wg.workspace.id, true)}
-												statusCounts={statusCounts}
+												statusSessions={wg.subgroups}
 												onContextMenu={(e) =>
 													handleWorkspaceContextMenu(wg.workspace, e)
 												}
@@ -1873,7 +1872,7 @@ export function SessionSidebar() {
 											}
 											isOpen={isGroupOpen("__unassigned", false)}
 											onToggle={() => toggleGroup("__unassigned", false)}
-											statusCounts={getGroupStatusCounts(grouped.unassigned)}
+											statusSessions={grouped.unassigned}
 										/>
 
 										{isGroupOpen("__unassigned", false) && (() => {
@@ -2025,9 +2024,7 @@ export function SessionSidebar() {
 											}
 											isOpen={isGroupOpen("__deleted", false)}
 											onToggle={() => toggleGroup("__deleted", false)}
-											statusCounts={getGroupStatusCounts(
-												grouped.deletedSessions,
-											)}
+											statusSessions={grouped.deletedSessions}
 											actionButton={
 												<button
 													type="button"
@@ -2593,7 +2590,7 @@ function CollapsibleSubgroup({
 					dismissHover();
 					onSetCount(`${scopeKey}|sub`, open ? 0 : 1);
 				}}
-				statusCounts={getGroupStatusCounts(sub.sessions)}
+				statusSessions={sub.sessions}
 				actionButton={
 					<div className="flex items-center gap-0.5 shrink-0 ml-1">
 						{/* 在访达中打开 removed per user: kept only on the row context
@@ -2726,7 +2723,7 @@ function DeletedWorktreesFolder({
 				}
 				isOpen={isOpen}
 				onToggle={onToggle}
-				statusCounts={getGroupStatusCounts(subgroups)}
+				statusSessions={subgroups}
 				actionButton={
 					<button
 						type="button"
@@ -2960,7 +2957,7 @@ function UnassignedDirSubgroup({
 				}
 				isOpen={isSubOpen}
 				onToggle={onToggle}
-				statusCounts={getGroupStatusCounts(grp.sessions)}
+				statusSessions={grp.sessions}
 				actionButton={
 					<div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
 						<button
