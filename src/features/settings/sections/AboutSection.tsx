@@ -7,6 +7,7 @@ import { timeAgo } from "../../../lib/format";
 import { sessionDisplayName } from "../../../lib/sessionName";
 import { toast } from "../../../lib/toast";
 import { ompVersionLabel, useOmpUpdate } from "../../../stores/ompUpdate";
+import { useAppUpdate } from "../../../stores/appUpdate";
 import { useOmpInstall } from "../../../stores/ompInstall";
 import { switchPendingNow, syncStaleness, useOmpUpdateSessions } from "../../../stores/ompUpdateSessions";
 import { useSessions } from "../../../stores/sessions";
@@ -35,6 +36,20 @@ export function AboutSection() {
 	const { t, locale } = useT();
 	const { appVersion, info, status, checking, updating, lastCheckedAt, error, lastOutput, loadInfo, check, runUpdate } =
 		useOmpUpdate();
+	const {
+		appVersion: desktopAppVersion,
+		updateInfo: appUpdateInfo,
+		checking: appChecking,
+		downloading: appDownloading,
+		downloadProgress: appProgress,
+		readyToRestart,
+		lastCheckedAt: appLastCheckedAt,
+		error: appError,
+		loadVersion: loadAppVersion,
+		check: checkAppUpdate,
+		downloadAndInstall: downloadAppUpdate,
+		relaunchApp,
+	} = useAppUpdate();
 	const [detailsOpen, setDetailsOpen] = useState(false);
 	const [switching, setSwitching] = useState(false);
 	const { settings, save } = useAppSettings();
@@ -43,6 +58,7 @@ export function AboutSection() {
 
 	useEffect(() => {
 		void loadInfo();
+		void loadAppVersion();
 		void syncStaleness().catch(() => {});
 	}, [loadInfo]);
 
@@ -140,6 +156,65 @@ export function AboutSection() {
 			</Button>
 		);
 	}
+	let appUpdateHint: React.ReactNode;
+	let appUpdateControl: React.ReactNode = null;
+	if (readyToRestart) {
+		appUpdateHint = <Chip tone="success" icon={CheckCircle2}>{t("settingsSections.about.appReadyToRestart")}</Chip>;
+		appUpdateControl = (
+			<Button variant="primary" icon={RotateCw} onClick={() => void relaunchApp()}>
+				{t("settingsSections.about.appRestartNow")}
+			</Button>
+		);
+	} else if (appDownloading) {
+		const pct = appProgress?.percent ?? 0;
+		appUpdateHint = <Chip tone="accent" icon={Loader2}>{t("settingsSections.about.appDownloading", { percent: String(pct) })}</Chip>;
+		appUpdateControl = (
+			<Button variant="primary" loading disabled>
+				{t("settingsSections.about.appDownloading", { percent: String(pct) })}
+			</Button>
+		);
+	} else if (appChecking) {
+		appUpdateHint = <Chip tone="neutral" icon={Loader2}>{t("settingsSections.about.appChecking")}</Chip>;
+		appUpdateControl = (
+			<Button variant="ghost" loading disabled>
+				{t("settingsSections.about.appChecking")}
+			</Button>
+		);
+	} else if (appUpdateInfo) {
+		appUpdateHint = <Chip tone="accent" icon={ArrowUpCircle}>{t("settingsSections.about.appUpdateAvailable", { version: appUpdateInfo.version })}</Chip>;
+		appUpdateControl = (
+			<Button variant="primary" icon={ArrowUpCircle} onClick={() => void downloadAppUpdate()}>
+				{t("settingsSections.about.appDownloadAndInstall")}
+			</Button>
+		);
+	} else if (appError) {
+		appUpdateHint = <Chip tone="danger">{t("settingsSections.about.appCheckFailed")}</Chip>;
+		appUpdateControl = (
+			<Button icon={RotateCw} onClick={() => void checkAppUpdate()}>
+				{t("settingsSections.about.retry")}
+			</Button>
+		);
+	} else if (appLastCheckedAt) {
+		appUpdateHint = (
+			<span className="inline-flex items-center gap-2">
+				<Chip tone="success" icon={CheckCircle2}>{t("settingsSections.about.appAlreadyLatest")}</Chip>
+				<span className="text-[11px] text-[var(--text-dim)]">{t("settingsSections.about.lastCheckedTime", { time: timeAgo(appLastCheckedAt) })}</span>
+			</span>
+		);
+		appUpdateControl = (
+			<Button icon={RefreshCw} onClick={() => void checkAppUpdate()}>
+				{t("settingsSections.about.recheck")}
+			</Button>
+		);
+	} else {
+		appUpdateHint = <Chip tone="neutral">{t("settingsSections.about.notChecked")}</Chip>;
+		appUpdateControl = (
+			<Button variant="primary" icon={RefreshCw} onClick={() => void checkAppUpdate()}>
+				{t("settingsSections.about.appCheckNow")}
+			</Button>
+		);
+	}
+
 
 	return (
 		<div className="space-y-6">
@@ -150,8 +225,29 @@ export function AboutSection() {
 				<SettingRow
 					label={t("settingsSections.about.thisProduct")}
 					description={t("settingsSections.about.thisProductDesc")}
-					control={<span className="font-mono text-xs text-[var(--text-muted)]">omp-workspace v{appVersion ?? t("settingsSections.about.unknown")}</span>}
+					control={<span className="font-mono text-xs text-[var(--text-muted)]">omp-workspace v{desktopAppVersion ?? appVersion ?? t("settingsSections.about.unknown")}</span>}
 				/>
+				<SettingRow
+					label={t("settingsSections.about.appUpdateRow")}
+					description={appUpdateHint}
+					control={appUpdateControl}
+				>
+					{appUpdateInfo?.notes ? (
+						<div className="mt-2 rounded-md bg-[var(--well-bg)] p-3 text-xs text-[var(--text-muted)]">
+							<div className="mb-1 font-semibold text-[var(--text-normal)]">
+								{t("settingsSections.about.appReleaseNotes")} (v{appUpdateInfo.version}):
+							</div>
+							<div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+								{appUpdateInfo.notes}
+							</div>
+						</div>
+					) : null}
+					{appError && !appChecking && !appDownloading ? (
+						<div className="mt-2 text-xs text-[var(--color-danger)]">
+							{appError}
+						</div>
+					) : null}
+				</SettingRow>
 				<SettingRow
 					label={t("settingsSections.about.ompVersion")}
 					description={info?.found ? <span className="font-mono">{info.resolvedPath}</span> : t("settingsSections.about.ompNotFoundDesc")}

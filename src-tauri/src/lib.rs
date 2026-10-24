@@ -183,6 +183,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .menu(build_app_menu)
         .on_menu_event(|app, event| {
             if event.id() == CLOSE_TAB_MENU_ID {

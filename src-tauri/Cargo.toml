@@ -63,6 +63,8 @@ hyper-util = { version = "0.1", default-features = false, features = [
     "http1",
 ] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "=3.6.0"
