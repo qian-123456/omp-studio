@@ -1653,21 +1653,82 @@ export interface McpServerItem {
 export interface McpFileInfo {
 	path: string;
 	scope: "user" | "project" | string;
+	/** Project dir (as passed to `mcp_catalog`) for project files; null for user files. */
+	project: string | null;
 	exists: boolean;
 	parseError: string | null;
 	disabledServers: string[];
 	enabledServers: string[];
 }
 
+/** Per-cwd effective view used by `/mcp <sub> <name>` completion. */
 export interface McpConfigSnapshot {
-	/** Where "add server" writes by default (user-level mcp.json). */
+	/** User-level mcp.json. */
 	defaultWritePath: string;
 	files: McpFileInfo[];
 	servers: McpServerItem[];
 }
 
-/** Add/update payload for `mcp_server_upsert`; `null` deletes a key, env/headers merge per key. */
+/** Add/update payload; `null` deletes a key, env/headers merge per key (untouched secrets stay). */
 export type McpServerPatch = Record<string, unknown>;
+
+/** One known project (main checkout) in the MCP catalog. */
+export interface McpProjectInfo {
+	/** Project dir, echoed exactly as passed to `mcp_catalog`. */
+	path: string;
+	/** `<path>/.omp/mcp.json` — where this project's copies / off-markers are written. */
+	configPath: string;
+	/** Linked git worktrees of this project; every write is mirrored into their `.omp/mcp.json`. */
+	worktrees: string[];
+}
+
+/**
+ * - `all`: every project, including ones added later, except `excludedProjects`.
+ * - `projects`: only `activeProjects`.
+ * - `off`: loads nowhere (paused).
+ */
+export type McpScopeMode = "all" | "projects" | "off";
+
+/** One MCP server (unique by name) across the user config and every known project. */
+export interface McpServerView {
+	name: string;
+	/** Canonical definition: the global entry if any, else the first project copy. Secrets masked. */
+	definition: McpServerItem;
+	mode: McpScopeMode;
+	/** Known projects whose new sessions load it (ignores `denylisted`). */
+	activeProjects: string[];
+	/** mode `all`: known projects where it is turned off. */
+	excludedProjects: string[];
+	/** Known projects holding a full (possibly disabled) copy of the definition. */
+	copyProjects: string[];
+	/** Known projects whose copy differs from `definition` (ignoring `enabled`). */
+	customProjects: string[];
+	/** A user-level (global) definition exists. */
+	hasGlobal: boolean;
+	/** Hidden by the user-level `disabledServers` list (wins over everything). */
+	denylisted: boolean;
+	/** Every config file (user + main project checkouts) that mentions this name. */
+	files: string[];
+}
+
+export interface McpCatalog {
+	/** User-level mcp.json (global definitions). */
+	globalPath: string;
+	/** The requested projects, in request order. */
+	projects: McpProjectInfo[];
+	/** Sorted by name. */
+	servers: McpServerView[];
+	/** User files + every known project's OMP mcp files that exist (plus each primary path). */
+	files: McpFileInfo[];
+}
+
+/** Where a server should load. `projects` must be a subset of the catalog's project paths. */
+export interface McpScope {
+	/** true: every project incl. future ones, except known projects missing from `projects`. */
+	allProjects: boolean;
+	/** Known projects where the server loads. Must be non-empty when `allProjects` is false. */
+	projects: string[];
+}
 
 export interface PluginItem {
 	name: string;

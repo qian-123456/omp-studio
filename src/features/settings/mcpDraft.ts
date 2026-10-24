@@ -1,4 +1,4 @@
-/** Pure helpers for the MCP server add/edit form (McpSection). */
+/** Pure helpers for the MCP server add/edit form (McpServerEditor) and the import dialog. */
 import type { McpServerItem, McpServerPatch } from "../../lib/contracts";
 
 export type McpTransport = "stdio" | "http" | "sse";
@@ -12,7 +12,6 @@ export interface ServerDraft {
 	/** Existing entry when editing; null when adding. */
 	original: McpServerItem | null;
 	name: string;
-	path: string;
 	type: McpTransport;
 	command: string;
 	/** One arg per line. */
@@ -39,11 +38,10 @@ export function transportLabel(t: string): string {
 	return t in TRANSPORT_LABELS ? TRANSPORT_LABELS[t as McpTransport] : t;
 }
 
-export function draftFrom(original: McpServerItem | null, defaultPath: string): ServerDraft {
+export function draftFrom(original: McpServerItem | null): ServerDraft {
 	return {
 		original,
 		name: original?.name ?? "",
-		path: original?.sourceFile ?? defaultPath,
 		type:
 			original?.transport === "http" || original?.transport === "sse"
 				? original.transport
@@ -61,7 +59,7 @@ export function draftFrom(original: McpServerItem | null, defaultPath: string): 
 	};
 }
 
-const NAME_RE = /^[A-Za-z0-9_.-]+$/;
+export const NAME_RE = /^[A-Za-z0-9_.-]+$/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HEADER_KEY_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
@@ -70,8 +68,8 @@ export type DraftErrors = Partial<
 >;
 
 /**
- * Validate a draft before saving. `existingNames` are server names already
- * defined in the draft's target file (the original name is allowed when editing).
+ * Validate a draft before saving. `existingNames` are every server name already
+ * in the catalog (the original name is allowed when editing).
  */
 export function validateDraft(d: ServerDraft, existingNames: readonly string[]): DraftErrors {
 	const errors: DraftErrors = {};
@@ -160,8 +158,52 @@ export function buildPatch(d: ServerDraft): McpServerPatch {
 	return patch;
 }
 
-/** Last path segment of a cwd, for the 「当前项目」 line. */
+/** Last path segment of a path, used as a project's display name. */
 export function projectName(cwd: string): string {
 	const parts = cwd.replace(/[\\/]+$/, "").split(/[\\/]/);
 	return parts[parts.length - 1] || cwd;
+}
+
+/**
+ * Quote-aware shell-style split: whitespace separates tokens, '…' and "…" group,
+ * a backslash escapes a quote, space or backslash. An unterminated quote runs to the end.
+ */
+export function splitCommandLine(line: string): string[] {
+	const out: string[] = [];
+	let cur = "";
+	let has = false;
+	let quote: '"' | "'" | null = null;
+	for (let i = 0; i < line.length; i++) {
+		const c = line[i]!;
+		if (c === "\\" && i + 1 < line.length && /["' \\]/.test(line[i + 1]!)) {
+			cur += line[++i];
+			has = true;
+		} else if (quote) {
+			if (c === quote) quote = null;
+			else cur += c;
+		} else if (c === '"' || c === "'") {
+			quote = c;
+			has = true;
+		} else if (/\s/.test(c)) {
+			if (has) out.push(cur);
+			cur = "";
+			has = false;
+		} else {
+			cur += c;
+			has = true;
+		}
+	}
+	if (has) out.push(cur);
+	return out;
+}
+
+/**
+ * When a whole command line sits in 命令 while 参数 is empty, move everything after the
+ * first token into 参数. Returns null when nothing should change.
+ */
+export function splitDraftCommand(d: ServerDraft): ServerDraft | null {
+	if (d.type !== "stdio" || d.args.trim() !== "" || !/\s/.test(d.command.trim())) return null;
+	const tokens = splitCommandLine(d.command.trim());
+	if (tokens.length < 2) return null;
+	return { ...d, command: tokens[0]!, args: tokens.slice(1).join("\n") };
 }

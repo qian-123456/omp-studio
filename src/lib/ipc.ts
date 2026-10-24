@@ -19,7 +19,9 @@ import type {
 	GitBadge,
 	GitSummary,
 	LiveSessionInfo,
+	McpCatalog,
 	McpConfigSnapshot,
+	McpScope,
 	McpServerPatch,
 	MergePreview,
 	MobileStatus,
@@ -887,42 +889,42 @@ export const skillsUsage = (days = 45) =>
 
 // ---- D — MCP servers + plugin enablement (omp-managed config files) ----
 
-/** OMP-managed mcp.json files and their servers (secrets masked). */
+/** Per-cwd effective server list (secrets masked); used by `/mcp` argument completion. */
 export const mcpConfigList = (cwd?: string | null) =>
 	invoke<McpConfigSnapshot>("mcp_config_list", { cwd: cwd ?? null });
 
-/** Add/update a server entry; `patch` merges (`null` deletes; env/headers merge per key). */
-export const mcpServerUpsert = (
-	path: string,
+/**
+ * Every MCP server (unique by name) across the user config and `projects`
+ * (main project checkouts), with where each one loads. Secrets masked.
+ */
+export const mcpCatalog = (projects: string[]) =>
+	invoke<McpCatalog>("mcp_catalog", { projects });
+
+/**
+ * Create (`originalName` null) or edit a server. `patch` merges into every
+ * definition of the server (`null` deletes; env/headers merge per key); a
+ * different `name` renames it everywhere. `scope` (required when creating)
+ * is applied afterwards, as `mcpServerSetScope` would.
+ */
+export const mcpServerSave = (
+	projects: string[],
+	originalName: string | null,
 	name: string,
 	patch: McpServerPatch,
-	cwd?: string | null,
-) =>
-	invoke<void>("mcp_server_upsert", { cwd: cwd ?? null, path, name, patch });
+	scope: McpScope | null,
+) => invoke<void>("mcp_server_save", { projects, originalName, name, patch, scope });
 
-export const mcpServerRemove = (path: string, name: string, cwd?: string | null) =>
-	invoke<void>("mcp_server_remove", { cwd: cwd ?? null, path, name });
+/** Choose where a server loads: all projects (minus unchecked ones) or only the given projects. */
+export const mcpServerSetScope = (projects: string[], name: string, scope: McpScope) =>
+	invoke<void>("mcp_server_set_scope", { projects, name, scope });
 
-/** Toggle `enabled` on the file defining `name` (sweeps stale user overrides). */
-export const mcpServerSetEnabled = (
-	name: string,
-	enabled: boolean,
-	cwd?: string | null,
-) => invoke<void>("mcp_server_set_enabled", { cwd: cwd ?? null, name, enabled });
+/** Pause / resume a server without forgetting where it is used. */
+export const mcpServerSetEnabled = (projects: string[], name: string, enabled: boolean) =>
+	invoke<void>("mcp_server_set_enabled", { projects, name, enabled });
 
-/** Atomically move an MCP server definition from one mcp.json file to another. */
-export const mcpServerMove = (
-	fromPath: string,
-	toPath: string,
-	name: string,
-	cwd?: string | null,
-) =>
-	invoke<void>("mcp_server_move", {
-		cwd: cwd ?? null,
-		fromPath,
-		toPath,
-		name,
-	});
+/** Delete a server from the user config and every known project (incl. worktree mirrors). */
+export const mcpServerDelete = (projects: string[], name: string) =>
+	invoke<void>("mcp_server_delete", { projects, name });
 
 /** Installed npm/link/marketplace plugins across user + project roots. */
 export const pluginsList = (cwd?: string | null) =>
@@ -950,6 +952,10 @@ export const ompUpdateCheck = () =>
 	invoke<import("./contracts").OmpUpdateStatus>("omp_update_check");
 /** Run `omp update` (300s timeout) and re-probe `omp --version`. */
 export const ompUpdateRun = () => invoke<import("./contracts").OmpUpdateResult>("omp_update_run");
+/** Run the official omp installer (`--binary`, 30 min timeout); progress arrives via the `omp:install` event. */
+export const ompInstallRun = () => invoke<import("./contracts").OmpInstallResult>("omp_install_run");
+/** Kill the running installer; the pending `omp_install_run` resolves with success=false. */
+export const ompInstallCancel = () => invoke<void>("omp_install_cancel");
 /** Stat-only check: current omp binary fingerprint and live sessions spawned from an older one. */
 export const rpcOmpStaleness = () => invoke<import("./contracts").OmpStaleness>("rpc_omp_staleness");
 

@@ -389,7 +389,28 @@ pub fn create(
         }
         git_ok(&root, &["worktree", "add", "-b", &branch, &target_s, base])?;
     }
+    inherit_mcp_config(&root, &target);
     info_for(&target, &[])
+}
+
+/// Copy the project's untracked `.omp/mcp.json` / `.omp/.mcp.json` into a new
+/// worktree (omp reads MCP config from the session cwd only, no walk-up).
+/// Best effort: never overwrites an existing file and never fails the create.
+fn inherit_mcp_config(root: &Path, target: &Path) {
+    for file in ["mcp.json", ".mcp.json"] {
+        let src = root.join(".omp").join(file);
+        let dst = target.join(".omp").join(file);
+        if !src.is_file() || dst.exists() {
+            continue;
+        }
+        let copied = dst
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::copy(&src, &dst).map(|_| ()));
+        if let Err(e) = copied {
+            tracing::warn!("复制 {} 到新 worktree 失败: {e}", src.display());
+        }
+    }
 }
 
 /// `git worktree add --detach <root>/.worktrees/<dir> <sha>` (reuses an existing one).

@@ -48,7 +48,7 @@ src-tauri/src/
   terminal/         PTY sessions                                                       [E]
   schedules/        scheduled tasks, cadence, runner, background scheduler (§11 F)     [E]
   skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
-  settings_mcp.rs   OMP-managed mcp.json files: list/upsert/remove/enable servers (masked secrets, atomic writes) [D]
+  settings_mcp.rs   OMP-managed mcp.json files: catalog across user + known projects, per-server scope (all projects / chosen projects, off-markers, worktree mirrors), save/enable/delete (masked secrets, atomic writes) [D]
   settings_plugins.rs  OMP plugin roots + lockfiles: list/enable plugins                  [D]
   settings_model_roles.rs  agent discovery, model precedence, narrow lossless YAML role edits [D]
   model_replace.rs  bulk model replace: usage scan, guarded apply/undo, replace log, model probe (§7 D) [D]
@@ -428,8 +428,8 @@ pub struct SubagentTranscript {
 pub struct Model { pub provider: String, pub id: String, pub name: String, pub thinking: Vec<String>, pub context_window: Option<u64>, pub reasoning: Option<bool> }
 // models.yml contextWindow override edit; context_window None = delete the override
 pub struct ModelContextWindowEdit { pub provider_id: String, pub model_id: String, pub context_window: Option<u64> }
-// MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, PluginCatalog, PluginItem,
-// PluginRootInfo) live in settings_mcp.rs / settings_plugins.rs, mirrored in lib/contracts.ts.
+// MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, McpCatalog, McpServerView, McpProjectInfo,
+// McpScope, PluginCatalog, PluginItem, PluginRootInfo) live in settings_mcp.rs / settings_plugins.rs, mirrored in lib/contracts.ts.
 // Privacy (P): SecretRisk = safe|risky; PrivacyMarkScope = future|all (serde lowercase, default all); SecretEntry { id, value, label: Option<String>, placeholder, aliases: Vec<String> (legacy),
 // risk, track, in_library, library_prompted, created_at, session_count: u32, cutoffs: BTreeMap<String,i64> (backend-only, not serialized to the frontend) }; SecretEntryPatch { label? (Some("") clears), track?, in_library?,
 // library_prompted? }; PrivacySnapshot { entries, native_status: "ok"|"conflict"|"error", native_error };
@@ -693,10 +693,13 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `skills_trash(dir: String)` — moves a skill directory to the OS Trash (validated to be a direct child of a known skill root)
 
 **D — MCP servers & plugins (settings):**
-- `mcp_config_list(cwd: Option<String>) -> McpConfigSnapshot` — servers across project `.omp/mcp.json`/`.mcp.json` and user mcp files
-- `mcp_server_upsert(cwd, path, name, patch: Value)` — merge patch (null deletes; env/headers merge per key; masked values preserved)
-- `mcp_server_remove(cwd, path, name)`, `mcp_server_set_enabled(cwd, name, enabled: bool)`
-- `mcp_server_move(cwd, from_path: String, to_path: String, name: String)` — moves one server definition atomically between allowed mcp.json files without losing masked secrets or raw fields
+- `mcp_config_list(cwd: Option<String>) -> McpConfigSnapshot` — per-cwd effective view (project `.omp/mcp.json`/`.mcp.json`, user files, project-root fallbacks) for `/mcp` completion; off-markers are not listed but shadow later same-named entries
+- `mcp_catalog(projects: Vec<String>) -> McpCatalog` — every server (unique by name) across the user files and the given main project checkouts: canonical `definition` (masked), `mode` `all` (enabled user-level definition; every project incl. future ones minus `excludedProjects`) | `projects` (only `activeProjects`, via full copies in `<p>/.omp/mcp.json`) | `off`; `copyProjects`, `customProjects` (copy differs from the definition), `hasGlobal`, `denylisted`, `files`; `projects[]` carry `configPath` and linked git `worktrees`
+- `mcp_server_save(projects, original_name: Option<String>, name, patch: Value, scope: Option<McpScope>)` — create (name unique everywhere, scope required) or edit: patch merges into every definition (null deletes; env/headers merge per key so masked values survive), a new name renames every entry + user lists; then applies `scope`
+- `mcp_server_set_scope(projects, name, scope: McpScope { all_projects, projects })` — all: ensure the user-level definition, drop identical project copies, write an off-marker `{"enabled": false}` into each unchecked project's `.omp/mcp.json` (OMP: a suppressed entry still claims its name); chosen: raw copy into each checked project, remove the user-level definition. Sweeps the name from user `disabledServers`/`enabledServers`; refuses (writes nothing) on unparsable files or an empty chosen set
+- `mcp_server_set_enabled(projects, name, enabled: bool)` — pause/resume without forgetting placement (mode all → user-level `enabled`; projects → the active copies); `mcp_server_delete(projects, name)` — removes every entry/marker/list reference
+- All MCP commands taking `projects` require absolute paths; a path whose folder no longer exists is skipped (absent from `McpCatalog.projects`, so the UI does not offer it) instead of failing the call
+- Every project write is mirrored into the `.omp/mcp.json` of the project's linked git worktrees (sessions there read only `<worktree>/.omp/mcp.json`)
 - `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
 - `extension_delete(cwd: Option<String>, path: String)` — permanently deletes one extension module; `path` must match an entry of `skills_list(cwd).extensions` (else rejected)
 - `omp_config_list() -> OmpConfigListResult`, `omp_config_set(key, value)`, `omp_config_reset(key)` — shell out to `omp config` in a neutral empty cwd (`$TMPDIR/ompws-omp-config-cwd`, no `.omp/`) so they reflect global settings only
@@ -1133,7 +1136,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `git_summary`: `status --porcelain=v1 -z` + `diff --numstat` (staged+unstaged) + untracked line counts (cap). No branch/rebase/stash concepts in UI.
 - Worktrees: `git worktree add <repo>/.worktrees/<slug>` checking out `branch` (default `omp/<slug>`; when the branch doesn't
   exist it is created from `base`, default HEAD); ensure `.worktrees/` is ignored via `<repo>/.git/info/exclude`
-  (do not edit the repo's .gitignore). Remove: refuse when dirty unless `force`; optionally delete branch.
+  (do not edit the repo's .gitignore). A new worktree inherits the repo's `.omp/mcp.json` / `.omp/.mcp.json` when the checkout
+  lacks them (untracked project MCP config). Remove: refuse when dirty unless `force`; optionally delete branch.
 - Orphans: for each registered workspace repo, `.worktrees/*` with no session (via `catalog::list`) whose cwd is inside.
   Frontend: on app start, if orphans exist, show a dismissible banner in GitPanel/Home "发现 N 个孤儿 worktree" with 回收 buttons.
 - Time machine: `tm_run` → `git worktree add --detach <repo>/.worktrees/tm-<short> <sha>`; command = given or detected
@@ -1226,6 +1230,10 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (`ompPlacement.ts`). `settingsTargets.ts` maps `SettingsTarget`
 (models, thinking, fastMode, advisor, extendedContext, browser, computerUse, memory, mcp, plugins, subagents, approvals,
   providers, compaction, modelContext) to section + focus key via `openSettingsTarget(target)`.
+- Settings ▸ MCP 服务器 (`McpSection`): one row per server with 「用在：」 placement chips (所有项目 / 除了… / chosen projects),
+  「选择项目」 scope dialog (two modes + project checklist incl. worktree counts), 「加到当前项目」 quick action, pause switch,
+  modal editor (with the same scope picker) and 「导入配置」 (paste mcpServers / VS Code `servers` / bare map JSON). Known projects =
+  `kind: "project"` workspaces deduped by path; the settings session cwd maps to its deepest containing project.
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
