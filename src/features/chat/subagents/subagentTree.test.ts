@@ -207,8 +207,8 @@ describe("collapseTree / descendantStats", () => {
 	});
 	it("counts descendants at any depth", () => {
 		const s = descendantStats(forest as any);
-		expect(s.get("A")).toEqual({ total: 2, running: 1 });
-		expect(s.get("B")).toEqual({ total: 1, running: 0 });
-		expect(s.get("D")).toEqual({ total: 0, running: 0 });
+		expect(s.get("A")).toEqual({ total: 2 });
+		expect(s.get("B")).toEqual({ total: 1 });
+		expect(s.get("D")).toEqual({ total: 0 });
 	});
 });

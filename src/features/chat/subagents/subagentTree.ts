@@ -117,18 +117,16 @@ export function collapseTree(roots: TreeNode[], collapsed: ReadonlySet<string>):
 
 export interface DescendantStats {
 	total: number;
-	running: number;
 }
 
-/** Per node id: how many descendants (any depth) it has and how many of them are running. */
+/** Per node id: how many descendants (any depth) it has. */
 export function descendantStats(roots: TreeNode[]): Map<string, DescendantStats> {
 	const out = new Map<string, DescendantStats>();
 	const walk = (n: TreeNode): DescendantStats => {
-		const s: DescendantStats = { total: 0, running: 0 };
+		const s: DescendantStats = { total: 0 };
 		for (const c of n.children) {
 			const cs = walk(c);
 			s.total += 1 + cs.total;
-			s.running += (c.state === "running" ? 1 : 0) + cs.running;
 		}
 		out.set(n.id, s);
 		return s;
