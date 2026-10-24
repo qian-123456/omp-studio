@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useLanguageStore } from "../../../stores/language";
-import { AppearanceSection } from "./AppearanceSection";
+import { GeneralSection } from "./GeneralSection";
 
 beforeEach(() => {
 	window.localStorage.clear();
@@ -10,9 +10,9 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("AppearanceSection language selection", () => {
+describe("GeneralSection language selection", () => {
 	it("renders language segmented control with current locale", () => {
-		render(<AppearanceSection />);
+		render(<GeneralSection />);
 		const langRow = screen.getByText("界面语言");
 		expect(langRow).toBeDefined();
 

@@ -4,6 +4,7 @@
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { SUPPORTED_LOCALES, type Locale } from "../../../lib/i18n";
 import { useT } from "../../../stores/language";
 import { Segmented } from "../../../components/Segmented";
 import { ompConfigSet } from "../../../lib/ipc";
@@ -29,7 +30,7 @@ type ApprovalMode = "always-ask" | "write" | "yolo";
 
 
 export function GeneralSection() {
-	const { t } = useT();
+	const { locale, setLocale, t } = useT();
 	const { settings, save } = useAppSettings();
 	const { models } = useCatalogModels();
 	const { navigate } = useSettingsNav();
@@ -172,6 +173,19 @@ export function GeneralSection() {
 			</SettingsCard>
 
 			<SettingsCard jump={t("settingsSections.general.jumpUi")} title={t("settingsSections.general.titleUi")}>
+				<SettingRow
+					fieldId="language"
+					label={t("settings.language")}
+					description={t("settings.languageDesc")}
+					control={
+						<Segmented
+							aria-label={t("settings.language")}
+							value={locale}
+							onChange={(val) => setLocale(val as Locale)}
+							options={SUPPORTED_LOCALES.map((l) => ({ value: l.value, label: l.nativeLabel }))}
+						/>
+					}
+				/>
 				<ToggleRow
 					fieldId="capsuleVisible"
 					label={t("settingsSections.general.capsuleLabel")}
