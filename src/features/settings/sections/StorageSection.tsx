@@ -182,20 +182,23 @@ export function StorageSection() {
 			)}
 
 			<SectionJumpBar />
-			<SettingsCard jump={t("settingsSectionsStorage.storage.jumpImages")} title={t("settingsSectionsStorage.storage.titleImages")} description={t("settingsSectionsStorage.storage.descImages")}>
-				<SettingRow
-					label={t("settingsSectionsStorage.storage.imagesOverviewLabel")}
-					description={t("settingsSectionsStorage.storage.imagesOverviewDesc")}
-					hint={overview ? t("settingsSectionsStorage.storage.imagesOverviewHint", { count: overview.images.count, bytes: formatBytes(overview.images.bytes) }) : t("settingsSectionsStorage.storage.loading")}
-				/>
+			<SettingsCard
+				jump={t("settingsSectionsStorage.storage.jumpImages")}
+				title={t("settingsSectionsStorage.storage.titleImages")}
+				description={t("settingsSectionsStorage.storage.descImages")}
+				aside={overview ? t("settingsSectionsStorage.storage.imagesCardAside", { count: overview.images.count, bytes: formatBytes(overview.images.bytes) }) : undefined}
+			>
 				<SettingRow
 					label={t("settingsSectionsStorage.storage.unusedImagesLabel")}
 					description={t("settingsSectionsStorage.storage.unusedImagesDesc")}
 					hint={
-						cleanable
-							? cleanable.count > 0
-								? t("settingsSectionsStorage.storage.imagesHintCleanable", { cleanCount: cleanable.count, cleanBytes: formatBytes(cleanable.bytes) })
-								: t("settingsSectionsStorage.storage.imagesHintNone")
+						overview && cleanable
+							? t("settingsSectionsStorage.storage.unusedImagesHint", {
+									totalCount: overview.images.count,
+									totalBytes: formatBytes(overview.images.bytes),
+									cleanCount: cleanable.count,
+									cleanBytes: formatBytes(cleanable.bytes),
+								})
 							: t("settingsSectionsStorage.storage.loading")
 					}
 					control={
