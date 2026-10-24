@@ -38,14 +38,29 @@ interface ModelRoleState {
 	write: (scope: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => Promise<void>;
 }
 
+/** Cache key of one read: the project whose layers it read plus the session model it resolved with. */
+const cacheKey = (cwd: string | null, sessionModel: string | null): string =>
+	`${cwd ?? ""}\u0001${sessionModel ?? ""}`;
+
 /**
  * Snapshot for one project and session model. Every backend call goes through one
- * queue, so reads and writes apply in the order they were issued. A snapshot is
- * only exposed for the project it was read for, so switching scope or project can
- * never show — or edit against — the previous one's layers.
+ * queue, so reads and writes apply in the order they were issued. Snapshots are
+ * kept per (project, session model) key, and one is only exposed for the key it
+ * was read with, so switching scope can never show — or edit against — another
+ * project's layers. A bulk replace rewrites the files behind our back, so its
+ * revision drops the whole cache.
+ *
+ * Keeping them is what makes the scope row usable: a scope read once renders in
+ * the very same commit that switches to it, instead of blanking the table to a
+ * loading line and re-mounting it, which reflowed the whole settings page for a
+ * few frames on every switch.
  */
-function useModelRoleState(cwd: string | null, sessionModel: string | null): ModelRoleState {
-	const [loaded, setLoaded] = useState<{ cwd: string | null; value: ModelRoleSnapshot } | null>(null);
+function useModelRoleState(
+	cwd: string | null,
+	sessionModel: string | null,
+	prefetchCwd: string | null,
+): ModelRoleState {
+	const [snapshots, setSnapshots] = useState<Record<string, ModelRoleSnapshot>>({});
 	const [error, setError] = useState<string | null>(null);
 	const [reads, setReads] = useState(0);
 	const [writes, setWrites] = useState(0);
@@ -54,6 +69,7 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 	const latest = useRef({ cwd, sessionModel });
 	latest.current = { cwd, sessionModel };
 	const queue = useRef<Promise<unknown>>(Promise.resolve());
+	const key = cacheKey(cwd, sessionModel);
 
 	const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
 		const run = queue.current.then(task, task);
@@ -61,9 +77,19 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 		return run;
 	}, []);
 
+	// A bulk replace rewrites every layer behind our back: drop the cached ones (the shown
+	// layer keeps its rows until the re-read lands, so the table never blanks) and re-read.
+	const seenRevision = useRef(revision);
+	useEffect(() => {
+		if (seenRevision.current === revision) return;
+		seenRevision.current = revision;
+		setSnapshots((all) => (all[key] ? { [key]: all[key] } : {}));
+	}, [revision, key]);
+
 	const refresh = useCallback(() => {
 		const callCwd = cwd;
 		const callModel = sessionModel;
+		const callKey = cacheKey(callCwd, callModel);
 		const isLatest = () => latest.current.cwd === callCwd && latest.current.sessionModel === callModel;
 		setError(null);
 		setReads((n) => n + 1);
@@ -72,7 +98,7 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 				// A read superseded by a newer project or session model is skipped.
 				if (!isLatest()) return;
 				const value = await ompModelRolesRead(callCwd, callModel);
-				if (isLatest()) setLoaded({ cwd: callCwd, value });
+				if (isLatest()) setSnapshots((all) => ({ ...all, [callKey]: value }));
 			} catch (e) {
 				if (isLatest()) setError(errMsg(e));
 			} finally {
@@ -85,16 +111,37 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 		refresh();
 	}, [refresh]);
 
+	// Warm the other scope's key so the first switch to it renders its real rows instead
+	// of a loading line. A failure is silent: the switch itself re-reads and reports it.
+	const warmKey = cacheKey(prefetchCwd, sessionModel);
+	const warm = useCallback(() => {
+		if (warmKey === key || snapshots[warmKey]) return;
+		void enqueue(async () => {
+			try {
+				const value = await ompModelRolesRead(prefetchCwd, sessionModel);
+				setSnapshots((all) => (all[warmKey] ? all : { ...all, [warmKey]: value }));
+			} catch {
+				/* the switch to that scope re-reads and shows the error there */
+			}
+		});
+	}, [prefetchCwd, sessionModel, warmKey, key, snapshots, enqueue]);
+
+	useEffect(() => {
+		warm();
+	}, [warm]);
+
 	const write = useCallback(
 		(scope: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => {
 			const callCwd = cwd;
 			const callModel = sessionModel;
+			const callKey = cacheKey(callCwd, callModel);
 			setWrites((n) => n + 1);
 			return enqueue(async () => {
 				try {
 					const next = await ompModelRolesSet(callCwd, scope, table, name, value, callModel);
-					// A response for a scope/project the user already left must not replace the current snapshot.
-					if (latest.current.cwd === callCwd) setLoaded({ cwd: callCwd, value: next });
+					// A response for a project the user already left still lands in that project's
+					// cache entry; the shown table only reads the entry of the current key.
+					setSnapshots((all) => ({ ...all, [callKey]: next }));
 					// Config readers elsewhere (the model picker, other settings pages) must re-read before writing.
 					useOmpConfigStore.getState().invalidate();
 				} finally {
@@ -106,7 +153,7 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 	);
 
 	return {
-		snapshot: loaded && loaded.cwd === cwd ? loaded.value : null,
+		snapshot: snapshots[key] ?? null,
 		loading: reads > 0,
 		error,
 		writing: writes > 0,
@@ -136,8 +183,13 @@ export function AgentModelAssignmentsPanel({
 	const [replaceOpen, setReplaceOpen] = useState(false);
 	const [adding, setAdding] = useState(false);
 	const { t } = useT();
-	const { scope, projectPath, projectName } = roleScope;
-	const { snapshot, loading, error, writing, reload, write } = useModelRoleState(projectPath, sessionModel);
+	const { scope, projectPath, projectName, pick } = roleScope;
+	// The scope the user can flip to next; warming its read keeps that flip from blanking the table.
+	const otherCwd = scope === "global" ? pick : null;
+	const { snapshot, loading, error, writing, reload, write } = useModelRoleState(projectPath, sessionModel, otherCwd);
+	// Height of the last rendered table, reserved by the loader so the card never collapses.
+	const tableRef = useRef<HTMLDivElement>(null);
+	const [tableHeight, setTableHeight] = useState<number | undefined>(undefined);
 
 	useEffect(() => {
 		void useModelCatalog.getState().refresh();
@@ -171,6 +223,12 @@ export function AgentModelAssignmentsPanel({
 		[snapshot, projectLayer, sessionModel],
 	);
 	const roleNames = useMemo(() => new Set(rows.filter((r) => r.kind === "role").map((r) => r.name)), [rows]);
+
+	// Remember the table's rendered height so a later loading line can hold that space.
+	useEffect(() => {
+		const height = tableRef.current?.offsetHeight;
+		if (height) setTableHeight(height);
+	}, [snapshot, rows.length]);
 	const users = useMemo(() => {
 		const layers = projectLayer ? [projectLayer.modelRoles, globalRoles] : [globalRoles];
 		const cycleOrder = asStringList(ompEntries.find((e) => e.key === "cycleOrder")?.value);
@@ -253,7 +311,9 @@ export function AgentModelAssignmentsPanel({
 				)}
 
 				{snapshot === null && !error && (
-					<div className="flex items-center gap-2 px-4 py-3 text-xs text-[var(--text-dim)]">
+					// Reserve the table's height: a one-line loader collapsed the card and reflowed
+					// the whole page for a few frames on every scope switch.
+					<div className="flex items-center gap-2 px-4 py-3 text-xs text-[var(--text-dim)]" style={{ minHeight: tableHeight }}>
 						<Loader2 className="h-3.5 w-3.5 animate-spin" />
 						{t("settingsModels.loadingRolesText")}
 					</div>
@@ -264,7 +324,7 @@ export function AgentModelAssignmentsPanel({
 				)}
 
 				{snapshot !== null && (
-					<div key={`${scope}\u0001${projectPath ?? ""}`} data-field-id="modelRolesTable">
+					<div ref={tableRef} data-field-id="modelRolesTable">
 						<RoleAssignmentTable rows={rows} query={query.trim()} ctx={ctx} />
 					</div>
 				)}

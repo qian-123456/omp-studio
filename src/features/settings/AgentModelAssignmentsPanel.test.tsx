@@ -95,6 +95,27 @@ describe("模型角色 scope row", () => {
 
 		await waitFor(() => expect(rolesRead.mock.calls.length).toBe(before + 1));
 	});
+
+	it("renders a scope's rows on the switch itself once it has been read, never blanking the table", async () => {
+		useSessions.setState({
+			workspaces: [{ id: "w1", name: "alpha", path: "/repo/alpha", kind: "project", sort: 0, mode: "code" }],
+		});
+		render(<Harness />);
+		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
+		// The panel warms the project layer while the global one is shown, so the flip is instant.
+		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith("/repo/alpha", null));
+
+		fireEvent.click(screen.getByRole("radio", { name: "项目" }));
+
+		// Same commit as the switch: rows, not the "reading" placeholder.
+		expect(screen.getByTestId("role-table")).toBeTruthy();
+		expect(document.querySelector('[data-row-kind="role"][data-row-name="default"]')).toBeTruthy();
+		expect(screen.queryByText("正在读取模型角色")).toBeNull();
+
+		fireEvent.click(screen.getByRole("radio", { name: "全局" }));
+		expect(screen.getByTestId("role-table")).toBeTruthy();
+		expect(screen.queryByText("正在读取模型角色")).toBeNull();
+	});
 });
 
 describe("模型角色 添加角色", () => {
