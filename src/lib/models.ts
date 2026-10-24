@@ -126,6 +126,24 @@ export function parseModels(data: unknown): ModelOption[] {
 	return out;
 }
 
+/**
+ * First candidate that names a model (non-empty key), resolved against the catalog.
+ * `??` is not enough: a live `get_state` can carry an empty/partial `model` (`""`, `{}`)
+ * that is non-nullish yet resolves to the placeholder while the session meta knows the
+ * real one. An empty or unloaded catalog never matters here: a bare key resolves to
+ * itself.
+ */
+export function pickCurrentModel(
+	candidates: readonly unknown[],
+	availableModels?: ModelOption[] | null,
+): CurrentModelSelection {
+	for (const c of candidates) {
+		const r = resolveCurrentModel(c, availableModels);
+		if (r.value) return r;
+	}
+	return resolveCurrentModel(null, availableModels);
+}
+
 export function resolveCurrentModel(
 	modelState: unknown,
 	availableModels?: ModelOption[] | null,

@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Bot, Check, ChevronDown, ChevronUp, Clock, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, ChevronUp, Clock, X } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { claimEscape, isEscapeClaimed } from "../../../lib/escapeClaim";
 import type { SubagentInfo } from "../../../stores/live";
@@ -20,6 +20,9 @@ import {
 	elapsedMs,
 	flattenTree,
 	moreLabel,
+	collapseTree,
+	descendantStats,
+	type DescendantStats,
 	roleTone,
 	shouldAutoExpand,
 	statusSummary,
@@ -128,6 +131,9 @@ interface RowCtx {
 	onOpen: (id: string) => void;
 	onHover: (id: string | null, el?: Element) => void;
 	perRowModel: boolean;
+	stats: Map<string, DescendantStats>;
+	collapsed: ReadonlySet<string>;
+	onToggle: (id: string) => void;
 }
 
 function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
@@ -142,6 +148,8 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 				const model = formatShortModel(row?.model ?? info.progress?.resolvedModel);
 				const sub =
 					n.state === "failed" ? act.text : "";
+				const st = ctx.stats.get(n.id);
+				const isCollapsed = ctx.collapsed.has(n.id);
 				return (
 					<li key={n.id}>
 						<div
@@ -182,6 +190,24 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 									{role}
 								</span>
 							)}
+							{st && st.total > 0 && (
+								<button
+									type="button"
+									aria-expanded={!isCollapsed}
+									aria-label={`${isCollapsed ? "展开" : "收起"} ${title} 的 ${st.total} 个下级子代理`}
+									title={isCollapsed ? "展开下级子代理" : "收起下级子代理"}
+									onClick={(e) => {
+										e.stopPropagation();
+										ctx.onToggle(n.id);
+									}}
+									onKeyDown={(e) => e.stopPropagation()}
+									className="flex h-[18px] shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-[10.5px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+								>
+									{isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+									<span>{st.total}</span>
+									{st.running > 0 && <span className="text-[var(--status-info)]">· {st.running} 运行</span>}
+								</button>
+							)}
 							{ctx.perRowModel && model && (
 								<span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-40)]">{model}</span>
 							)}
@@ -218,6 +244,7 @@ export function TopCapsule() {
 	const [sheetId, setSheetId] = useState<string | null>(null);
 	const [open, setOpen] = useState(false);
 	const [showAll, setShowAll] = useState(false);
+	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 	const [hover, setHover] = useState<{ id: string; el: Element } | null>(null);
 	const [now, setNow] = useState(() => Date.now());
 	const anchorRef = useRef<HTMLDivElement>(null);
@@ -236,6 +263,7 @@ export function TopCapsule() {
 		setShowAll(false);
 		setHover(null);
 		seenRef.current = new Set();
+		setCollapsed(new Set());
 	}, [selectedSessionId]);
 
 	// A new unfinished subagent re-expands the panel.
@@ -256,11 +284,21 @@ export function TopCapsule() {
 	}, [open, counts.running]);
 
 	const tree = useMemo(() => buildSubagentTree(subagents), [subagents]);
+	const stats = useMemo(() => descendantStats(tree), [tree]);
+	// Collapsed parents hide their descendants before the row cap is applied,
+	// so hidden rows never count toward the "还有 N 个" overflow.
+	const visibleTree = useMemo(() => collapseTree(tree, collapsed), [tree, collapsed]);
 	const capped = useMemo(
-		() => (showAll ? { roots: tree, hidden: 0, hiddenAllDone: true } : capTree(tree, MAX_VISIBLE_ROWS)),
-		[tree, showAll],
+		() => (showAll ? { roots: visibleTree, hidden: 0, hiddenAllDone: true } : capTree(visibleTree, MAX_VISIBLE_ROWS)),
+		[visibleTree, showAll],
 	);
 	const visibleIds = useMemo(() => flattenTree(capped.roots).map((n) => n.id), [capped]);
+	const toggleCollapsed = (id: string) =>
+		setCollapsed((prev) => {
+			const next = new Set(prev);
+			if (!next.delete(id)) next.add(id);
+			return next;
+		});
 	const parentName = useMemo(() => {
 		const m: Record<string, string> = {};
 		for (const n of flattenTree(tree)) {
@@ -333,6 +371,9 @@ export function TopCapsule() {
 	const sharedModel = modelSet.size === 1 ? [...modelSet][0] : "";
 	const perRowModel = modelSet.size > 1;
 	const ctx: RowCtx = {
+		stats,
+		collapsed,
+		onToggle: toggleCollapsed,
 		subagents,
 		rows,
 		selectedId: sheetId,
@@ -395,7 +436,7 @@ export function TopCapsule() {
 							<TreeRows nodes={capped.roots} ctx={ctx} />
 						</ul>
 					</div>
-					{(capped.hidden > 0 || (showAll && flattenTree(tree).length > MAX_VISIBLE_ROWS)) && (
+					{(capped.hidden > 0 || (showAll && flattenTree(visibleTree).length > MAX_VISIBLE_ROWS)) && (
 						<button
 							type="button"
 							onClick={() => setShowAll(!showAll)}

@@ -2,6 +2,7 @@
  * held-queue bar + composer. `compact` = embedded side-chat mode. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDocumentVisible } from "./useDocumentVisible";
 import { ArrowDown, Loader2 } from "lucide-react";
 import type {
 	PendingUiRequest,
@@ -200,7 +201,12 @@ export function SessionView({
 	// A session driven by a terminal `omp` is observed read-only: nothing streams
 	// into the live store, so re-read the appended transcript tail whenever the
 	// catalog reports new activity (its updatedAt follows the last message).
-	const externalTick = external ? meta?.updatedAt : undefined;
+	// SessionView is only ever mounted for the session being viewed (main pane
+	// keyed by selectedSessionId, or the visible side chat); the one "mounted
+	// but not looked at" case is a hidden app window, which skips the read and
+	// catches up once when it becomes visible again (effect deps change).
+	const docVisible = useDocumentVisible();
+	const externalTick = external && docVisible ? meta?.updatedAt : undefined;
 	useEffect(() => {
 		if (externalTick === undefined) return;
 		let cancelled = false;

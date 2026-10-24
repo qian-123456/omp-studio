@@ -194,3 +194,21 @@ describe("titles and summary", () => {
 		expect(statusSummary({ running: 0, done: 5, failed: 2 })).toEqual({ mode: "mixed", done: 5, failed: 2 });
 	});
 });
+
+import { collapseTree, descendantStats } from "./subagentTree";
+
+describe("collapseTree / descendantStats", () => {
+	const mk = (id: string, state: "running" | "done", children: any[] = []) => ({ id, state, children });
+	const forest = [mk("A", "running", [mk("B", "running", [mk("C", "done")])]), mk("D", "done")];
+	it("drops children of collapsed nodes only", () => {
+		const out = collapseTree(forest as any, new Set(["B"]));
+		expect(out[0].children[0].children).toEqual([]);
+		expect(collapseTree(forest as any, new Set())).toBe(forest);
+	});
+	it("counts descendants at any depth", () => {
+		const s = descendantStats(forest as any);
+		expect(s.get("A")).toEqual({ total: 2, running: 1 });
+		expect(s.get("B")).toEqual({ total: 1, running: 0 });
+		expect(s.get("D")).toEqual({ total: 0, running: 0 });
+	});
+});

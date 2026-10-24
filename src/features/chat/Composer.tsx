@@ -174,7 +174,7 @@ import {
 	buildSetModelPayload,
 	type ModelOption,
 	parseModels,
-	resolveCurrentModel,
+	pickCurrentModel,
 	resolveThinkingLevels,
 	thinkingChipState,
 	toModelKey,
@@ -819,7 +819,8 @@ export function Composer({
 	const current = useMemo(
 		// A read-only (terminal-driven) session has no live process of ours: its model
 		// is whatever the transcript last recorded, not a leftover get_state frame.
-		() => resolveCurrentModel(readonly ? (sessionMeta?.model ?? state.model) : (state.model ?? sessionMeta?.model), models),
+		() =>
+			pickCurrentModel(readonly ? [sessionMeta?.model, state.model] : [state.model, sessionMeta?.model], models),
 		[readonly, state.model, sessionMeta?.model, models],
 	);
 
@@ -889,7 +890,7 @@ export function Composer({
 		ro.observe(el);
 		return () => ro.disconnect();
 	}, []);
-	const modelLabel = current.label || sessionMeta?.model || (models === null ? "加载中" : "选择模型");
+	const modelLabel = current.value ? current.label : models === null ? "加载中" : "选择模型";
 	const thinkingKind = thinkingChipState(thinkingLevels, currentModelOption?.reasoning).kind;
 	const toolbarTier = pickToolbarTier({
 		width: toolbarWidth,
