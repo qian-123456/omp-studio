@@ -52,7 +52,7 @@ Under the **Git** tab, the **Changes** view lists all modified, added, deleted, 
 Git worktrees allow multiple agents to modify different branches in the same repository simultaneously without file collisions.
 
 Under **Git ▸ Worktrees**:
-1. Click **New parallel worktree** to check out a new branch into `.worktrees/<name>`.
+1. Click **New parallel worktree** to check out a new branch into `.worktrees/<name>`. Always use distinctive, task-specific names (e.g. `feat-sync`, `fix-login`) rather than vague generic names like `temp` or `test`.
 2. Launch distinct agent sessions in separate worktrees to handle bugs and features concurrently.
 3. Sync from `main` or merge branches with automated conflict pre-checks. If a conflict occurs, launch an AI session to resolve conflicts automatically.
 4. Set delivery mode in **Settings ▸ General ▸ Git ▸ Delivery mode**: Create a Pull Request or Merge & Push directly.
