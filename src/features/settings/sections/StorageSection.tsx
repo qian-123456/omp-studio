@@ -45,6 +45,7 @@ export function StorageSection() {
 	const { t } = useT();
 	const [overview, setOverview] = useState<StorageOverview | null>(null);
 	const [sessions, setSessions] = useState<StorageSessionsOverview | null>(null);
+	const [cleanable, setCleanable] = useState<{ count: number; bytes: number } | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [days, setDays] = useState(String(DEFAULT_STALE_DAYS));
@@ -53,9 +54,10 @@ export function StorageSection() {
 
 	const refresh = useCallback(async () => {
 		try {
-			const [o, s] = await Promise.all([storageOverview(), storageSessionsOverview()]);
+			const [o, s, c] = await Promise.all([storageOverview(), storageSessionsOverview(), storageImagesPreview(drafts())]);
 			setOverview(o);
 			setSessions(s);
+			setCleanable(c);
 			setError(null);
 			// Drop selections that no longer exist.
 			const ids = new Set(s.projects.flatMap((p) => p.sessions.map((x) => x.id)));
@@ -184,12 +186,21 @@ export function StorageSection() {
 				<SettingRow
 					label={t("settingsSectionsStorage.storage.unusedImagesLabel")}
 					description={t("settingsSectionsStorage.storage.unusedImagesDesc")}
-					hint={overview ? t("settingsSectionsStorage.storage.currentImagesHint", { count: overview.images.count, bytes: formatBytes(overview.images.bytes) }) : t("settingsSectionsStorage.storage.loading")}
+					hint={
+						overview && cleanable
+							? t(cleanable.count > 0 ? "settingsSectionsStorage.storage.imagesHintCleanable" : "settingsSectionsStorage.storage.imagesHintNone", {
+									count: overview.images.count,
+									bytes: formatBytes(overview.images.bytes),
+									cleanCount: cleanable.count,
+									cleanBytes: formatBytes(cleanable.bytes),
+								})
+							: t("settingsSectionsStorage.storage.loading")
+					}
 					control={
 						<Button
 							icon={Trash2}
 							loading={busy === "images"}
-							disabled={busy !== null || !overview}
+							disabled={busy !== null || !overview || !cleanable || cleanable.count === 0}
 							onClick={() => void cleanImages()}
 						>
 							{t("settingsSectionsStorage.storage.cleanImagesBtn")}
