@@ -13,26 +13,24 @@ import { useT } from "../../stores/language";
 export interface GroupStatusCounts {
 	working: number;
 	awaiting: number;
-	error: number;
-	unread: number;
 }
 
-/** Computes counts of attention/status sessions for a group or list of subgroups (R15) */
+/**
+ * Counts live-actionable sessions (working / awaiting an answer) for a group.
+ * Unread and error/interrupted sessions are deliberately NOT counted: both are
+ * sticky history flags on thousands of old transcripts (unread is set for any
+ * turn written by a non-app process, error/interrupted comes from the transcript
+ * tail) so a collapsed header would show permanent, unactionable numbers.
+ */
 export function getGroupStatusCounts(
 	sessions: SessionMeta[] | BranchSubgroup[],
 ): GroupStatusCounts {
 	let working = 0;
 	let awaiting = 0;
-	let error = 0;
-	let unread = 0;
 
 	const check = (s: SessionMeta) => {
 		if (s.status === "working") working++;
 		else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") awaiting++;
-		else if (s.status === "error" || s.status === "interrupted") error++;
-		// Unread and 待验收 are one concept (blue dot), counted once per session
-		// and independent of status so a 待回复 + unread row keeps its bubble.
-		if (s.unread || s.status === "review" || s.pending === "review") unread++;
 	};
 
 	for (const item of sessions) {
@@ -42,17 +40,13 @@ export function getGroupStatusCounts(
 			check(item);
 		}
 	}
-	return { working, awaiting, error, unread };
+	return { working, awaiting };
 }
 
 /** Renders status bubbles per RFC palette (V2, R15) - only shown when group is collapsed */
 export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 	const { t } = useT();
-	const hasAny =
-		counts.working > 0 ||
-		counts.awaiting > 0 ||
-		counts.error > 0 ||
-		counts.unread > 0;
+	const hasAny = counts.working > 0 || counts.awaiting > 0;
 	if (!hasAny) return null;
 
 	return (
@@ -73,24 +67,6 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 				>
 					<span>{counts.awaiting}</span>
 					<span className="@max-[220px]:hidden"> {t("sessions.awaitingShort")}</span>
-				</span>
-			)}
-			{counts.unread > 0 && (
-				<span
-					title={t("sessions.unreadSessionsCount", { count: counts.unread })}
-					className="inline-flex items-center gap-1 text-blue-400 font-mono text-[10px] font-medium"
-				>
-					<span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-					<span>{counts.unread}</span>
-				</span>
-			)}
-			{counts.error > 0 && (
-				<span
-					title={t("sessions.errorSessionsCount", { count: counts.error })}
-					className="inline-flex items-center gap-1 text-red-400 font-mono text-[10px] font-medium"
-				>
-					<span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
-					<span>{counts.error}</span>
 				</span>
 			)}
 		</span>
