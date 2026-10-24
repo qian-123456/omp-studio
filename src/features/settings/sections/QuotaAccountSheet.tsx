@@ -199,6 +199,25 @@ export function QuotaAccountSheet({
 			setLoggingOutKey(null);
 		}
 	};
+	const handleLogoutAll = async () => {
+		if (loggingOutKey) return;
+		const ok = await confirmDialog(
+			`这会清除「${brand.name}」保存在本地的全部授权凭据；如果有多个账号，它们都会退出。`,
+			{ title: "清除全部授权", danger: true, okLabel: "清除全部授权" },
+		);
+		if (!ok) return;
+		setLoggingOutKey("all");
+		try {
+			await oauthLogout(provider.providerId, null, null, true);
+			toast.success(`已清除 ${brand.name} 的全部本地授权`);
+			onClose();
+			await onRefresh();
+		} catch (err) {
+			toast.error(errMsg(err));
+		} finally {
+			setLoggingOutKey(null);
+		}
+	};
 
 	if (loginOpen) {
 		return (
@@ -404,6 +423,16 @@ export function QuotaAccountSheet({
 								{totalAccounts > 0 ? "添加账号" : "登录账号"}
 							</Button>
 						)}
+						<Button
+							variant="danger"
+							size="sm"
+							className="whitespace-nowrap"
+							loading={loggingOutKey === "all"}
+							disabled={loggingOutKey !== null}
+							onClick={() => void handleLogoutAll()}
+						>
+							清除全部授权
+						</Button>
 					</div>
 				</div>
 			</div>

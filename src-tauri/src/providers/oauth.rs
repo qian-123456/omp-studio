@@ -537,12 +537,13 @@ pub async fn oauth_login_status() -> Result<Option<serde_json::Value>, String> {
     }
 }
 
-/// Soft-disable stored credentials for a provider (optionally only one account).
+/// Soft-disable stored credentials for one identified account, or all accounts when explicitly requested.
 pub fn logout_credentials_conn(
     conn: &mut rusqlite::Connection,
     provider_id: &str,
     email: Option<&str>,
     account_id: Option<&str>,
+    logout_all: bool,
 ) -> Result<u32, String> {
     let email = email.map(str::trim).filter(|s| !s.is_empty());
     let account_id = account_id.map(str::trim).filter(|s| !s.is_empty());
@@ -580,7 +581,6 @@ pub fn logout_credentials_conn(
         } else if let Some(a) = d_acct {
             format!("account:{a}")
         } else {
-            // Credentials with no identity (e.g. oauth + api_key rows of one login) are one account.
             "unnamed".to_string()
         };
         identities.insert(ident);
@@ -595,20 +595,16 @@ pub fn logout_credentials_conn(
         }
     }
 
-    if matched.is_empty() {
-        // Stored credentials with no identity at all (e.g. devin: the email shown
-        // in the UI comes from the usage API, not from agent.db) cannot be
-        // matched against a filter; they are by definition the one account.
-        let only_unnamed = identities.len() == 1 && identities.contains("unnamed");
-        // An explicit account filter that matched nothing must never fall back
-        // to "log out whatever is there" when the rows do carry an identity: a
-        // stale account row would otherwise sign the user out of a different
-        // account.
-        if (email.is_some() || account_id.is_some()) && !only_unnamed {
-            return Err("未找到匹配的授权账号，未退出任何账号".to_string());
+    if logout_all {
+        matched = rows.iter().map(|(id, _, _)| *id).collect();
+    } else if matched.is_empty() {
+        if email.is_some() || account_id.is_some() {
+            return Err("未找到匹配的授权账号；若无法精确识别，请使用清除全部授权".to_string());
         }
-        if identities.len() > 1 {
-            return Err("该供应商配置了多个授权账号，请指定要退出的账号".to_string());
+        if identities.len() > 1 || identities.contains("unnamed") {
+            return Err(
+                "无法唯一识别授权账号；若要清除该供应商的所有授权，请使用清除全部授权".to_string(),
+            );
         }
         matched = rows.iter().map(|(id, _, _)| *id).collect();
     }
@@ -637,6 +633,7 @@ pub async fn oauth_logout(
     provider_id: &str,
     email: Option<&str>,
     account_id: Option<&str>,
+    logout_all: bool,
 ) -> Result<u32, String> {
     cleanup_active(provider_id).await;
     let db_path = super::omp_config::home_agent_dir().join("agent.db");
@@ -649,7 +646,7 @@ pub async fn oauth_logout(
         let mut conn =
             rusqlite::Connection::open(&db_path).map_err(|e| format!("打开 agent.db 失败: {e}"))?;
         let _ = conn.busy_timeout(Duration::from_secs(5));
-        logout_credentials_conn(&mut conn, &pid, em.as_deref(), ac.as_deref())
+        logout_credentials_conn(&mut conn, &pid, em.as_deref(), ac.as_deref(), logout_all)
     })
     .await
     .map_err(|e| format!("退出登录失败: {e}"))??;
@@ -713,7 +710,7 @@ mod tests {
         let mut conn = logout_db();
         add_cred(&conn, "devin", "email:a@x.com", r#"{"email":"a@x.com"}"#);
         assert_eq!(
-            logout_credentials_conn(&mut conn, "devin", None, None),
+            logout_credentials_conn(&mut conn, "devin", None, None, false),
             Ok(1)
         );
         assert_eq!(active(&conn), 0);
@@ -726,7 +723,7 @@ mod tests {
         add_cred(&conn, "p", "email:b@x.com", r#"{"email":"b@x.com"}"#);
         add_cred(&conn, "q", "email:a@x.com", r#"{"email":"a@x.com"}"#);
         assert_eq!(
-            logout_credentials_conn(&mut conn, "p", Some("a@x.com"), None),
+            logout_credentials_conn(&mut conn, "p", Some("a@x.com"), None, false),
             Ok(1)
         );
         assert_eq!(active(&conn), 2);
@@ -737,32 +734,45 @@ mod tests {
         let mut conn = logout_db();
         add_cred(&conn, "p", "email:a@x.com", r#"{"email":"a@x.com"}"#);
         add_cred(&conn, "p", "email:b@x.com", r#"{"email":"b@x.com"}"#);
-        assert!(logout_credentials_conn(&mut conn, "p", Some("c@x.com"), None).is_err());
-        assert!(logout_credentials_conn(&mut conn, "p", None, None).is_err());
+        assert!(logout_credentials_conn(&mut conn, "p", Some("c@x.com"), None, false).is_err());
+        assert!(logout_credentials_conn(&mut conn, "p", None, None, false).is_err());
         assert_eq!(active(&conn), 2);
     }
 
     #[test]
-    fn logout_unnamed_oauth_and_api_key_rows_is_one_account() {
+    fn anonymous_credentials_require_explicit_provider_wide_logout() {
         let mut conn = logout_db();
         add_cred(&conn, "devin", "", r#"{"access":"x"}"#);
+        add_cred(&conn, "devin", "", r#"{"access":"another-account"}"#);
+        add_cred(
+            &conn,
+            "other",
+            "email:keep@x.com",
+            r#"{"email":"keep@x.com"}"#,
+        );
         conn.execute(
             "INSERT INTO auth_credentials (provider, credential_type, identity_key, data) \
              VALUES ('devin', 'api_key', NULL, '{\"key\":\"y\"}')",
             [],
         )
         .unwrap();
-        // Rows carry no identity, so a filter (the email shown in the UI comes
-        // from the usage API, not agent.db) cannot match; the unnamed rows are
-        // the only possible account and must still be logged out.
+        assert!(logout_credentials_conn(
+            &mut conn,
+            "devin",
+            Some("u@x.com"),
+            Some("user-1"),
+            false
+        )
+        .is_err());
+        assert_eq!(active(&conn), 4);
         assert_eq!(
-            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")),
-            Ok(2)
+            logout_credentials_conn(&mut conn, "devin", None, None, true),
+            Ok(3)
         );
-        assert_eq!(active(&conn), 0);
+        assert_eq!(active(&conn), 1);
     }
 
-    /// One account, explicit filter that matches nothing → error, nothing disabled.
+    /// Stale external identity hints never disable another stored account.
     #[test]
     fn logout_explicit_unmatched_filter_never_falls_back() {
         let mut conn = logout_db();
@@ -772,15 +782,16 @@ mod tests {
             "email:alice@x.com",
             r#"{"email":"alice@x.com"}"#,
         );
-        let err = logout_credentials_conn(&mut conn, "p", Some("bob@x.com"), None).unwrap_err();
+        let err =
+            logout_credentials_conn(&mut conn, "p", Some("bob@x.com"), None, false).unwrap_err();
         assert!(err.contains("未找到匹配的授权账号"), "{err}");
         assert_eq!(active(&conn), 1);
-        let err = logout_credentials_conn(&mut conn, "p", None, Some("acct-bob")).unwrap_err();
+        let err =
+            logout_credentials_conn(&mut conn, "p", None, Some("acct-bob"), false).unwrap_err();
         assert!(err.contains("未找到匹配的授权账号"), "{err}");
         assert_eq!(active(&conn), 1);
-        // The matching filter still works.
         assert_eq!(
-            logout_credentials_conn(&mut conn, "p", Some("alice@x.com"), None),
+            logout_credentials_conn(&mut conn, "p", Some("alice@x.com"), None, false),
             Ok(1)
         );
         assert_eq!(active(&conn), 0);

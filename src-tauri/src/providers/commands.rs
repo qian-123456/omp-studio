@@ -674,12 +674,14 @@ pub async fn oauth_logout(
     provider_id: String,
     email: Option<String>,
     account_id: Option<String>,
+    logout_all: bool,
 ) -> Result<u32, String> {
     super::oauth::oauth_logout(
         &state,
         &provider_id,
         email.as_deref(),
         account_id.as_deref(),
+        logout_all,
     )
     .await
 }

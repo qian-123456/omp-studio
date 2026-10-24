@@ -89,6 +89,34 @@ describe("QuotaAccountSheet", () => {
 		setup();
 		expect(await screen.findByRole("button", { name: "添加账号" })).toBeTruthy();
 	});
+	it("clears all provider credentials only after explicit confirmation", async () => {
+		confirmDialog.mockResolvedValue(true);
+		const onClose = vi.fn();
+		const onRefresh = vi.fn();
+		render(
+			<QuotaAccountSheet
+				isOpen
+				onClose={onClose}
+				provider={provider}
+				now={1000}
+				refreshing={false}
+				onRefresh={onRefresh}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "清除全部授权" }));
+		await waitFor(() => expect(oauthLogout).toHaveBeenCalledWith("anthropic", null, null, true));
+		expect(onClose).toHaveBeenCalled();
+		expect(onRefresh).toHaveBeenCalled();
+	});
+
+	it("does not clear all credentials when the user cancels", async () => {
+		confirmDialog.mockResolvedValue(false);
+		setup();
+		fireEvent.click(screen.getByRole("button", { name: "清除全部授权" }));
+		await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+		expect(oauthLogout).not.toHaveBeenCalled();
+	});
+
 
 	it("handles multi-account logout without closing sheet until last account", async () => {
 		confirmDialog.mockResolvedValue(true);
