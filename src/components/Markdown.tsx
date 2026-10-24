@@ -31,6 +31,7 @@ import { MarkdownSecretChip } from "../features/privacy/SecretChip";
 import { SECRET_CHIP_TAG, rehypeSecretChips } from "../features/privacy/render";
 import { VisualizeBlock } from "../features/chat/visualize/VisualizeBlock";
 import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "../features/chat/visualize/frame";
+import { MermaidBlock } from "../features/chat/MermaidBlock";
 import { healStreamingMarkdown, splitStableBlocks } from "../features/chat/streamingMarkdown";
 import { useRevealText } from "../features/chat/useRevealText";
 
@@ -175,6 +176,16 @@ function PreBlock({
 				sessionId={mdCtx.sessionId}
 			/>
 		);
+	}
+
+	// A closed ```mermaid fence renders as a diagram; an open one (still
+	// streaming) stays a plain code block until its closing fence arrives.
+	if (
+		lang === "mermaid" &&
+		!mdCtx.exportMode &&
+		isFenceClosed(mdCtx.sourceText, node?.position ?? null)
+	) {
+		return <MermaidBlock source={codeText} />;
 	}
 
 	return (
