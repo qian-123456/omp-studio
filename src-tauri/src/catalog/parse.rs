@@ -183,7 +183,10 @@ pub fn read_tail(path: &Path, size: u64) -> std::io::Result<TailInfo> {
         let info = parse_tail(body);
         let next = TAIL_FALLBACKS.iter().copied().find(|w| *w > window);
         match next {
-            Some(w) if info.last_msg.is_none() && start > 0 => window = w,
+            // Also widen while no model is known: a window of tool results (huge
+            // assistant lines push the last model entry out of 64 KB) would
+            // otherwise list the session with no model at all.
+            Some(w) if (info.last_msg.is_none() || info.model.is_none()) && start > 0 => window = w,
             _ => return Ok(info),
         }
     }
@@ -261,7 +264,13 @@ pub fn parse_tail(bytes: &[u8]) -> TailInfo {
                             info.last_assistant = Some(snippet(&text, 200));
                         }
                         if let Some(m) = non_empty(msg.get("model")) {
-                            info.model = Some(m);
+                            // Assistant entries carry the provider separately; keep the
+                            // `provider/model` form `model_change` uses so the UI can
+                            // resolve it against the catalog.
+                            info.model = Some(match non_empty(msg.get("provider")) {
+                                Some(p) if !m.contains('/') => format!("{p}/{m}"),
+                                _ => m,
+                            });
                         }
                         let stop = non_empty(msg.get("stopReason"));
                         info.last_msg = Some(last(LastRole::Assistant, stop, has_calls, ts));
@@ -801,6 +810,28 @@ mod tests {
         let t = read_tail(&path, body.len() as u64).unwrap();
         assert_eq!(t.state(), TailState::Clean);
         assert!(t.last_assistant.unwrap().chars().count() <= 200);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn assistant_model_keeps_provider_and_window_widens_for_it() {
+        let a = r#"{"type":"message","id":"a","timestamp":"T","message":{"role":"assistant","content":[{"type":"text","text":"hi"}],"provider":"prov","model":"m1","stopReason":"stop"}}"#;
+        assert_eq!(parse_tail(a.as_bytes()).model.as_deref(), Some("prov/m1"));
+
+        // The only model entry sits before the 64 KB tail window.
+        let dir = std::env::temp_dir().join(format!("ompws-parse-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        let big = "x".repeat(40 * 1024);
+        let tool = |id: &str| {
+            format!(
+                r#"{{"type":"message","id":"{id}","timestamp":"T","message":{{"role":"toolResult","toolCallId":"c","toolName":"bash","content":[{{"type":"text","text":"{big}"}}]}}}}"#
+            ) + "\n"
+        };
+        let body = format!("{a}\n{}{}{}", tool("r1"), tool("r2"), tool("r3"));
+        std::fs::write(&path, &body).unwrap();
+        let t = read_tail(&path, body.len() as u64).unwrap();
+        assert_eq!(t.model.as_deref(), Some("prov/m1"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

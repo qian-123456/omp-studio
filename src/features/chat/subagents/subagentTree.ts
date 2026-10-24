@@ -60,6 +60,18 @@ export function buildSubagentTree(
 			parentOf.set(child, parent);
 		}
 	}
+	// On-disk agents carry their ancestry in the id (`Parent.Child`, matching
+	// omp's nested `<Parent>/<Parent>.<Child>.jsonl` layout): the longest tracked
+	// dotted prefix is the parent. Live progress above wins when it already set one.
+	for (const id of ids) {
+		if (parentOf.has(id)) continue;
+		for (let dot = id.lastIndexOf("."); dot > 0; dot = id.lastIndexOf(".", dot - 1)) {
+			const parent = id.slice(0, dot);
+			if (!subagents[parent] || isAncestor(id, parent)) continue;
+			parentOf.set(id, parent);
+			break;
+		}
+	}
 
 	const nodes = new Map<string, TreeNode>(
 		ids.map((id) => [id, { id, state: rowState(subagents[id].status), children: [] }]),

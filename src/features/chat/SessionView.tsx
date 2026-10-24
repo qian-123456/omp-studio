@@ -197,6 +197,31 @@ export function SessionView({
 		};
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
 
+	// A session driven by a terminal `omp` is observed read-only: nothing streams
+	// into the live store, so re-read the appended transcript tail whenever the
+	// catalog reports new activity (its updatedAt follows the last message).
+	const externalTick = external ? meta?.updatedAt : undefined;
+	useEffect(() => {
+		if (externalTick === undefined) return;
+		let cancelled = false;
+		const live = useLive.getState().sessions[sessionId];
+		const from = live?.nextOffset ?? 0;
+		getTranscript(sessionId, from, live?.tailId)
+			.then((page) => {
+				if (cancelled) return;
+				// Offset 0 means the initial load has not landed yet: replace, never append.
+				if (page.reset || from === 0) setItems(sessionId, page.items, page.nextOffset, page.tailId);
+				else appendItems(sessionId, page.items, page.nextOffset, page.tailId);
+			})
+			.catch((err) => console.warn("[session] external transcript refresh failed", err))
+			.finally(() => {
+				if (!cancelled) loadTurns();
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [externalTick, sessionId, setItems, appendItems, loadTurns]);
+
 	// Esc while generating aborts the turn — but only when nothing else claims
 	// the key: the composer's slash/@ menus and the selection bubble call
 	// claimEscape, floating layers stop propagation, modals and foreign text

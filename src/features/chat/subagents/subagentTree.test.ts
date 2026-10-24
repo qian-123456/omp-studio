@@ -29,6 +29,19 @@ describe("rowState", () => {
 });
 
 describe("buildSubagentTree", () => {
+	it("nests on-disk agents under their dotted-id parent", () => {
+		const roots = buildSubagentTree({
+			"A.B.C": sub("running"),
+			A: sub("running"),
+			"A.B": sub("running"),
+			"X.Y": sub("running"),
+		});
+		expect(roots.map((r) => r.id).sort()).toEqual(["A", "X.Y"]);
+		const a = roots.find((r) => r.id === "A")!;
+		expect(a.children.map((c) => c.id)).toEqual(["A.B"]);
+		expect(a.children[0].children.map((c) => c.id)).toEqual(["A.B.C"]);
+	});
+
 	it("is flat without parent info; sorted by index within running/finished groups", () => {
 		const roots = buildSubagentTree({
 			b: sub("running", { index: 1 }),
