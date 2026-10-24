@@ -161,7 +161,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							void submit();
 						}}
 						placeholder={t("backlog.capturePlaceholder")}
-						minHeight={expanded ? (variant === "quick" ? 72 : 52) : 32}
+						minHeight={32}
 						maxHeight={variant === "quick" ? 220 : 160}
 						textClass="text-[13px] leading-5"
 						bgClass="bg-transparent"

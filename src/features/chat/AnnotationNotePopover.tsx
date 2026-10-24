@@ -1,7 +1,7 @@
 /** [B] Per-annotation surfaces anchored at a message marker / annotated text:
  * the editable note popover (click) and the read-only hover card (hover). */
 
-import { Trash2 } from "lucide-react";
+import { ArrowUp, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -116,7 +116,7 @@ export function AnnotationNotePopover({
 					}}
 					className="mt-1.5 w-full resize-none rounded-md border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:border-[var(--text-30,var(--border))]"
 				/>
-				<div className="mt-1.5 flex justify-end">
+				<div className="mt-1.5 flex items-center justify-between">
 					<button
 						type="button"
 						onClick={() => {
@@ -128,6 +128,15 @@ export function AnnotationNotePopover({
 					>
 						<Trash2 size={12} />
 						{t("common.delete")}
+					</button>
+					<button
+						type="button"
+						aria-label={t("chatView.selection.confirmAnnotationAria")}
+						title={t("chatView.selection.confirmAnnotationTitle")}
+						onClick={() => finish.current(true)}
+						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
+					>
+						<ArrowUp size={13} strokeWidth={2.5} />
 					</button>
 				</div>
 			</div>

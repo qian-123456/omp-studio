@@ -32,6 +32,40 @@ describe("live reducer — streaming lifecycle", () => {
 		expect(live().streaming).toBe(false);
 	});
 
+	it("awaitingAsyncWork agent_end idles the turn and clears its live rows but keeps running children; turn_end never settles", () => {
+		frame({ type: "agent_start" });
+		frame({ type: "subagent_lifecycle", payload: { id: "a1", status: "started", index: 0 } });
+		frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "task", args: {} });
+		frame({
+			type: "message_update",
+			message: { role: "assistant", content: [{ type: "text", text: "old" }] },
+		});
+		frame({
+			type: "message_end",
+			message: { role: "assistant", content: [{ type: "text", text: "old" }], responseId: "r1", usage: null },
+		});
+		frame({ type: "turn_end", isTerminal: true });
+		expect(live().streaming).toBe(true);
+		frame({ type: "agent_end", isTerminal: false, yielded: false });
+		expect(live().streaming).toBe(true);
+		expect(Object.keys(live().tools)).toEqual(["c1"]);
+		expect(live().liveRequests).toHaveLength(1);
+		// omp ends every tool call before the idle agent_end (detached task included).
+		frame({ type: "tool_execution_end", toolCallId: "c1", result: {} });
+		frame({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true });
+		expect(live().streaming).toBe(false);
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+		expect(live().streamingMessage).toBeNull();
+		expect(live().subagents.a1.status).toBe("running");
+		// Wake-up: nothing of the old turn replays.
+		frame({ type: "agent_start" });
+		expect(live().streaming).toBe(true);
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+		expect(live().subagents.a1.status).toBe("running");
+	});
+
 	it("turnStartedAt: one clock per turn, kept across requests and the turn's end", () => {
 		vi.useFakeTimers();
 		try {

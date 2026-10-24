@@ -96,7 +96,7 @@ function NestedRow({ p }: { p: AgentProgress }) {
 	const status: SubagentStatus = p.status ?? "pending";
 	const { Icon, color, spin } = STATUS_ICON[status];
 	return (
-		<div className="flex items-center gap-1.5 ps-[52px] py-0.5">
+		<div className="flex items-center gap-1.5 ps-[22px] py-0.5">
 			<Icon
 				size={11}
 				className={clsx("shrink-0", spin && "animate-spin")}
@@ -107,6 +107,25 @@ function NestedRow({ p }: { p: AgentProgress }) {
 				{p.currentTool ? ` · ${p.currentTool}` : ""}
 			</span>
 		</div>
+	);
+}
+
+/**
+ * Continuous tree rail for one row (same glyph language as SessionRow's
+ * subgroup spine): the vertical trunk spans the whole row block, including its
+ * tool-detail/nested lines; the last row's trunk stops at the elbow.
+ */
+function Rail({ last }: { last: boolean }) {
+	return (
+		<span aria-hidden className="pointer-events-none absolute left-[3px] top-0 w-[10px]" style={{ bottom: last ? "auto" : 0, height: last ? 13 : undefined }}>
+			<span
+				className={clsx(
+					"absolute left-0 top-0 border-l border-[var(--tree-line)]",
+					last ? "h-full w-full rounded-bl-[6px] border-b" : "bottom-0",
+				)}
+			/>
+			{!last && <span className="absolute left-0 top-[13px] w-full border-t border-[var(--tree-line)]" />}
+		</span>
 	);
 }
 
@@ -128,7 +147,8 @@ function AgentRowView({
 			? row.inflightTaskDetails.progress
 			: null;
 	return (
-		<div>
+		<div className="relative ps-[18px]">
+			<Rail last={last} />
 			<button
 				type="button"
 				onClick={() => onOpen(row)}
@@ -142,9 +162,6 @@ function AgentRowView({
 					.join(" ")}
 				className="group/row flex w-full min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-left hover:bg-[var(--ghost-hover)]"
 			>
-				<span className="w-4 shrink-0 select-none text-center font-mono text-[11px] text-[var(--text-30)]">
-					{last ? "└─" : "├─"}
-				</span>
 				<Icon
 					size={12}
 					className={clsx("shrink-0", spin && "animate-spin")}
@@ -169,7 +186,7 @@ function AgentRowView({
 				)}
 			</button>
 			{row.status === "running" && row.currentTool && (
-				<div className="flex items-center gap-1.5 ps-[52px] font-mono text-[11px] text-[var(--text-30)]">
+				<div className="flex items-center gap-1.5 ps-[22px] font-mono text-[11px] text-[var(--text-30)]">
 					<span className="shrink-0">↳ {row.currentTool}</span>
 					{row.currentToolDetail && (
 						<span className="truncate">{row.currentToolDetail}</span>
@@ -247,8 +264,10 @@ export function TaskToolBlock({
 				fileList,
 				liveSubagents,
 				toolCallId,
+				callStatus: status,
+				resultText,
 			}),
-		[args, taskDetails, fileList, liveSubagents, toolCallId],
+		[args, taskDetails, fileList, liveSubagents, toolCallId, status, resultText],
 	);
 
 	const counts = countStatuses(rows.map((r) => r.status));
@@ -300,7 +319,7 @@ export function TaskToolBlock({
 			/>
 
 			{open && (
-				<div className="flex flex-col gap-0.5 ps-5 pb-1 pt-0.5">
+				<div className="flex flex-col ps-[14px] pb-1 pt-0.5">
 					{visible.map((row, i) => (
 						<AgentRowView
 							key={row.id}
@@ -310,14 +329,16 @@ export function TaskToolBlock({
 						/>
 					))}
 					{hidden > 0 && (
-						<button
-							type="button"
-							onClick={() => setExpandedAll(true)}
-							className="flex items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-						>
-							<span className="w-4 shrink-0 text-center font-mono">└─</span>
-							{t("subagents.more", { count: hidden })}
-						</button>
+						<div className="relative ps-[18px]">
+							<Rail last />
+							<button
+								type="button"
+								onClick={() => setExpandedAll(true)}
+								className="flex items-center gap-1.5 rounded px-1 py-[3px] text-left text-[11px] text-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+							>
+								{t("subagents.more", { count: hidden })}
+							</button>
+						</div>
 					)}
 					{total === 0 && (
 						<div className="px-1 py-0.5 text-[11px] text-[var(--text-30)]">

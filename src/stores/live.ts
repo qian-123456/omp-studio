@@ -363,6 +363,7 @@ function slimSubagent(info: SubagentInfo): SubagentInfo {
 		},
 	};
 }
+
 let nextEchoId = 1;
 
 const ECHO_IMAGE_RE =
@@ -901,13 +902,28 @@ function reduce(
 					: live.thinkingEndedAt;
 			// Tool results are persisted to the transcript; live tool map clears
 			// on the next turn_start implicitly via tool_execution ids.
-			const terminal = frame.isTerminal === true;
-			return terminal
-				? { ...live, thinkingEndedAt, streaming: false, streamingMessage: null }
-				: { ...live, thinkingEndedAt };
+			// `turn_end` carries no terminal flag (only `agent_end` does): it
+			// never ends the run.
+			return { ...live, thinkingEndedAt };
 		}
 		case "agent_end": {
-			if (frame.isTerminal === false) return live;
+			if (frame.isTerminal === false) {
+				// Finished turn that only a background-job result can resume:
+				// the agent is idle (omp reports idle), so stop the turn spinner
+				// and drop the turn's live rows (requests, tools, retries) like a
+				// terminal end: the wake-up / next user turn must not replay them.
+				// Running detached children stay observable through
+				// `live.subagents` (lifecycle / progress frames), not the tool map.
+				if (frame.awaitingAsyncWork !== true) return live;
+				return {
+					...live,
+					streaming: false,
+					streamingMessage: null,
+					tools: {},
+					liveRequests: [],
+					...archiveRetry(live, typeof frame.timestamp === "number" ? frame.timestamp : Date.now()),
+				};
+			}
 			// An aborted turn never delivers the held inputs omp no longer
 			// lists (it withdrew them): their bubbles would read "queued" forever.
 			const pendingUserEchoes = agentEndAborted(frame)

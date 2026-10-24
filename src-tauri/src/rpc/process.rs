@@ -238,7 +238,7 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
             }
         }
         "agent_start" => handle.streaming.store(true, Ordering::SeqCst),
-        "agent_end" if frame.get("isTerminal").and_then(Value::as_bool) != Some(false) => {
+        "agent_end" if crate::catalog::status::agent_end_settles(frame) => {
             handle.streaming.store(false, Ordering::SeqCst);
         }
         _ => {}
@@ -964,6 +964,13 @@ mod tests {
         // Missing isTerminal is terminal-compatible.
         apply_frame(&h, &json!({"type":"agent_start"}));
         apply_frame(&h, &json!({"type":"agent_end"}));
+        assert!(!h.streaming.load(Ordering::SeqCst));
+        // Idle until a background job wakes it: not streaming (prompts go direct).
+        apply_frame(&h, &json!({"type":"agent_start"}));
+        apply_frame(
+            &h,
+            &json!({"type":"agent_end","isTerminal":false,"awaitingAsyncWork":true}),
+        );
         assert!(!h.streaming.load(Ordering::SeqCst));
     }
 

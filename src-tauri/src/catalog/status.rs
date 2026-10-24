@@ -124,19 +124,16 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
                     new_pending = after_dialog_closed(rt, pending);
                 }
             }
-            Some("agent_end") => {
-                let terminal = frame.get("isTerminal").and_then(Value::as_bool) != Some(false);
-                if terminal {
-                    let stop = last_assistant_stop(frame).or_else(|| rt.last_stop_reason.clone());
-                    rt.phase = Phase::Settled;
-                    rt.dialogs.clear();
-                    new_pending = Some(if stop.as_deref() == Some("error") {
-                        PendingKind::Error
-                    } else {
-                        PendingKind::Review
-                    });
-                    unread = Some(true);
-                }
+            Some("agent_end") if agent_end_settles(frame) => {
+                let stop = last_assistant_stop(frame).or_else(|| rt.last_stop_reason.clone());
+                rt.phase = Phase::Settled;
+                rt.dialogs.clear();
+                new_pending = Some(if stop.as_deref() == Some("error") {
+                    PendingKind::Error
+                } else {
+                    PendingKind::Review
+                });
+                unread = Some(true);
             }
             _ => {}
         },
@@ -189,6 +186,16 @@ fn after_dialog_closed(rt: &Runtime, pending: Option<PendingKind>) -> Option<Pen
         Some(PendingKind::Approval | PendingKind::Question) => rt.dialog_pending(),
         other => other.or(rt.dialog_pending()),
     }
+}
+
+/// An `agent_end` that leaves the agent idle: a terminal end, or a non-terminal
+/// one whose only possible resume is a background-job result
+/// (`awaitingAsyncWork`; omp itself goes idle there). Any other
+/// `isTerminal:false` end is a scheduled continuation and stays working.
+/// `turn_end` frames carry no terminal flag and never settle a session.
+pub fn agent_end_settles(frame: &Value) -> bool {
+    frame.get("isTerminal").and_then(Value::as_bool) != Some(false)
+        || frame.get("awaitingAsyncWork").and_then(Value::as_bool) == Some(true)
 }
 
 fn last_assistant_stop(frame: &Value) -> Option<String> {
@@ -417,6 +424,44 @@ mod tests {
         let (rt, pending, _) = run(&[start, q, cancel]);
         assert_eq!(pending, None);
         assert!(rt.dialogs.is_empty());
+    }
+
+    #[test]
+    fn awaiting_async_work_end_settles_and_wake_resumes() {
+        let start = LiveEvent::Process {
+            running: true,
+            exit_code: None,
+        };
+        let begin = [start, frame(json!({"type":"agent_start"}))];
+        // turn_end is never a session-level settle, whatever flags it carries.
+        let (rt, pending, _) = run(&[
+            begin.clone().to_vec(),
+            vec![frame(json!({"type":"turn_end","isTerminal":true}))],
+        ]
+        .concat());
+        assert_eq!(live(&rt, pending), (S::Working, None));
+        // A scheduled continuation stays working.
+        let (rt, pending, _) = run(&[
+            begin.clone().to_vec(),
+            vec![frame(
+                json!({"type":"agent_end","isTerminal":false,"yielded":false}),
+            )],
+        ]
+        .concat());
+        assert_eq!(live(&rt, pending), (S::Working, None));
+        // Idle until a background job wakes it: settled, then the wake resumes.
+        let waiting = frame(
+            json!({"type":"agent_end","isTerminal":false,"yielded":true,"awaitingAsyncWork":true}),
+        );
+        let (rt, pending, unread) = run(&[begin.clone().to_vec(), vec![waiting.clone()]].concat());
+        assert_eq!(live(&rt, pending), (S::Review, Some(P::Review)));
+        assert!(unread);
+        let (rt, pending, _) = run(&[
+            begin.to_vec(),
+            vec![waiting, frame(json!({"type":"agent_start"}))],
+        ]
+        .concat());
+        assert_eq!(live(&rt, pending), (S::Working, Some(P::Review)));
     }
 
     #[test]

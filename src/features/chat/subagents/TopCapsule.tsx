@@ -27,6 +27,7 @@ import {
 	roleTone,
 	shouldAutoExpand,
 	statusSummary,
+	subagentName,
 	subagentTitle,
 } from "./subagentTree";
 import { useSessionSubagents } from "./useSessionSubagents";
@@ -146,8 +147,12 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 				const info = ctx.subagents[n.id];
 				const row = ctx.rows[n.id];
 				const act = activityText(info, row, n.state);
-				const title = subagentTitle(n.id, info, row);
 				const role = info.agent || row?.agent;
+				const name = subagentName(n.id, role);
+				const desc = subagentTitle(n.id, info, row);
+				// Named job: name is primary, description wraps beneath it.
+				const title = name || desc;
+				const detail = name && desc !== n.id && desc !== name ? desc : "";
 				const model = formatShortModel(row?.model ?? info.progress?.resolvedModel);
 				const sub =
 					n.state === "failed" ? act.text : "";
@@ -169,24 +174,31 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 							}}
 							onMouseEnter={(e) => ctx.onHover(n.id, e.currentTarget)}
 							onMouseLeave={() => ctx.onHover(null)}
-							className="glass-row flex h-7 cursor-pointer items-center gap-[7px] rounded-[10px] px-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-							title={title}
+							className="glass-row flex min-h-7 cursor-pointer items-center gap-[7px] rounded-[10px] px-2 py-[3px] text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+							title={detail ? `${name} — ${detail}` : title}
 						>
 							<StatusGlyph state={n.state} />
-							<span
-								className={clsx(
-									"min-w-0 flex-1 truncate",
-									n.state === "done" && "text-[var(--text-60)]",
-									n.state === "waiting" && "text-[var(--text-40)]",
-									(n.state === "running" || n.state === "failed") && "font-semibold",
+							<div className="min-w-0 flex-1">
+								<div
+									className={clsx(
+										"break-words",
+										n.state === "done" && "text-[var(--text-60)]",
+										n.state === "waiting" && "text-[var(--text-40)]",
+										(n.state === "running" || n.state === "failed") && "font-semibold",
+									)}
+								>
+									{title}
+								</div>
+								{detail && (
+									<div className="whitespace-pre-wrap break-words text-[11px] leading-snug text-[var(--text-40)]">
+										{detail}
+									</div>
 								)}
-							>
-								{title}
-							</span>
+							</div>
 							{role && (
 								<span
 									className={clsx(
-										"shrink-0 rounded-md px-1.5 text-[10.5px] font-medium",
+										"shrink-0 whitespace-nowrap rounded-md px-1.5 text-[10.5px] font-medium",
 										ROLE_TINT[roleTone(role)],
 									)}
 								>

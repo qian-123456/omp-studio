@@ -195,6 +195,30 @@ describe("titles and summary", () => {
 	});
 });
 
+import { subagentName } from "./subagentTree";
+
+describe("subagentName", () => {
+	it("keeps dispatcher job names, drops index prefixes", () => {
+		expect(subagentName("I18nSettingsCore", "i18n-flash")).toBe("I18nSettingsCore");
+		expect(subagentName("3-I18nChatA", "i18n-flash")).toBe("I18nChatA");
+	});
+	it("ignores placeholders and bare role ids", () => {
+		expect(subagentName("#2", "task")).toBe("");
+		expect(subagentName("4", "task")).toBe("");
+		expect(subagentName("0-Explore", "explore")).toBe("");
+	});
+	it("uses the leaf of nested ids, keeping attempt suffixes", () => {
+		expect(subagentName("Parent.Child", "task")).toBe("Child");
+		expect(subagentName("0-Parent.1-Child", "task")).toBe("Child");
+		expect(subagentName("Parent.Core-2", "task")).toBe("Core-2");
+		expect(subagentName("0-Parent.2-Core-2", "task")).toBe("Core-2");
+	});
+	it("treats a role-only nested leaf as unnamed", () => {
+		expect(subagentName("Parent.Explore", "explore")).toBe("");
+		expect(subagentName("0-Parent.1-Explore", "explore")).toBe("");
+	});
+});
+
 import { collapseTree, descendantStats } from "./subagentTree";
 
 describe("collapseTree / descendantStats", () => {

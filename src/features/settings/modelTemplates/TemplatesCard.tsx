@@ -6,7 +6,7 @@
  * its rules depend on (with the live percentage), and 应用 / 编辑 / 复制 / 删除.
  * Creating a template captures the current global `modelRoles` on the backend.
  */
-import { Copy, Layers, Loader2, Pencil, Play, Plus, Shield, Trash2 } from "lucide-react";
+import { Copy, Layers, Loader2, Pencil, Play, Plus, Shield, Trash2, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
 	ModelSwitchRule,
@@ -16,7 +16,7 @@ import type {
 	TemplateStoreSnapshot,
 } from "../../../lib/contracts";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
-import { modelTemplateDelete } from "../../../lib/ipc";
+import { modelSwitchUndo, modelTemplateDelete } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
 import { EmptyState } from "../../../components/EmptyState";
 import { Button, Chip, SettingsCard, type ChipTone } from "../ui";
@@ -75,6 +75,7 @@ function TemplateRow({
 	busy,
 	onApply,
 	onEdit,
+	onRestore,
 	onDuplicate,
 	onDelete,
 }: {
@@ -83,6 +84,7 @@ function TemplateRow({
 	providers: ProviderStatus[];
 	busy: boolean;
 	onApply: () => void;
+	onRestore: () => void;
 	onEdit: () => void;
 	onDuplicate: () => void;
 	onDelete: () => void;
@@ -131,6 +133,18 @@ function TemplateRow({
 					</div>
 				</div>
 				<div className="flex shrink-0 flex-wrap items-center gap-1.5">
+					{isCurrent && current?.logId && (
+						<Button
+							size="sm"
+							icon={Undo2}
+							disabled={busy}
+							onClick={onRestore}
+							className="whitespace-nowrap"
+							aria-label={t("modelTemplates.restoreTemplateAria", { name: template.name })}
+						>
+							{t("modelTemplates.restoreBefore")}
+						</Button>
+					)}
 					<Button
 						variant="primary"
 						size="sm"
@@ -203,6 +217,23 @@ export function TemplatesCard({
 	const templates = useMemo(() => inScope(snapshot?.templates ?? [], scope), [snapshot, scope]);
 	const providers = status?.providers ?? [];
 
+	const restore = async (template: ModelTemplate, logId: string) => {
+		const ok = await confirmDialog(t("modelTemplates.restoreConfirm", { template: template.name }), {
+			title: t("modelTemplates.restoreTitle"),
+			okLabel: t("modelTemplates.restoreBefore"),
+		});
+		if (!ok) return;
+		setDeletingId(template.id);
+		try {
+			const result = await modelSwitchUndo(logId);
+			toast.success(result.reason || t("modelTemplates.undoneSuccess"));
+			await useModelTemplatesStore.getState().refresh();
+		} catch (e) {
+			toast.error(t("modelTemplates.restoreFailed", { error: errMsg(e) }));
+		} finally {
+			setDeletingId(null);
+		}
+	};
 	const remove = async (template: ModelTemplate) => {
 		const dependents = snapshot?.rules.filter((r) => r.templateId === template.id).length ?? 0;
 		const extra = dependents > 0 ? t("modelTemplates.deleteDependentsWarning", { count: String(dependents) }) : "";
@@ -256,6 +287,10 @@ export function TemplatesCard({
 					<TemplateRow
 						key={template.id}
 						template={template}
+						onRestore={() => {
+							const logId = currentForScope(snapshot.currents, template.scope)?.logId;
+							if (logId) void restore(template, logId);
+						}}
 						snapshot={snapshot}
 						providers={providers}
 						busy={deletingId === template.id}

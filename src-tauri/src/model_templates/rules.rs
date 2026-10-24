@@ -698,9 +698,6 @@ async fn auto_revert(
     if current.log_id.as_deref() != Some(entry.id.as_str()) {
         return Ok(());
     }
-    if !current.drifted_roles.is_empty() {
-        return Ok(());
-    }
     let Some(rule) = load_rule(state, &entry)? else {
         return Ok(());
     };
@@ -714,6 +711,22 @@ async fn auto_revert(
         Some(pct) => pct <= threshold,
     };
     if !due {
+        return Ok(());
+    }
+    if !current.drifted_roles.is_empty() {
+        // Due, but a manual edit blocks the restore: say so once per switch, not per poll.
+        if notify_due(format!("revert-drift|{}", entry.id), now_millis()) {
+            let _ = crate::notify::send(
+                state,
+                &format!("模型模板未自动恢复（{}）", scope_label(scope)),
+                &format!(
+                    "{}：以下角色已被手动修改，保持不动：{}",
+                    entry.template_name,
+                    current.drifted_roles.join("、")
+                ),
+                true,
+            );
+        }
         return Ok(());
     }
     revert(state, &entry).await
@@ -730,6 +743,12 @@ async fn revert(state: &AppState, entry: &ModelSwitchLogEntry) -> Result<(), Str
         store::mark_log_undone(&conn, &entry.id, &crate::schedules::store::now_rfc3339())?;
     }
     let _ = state.app.emit("model_switch:changed", ());
+    let _ = crate::notify::send(
+        state,
+        &format!("模型模板已自动恢复（{}）", scope_label(&entry.scope)),
+        &format!("{}：额度回落，已恢复为切换前的模型", entry.template_name),
+        true,
+    );
     Ok(())
 }
 
