@@ -51,31 +51,65 @@ export function QuoteBlock({
 	);
 }
 
-/** Numbered quote cards drawn at the top of a sent user bubble. */
-export function QuoteCards({ cards }: { cards: readonly QuoteCard[] }) {
+/** Quote strip: accent bar + muted text clamped to 2 lines, with a visible pill to read the rest. */
+function QuoteStrip({ card, numbered }: { card: QuoteCard; numbered: boolean }) {
 	const { t } = useT();
+	const [expanded, setExpanded] = useState(false);
+	const ref = useRef<HTMLDivElement>(null);
+	const overflowing = useLineClampOverflow(ref, "line-clamp-2", 2, [card.quote]);
 	return (
-		<div className="flex flex-col gap-2 text-[13px] leading-5">
-			{cards.map((c) => (
+		<div className="flex min-w-0 flex-col items-start gap-1">
+			<div className="flex w-full min-w-0 gap-2 border-l-2 border-[var(--accent)] pl-2 text-[12px] leading-relaxed text-[var(--text-60)]">
+				{numbered && (
+					<span className="shrink-0 whitespace-nowrap tabular-nums text-[var(--text-40)]">{card.n}</span>
+				)}
+				<div className="min-w-0 flex-1">
+					{card.label && <div className="break-words text-[11px] text-[var(--text-40)]">{card.label}</div>}
+					{card.quote && (
+						<div
+							ref={ref}
+							className={clsx(
+								"whitespace-pre-wrap break-words",
+								overflowing && !expanded && "line-clamp-2",
+							)}
+						>
+							{card.quote}
+						</div>
+					)}
+				</div>
+			</div>
+			{overflowing && (
+				<button
+					type="button"
+					aria-expanded={expanded}
+					onClick={() => setExpanded((v) => !v)}
+					className="ml-2.5 whitespace-nowrap rounded-full border border-[var(--text-30)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+				>
+					{expanded
+						? t("common.collapse")
+						: t("chat.annotation.expandFull", { count: [...card.quote].length })}
+				</button>
+			)}
+		</div>
+	);
+}
+
+/** Quote/note pairs at the top of a sent user bubble; numbers only when there are several. */
+export function QuoteCards({ cards }: { cards: readonly QuoteCard[] }) {
+	return (
+		<div className="flex flex-col gap-3 text-[13px] leading-5">
+			{cards.map((c, i) => (
 				<div
 					key={c.n}
 					data-testid="user-quote-card"
-					className="rounded-xl bg-[var(--ghost-hover)] px-3 py-2"
+					className={clsx(
+						"flex flex-col gap-1.5",
+						i > 0 && "border-t border-[var(--ghost-hover)] pt-3",
+					)}
 				>
-					<div className="mb-1 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--text-40)]">
-						<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] leading-none tabular-nums text-white">
-							{c.n}
-						</span>
-						<span className="min-w-0 break-words">{c.label ?? t("chat.annotation.quoteLabel")}</span>
-					</div>
-					{c.quote && <QuoteBlock text={c.quote} />}
+					{(c.quote || c.label) && <QuoteStrip card={c} numbered={cards.length > 1} />}
 					{c.comment && (
-						<div className={clsx("whitespace-pre-wrap break-words text-[var(--text)]", c.quote && "mt-1.5")}>
-							<span className="mr-1.5 whitespace-nowrap text-[11px] text-[var(--text-40)]">
-								{t("chat.annotation.noteLabel")}
-							</span>
-							{c.comment}
-						</div>
+						<div className="whitespace-pre-wrap break-words pl-2.5 text-[var(--text)]">{c.comment}</div>
 					)}
 				</div>
 			))}

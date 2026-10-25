@@ -93,8 +93,7 @@ export default defineMessages({
 		"annotation.notePlaceholder": "写下你的批注…",
 		"annotation.keyHint": "Enter 保存 · Shift+Enter 换行 · Esc 取消",
 		"annotation.confirm": "确定",
-		"annotation.noteLabel": "批注",
-		"annotation.quoteLabel": "引用",
+		"annotation.expandFull": "展开全文 · 共 {count} 字",
 
 		"mermaid.diagram": "图表",
 		"mermaid.source": "源码",
@@ -369,8 +368,7 @@ export default defineMessages({
 		"annotation.notePlaceholder": "Write a note…",
 		"annotation.keyHint": "Enter to save · Shift+Enter for newline · Esc to cancel",
 		"annotation.confirm": "Done",
-		"annotation.noteLabel": "Note",
-		"annotation.quoteLabel": "Quote",
+		"annotation.expandFull": "Show all · {count} chars",
 
 		"mermaid.diagram": "Diagram",
 		"mermaid.source": "Source",
