@@ -1,6 +1,6 @@
 [package]
 name = "omp-workspace"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop workbench for OMP agent sessions"
 edition = "2021"
 rust-version = "1.77.2"
