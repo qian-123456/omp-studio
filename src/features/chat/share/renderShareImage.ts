@@ -56,8 +56,17 @@ function fitMathToWidth(root: HTMLElement): () => void {
 	};
 }
 
+/** Visualize snapshots mark themselves `data-share-pending` until their PNG arrives. */
+async function waitForSnapshots(node: HTMLElement, timeoutMs = 20_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (node.querySelector("[data-share-pending]") && Date.now() < deadline) {
+		await new Promise((r) => setTimeout(r, 100));
+	}
+}
+
 /** Rasterise `node` to a PNG. Throws a Chinese message when the content is too tall. */
 export async function renderShareImage(node: HTMLElement): Promise<ShareImage> {
+	await waitForSnapshots(node);
 	if (document.fonts?.ready) await document.fonts.ready;
 	const restoreMath = fitMathToWidth(node);
 	try {

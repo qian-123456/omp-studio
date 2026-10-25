@@ -117,6 +117,68 @@ export const VIZ_BRIDGE_SOURCE = `(() => {
 		});
 	};
 
+	// Static export: serialize the rendered document (computed styles inlined,
+	// canvases flattened) into an SVG foreignObject and rasterize it to a PNG,
+	// so the host can embed the chart in a shared image without reading this
+	// opaque-origin frame's DOM.
+	const cssOf = (el) => {
+		const cs = getComputedStyle(el);
+		let css = "";
+		for (let i = 0; i < cs.length; i++) css += cs[i] + ":" + cs.getPropertyValue(cs[i]) + ";";
+		return css;
+	};
+	const inlineStyles = (src, dst) => {
+		dst.setAttribute("style", cssOf(src));
+		const sk = src.children;
+		const dk = dst.children;
+		for (let i = 0; i < sk.length; i++) {
+			const s = sk[i];
+			const d = dk[i];
+			if (s instanceof HTMLCanvasElement) {
+				try {
+					const img = document.createElement("img");
+					img.setAttribute("src", s.toDataURL("image/png"));
+					img.setAttribute("style", cssOf(s));
+					dst.replaceChild(img, d);
+					continue;
+				} catch { /* tainted canvas: fall through to a plain style copy */ }
+			}
+			inlineStyles(s, d);
+		}
+	};
+	const snapshot = async (id) => {
+		try {
+			const width = Math.max(1, Math.ceil(root.clientWidth));
+			const height = Math.max(1, Math.ceil(document.body.getBoundingClientRect().height));
+			const clone = document.body.cloneNode(true);
+			inlineStyles(document.body, clone);
+			for (const el of Array.from(clone.querySelectorAll("script,style,link,noscript"))) el.remove();
+			const holder = document.createElement("div");
+			holder.setAttribute("style", "width:" + width + "px;height:" + height + "px;overflow:hidden;");
+			while (clone.firstChild) holder.appendChild(clone.firstChild);
+			const xml = new XMLSerializer().serializeToString(holder);
+			const svg =
+				'<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' +
+				'<foreignObject x="0" y="0" width="100%" height="100%">' + xml + "</foreignObject></svg>";
+			const image = new Image();
+			const loaded = Promise.withResolvers();
+			image.onload = loaded.resolve;
+			image.onerror = () => loaded.reject(new Error("svg load failed"));
+			image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+			await loaded.promise;
+			const scale = 2;
+			const canvas = document.createElement("canvas");
+			canvas.width = width * scale;
+			canvas.height = height * scale;
+			const ctx = canvas.getContext("2d");
+			ctx.scale(scale, scale);
+			ctx.drawImage(image, 0, 0, width, height);
+			post("snapshot-result", { id, dataUrl: canvas.toDataURL("image/png"), width, height });
+		} catch (err) {
+			post("snapshot-result", { id, error: String(err && err.message ? err.message : err) });
+		}
+	};
+
 	window.addEventListener("message", (event) => {
 		const data = event.data;
 		if (
@@ -133,6 +195,7 @@ export const VIZ_BRIDGE_SOURCE = `(() => {
 			const m = e.data;
 			if (!m || typeof m !== "object") return;
 			if (m.type === "measure") sendHeight();
+			else if (m.type === "snapshot") void snapshot(m.id);
 			else if (m.type === "theme") applyTheme(m.theme, m.vars);
 			else if (m.type === "widget-state-result") {
 				const pending = pendingWrites.get(m.id);

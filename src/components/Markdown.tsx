@@ -30,6 +30,7 @@ import { FILE_LINK_TAG, rehypeFilePathLinks } from "../features/chat/rehypeFileP
 import { MarkdownSecretChip } from "../features/privacy/SecretChip";
 import { SECRET_CHIP_TAG, rehypeSecretChips } from "../features/privacy/render";
 import { VisualizeBlock } from "../features/chat/visualize/VisualizeBlock";
+import { VisualizeSnapshot } from "../features/chat/visualize/VisualizeSnapshot";
 import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "../features/chat/visualize/frame";
 import { MermaidBlock } from "../features/chat/MermaidBlock";
 import { healStreamingMarkdown, splitStableBlocks } from "../features/chat/streamingMarkdown";
@@ -163,11 +164,7 @@ function PreBlock({
 		(mdCtx.streaming || isFenceClosed(mdCtx.sourceText, node?.position ?? null))
 	) {
 		if (mdCtx.exportMode) {
-			return (
-				<div className="my-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-3 py-4 text-center text-[12px] text-[var(--text-40)]">
-					{t("components.interactiveVisualNotice")}
-				</div>
-			);
+			return <VisualizeSnapshot html={codeText} mode={vizInfo.mode} />;
 		}
 		return (
 			<VisualizeBlock
