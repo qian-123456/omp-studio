@@ -55,8 +55,9 @@ fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
         };
         if is_first {
             is_first = false;
-            if let Some(ref identity) = wt {
-                let _ = sub.set_text(format!("omp-workspace · {}", identity));
+            if let Some(identity) = &wt {
+                let clean = identity.strip_prefix("omp/").unwrap_or(identity);
+                let _ = sub.set_text(format!("dev-{}", clean));
             }
         }
         for (pos, item) in sub.items()?.into_iter().enumerate() {

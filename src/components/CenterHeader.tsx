@@ -508,7 +508,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 								title={`当前工作树分支: ${worktreeIdentity}`}
 							>
 								<GitBranch size={11} className="shrink-0" />
-								<span>{worktreeIdentity}</span>
+								<span>{`dev-${worktreeIdentity.replace(/^omp\//, "")}`}</span>
 							</div>
 						)}
 					<div className="flex items-center gap-1.5 shrink-0">
