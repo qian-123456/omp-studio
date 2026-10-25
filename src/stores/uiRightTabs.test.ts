@@ -110,14 +110,14 @@ describe("right tab persistence", () => {
 		expect(localStorage.getItem("ompws:right-by-mode")).toBeNull();
 	});
 
-	it("forgets a session's panel state after 30 days, keeps it before", async () => {
+	it("forgets a session's panel state after 14 days, keeps it before", async () => {
 		const day = 24 * 60 * 60 * 1000;
 		const now = Date.now();
 		localStorage.setItem(
 			"ompws:right-by-session",
 			JSON.stringify({
-				old: { open: true, tabs: ["git"], at: now - 31 * day },
-				recent: { open: true, tabs: ["terminal"], at: now - 29 * day },
+				old: { open: true, tabs: ["git"], at: now - 15 * day },
+				recent: { open: true, tabs: ["terminal"], at: now - 13 * day },
 			}),
 		);
 		const { useUi } = await import("./ui");
@@ -136,7 +136,7 @@ describe("right tab persistence", () => {
 			useUi.getState().selectSession("a");
 			useUi.getState().setRightTab("git");
 			useUi.getState().selectSession("b");
-			vi.setSystemTime(Date.now() + 31 * day);
+			vi.setSystemTime(Date.now() + 15 * day);
 			useUi.getState().setRightTab("terminal");
 			const stored = JSON.parse(localStorage.getItem("ompws:right-by-session") ?? "{}");
 			expect(Object.keys(stored)).toEqual(["b"]);

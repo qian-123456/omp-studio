@@ -59,7 +59,7 @@ interface RightPanelState {
 	active: RightTab | null;
 }
 
-/** Remembered state plus when it was last touched (ms); entries expire after 30 days. */
+/** Remembered state plus when it was last touched (ms); entries expire after 14 days. */
 interface RightPanelMemo extends RightPanelState {
 	at: number;
 }
@@ -90,7 +90,7 @@ function sanitizeTabs(raw: unknown): RightTab[] {
  * No tab is active at launch: the panel opens on the tab picker.
  */
 const NO_SESSION_KEY = "";
-const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const REMEMBER_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 const rightKey = (sessionId: string | null): string => sessionId ?? NO_SESSION_KEY;
 
