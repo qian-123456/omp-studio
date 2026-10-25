@@ -171,8 +171,21 @@ export const VIZ_BRIDGE_SOURCE = `(() => {
 			canvas.width = width * scale;
 			canvas.height = height * scale;
 			const ctx = canvas.getContext("2d");
-			ctx.scale(scale, scale);
-			ctx.drawImage(image, 0, 0, width, height);
+			// WebKit often paints a foreignObject image blank on the first draws;
+			// redraw until some pixel is non-transparent.
+			let painted = false;
+			for (let attempt = 0; attempt < 5 && !painted; attempt++) {
+				if (attempt > 0) await new Promise((r) => setTimeout(r, 200));
+				ctx.setTransform(1, 0, 0, 1, 0, 0);
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
+				ctx.scale(scale, scale);
+				ctx.drawImage(image, 0, 0, width, height);
+				const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+				for (let i = 3; i < data.length; i += 4) {
+					if (data[i] !== 0) { painted = true; break; }
+				}
+			}
+			if (!painted) throw new Error("snapshot is blank");
 			post("snapshot-result", { id, dataUrl: canvas.toDataURL("image/png"), width, height });
 		} catch (err) {
 			post("snapshot-result", { id, error: String(err && err.message ? err.message : err) });
