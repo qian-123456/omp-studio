@@ -25,6 +25,23 @@ The UI is in Simplified Chinese.
 - At least one model provider credential
 - To build from source: Node.js 18+, `pnpm`, and a Rust toolchain (1.77.2+)
 
+## Download and Install
+
+Download the latest `.dmg` installer from [GitHub Releases](https://github.com/qian-123456/omp-studio/releases/latest):
+- Apple Silicon (M1/M2/M3/M4): `omp-workspace_0.1.1_aarch64.dmg`
+- Intel Mac: `omp-workspace_0.1.1_x64.dmg`
+
+> ⚠️ **Important: "omp-workspace is damaged and can't be opened"**
+>
+> Because open-source community builds are not signed with a paid Apple Developer certificate, macOS Gatekeeper may show:
+> `“omp-workspace” is damaged and can’t be opened. You should move it to the Trash.`
+>
+> Run this one-line command in Terminal to bypass the quarantine flag and open it normally:
+> ```bash
+> xattr -cr /Applications/omp-workspace.app
+> ```
+> Alternatively, right-click (Control-click) `omp-workspace.app` in Finder, choose **Open**, or go to **System Settings ▸ Privacy & Security** and click **Open Anyway**.
+
 ## Build and run
 
 ```bash
@@ -71,6 +88,19 @@ omp-workspace 是 [oh-my-pi](https://github.com/can1357/oh-my-pi)（`omp` 命令
 主要功能：会话列表与实时状态、带完整执行过程的对话、侧聊、Git 工作树隔离、文件浏览器、终端、时光机快照、定时任务、待办收件箱、想法收集箱、模型与供应商设置、手机远程访问。
 
 运行要求：macOS，至少一个模型凭据；未安装 `omp` 时应用会在启动时自动安装（官方安装器），也可自行安装。从源码构建还需要 Node.js 18+、`pnpm` 和 Rust 工具链。
+
+### 下载安装与运行
+
+从 [GitHub Releases 页面](https://github.com/qian-123456/omp-studio/releases/latest) 下载对应芯片的最新安装包：
+- 苹果 M 系列芯片（M1/M2/M3/M4）：下载 `omp-workspace_0.1.1_aarch64.dmg`
+- 老款 Intel 芯片：下载 `omp-workspace_0.1.1_x64.dmg`
+
+> ⚠️ **重要：若提示“已损坏，无法打开。你应该将它移到废纸篓”**：
+> 这是由于开源应用未购买苹果每年昂贵的商业开发者证书，macOS Gatekeeper 安全机制会自动给下载的文件打上隔离标记（Quarantine）。**软件并非真的损坏**，只需在「终端（Terminal）」中执行以下命令清除隔离标记即可正常打开：
+> ```bash
+> xattr -cr /Applications/omp-workspace.app
+> ```
+> 或者在访达的「应用程序」中按住 Control 键点按应用选择「打开」，或在系统「系统设置 ▸ 隐私与安全性」中点击「仍要打开」。
 
 ```bash
 pnpm install
