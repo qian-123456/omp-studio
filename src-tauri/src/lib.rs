@@ -47,10 +47,18 @@ fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
     use tauri::menu::{MenuItem, MenuItemKind};
     let menu = tauri::menu::Menu::default(handle)?;
     let mut replaced = false;
+    let mut is_first = true;
+    let wt = std::env::current_dir().ok().and_then(|d| settings::worktree_identity(&d));
     for top in menu.items()? {
         let MenuItemKind::Submenu(sub) = top else {
             continue;
         };
+        if is_first {
+            is_first = false;
+            if let Some(ref identity) = wt {
+                let _ = sub.set_text(format!("omp-workspace · {}", identity));
+            }
+        }
         for (pos, item) in sub.items()?.into_iter().enumerate() {
             let MenuItemKind::Predefined(p) = &item else {
                 continue;
@@ -100,6 +108,12 @@ async fn app_paths() -> Result<AppPaths, String> {
         global_dir: paths::global_dir().to_string_lossy().to_string(),
     })
 }
+#[tauri::command]
+async fn current_worktree_identity() -> Result<Option<String>, String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    Ok(settings::worktree_identity(&cwd))
+}
+
 
 pub fn parse_allowed_tools_from_text(content: &str) -> Option<Vec<String>> {
     for line in content.lines() {
@@ -233,6 +247,7 @@ pub fn run() {
             get_settings,
             save_settings,
             app_paths,
+            current_worktree_identity,
             allowed_tools_list,
             ime::ime_active,
             // A — catalog

@@ -425,7 +425,7 @@ fn window_title(base: &str, identity: &str) -> String {
 /// Name identifying the worktree containing `dir`: the current branch, or the
 /// worktree's top-level directory name when HEAD is detached. `None` outside a
 /// work tree or when git is unavailable.
-fn worktree_identity(dir: &Path) -> Option<String> {
+pub(crate) fn worktree_identity(dir: &Path) -> Option<String> {
     // symbolic-ref exits non-zero on a detached HEAD — that is the signal to
     // fall back to the worktree's own directory name, not a lookup failure.
     let branch = git_stdout(dir, &["symbolic-ref", "--quiet", "--short", "HEAD"]);

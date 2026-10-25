@@ -5,6 +5,7 @@ import {
 	Copy,
 	FileDown,
 	FolderOpen,
+	GitBranch,
 	PanelLeftOpen,
 	PanelRightOpen,
 	Link2,
@@ -35,6 +36,7 @@ import type { PairingInfo, SessionStatus } from "../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../lib/dialogs";
 import { isComposing, useEscapeKey } from "../lib/hooks";
 import {
+	currentWorktreeIdentity,
 	mobileCreatePairing,
 	sessionExportHtml,
 	sessionShare,
@@ -132,6 +134,14 @@ export const CenterHeader = React.memo(function CenterHeader({
 		centerView === "settings"
 			? previousCenterView ?? lastNonSettingsCenterView.current
 			: centerView;
+	const [worktreeIdentity, setWorktreeIdentity] = useState<string | null>(null);
+
+	useEffect(() => {
+		void currentWorktreeIdentity().then((wt) => {
+			if (wt) setWorktreeIdentity(wt);
+		}).catch(() => {});
+	}, []);
+
 
 	const activeSessionId = selectedSessionId || lastSessionId;
 	const activeSession = useSessions(
@@ -487,6 +497,20 @@ export const CenterHeader = React.memo(function CenterHeader({
 					<div className="flex-1 min-w-2" data-tauri-drag-region />
 
 					{/* Right: Actions & Capsule */}
+						{worktreeIdentity && (
+							<div
+								className={clsx(
+									"flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium border select-none shrink-0 whitespace-nowrap",
+									worktreeIdentity === "main"
+										? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+										: "bg-amber-500/15 border-amber-500/35 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)]",
+								)}
+								title={`当前工作树分支: ${worktreeIdentity}`}
+							>
+								<GitBranch size={11} className="shrink-0" />
+								<span>{worktreeIdentity}</span>
+							</div>
+						)}
 					<div className="flex items-center gap-1.5 shrink-0">
 						{isViewingSession && (
 							<>
