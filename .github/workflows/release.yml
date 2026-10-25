@@ -22,14 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            target: 'aarch64-apple-darwin'
-            args: '--target aarch64-apple-darwin'
-          - platform: 'macos-13'
-            target: 'x86_64-apple-darwin'
-            args: '--target x86_64-apple-darwin'
+          - target: 'aarch64-apple-darwin'
+            args: '--target aarch64-apple-darwin --ignore-version-mismatches'
+          - target: 'x86_64-apple-darwin'
+            args: '--target x86_64-apple-darwin --ignore-version-mismatches'
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,8 +49,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+        run: pnpm install
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
