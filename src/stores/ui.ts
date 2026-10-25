@@ -3,9 +3,6 @@
  */
 
 import { create } from "zustand";
-import type { SpaceMode } from "../lib/contracts";
-import { isSpaceMode } from "../features/sessions/modes";
-import { readActiveMode, useSidebarStore } from "../features/sessions/sidebarStore";
 
 export type CenterView =
 	| "home"
@@ -34,14 +31,15 @@ const STORAGE_KEYS = {
 	sidebarWidth: "ompws:sidebar-width",
 	rightWidth: "ompws:right-width",
 	sidebarOpen: "ompws:sidebar-open",
-	rightOpen: "ompws:right-open",
+	rightBySession: "ompws:right-by-session",
 	lastSession: "ompws:last-session",
-	rightByMode: "ompws:right-by-mode",
-	rightTabs: "ompws:right-tabs", // legacy global value, migrated into the Code area
 	gitListHeight: "ompws:git-list-height",
 	diffViewMode: "ompws:diff-view-mode",
 	diffWrap: "ompws:diff-wrap",
 };
+
+/** Pre-per-session keys (global / per-area panel memory); dropped on load. */
+const LEGACY_RIGHT_KEYS = ["ompws:right-open", "ompws:right-tabs", "ompws:right-by-mode"];
 
 const RIGHT_TABS: readonly RightTab[] = [
 	"explorer",
@@ -54,11 +52,16 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"files",
 ];
 
-/** Right-panel memory of one area (space mode). */
-interface RightPanelMemo {
+/** Right-panel state of one session. */
+interface RightPanelState {
 	open: boolean;
 	tabs: RightTab[];
 	active: RightTab | null;
+}
+
+/** Remembered state plus when it was last touched (ms); entries expire after 30 days. */
+interface RightPanelMemo extends RightPanelState {
+	at: number;
 }
 
 /**
@@ -68,8 +71,8 @@ interface RightPanelMemo {
  */
 const INSTANCE_TABS: Partial<Record<RightTab, true>> = { files: true, sidechat: true };
 
-/** A never-visited area: panel closed, nothing open (the tab picker shows once opened). */
-function defaultRightMemo(): RightPanelMemo {
+/** A never-visited session: panel closed, nothing open (the tab picker shows once opened). */
+function defaultRightMemo(): RightPanelState {
 	return { open: false, tabs: [], active: null };
 }
 
@@ -81,57 +84,73 @@ function sanitizeTabs(raw: unknown): RightTab[] {
 }
 
 /**
- * Persisted per-area memory. No tab is active at launch: the panel opens on
- * the tab picker. The pre-per-area global keys (`right-open`/`right-tabs`)
- * seed the Code area when the per-area key does not exist yet.
+ * Right-panel memory is per session: each session keeps its own open state and
+ * tab strip, and a session never opened before starts closed with no tabs.
+ * `NO_SESSION_KEY` covers the home view and the new-session placeholder.
+ * No tab is active at launch: the panel opens on the tab picker.
  */
-function readRightByMode(): Partial<Record<SpaceMode, RightPanelMemo>> {
-	const out: Partial<Record<SpaceMode, RightPanelMemo>> = {};
+const NO_SESSION_KEY = "";
+const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const rightKey = (sessionId: string | null): string => sessionId ?? NO_SESSION_KEY;
+
+function readRightBySession(): Map<string, RightPanelMemo> {
+	const now = Date.now();
+	const out = new Map<string, RightPanelMemo>();
 	try {
-		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightByMode) ?? "null");
-		if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-			for (const [mode, v] of Object.entries(raw)) {
-				if (!isSpaceMode(mode) || !v || typeof v !== "object") continue;
-				const m = v as { open?: unknown; tabs?: unknown };
-				out[mode] = { open: m.open === true, tabs: sanitizeTabs(m.tabs), active: null };
-			}
-			return out;
+		if (typeof localStorage !== "undefined") {
+			for (const k of LEGACY_RIGHT_KEYS) localStorage.removeItem(k);
 		}
 	} catch {
-		/* corrupt value: fall through to legacy seed */
+		/* storage unavailable */
 	}
-	let legacyTabs: RightTab[] = [];
 	try {
-		legacyTabs = sanitizeTabs(JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null"));
+		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightBySession) ?? "null");
+		if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+			for (const [key, v] of Object.entries(raw)) {
+				if (!v || typeof v !== "object") continue;
+				const m = v as { open?: unknown; tabs?: unknown; at?: unknown };
+				// Expired (or undated) entries are dropped on load.
+				if (typeof m.at !== "number" || now - m.at > REMEMBER_TTL_MS) continue;
+				out.set(key, { open: m.open === true, tabs: sanitizeTabs(m.tabs), active: null, at: m.at });
+			}
+		}
 	} catch {
-		/* corrupt legacy value */
+		/* corrupt value: every session starts closed */
 	}
-	out.code = {
-		open: readBool(STORAGE_KEYS.rightOpen, true),
-		tabs: legacyTabs,
-		active: null,
-	};
 	return out;
 }
 
-let currentMode: SpaceMode = readActiveMode();
-let rightByMode = readRightByMode();
+const rightBySession = readRightBySession();
 
-function persistRightByMode(): void {
-	const persisted: Record<string, { open: boolean; tabs: RightTab[] }> = {};
-	for (const [mode, m] of Object.entries(rightByMode)) {
-		persisted[mode] = { open: m.open, tabs: m.tabs.filter((t) => !INSTANCE_TABS[t]) };
+/** Drop expired entries from memory, then write the survivors. */
+function persistRightBySession(now: number): void {
+	const persisted: Record<string, { open: boolean; tabs: RightTab[]; at: number }> = {};
+	for (const [key, m] of rightBySession) {
+		if (now - m.at > REMEMBER_TTL_MS) {
+			rightBySession.delete(key);
+			continue;
+		}
+		const tabs = m.tabs.filter((t) => !INSTANCE_TABS[t]);
+		// Identical to a never-visited session: nothing worth storing.
+		if (!m.open && tabs.length === 0) continue;
+		persisted[key] = { open: m.open, tabs, at: m.at };
 	}
-	writeStorage(STORAGE_KEYS.rightByMode, JSON.stringify(persisted));
+	writeStorage(STORAGE_KEYS.rightBySession, JSON.stringify(persisted));
 }
 
-/** Record the live panel state as the current area's memory and persist all areas. */
+function rememberRight(key: string, state: RightPanelState): void {
+	const now = Date.now();
+	rightBySession.set(key, { ...state, at: now });
+	persistRightBySession(now);
+}
+
+/** Record the live panel state as the selected session's memory and persist. */
 function persistRight(open: boolean, tabs: RightTab[], active: RightTab | null): void {
-	rightByMode[currentMode] = { open, tabs, active };
-	persistRightByMode();
+	rememberRight(rightKey(useUi.getState().selectedSessionId), { open, tabs, active });
 }
 
-const initialRight = rightByMode[currentMode] ?? defaultRightMemo();
+const initialRight = rightBySession.get(NO_SESSION_KEY) ?? defaultRightMemo();
 
 function readNumber(
 	key: string,
@@ -434,13 +453,21 @@ export const useUi = create<UiState>((set) => ({
 	closeModal: () => set({ modal: null }),
 }));
 
-// Switching area swaps the right panel for that area's own remembered state.
-useSidebarStore.subscribe((s, prev) => {
-	if (s.activeMode === prev.activeMode) return;
-	const cur = useUi.getState();
-	rightByMode[currentMode] = { open: cur.rightOpen, tabs: cur.openRightTabs, active: cur.rightTab };
-	currentMode = s.activeMode;
-	const next = rightByMode[currentMode] ?? defaultRightMemo();
-	persistRightByMode();
+// Switching session swaps the right panel for that session's own remembered state.
+useUi.subscribe((s, prev) => {
+	if (s.selectedSessionId === prev.selectedSessionId) return;
+	const current: RightPanelState = { open: s.rightOpen, tabs: s.openRightTabs, active: s.rightTab };
+	rememberRight(rightKey(prev.selectedSessionId), current);
+	const nextKey = rightKey(s.selectedSessionId);
+	// The new-session placeholder (session pane, nothing selected) hands its panel
+	// over to the session it turns into, instead of resetting under the user.
+	const fromPlaceholder =
+		prev.selectedSessionId === null && prev.centerView === "session" && s.selectedSessionId !== null;
+	if (fromPlaceholder && !rightBySession.has(nextKey)) {
+		rememberRight(nextKey, current);
+		rememberRight(NO_SESSION_KEY, defaultRightMemo());
+		return;
+	}
+	const next = rightBySession.get(nextKey) ?? defaultRightMemo();
 	useUi.setState({ rightOpen: next.open, openRightTabs: next.tabs, rightTab: next.active });
 });

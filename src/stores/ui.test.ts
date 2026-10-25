@@ -43,7 +43,7 @@ describe("useUi right panel", () => {
 	it("persists open state and tabs for the next launch", () => {
 		useUi.getState().setRightTab("terminal");
 		useUi.getState().toggleRight(); // collapse
-		expect(JSON.parse(localStorage.getItem("ompws:right-by-mode") ?? "{}").code).toEqual({
+		expect(JSON.parse(localStorage.getItem("ompws:right-by-session") ?? "{}")[""]).toMatchObject({
 			open: false,
 			tabs: ["terminal"],
 		});

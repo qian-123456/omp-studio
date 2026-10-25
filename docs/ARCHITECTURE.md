@@ -903,7 +903,7 @@ type CenterView =
 type RightTab = "explorer" | "sidechat" | "heatmap" | "git" | "services" | "terminal" | "plan" | "files";
 interface UiState {
   centerView: CenterView; selectedSessionId: string | null; docPath: string | null;
-  rightTab: RightTab | null; openRightTabs: RightTab[]; rightOpen: boolean;  // Chrome-style open tabs, persisted (ompws:right-tabs / ompws:right-tab)
+  rightTab: RightTab | null; openRightTabs: RightTab[]; rightOpen: boolean;  // Chrome-style open tabs; remembered per session (ompws:right-by-session), a never-opened session starts closed with no tabs
   sessionViewMode: Record<string, "chat" | "terminal">;
   modal: { name: string; props: Record<string, unknown> } | null;
   selectSession(id: string | null): void; openDoc(path: string): void; setCenter(v: CenterView): void;

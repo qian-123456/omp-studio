@@ -9,8 +9,8 @@ describe("right tab persistence", () => {
 
 	it("never restores per-instance groups (sidechat/files) as ghost tabs", async () => {
 		localStorage.setItem(
-			"ompws:right-by-mode",
-			JSON.stringify({ code: { open: true, tabs: ["git", "sidechat", "files", "terminal"] } }),
+			"ompws:right-by-session",
+			JSON.stringify({ "": { open: true, tabs: ["git", "sidechat", "files", "terminal"], at: Date.now() } }),
 		);
 		const { useUi } = await import("./ui");
 		expect(useUi.getState().openRightTabs).toEqual(["git", "terminal"]);
@@ -20,7 +20,7 @@ describe("right tab persistence", () => {
 		const { useUi } = await import("./ui");
 		useUi.getState().setRightTab("git");
 		useUi.getState().setRightTab("sidechat");
-		expect(JSON.parse(localStorage.getItem("ompws:right-by-mode") ?? "{}").code.tabs).toEqual(["git"]);
+		expect(JSON.parse(localStorage.getItem("ompws:right-by-session") ?? "{}")[""].tabs).toEqual(["git"]);
 	});
 
 	it("closing the active tab activates the right neighbour, else the left", async () => {
@@ -42,53 +42,106 @@ describe("right tab persistence", () => {
 		useUi.getState().closeRightTab("git");
 		expect(useUi.getState().rightOpen).toBe(false);
 		expect(useUi.getState().rightTab).toBeNull();
-		expect(JSON.parse(localStorage.getItem("ompws:right-by-mode") ?? "{}").code.open).toBe(false);
+		expect(localStorage.getItem("ompws:right-by-session")).toBe("{}");
 	});
 
-	it("seeds the Code area from the legacy global keys; other areas start closed", async () => {
-		localStorage.setItem("ompws:right-open", "true");
-		localStorage.setItem("ompws:right-tabs", JSON.stringify(["git"]));
+	it("a session never opened before starts closed with no tabs", async () => {
 		const { useUi } = await import("./ui");
-		const { useSidebarStore } = await import("../features/sessions/sidebarStore");
-		expect(useUi.getState().rightOpen).toBe(true);
-		expect(useUi.getState().openRightTabs).toEqual(["git"]);
-		useSidebarStore.getState().setActiveMode("chat");
+		useUi.getState().selectSession("a");
+		useUi.getState().setRightTab("git");
+		useUi.getState().selectSession("b");
 		expect(useUi.getState().rightOpen).toBe(false);
 		expect(useUi.getState().openRightTabs).toEqual([]);
 		expect(useUi.getState().rightTab).toBeNull();
 	});
 
-	it("remembers open state and tabs independently per area", async () => {
+	it("remembers open state and tabs independently per session", async () => {
 		const { useUi } = await import("./ui");
-		const { useSidebarStore } = await import("../features/sessions/sidebarStore");
-		const sidebar = useSidebarStore.getState();
-		sidebar.setActiveMode("code");
+		useUi.getState().selectSession("a");
 		useUi.getState().setRightTab("git");
-		sidebar.setActiveMode("chat");
-		expect(useUi.getState().openRightTabs).toEqual([]);
-		expect(useUi.getState().rightOpen).toBe(false);
+		useUi.getState().selectSession("b");
 		useUi.getState().setRightTab("terminal");
-		sidebar.setActiveMode("code");
+		useUi.getState().toggleRight(); // collapse b
+		useUi.getState().selectSession("a");
 		expect(useUi.getState().openRightTabs).toEqual(["git"]);
 		expect(useUi.getState().rightTab).toBe("git");
 		expect(useUi.getState().rightOpen).toBe(true);
-		useUi.getState().toggleRight();
-		sidebar.setActiveMode("chat");
+		useUi.getState().selectSession("b");
 		expect(useUi.getState().openRightTabs).toEqual(["terminal"]);
-		expect(useUi.getState().rightOpen).toBe(true);
-		sidebar.setActiveMode("code");
 		expect(useUi.getState().rightOpen).toBe(false);
 	});
 
-	it("restores per-area memory on the next launch", async () => {
+	it("restores per-session memory on the next launch, with no active tab", async () => {
 		let m = await import("./ui");
-		const sb = await import("../features/sessions/sidebarStore");
+		m.useUi.getState().selectSession("a");
 		m.useUi.getState().setRightTab("git");
-		sb.useSidebarStore.getState().setActiveMode("chat");
+		m.useUi.getState().selectSession("b");
 		m.useUi.getState().setRightTab("terminal");
 		vi.resetModules();
 		m = await import("./ui");
+		m.useUi.getState().selectSession("a");
+		expect(m.useUi.getState().openRightTabs).toEqual(["git"]);
+		expect(m.useUi.getState().rightOpen).toBe(true);
+		expect(m.useUi.getState().rightTab).toBeNull();
+		m.useUi.getState().selectSession("b");
 		expect(m.useUi.getState().openRightTabs).toEqual(["terminal"]);
-		sb.useSidebarStore.getState().setActiveMode("code");
+	});
+
+	it("the new-session placeholder hands its panel to the session it becomes", async () => {
+		const { useUi } = await import("./ui");
+		useUi.setState({ selectedSessionId: null, centerView: "session" });
+		useUi.getState().setRightTab("git");
+		useUi.getState().selectSession("fresh");
+		expect(useUi.getState().openRightTabs).toEqual(["git"]);
+		expect(useUi.getState().rightOpen).toBe(true);
+		// The home view must not keep the placeholder's panel.
+		useUi.getState().leaveSession();
+		expect(useUi.getState().rightOpen).toBe(false);
+		expect(useUi.getState().openRightTabs).toEqual([]);
+	});
+
+	it("drops the pre-per-session global keys", async () => {
+		localStorage.setItem("ompws:right-open", "true");
+		localStorage.setItem("ompws:right-tabs", JSON.stringify(["git"]));
+		localStorage.setItem("ompws:right-by-mode", JSON.stringify({ code: { open: true, tabs: ["git"] } }));
+		const { useUi } = await import("./ui");
+		expect(useUi.getState().rightOpen).toBe(false);
+		expect(useUi.getState().openRightTabs).toEqual([]);
+		expect(localStorage.getItem("ompws:right-by-mode")).toBeNull();
+	});
+
+	it("forgets a session's panel state after 30 days, keeps it before", async () => {
+		const day = 24 * 60 * 60 * 1000;
+		const now = Date.now();
+		localStorage.setItem(
+			"ompws:right-by-session",
+			JSON.stringify({
+				old: { open: true, tabs: ["git"], at: now - 31 * day },
+				recent: { open: true, tabs: ["terminal"], at: now - 29 * day },
+			}),
+		);
+		const { useUi } = await import("./ui");
+		useUi.getState().selectSession("old");
+		expect(useUi.getState().openRightTabs).toEqual([]);
+		expect(useUi.getState().rightOpen).toBe(false);
+		useUi.getState().selectSession("recent");
+		expect(useUi.getState().openRightTabs).toEqual(["terminal"]);
+	});
+
+	it("drops expired entries from storage on the next write", async () => {
+		const day = 24 * 60 * 60 * 1000;
+		vi.useFakeTimers();
+		try {
+			const { useUi } = await import("./ui");
+			useUi.getState().selectSession("a");
+			useUi.getState().setRightTab("git");
+			useUi.getState().selectSession("b");
+			vi.setSystemTime(Date.now() + 31 * day);
+			useUi.getState().setRightTab("terminal");
+			const stored = JSON.parse(localStorage.getItem("ompws:right-by-session") ?? "{}");
+			expect(Object.keys(stored)).toEqual(["b"]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
