@@ -51,6 +51,8 @@ import { useLineClampOverflow } from "../../lib/useLineClamp";
 import { normalizeThinkContent } from "../../lib/thinkTags";
 import { AttachmentThumb, FileChip } from "./ImageChips";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { QuoteCards } from "./AnnotationQuote";
+import { parseAnnotationQuotes } from "./annotationQuoteParse";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ANSWER_TEXT_CLASS,
@@ -180,6 +182,7 @@ const UserRow = React.memo(function UserRow({
 	const rawText = item.text ?? "";
 	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
+	const quotes = useMemo(() => parseAnnotationQuotes(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
@@ -310,21 +313,25 @@ const UserRow = React.memo(function UserRow({
 				</div>
 			) : showBubble ? (
 				<div className={USER_BUBBLE_CLASS}>
-					<div
-						ref={textRef}
-						className={clsx(
-							"whitespace-pre-wrap break-words",
-							!expanded && collapsible && "line-clamp-4",
-						)}
-					>
-						{renderUserTextWithChips(rawText, (num) => {
-							void openImageOrExplain(
-								validImages.map((i) => i.path),
-								num,
-								setPreviewIndex,
-							);
-						})}
-					</div>
+					{quotes && <QuoteCards cards={quotes.cards} />}
+					{(!quotes || quotes.body) && (
+						<div
+							ref={textRef}
+							className={clsx(
+								"whitespace-pre-wrap break-words",
+								quotes && "mt-2",
+								!expanded && collapsible && "line-clamp-4",
+							)}
+						>
+							{renderUserTextWithChips(quotes ? quotes.body : rawText, (num) => {
+								void openImageOrExplain(
+									validImages.map((i) => i.path),
+									num,
+									setPreviewIndex,
+								);
+							})}
+						</div>
+					)}
 					{collapsible && (
 						<button
 							type="button"
@@ -386,10 +393,11 @@ const UserRow = React.memo(function UserRow({
 									userText,
 									validImages.map((i) => i.path),
 									rawText,
+									fileAttachments.map((f) => f.path),
 								);
 								toast.success(
-									validImages.length > 0
-										? t("chat.message.copiedWithImages", { count: validImages.length })
+									validImages.length + fileAttachments.length > 0
+										? t("chat.message.copiedWithImages", { count: validImages.length + fileAttachments.length })
 										: t("chat.message.copiedUserMessage"),
 								);
 							} catch (e) {

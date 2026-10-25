@@ -48,6 +48,10 @@ struct Catalog {
     /// Ids deleted through `catalog::delete` — guards the bus loop against a
     /// process-exit event that lands after we purged the session's state.
     deleted: std::collections::VecDeque<String>,
+    /// Sessions whose current turn the user does not need to read (a side
+    /// chat's hand-back summary): its settle must not mark unread / review.
+    /// Consumed by the first settling `agent_end`.
+    quiet: std::collections::HashSet<String>,
 }
 
 /// Max remembered deleted ids; only recent ones can race a late exit event.
@@ -76,6 +80,17 @@ pub async fn list(state: &AppState) -> Vec<SessionMeta> {
     let mut list: Vec<SessionMeta> = cat().lock().metas.values().cloned().collect();
     list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     list
+}
+
+/// Arm (`true`) or disarm (`false`) the "quiet turn" flag of a session: while
+/// armed, the next settling `agent_end` leaves no unread/review mark.
+pub(crate) fn set_quiet_turn(session_id: &str, quiet: bool) {
+    let mut c = cat().lock();
+    if quiet {
+        c.quiet.insert(session_id.to_string());
+    } else {
+        c.quiet.remove(session_id);
+    }
 }
 
 /// `(session id, cwd)` pairs in `list` order (newest first), skipping empty

@@ -557,6 +557,8 @@ pub struct BacklogPatch {
     pub target_session_id: Option<String>,
     /// Replaces the item's refs wholesale (e.g. when an image token is deleted while editing).
     pub refs: Option<Vec<BacklogRef>>,
+    /// Re-files the item under this project dir; empty string = no project (global).
+    pub project_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -129,6 +129,10 @@ export const updateSessionMeta = (
 export const markSeen = (sessionId: string) =>
 	invoke<void>("mark_seen", { sessionId });
 
+/** Next settle of `sessionId` leaves no unread/review mark (hand-back summary turn). */
+export const setQuietTurn = (sessionId: string, quiet: boolean) =>
+	invoke<void>("set_quiet_turn", { sessionId, quiet });
+
 export const searchSessions = (query: string, limit?: number) =>
 	invoke<SessionSearchHit[]>("search_sessions", { query, limit: limit ?? null });
 

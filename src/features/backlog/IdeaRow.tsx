@@ -31,9 +31,12 @@ export interface IdeaRowProps {
 	selecting: boolean;
 	editing: boolean;
 	editingKind: BacklogKind;
+	/** Project dir while editing ("" = none). */
+	editingProject: string;
 	canFill: boolean;
 	onToggle: (shiftKey: boolean) => void;
 	onEditKindChange: (kind: BacklogKind) => void;
+	onEditProjectChange: (dir: string) => void;
 	onStartEdit: () => void;
 	onSaveEdit: () => void;
 	onCancelEdit: () => void;
@@ -91,6 +94,8 @@ export function IdeaRow(p: IdeaRowProps) {
 						id={item.id}
 						kind={p.editingKind}
 						onKindChange={p.onEditKindChange}
+						project={p.editingProject}
+						onProjectChange={p.onEditProjectChange}
 						onSave={p.onSaveEdit}
 						onCancel={p.onCancelEdit}
 					/>

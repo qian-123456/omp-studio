@@ -306,7 +306,12 @@ async fn run_bus_loop(state: AppState, mut bus: tokio::sync::broadcast::Receiver
             }
             let cur_pending = c.metas.get(&session_id).and_then(|m| m.pending);
             let rt = c.runtime.entry(session_id.clone()).or_default();
-            status::apply(rt, cur_pending, &live_ev)
+            let mut change = status::apply(rt, cur_pending, &live_ev);
+            // A settle (the only event that marks unread) consumes the quiet flag.
+            if change.unread.is_some() && c.quiet.remove(&session_id) {
+                status::silence_settle(&mut change);
+            }
+            change
         };
 
         if let Some(new_p) = change.pending {

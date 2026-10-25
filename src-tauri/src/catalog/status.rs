@@ -181,6 +181,16 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
     }
 }
 
+/// Strip the "finished, go read it" marks from a settle `change` (quiet turn):
+/// no unread, and no new Review pending. Error pending is kept — a failure
+/// is never silent.
+pub fn silence_settle(change: &mut Change) {
+    change.unread = None;
+    if matches!(change.pending, Some(Some(PendingKind::Review))) {
+        change.pending = None;
+    }
+}
+
 fn after_dialog_closed(rt: &Runtime, pending: Option<PendingKind>) -> Option<PendingKind> {
     match pending {
         Some(PendingKind::Approval | PendingKind::Question) => rt.dialog_pending(),
@@ -424,6 +434,27 @@ mod tests {
         let (rt, pending, _) = run(&[start, q, cancel]);
         assert_eq!(pending, None);
         assert!(rt.dialogs.is_empty());
+    }
+
+    #[test]
+    fn quiet_settle_drops_unread_and_review_but_keeps_error() {
+        let mut rt = Runtime::default();
+        let end = LiveEvent::Frame(json!({"type": "agent_end", "messages": []}));
+        let mut c = apply(&mut rt, None, &end);
+        assert_eq!(c.unread, Some(true));
+        assert_eq!(c.pending, Some(Some(P::Review)));
+        silence_settle(&mut c);
+        assert_eq!(c.unread, None);
+        assert_eq!(c.pending, None);
+
+        let mut err = Change {
+            pending: Some(Some(P::Error)),
+            unread: Some(true),
+            runtime: true,
+        };
+        silence_settle(&mut err);
+        assert_eq!(err.pending, Some(Some(P::Error)));
+        assert_eq!(err.unread, None);
     }
 
     #[test]

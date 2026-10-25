@@ -5,6 +5,7 @@ import type { BacklogKind } from "../../lib/contracts";
 import { useBacklog } from "./backlogStore";
 import { IdeaEditor, type IdeaEditorHandle } from "./IdeaEditor";
 import { useImageAttach } from "./IdeaImages";
+import { EditProjectSelect } from "./CaptureProjectSelect";
 import { ensureTokens, insertImages, reconcileDoc, storedToDoc, type TokenDoc } from "./ideaTokens";
 import { KIND_META, KINDS } from "./ideaStyles";
 
@@ -18,12 +19,17 @@ export function IdeaEditBox({
 	id,
 	kind,
 	onKindChange,
+	project,
+	onProjectChange,
 	onSave,
 	onCancel,
 }: {
 	id: string;
 	kind: BacklogKind;
 	onKindChange: (kind: BacklogKind) => void;
+	/** Project dir the idea is filed under while editing; `CAPTURE_PROJECT_NONE` = none. */
+	project: string;
+	onProjectChange: (dir: string) => void;
 	onSave: () => void;
 	onCancel: () => void;
 }) {
@@ -70,6 +76,8 @@ export function IdeaEditBox({
 				/>
 				<div className="mt-1 flex items-center justify-between gap-2">
 					<div className="text-[10px] text-[var(--text-dim)]">{t("backlog.editBufferHint")}</div>
+					<div className="flex shrink-0 items-center gap-1.5">
+					<EditProjectSelect value={project} onChange={onProjectChange} />
 					<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
 						{KINDS.map((k) => {
 							const Icon = KIND_META[k].icon;
@@ -91,6 +99,7 @@ export function IdeaEditBox({
 								</button>
 							);
 						})}
+					</div>
 					</div>
 				</div>
 			</div>

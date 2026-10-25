@@ -410,7 +410,7 @@ function AssignWorkspaceModal({
 								}`}
 							>
 								<span className="truncate">
-									{ws.kind === "global" ? `🌐 ${ws.name}` : `📁 ${ws.name}`}
+									{ws.kind === "global" ? (ws.name.startsWith("🌐") ? ws.name : `🌐 ${ws.name}`) : `📁 ${ws.name}`}
 								</span>
 								{isCurrent && <Check size={14} className="shrink-0" />}
 							</button>

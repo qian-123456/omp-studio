@@ -370,7 +370,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					)}
 					{modeWorkspaces.map((w) => (
 						<option key={w.id} value={w.id}>
-							{w.kind === "global" ? "🌐 " : ""}
+							{w.kind === "global" && !w.name.startsWith("🌐") ? "🌐 " : ""}
 							{w.name}（{w.path}）
 						</option>
 					))}

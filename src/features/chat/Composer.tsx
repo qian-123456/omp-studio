@@ -1559,9 +1559,9 @@ export function Composer({
 		}
 	};
 
-	/** Insert a copied message's text and images in their original order. */
-	const pasteCopiedMessage = async (copied: { raw: string; paths: string[] }) => {
-		for (const piece of planMessagePaste(copied.raw, copied.paths)) {
+	/** Insert a copied message's text, images and files in their original order. */
+	const pasteCopiedMessage = async (copied: { raw: string; paths: string[]; files: string[] }) => {
+		for (const piece of planMessagePaste(copied.raw, copied.paths, copied.files)) {
 			if (piece.kind === "text") {
 				insertMarkerAtCursor(piece.text);
 				// Let the caret land after the text before the next piece reads it.

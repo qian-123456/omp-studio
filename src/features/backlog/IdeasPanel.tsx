@@ -68,6 +68,8 @@ export function IdeasPanel({
 	const [search, setSearch] = useState<IdeaSearch>(EMPTY_SEARCH);
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [editingKind, setEditingKind] = useState<BacklogKind>("idea");
+	/** Project picked while editing; null = untouched (keep the item's current project). */
+	const [editingProject, setEditingProject] = useState<string | null>(null);
 
 	const options = useMemo(() => scopeOptions(items, currentProject), [items, currentProject]);
 	const scope = effectiveScope(selectedScope, options);
@@ -139,6 +141,7 @@ export function IdeasPanel({
 	const startEdit = (item: BacklogItem) => {
 		const d = storedToDoc(item.text, refImagePaths(item.refs));
 		setEditingKind(item.kind);
+		setEditingProject(null);
 		setEditBuffer({ id: item.id, text: d.text, images: d.images });
 	};
 	const saveEdit = async (id: string) => {
@@ -150,7 +153,12 @@ export function IdeasPanel({
 		}
 		try {
 			const refs = (useBacklog.getState().items.find((i) => i.id === id)?.refs ?? []).filter((r) => r.kind !== "image");
-			await backlogUpdate(id, { text: stored, kind: editingKind, refs });
+			await backlogUpdate(id, {
+				text: stored,
+				kind: editingKind,
+				refs,
+				...(editingProject !== null ? { projectDir: editingProject } : {}),
+			});
 			if (useBacklog.getState().editBuffer?.id === id) cancelEdit();
 			await useBacklog.getState().load();
 		} catch (err) {
@@ -205,9 +213,11 @@ export function IdeasPanel({
 			selecting={selected.length > 0}
 			editing={editBuffer?.id === item.id}
 			editingKind={editingKind}
+			editingProject={editingProject ?? item.projectDir ?? ""}
 			canFill={!!selectedSessionId}
 			onToggle={(shift) => toggleChecked(item.id, shift)}
 			onEditKindChange={setEditingKind}
+			onEditProjectChange={setEditingProject}
 			onStartEdit={() => startEdit(item)}
 			onSaveEdit={() => void saveEdit(item.id)}
 			onCancelEdit={cancelEdit}

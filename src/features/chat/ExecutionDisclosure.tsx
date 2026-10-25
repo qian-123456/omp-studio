@@ -19,6 +19,8 @@ import { AttachmentThumb } from "./ImageChips";
 import { collectUserImages } from "../../stores/live";
 import { openImageOrExplain } from "./imageAvailability";
 import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
+import { QuoteCards } from "./AnnotationQuote";
+import { parseAnnotationQuotes } from "./annotationQuoteParse";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
 import { ActivityHeader } from "./ActivityHeader";
@@ -177,6 +179,7 @@ export function UserMessageBubble({
 		[text, given],
 	);
 	const hasBody = stripImageMarkers(text).length > 0 || /\[(?:File|文件)\s*#|📎\s*#/u.test(text);
+	const quotes = useMemo(() => parseAnnotationQuotes(text), [text]);
 	return (
 		<>
 			{images.length > 0 && (
@@ -205,15 +208,18 @@ export function UserMessageBubble({
 			)}
 			{hasBody ? (
 				<div className={bubbleClass}>
-					<div className="whitespace-pre-wrap break-words">
-						{renderUserTextWithChips(text, (num) => {
-							void openImageOrExplain(
-								images.map((i) => i.path),
-								num,
-								setPreview,
-							);
-						})}
-					</div>
+					{quotes && <QuoteCards cards={quotes.cards} />}
+					{(!quotes || quotes.body) && (
+						<div className={quotes ? "mt-2 whitespace-pre-wrap break-words" : "whitespace-pre-wrap break-words"}>
+							{renderUserTextWithChips(quotes ? quotes.body : text, (num) => {
+								void openImageOrExplain(
+									images.map((i) => i.path),
+									num,
+									setPreview,
+								);
+							})}
+						</div>
+					)}
 				</div>
 			) : emptyText ? (
 				<div className={bubbleClass}>{emptyText}</div>

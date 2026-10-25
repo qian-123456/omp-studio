@@ -197,37 +197,43 @@ export async function copyText(text: string): Promise<void> {
 	}
 }
 
-let lastMessageCopy: { text: string; raw: string; paths: string[] } | null = null;
+let lastMessageCopy: { text: string; raw: string; paths: string[]; files: string[] } | null = null;
 
 /**
  * The last in-app message copy when `pastedText` is exactly that message's
  * text, else null. WKWebView does not reliably surface the pasteboard's file
  * items to `paste` events next to a text item, so the composer rebuilds the
- * message (text + images in order) from this record instead.
+ * message (text + images + files in order) from this record instead.
  */
-export function copiedMessageFor(pastedText: string): { raw: string; paths: string[] } | null {
-	if (!lastMessageCopy || lastMessageCopy.paths.length === 0) return null;
+export function copiedMessageFor(
+	pastedText: string,
+): { raw: string; paths: string[]; files: string[] } | null {
+	if (!lastMessageCopy || lastMessageCopy.paths.length + lastMessageCopy.files.length === 0) {
+		return null;
+	}
 	return pastedText.trim() === lastMessageCopy.text.trim() ? lastMessageCopy : null;
 }
 
 /**
- * Copy a message's text together with its image files. Images go through the
- * native pasteboard as file URLs (WKWebView's async clipboard API silently
- * fails for ClipboardItem writes), one item per image plus the text. `raw` is
- * the message with its inline image markers, used to restore image positions.
+ * Copy a message's text together with its attachments. Images and other files
+ * (video, pdf, zip, ...) go through the native pasteboard as file URLs
+ * (WKWebView's async clipboard API silently fails for ClipboardItem writes),
+ * one item per file plus the text. `raw` is the message with its inline
+ * markers, used to restore attachment positions.
  */
 export async function copyTextWithImages(
 	text: string,
 	imagePaths: string[],
 	raw: string = text,
+	filePaths: string[] = [],
 ): Promise<void> {
-	if (imagePaths.length === 0) {
+	if (imagePaths.length === 0 && filePaths.length === 0) {
 		lastMessageCopy = null;
 		await copyText(text);
 		return;
 	}
-	await clipboardWriteMessage(text, imagePaths);
-	lastMessageCopy = { text, raw, paths: imagePaths };
+	await clipboardWriteMessage(text, [...imagePaths, ...filePaths]);
+	lastMessageCopy = { text, raw, paths: imagePaths, files: filePaths };
 }
 
 /** Mirrors `rpc::SESSION_HELD_PREFIX` (src-tauri/src/rpc/mod.rs). */

@@ -240,8 +240,8 @@ export function ServicesPanel() {
 								className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)] px-2.5 py-1.5 transition-colors hover:border-neutral-700"
 							>
 								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-1.5">
-										<span className="truncate font-medium text-neutral-200">
+									<div className="flex flex-wrap items-center gap-1.5">
+										<span className="min-w-0 break-words font-medium text-neutral-200">
 											{tab.title}
 										</span>
 										{tab.status === "exited" ? (
@@ -255,9 +255,9 @@ export function ServicesPanel() {
 											</span>
 										)}
 									</div>
-									<div className="mt-0.5 flex items-center gap-1 text-[10px] text-neutral-500">
+									<div className="mt-0.5 flex items-start gap-1 text-[10px] text-neutral-500">
 										<FolderOpen size={10} className="shrink-0 text-neutral-500" />
-										<span className="truncate" title={tab.cwd}>
+										<span className="min-w-0 break-all" title={tab.cwd}>
 											{short(tab.cwd)}
 										</span>
 									</div>
@@ -343,7 +343,7 @@ export function ServicesPanel() {
 				</div>
 			)}
 
-			<ul className="min-h-0 flex-1 overflow-y-auto">
+			<ul className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
 				{rows?.slice(0, displayLimit).map((s) => {
 					const session = s.sessionId ? sessions[s.sessionId] : undefined;
 					const key = `${s.pid}:${s.port}`;
@@ -361,12 +361,12 @@ export function ServicesPanel() {
 									: "hover:bg-[var(--bg-hover)]",
 							)}
 						>
-							<div className="flex items-center gap-2">
-								<span className="font-mono text-sm font-semibold text-sky-400">
+							<div className="flex items-start gap-2">
+								<span className="shrink-0 font-mono text-sm font-semibold text-sky-400">
 									:{s.port}
 								</span>
 								<span
-									className="min-w-0 flex-1 truncate text-neutral-200"
+									className="min-w-0 flex-1 break-words text-neutral-200"
 									title={s.command || s.name}
 								>
 									<span className="font-medium">{s.name}</span>
@@ -415,16 +415,16 @@ export function ServicesPanel() {
 								</div>
 							</div>
 
-							<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-neutral-500">
+							<div className="mt-1 flex min-w-0 flex-col gap-y-1 text-[10px] text-neutral-500">
 								{s.cwd && (
 									<button
 										type="button"
 										onClick={() => handleRevealCwd(s.cwd)}
 										title={s.cwd}
-										className="flex max-w-[220px] items-center gap-1 truncate text-left text-neutral-400 hover:text-sky-300 hover:underline transition-colors focus:opacity-100"
+										className="flex min-w-0 max-w-full items-start gap-1 text-left text-neutral-400 hover:text-sky-300 hover:underline transition-colors focus:opacity-100"
 									>
-										<FolderOpen size={11} className="shrink-0 text-neutral-500" />
-										<span className="truncate">{short(s.cwd)}</span>
+										<FolderOpen size={11} className="mt-px shrink-0 text-neutral-500" />
+										<span className="min-w-0 break-all">{short(s.cwd)}</span>
 									</button>
 								)}
 								{session && (
@@ -432,7 +432,7 @@ export function ServicesPanel() {
 										type="button"
 										onClick={() => selectSession(session.id)}
 										title={t("services.switchToSession", { label: session.label, title: session.title })}
-										className="shrink-0 text-indigo-400 hover:underline hover:text-indigo-300 transition-colors focus:opacity-100"
+										className="min-w-0 max-w-full break-words text-left text-indigo-400 hover:underline hover:text-indigo-300 transition-colors focus:opacity-100"
 									>
 										{session.label} {session.title}
 									</button>

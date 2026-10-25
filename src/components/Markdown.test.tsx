@@ -62,6 +62,14 @@ describe("Markdown inline HTML", () => {
 		expect(out).toContain('href="/c/d.md"');
 		expect(out).not.toContain('href="/a/b.md"');
 	});
+
+	it("links an inline-code URL but not URL-bearing commands or fenced code", () => {
+		const out = html("见 `https://a.com/x.json` 与 `curl https://b.com`\n\n```\nhttps://c.com\n```");
+		expect(out).toContain('href="https://a.com/x.json"');
+		expect(out).toContain("<code>https://a.com/x.json</code></a>");
+		expect(out).not.toContain('href="https://b.com"');
+		expect(out).not.toContain('href="https://c.com"');
+	});
 });
 
 describe("Markdown links and finished visualize fences", () => {

@@ -48,7 +48,9 @@ fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
     let menu = tauri::menu::Menu::default(handle)?;
     let mut replaced = false;
     let mut is_first = true;
-    let wt = std::env::current_dir().ok().and_then(|d| settings::worktree_identity(&d));
+    let wt = std::env::current_dir()
+        .ok()
+        .and_then(|d| settings::worktree_identity(&d));
     for top in menu.items()? {
         let MenuItemKind::Submenu(sub) = top else {
             continue;
@@ -114,7 +116,6 @@ async fn current_worktree_identity() -> Result<Option<String>, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     Ok(settings::worktree_identity(&cwd))
 }
-
 
 pub fn parse_allowed_tools_from_text(content: &str) -> Option<Vec<String>> {
     for line in content.lines() {
@@ -256,6 +257,7 @@ pub fn run() {
             catalog::commands::get_transcript,
             catalog::commands::update_session_meta,
             catalog::commands::mark_seen,
+            catalog::commands::set_quiet_turn,
             catalog::commands::accept_session,
             catalog::commands::list_workspaces,
             catalog::commands::add_workspace,

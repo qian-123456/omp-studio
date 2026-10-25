@@ -46,6 +46,9 @@ export function ImagePreviewModal({
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
+				// Capture phase + stop: the lightbox is the topmost layer, so editors/panels
+				// underneath (React handlers at the root, window listeners) must not also see this Esc.
+				e.stopImmediatePropagation();
 				claimEscape(e);
 				onClose();
 			} else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
@@ -60,8 +63,8 @@ export function ImagePreviewModal({
 				}
 			}
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
 	}, [count, onClose]);
 
 	if (!current || count === 0) return null;

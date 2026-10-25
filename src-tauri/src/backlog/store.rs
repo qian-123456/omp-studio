@@ -97,9 +97,13 @@ pub fn update(conn: &Connection, id: &str, patch: &BacklogPatch) -> Result<Backl
     if let Some(r) = &patch.refs {
         item.refs = r.clone();
     }
+    if let Some(p) = &patch.project_dir {
+        let p = p.trim();
+        item.project_dir = (!p.is_empty()).then(|| p.to_string());
+    }
     item.updated_at = now();
     conn.execute(
-        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6, refs = ?7 WHERE id = ?1",
+        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6, refs = ?7, project_dir = ?8 WHERE id = ?1",
         params![
             id,
             item.text,
@@ -107,7 +111,8 @@ pub fn update(conn: &Connection, id: &str, patch: &BacklogPatch) -> Result<Backl
             enum_str(item.status),
             item.target_session_id,
             item.updated_at,
-            serde_json::to_string(&item.refs).unwrap_or_else(|_| "[]".into())
+            serde_json::to_string(&item.refs).unwrap_or_else(|_| "[]".into()),
+            item.project_dir
         ],
     )
     .map_err(|e| e.to_string())?;

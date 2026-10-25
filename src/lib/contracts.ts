@@ -381,6 +381,8 @@ export interface BacklogPatch {
 	targetSessionId?: string;
 	/** Replaces refs wholesale (used when image tokens are removed while editing). */
 	refs?: BacklogRef[];
+	/** Re-files the item under this project dir; "" = no project (global). */
+	projectDir?: string;
 }
 
 export interface GitFileChange {

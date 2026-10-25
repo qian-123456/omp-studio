@@ -19,7 +19,34 @@ describe("planMessagePaste", () => {
 		]);
 	});
 
-	it("does not paste file chips as prose", () => {
-		expect(planMessagePaste("see 📎#1 now", [])).toEqual([{ kind: "text", text: "see  now" }]);
+	it("does not paste unresolvable file chips as prose", () => {
+		expect(planMessagePaste("see 📎#1 now", [])).toEqual([
+			{ kind: "text", text: "see" },
+			{ kind: "text", text: "now" },
+		]);
+	});
+
+	it("restores a video attachment from the bare 📎#N marker, text preserved", () => {
+		expect(planMessagePaste("📎#1 帮我修一下这个闪烁的问题", [], ["/tmp/clip.mp4"])).toEqual([
+			{ kind: "file", path: "/tmp/clip.mp4" },
+			{ kind: "text", text: "帮我修一下这个闪烁的问题" },
+		]);
+	});
+
+	it("uses the path embedded in a serialized file marker", () => {
+		expect(
+			planMessagePaste("[文件 #1: /tmp/a.pdf] hi 🖼️#1", ["/x.png"], ["/tmp/a.pdf"]),
+		).toEqual([
+			{ kind: "file", path: "/tmp/a.pdf" },
+			{ kind: "text", text: "hi" },
+			{ kind: "image", path: "/x.png" },
+		]);
+	});
+
+	it("appends files no marker references", () => {
+		expect(planMessagePaste("hi", [], ["/a.zip"])).toEqual([
+			{ kind: "text", text: "hi" },
+			{ kind: "file", path: "/a.zip" },
+		]);
 	});
 });

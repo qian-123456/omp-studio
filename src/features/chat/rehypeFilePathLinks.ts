@@ -37,6 +37,17 @@ function isElement(node: HastNode, tag: string): boolean {
 	return node.type === "element" && node.tagName === tag;
 }
 
+/** The URL when `text` is exactly one http(s) URL (inline-code candidates), else null. */
+export function inlineCodeUrl(text: string): string | null {
+	const t = text.trim();
+	if (!/^https?:\/\/[^\s<>]+$/i.test(t)) return null;
+	try {
+		return new URL(t).hostname ? t : null;
+	} catch {
+		return null;
+	}
+}
+
 function linkNode(path: string, fromCode = false): HastNode {
 	return {
 		type: "element",
@@ -88,6 +99,17 @@ function walk(node: HastNode): void {
 				Array.isArray(cls) && cls.some((c) => String(c).startsWith("language-"));
 			if (highlighted) continue;
 			const text = textOf(child).trim();
+			const url = inlineCodeUrl(text);
+			if (url) {
+				// Keep the code chip; wrap it in a normal link (opened by MarkdownLink).
+				children[i] = {
+					type: "element",
+					tagName: "a",
+					properties: { href: url },
+					children: [child],
+				};
+				continue;
+			}
 			const path = stripMentionPrefix(text);
 			if (
 				canPreviewFile(path) &&

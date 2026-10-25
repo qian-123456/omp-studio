@@ -542,7 +542,8 @@ export function ContextPillBar({
 	// only shown when the cwd really is the project-less workspace.
 	const location = resolveSessionLocation(meta, workspaces);
 	const isGlobal = location.kind === "global";
-	const wsLabel = location.label;
+	// The stored global workspace name carries a "🌐 " prefix; the pill draws its own Globe icon.
+	const wsLabel = isGlobal ? location.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "") : location.label;
 	const pillTitle =
 		location.kind === "location"
 			? t("chat.pill.pathNotInProjects", { path: location.path })

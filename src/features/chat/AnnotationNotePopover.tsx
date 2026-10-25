@@ -1,16 +1,18 @@
 /** [B] Per-annotation surfaces anchored at a message marker / annotated text:
  * the editable note popover (click) and the read-only hover card (hover). */
 
-import { ArrowUp, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { useT } from "../../stores/language";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { QuoteBlock } from "./AnnotationQuote";
 
 const CARD_CLASS =
-	"w-[min(360px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px] px-3 py-2";
+	"w-[min(360px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px] p-3";
 const QUOTE_CLASS =
 	"max-h-40 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))]";
 
@@ -96,15 +98,18 @@ export function AnnotationNotePopover({
 	return (
 		<FloatingLayer anchor={anchor} placement="bottom-start" className={CARD_CLASS}>
 			<div ref={popRef} data-testid="annotation-note-popover">
-				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-					<span className="tabular-nums">{n}.</span> {t("chat.annotation.sourceMessage")}
+				<div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">
+					<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] leading-none tabular-nums text-white">
+						{n}
+					</span>
+					<span className="whitespace-nowrap">{t("chat.annotation.sourceMessage")}</span>
 				</div>
-				<div className={`mt-0.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
-				<textarea
+				<QuoteBlock text={annotation.text ?? ""} scrollWhenExpanded className="mt-1.5" />
+				<AutoGrowTextarea
 					autoFocus
-					rows={2}
+					maxHeightPx={160}
 					value={draft}
-					placeholder={t("chat.annotation.inputPlaceholderShort")}
+					placeholder={t("chat.annotation.notePlaceholder")}
 					onChange={(e) => setDraft(e.target.value)}
 					onKeyDown={(e) => {
 						if (isComposing(e)) return;
@@ -114,9 +119,12 @@ export function AnnotationNotePopover({
 							finish.current(true);
 						}
 					}}
-					className="mt-1.5 w-full resize-none rounded-md border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:border-[var(--text-30,var(--border))]"
+					className="mt-2.5 block min-h-[3.25rem] w-full resize-none rounded-lg border border-[var(--line,var(--border))] bg-[var(--bg)] px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text)] outline-none transition-shadow placeholder:text-[var(--text-30,var(--text-dim))] focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_oklab,var(--accent)_28%,transparent)]"
 				/>
-				<div className="mt-1.5 flex items-center justify-between">
+				<div className="mt-1 text-[10px] leading-snug text-[var(--text-30,var(--text-dim))]">
+					{t("chat.annotation.keyHint")}
+				</div>
+				<div className="mt-2 flex items-center justify-between gap-2">
 					<button
 						type="button"
 						onClick={() => {
@@ -124,7 +132,7 @@ export function AnnotationNotePopover({
 							useComposer.getState().removeAnnotation(storeKey, id);
 							onClose();
 						}}
-						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+						className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[color-mix(in_oklab,var(--status-error)_14%,transparent)] hover:text-[var(--status-error)]"
 					>
 						<Trash2 size={12} />
 						{t("common.delete")}
@@ -134,9 +142,10 @@ export function AnnotationNotePopover({
 						aria-label={t("chatView.selection.confirmAnnotationAria")}
 						title={t("chatView.selection.confirmAnnotationTitle")}
 						onClick={() => finish.current(true)}
-						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
+						className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--text)] px-3 py-1 text-[12px] font-medium text-[var(--bg-panel)] transition-opacity hover:opacity-85"
 					>
-						<ArrowUp size={13} strokeWidth={2.5} />
+						{t("chat.annotation.confirm")}
+						<kbd className="font-sans text-[11px] opacity-60">↵</kbd>
 					</button>
 				</div>
 			</div>
@@ -163,12 +172,15 @@ export function AnnotationHoverCard({
 			className={`${CARD_CLASS} pointer-events-none`}
 		>
 			<div data-testid="annotation-hover-card">
-				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-					<span className="tabular-nums">{n}.</span> {t("chat.annotation.sourceMessage")}
+				<div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">
+					<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] leading-none tabular-nums text-white">
+						{n}
+					</span>
+					<span className="whitespace-nowrap">{t("chat.annotation.sourceMessage")}</span>
 				</div>
-				<div className={`mt-0.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
+				<div className={`mt-1.5 border-l-2 border-[var(--text-30)] pl-2.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
 				{annotation.comment && (
-					<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
+					<div className="mt-1.5 whitespace-pre-wrap break-words text-[12px] text-[var(--text)]">
 						{t("chat.annotation.notePrefix", { comment: annotation.comment })}
 					</div>
 				)}

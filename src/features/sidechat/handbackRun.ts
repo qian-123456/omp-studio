@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 import { errMsg } from "../../lib/dialogs";
-import { getTranscript } from "../../lib/ipc";
+import { getTranscript, setQuietTurn } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { useLive } from "../../stores/live";
@@ -108,8 +108,12 @@ export async function startHandback(childId: string): Promise<void> {
 	try {
 		const turn = watchTurn(childId);
 		try {
+			// The summary is handed to the parent, not read in the side chat: its
+			// settle must not raise the unread dot.
+			await setQuietTurn(childId, true);
 			await sendPrompt(childId, HANDBACK_PROMPT);
 		} catch (err) {
+			void setQuietTurn(childId, false).catch(() => {});
 			turn.stop();
 			throw err;
 		}

@@ -78,6 +78,13 @@ pub async fn mark_seen(
     Ok(())
 }
 
+/// Arm/disarm the quiet-turn flag: the session's next settle (e.g. a side
+/// chat's hand-back summary) must not raise the unread dot or review mark.
+#[tauri::command]
+pub fn set_quiet_turn(session_id: String, quiet: bool) {
+    crate::catalog::set_quiet_turn(&session_id, quiet);
+}
+
 /// Workspace file list for the composer's `@` completion. Walks `cwd`
 /// recursively, skipping heavy/irrelevant dirs and respecting nothing beyond
 /// a fixed skip-list (no .gitignore parsing — dependency-free). Returns
