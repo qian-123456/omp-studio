@@ -4,6 +4,7 @@
  */
 import { Copy, Globe, Power, QrCode, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Segmented } from "../../components/Segmented";
 import type { MobileStatus, PairingInfo, PairingTarget } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -18,6 +19,7 @@ import {
 	mobileStart,
 	mobileStatus,
 	mobileStop,
+	tunnelCloudflaredLogin,
 	tunnelStart,
 	tunnelStop,
 } from "../../lib/ipc";
@@ -49,7 +51,8 @@ type Busy =
 	| "ipv6Restart"
 	| "ddnsToken"
 	| "ddnsClear"
-	| "ddnsSync";
+	| "ddnsSync"
+	| "cfLogin";
 
 type TunnelMode = "off" | "quick" | "named";
 
@@ -290,7 +293,7 @@ export function MobilePanel() {
 		tunnelMode !== savedMode ||
 		(tunnelMode === "named" &&
 			(tunnelName.trim() !== (settings?.tunnelName ?? "") || tunnelHost.trim() !== (settings?.tunnelHostname ?? "")));
-	const namedMissing = tunnelMode === "named" && (!tunnelName.trim() || !tunnelHost.trim());
+	const namedMissing = tunnelMode === "named" && !tunnelHost.trim();
 	const cloudflaredMissing = status != null && !status.cloudflaredInstalled;
 
 	const applyTunnel = () =>
@@ -302,7 +305,7 @@ export function MobilePanel() {
 			const ok = await tunnelSave.run(() =>
 				save({
 					tunnelMode,
-					tunnelName: tunnelName.trim() || null,
+					tunnelName: tunnelName.trim() || (tunnelMode === "named" ? "omp-mobile" : null),
 					tunnelHostname: tunnelHost.trim() || null,
 				}),
 			);
@@ -749,26 +752,66 @@ export function MobilePanel() {
 							</Notice>
 						)}
 						{tunnelMode === "named" && (
-							<div className="grid grid-cols-2 gap-2">
-								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>{t("mobile.tunnelNameLabel")}</span>
-									<input
-										className={INPUT_CLASS}
-										placeholder={t("mobile.tunnelNamePlaceholder")}
-										value={tunnelName}
-										onChange={(e) => setTunnelName(e.target.value)}
-									/>
-								</label>
-								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>{t("mobile.tunnelHostLabel")}</span>
-									<input
-										className={INPUT_CLASS}
-										placeholder={t("mobile.tunnelHostPlaceholder")}
-										value={tunnelHost}
-										onChange={(e) => setTunnelHost(e.target.value)}
-									/>
-								</label>
-							</div>
+							<>
+								{status?.cloudflaredLoggedIn ? (
+									<div>
+										<Chip tone="success">{t("mobile.cfLoginSuccess")}</Chip>
+									</div>
+								) : (
+									<Notice
+										tone="info"
+										action={
+											<Button
+												loading={busy === "cfLogin"}
+												disabled={busy !== null || cloudflaredMissing}
+												onClick={() =>
+													run("cfLogin", async () => {
+														await tunnelCloudflaredLogin();
+														await refresh();
+													})
+												}
+											>
+												{busy === "cfLogin" ? t("mobile.cfLoginLoggingIn") : t("mobile.cfLoginBtn")}
+											</Button>
+										}
+									>
+										{t("mobile.cfLoginNotice")}
+									</Notice>
+								)}
+								<Notice tone="info">{t("mobile.domainPrefixTip")}</Notice>
+								<div className="grid grid-cols-2 gap-2">
+									<label className="space-y-1 text-xs text-[var(--text-muted)]">
+										<span>{t("mobile.tunnelNameLabel")}</span>
+										<input
+											className={INPUT_CLASS}
+											placeholder={t("mobile.tunnelNamePlaceholder")}
+											value={tunnelName}
+											onChange={(e) => setTunnelName(e.target.value)}
+										/>
+									</label>
+									<label className="space-y-1 text-xs text-[var(--text-muted)]">
+										<span>{t("mobile.tunnelHostLabel")}</span>
+										<input
+											className={INPUT_CLASS}
+											placeholder={t("mobile.tunnelHostPlaceholder")}
+											value={tunnelHost}
+											onChange={(e) => setTunnelHost(e.target.value)}
+										/>
+									</label>
+								</div>
+								<div className="space-y-2 rounded-lg border border-[var(--border-divider)] p-3 text-xs text-[var(--text-muted)]">
+									<div className="flex items-center gap-2 text-[var(--text-primary)]">
+										<ShieldAlert className="h-4 w-4" />
+										<span className="font-medium">{t("mobile.zeroTrustTitle")}</span>
+										<Chip tone="success">{t("mobile.zeroTrustBadge")}</Chip>
+									</div>
+									<p>{t("mobile.zeroTrustDesc")}</p>
+									<p>{t("mobile.zeroTrustGuide")}</p>
+									<Button onClick={() => void openUrl("https://one.dash.cloudflare.com/")}>
+										{t("mobile.zeroTrustOpenDash")}
+									</Button>
+								</div>
+							</>
 						)}
 						{status?.tunnelUrl && <UrlLine label={t("mobile.tunnelPublicUrlLabel")} url={status.tunnelUrl} />}
 						<div className="flex flex-wrap items-center gap-2">

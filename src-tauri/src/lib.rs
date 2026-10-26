@@ -441,6 +441,7 @@ pub fn run() {
             mobile::commands::mobile_ipv6_stop,
             mobile::commands::tunnel_start,
             mobile::commands::tunnel_stop,
+            mobile::commands::tunnel_cloudflared_login,
             // E — mobile DDNS
             mobile::ddns::mobile_ddns_set_token,
             mobile::ddns::mobile_ddns_clear_token,

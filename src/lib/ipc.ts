@@ -832,6 +832,8 @@ export const tunnelStart = () => invoke<MobileStatus>("tunnel_start");
 
 export const tunnelStop = () => invoke<void>("tunnel_stop");
 
+export const tunnelCloudflaredLogin = () => invoke<boolean>("tunnel_cloudflared_login");
+
 // ---- E — terminal ----
 
 export const termOpen = (

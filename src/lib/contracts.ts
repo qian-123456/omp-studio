@@ -603,6 +603,7 @@ export interface MobileStatus {
 	lanUrl: string | null;
 	tunnelUrl: string | null;
 	cloudflaredInstalled: boolean;
+	cloudflaredLoggedIn: boolean;
 	ipv6Running: boolean;
 	ipv6Port: number;
 	ipv6Address: string | null;

@@ -850,6 +850,7 @@ pub struct MobileStatus {
     pub lan_url: Option<String>,
     pub tunnel_url: Option<String>,
     pub cloudflared_installed: bool,
+    pub cloudflared_logged_in: bool,
     /// IPv6 direct HTTPS listener is bound.
     pub ipv6_running: bool,
     pub ipv6_port: u16,

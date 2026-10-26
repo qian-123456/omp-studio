@@ -26,6 +26,88 @@ pub fn installed() -> bool {
     env::which("cloudflared").is_some()
 }
 
+pub const DEFAULT_TUNNEL_NAME: &str = "omp-mobile";
+
+pub fn logged_in() -> bool {
+    dirs::home_dir()
+        .map(|h| h.join(".cloudflared").join("cert.pem").is_file())
+        .unwrap_or(false)
+}
+
+/// Run `cloudflared tunnel login` (opens browser) and wait up to 120s for cert.pem.
+pub async fn login() -> Result<bool, String> {
+    if logged_in() {
+        return Ok(true);
+    }
+    let bin = env::which("cloudflared").ok_or(MISSING_MSG)?;
+    let mut child = tokio::process::Command::new(bin)
+        .args(["tunnel", "login"])
+        .env("PATH", env::augmented_path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("启动 cloudflared 失败: {e}"))?;
+    for pipe in [
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(pipe).lines();
+            while let Ok(Some(_)) = lines.next_line().await {}
+        });
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    while tokio::time::Instant::now() < deadline {
+        if logged_in() {
+            return Ok(true);
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let _ = child.start_kill();
+    Err("等待 Cloudflare 授权超时（120 秒），请重试".into())
+}
+
+/// Create the named tunnel (idempotent) and route `hostname` to it via DNS.
+pub async fn ensure_tunnel_and_route(name: &str, hostname: &str) -> Result<(), String> {
+    let bin = env::which("cloudflared").ok_or(MISSING_MSG)?;
+    async fn run(bin: &std::path::Path, args: &[&str]) -> Result<std::process::Output, String> {
+        tokio::process::Command::new(bin)
+            .args(args)
+            .env("PATH", env::augmented_path())
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .output()
+            .await
+            .map_err(|e| format!("运行 cloudflared 失败: {e}"))
+    }
+    let out = run(&bin, &["tunnel", "create", name]).await?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        if !err.contains("already exists") {
+            return Err(format!("创建隧道失败：{}", err.trim()));
+        }
+    }
+    let out = run(&bin, &["tunnel", "route", "dns", "-f", name, hostname]).await?;
+    if !out.status.success() {
+        return Err(format!(
+            "配置 DNS 路由失败：{}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
 pub fn url() -> Option<String> {
     ACTIVE.lock().as_ref().map(|a| a.url.clone())
 }
@@ -50,8 +132,9 @@ pub fn args(mode: &str, port: u16, name: Option<&str>) -> Result<Vec<String>, St
         "quick" => Ok(vec!["tunnel".into(), "--url".into(), origin]),
         "named" => {
             let name = name
-                .filter(|n| !n.trim().is_empty())
-                .ok_or("命名隧道需要先填写隧道名称")?;
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .unwrap_or(DEFAULT_TUNNEL_NAME);
             Ok(vec![
                 "tunnel".into(),
                 "run".into(),
@@ -74,6 +157,17 @@ pub async fn start(
     if let Some(u) = url() {
         return Ok(u);
     }
+    let name = if mode == "named" {
+        Some(
+            name.as_deref()
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .unwrap_or(DEFAULT_TUNNEL_NAME)
+                .to_string(),
+        )
+    } else {
+        name
+    };
     let argv = args(mode, port, name.as_deref())?;
     let fixed_url = if mode == "named" {
         let host = hostname
@@ -85,6 +179,7 @@ pub async fn start(
             })
             .filter(|h| !h.is_empty())
             .ok_or("命名隧道需要先填写公网域名（hostname）")?;
+        ensure_tunnel_and_route(name.as_deref().unwrap_or(DEFAULT_TUNNEL_NAME), &host).await?;
         Some(format!("https://{host}"))
     } else {
         None
@@ -209,7 +304,10 @@ mod tests {
             args("named", 7788, Some("ws")).unwrap(),
             ["tunnel", "run", "--url", "http://localhost:7788", "ws"]
         );
-        assert!(args("named", 7788, Some(" ")).is_err());
+        assert_eq!(
+            args("named", 7788, Some(" ")).unwrap().last().unwrap(),
+            "omp-mobile"
+        );
         assert!(args("off", 7788, None).is_err());
     }
 }

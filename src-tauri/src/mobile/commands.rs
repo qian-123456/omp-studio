@@ -64,3 +64,8 @@ pub async fn tunnel_stop() -> Result<(), String> {
     super::tunnel::stop();
     Ok(())
 }
+
+#[tauri::command]
+pub async fn tunnel_cloudflared_login() -> Result<bool, String> {
+    super::tunnel::login().await
+}

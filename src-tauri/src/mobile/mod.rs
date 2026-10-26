@@ -8,6 +8,7 @@ pub mod commands;
 pub mod ddns;
 pub mod ipv6;
 pub mod last;
+pub mod push;
 pub mod server;
 pub mod tls;
 pub mod tunnel;
@@ -110,6 +111,7 @@ pub fn status(state: &AppState) -> MobileStatus {
         lan_url: port.map(|p| format!("http://{}:{p}", lan_ip())),
         tunnel_url: tunnel::url(),
         cloudflared_installed: tunnel::installed(),
+        cloudflared_logged_in: tunnel::logged_in(),
         ipv6_running,
         ipv6_port,
         ipv6_address: current_v6.map(|a| a.to_string()),
@@ -155,7 +157,9 @@ async fn start_internal(state: &AppState) -> Result<(), String> {
         db: state.db.clone(),
         shutdown: rx,
     });
+    let push_shutdown = ctx.shutdown.clone();
     tokio::spawn(server::serve(listener, ctx));
+    tokio::spawn(push::run(state.clone(), push_shutdown));
     persist_enabled(state, true).await;
     Ok(())
 }
