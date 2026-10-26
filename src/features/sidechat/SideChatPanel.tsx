@@ -408,10 +408,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 										value={effectiveThinking}
 										open={thinkingOpen}
 										onOpenChange={setThinkingOpen}
-										onSelect={(lvl) => {
-											setThinking(lvl);
-											setThinkingOpen(false);
-										}}
+										onSelect={setThinking}
 									/>
 								</div>
 

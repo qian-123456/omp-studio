@@ -662,7 +662,6 @@ export function ModelSelect({
 					open={levelOpen && !disabled}
 					onOpenChange={setLevelOpen}
 					onSelect={(level) => {
-						setLevelOpen(false);
 						if (disabled) return;
 						menu.onSelect(applyThinkingLevel(current.selector, level));
 					}}

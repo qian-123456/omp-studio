@@ -6,9 +6,10 @@
 
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
-import { type KeyboardEvent, type PointerEvent, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { openSettingsTarget } from "../features/settings/settingsTargets";
 import { thinkingChipState } from "../lib/models";
+import { EffortSlider } from "./EffortSlider";
 import { FloatingLayer } from "./FloatingLayer";
 import { tNow, useT } from "../stores/language";
 
@@ -53,6 +54,8 @@ export function ThinkingLevelPicker({
 	value: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** A level was picked. The picker owns closing: list clicks close the popover,
+	 * slider picks keep it open — callers must not close it here. */
 	onSelect: (level: string) => void;
 	/** Opens model settings from the 「未配置思考等级」 chip; defaults to Settings ▸ API 供应商. */
 	onConfigure?: () => void;
@@ -136,7 +139,12 @@ export function ThinkingLevelPicker({
 					onDismiss={() => onOpenChange(false)}
 					className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 				>
-					<ThinkingLevelMenu levels={levels} value={value} onSelect={onSelect} />
+					<ThinkingLevelMenu
+						levels={levels}
+						value={value}
+						onSelect={onSelect}
+						onClose={() => onOpenChange(false)}
+					/>
 				</FloatingLayer>
 			)}
 		</div>
@@ -144,24 +152,30 @@ export function ThinkingLevelPicker({
 }
 
 /** Popover body: the level list plus the effort slider. Mounted only while open,
- * so a slider preview never outlives the popover. */
+ * so a slider preview never outlives the popover. A list click picks and closes;
+ * the slider picks and stays open (so its max effect stays visible). */
 function ThinkingLevelMenu({
 	levels,
 	value,
 	onSelect,
+	onClose,
 }: {
 	levels: string[];
 	value: string;
 	onSelect: (level: string) => void;
+	onClose: () => void;
 }) {
 	const { t } = useT();
-	// Level the slider is hovering over while dragging / arrowing; the list follows it.
+	// Level the slider shows ahead of `value`: while dragging, and after a commit
+	// until the caller reports the new value. The list highlight follows it.
 	const [preview, setPreview] = useState<string | null>(null);
+	useEffect(() => setPreview(null), [value]);
 	const shown = preview ?? value;
 	const stops = levels.filter((level) => level !== "auto");
-	const commit = (level: string) => {
-		setPreview(null);
-		if (level !== value) onSelect(level);
+	const commit = (index: number) => {
+		const level = stops[index];
+		if (level === undefined || level === value) setPreview(null);
+		else onSelect(level);
 	};
 	return (
 		<>
@@ -175,7 +189,10 @@ function ThinkingLevelMenu({
 						<button
 							key={level}
 							type="button"
-							onClick={() => onSelect(level)}
+							onClick={() => {
+								onSelect(level);
+								onClose();
+							}}
 							className={clsx(
 								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
 								shown === level
@@ -193,150 +210,19 @@ function ThinkingLevelMenu({
 				})}
 			</div>
 			{stops.length > 1 && (
-				<div className="border-t border-[var(--line,var(--border-divider))] px-3 pb-2 pt-3">
-					<ThinkingSlider
-						stops={stops}
-						active={shown}
+				<div className="border-t border-[var(--line,var(--border-divider))] px-0.5 pb-0.5 pt-1">
+					<EffortSlider
+						count={stops.length}
+						value={stops.indexOf(shown)}
 						label={t("components.thinkingLevel")}
-						onPreview={setPreview}
+						valueText={shown}
+						onPreview={(index) => setPreview(stops[index] ?? null)}
 						onCommit={commit}
+						onCancel={() => setPreview(null)}
 					/>
 				</div>
 			)}
 		</>
-	);
-}
-
-/** Track height; the end stops sit at the centers of its rounded caps. */
-const TRACK_H = 24;
-
-/** ChatGPT-style effort slider: one stop per level (weakest left → strongest right),
- * a colored fill up to a white thumb. Dragging moves the thumb freely and previews
- * the nearest stop; release snaps and commits. Arrow keys preview, Enter commits.
- * When `active` is not a stop (e.g. `auto`) the thumb and fill are hidden. */
-function ThinkingSlider({
-	stops,
-	active,
-	label,
-	onPreview,
-	onCommit,
-}: {
-	stops: string[];
-	active: string;
-	label: string;
-	onPreview: (level: string | null) => void;
-	onCommit: (level: string) => void;
-}) {
-	const trackRef = useRef<HTMLDivElement>(null);
-	// Free thumb position (0..1) while the pointer is down; null = snapped to `active`.
-	const [drag, setDrag] = useState<number | null>(null);
-	const last = stops.length - 1;
-	const index = stops.indexOf(active);
-	const frac = drag ?? (index >= 0 ? index / last : null);
-
-	const fracAt = (clientX: number) => {
-		const r = trackRef.current?.getBoundingClientRect();
-		if (!r || r.width <= TRACK_H) return 0;
-		return Math.min(1, Math.max(0, (clientX - r.left - TRACK_H / 2) / (r.width - TRACK_H)));
-	};
-	const stopAt = (f: number) => stops[Math.round(f * last)];
-
-	const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-		if (e.button !== 0) return;
-		e.preventDefault();
-		e.currentTarget.setPointerCapture(e.pointerId);
-		e.currentTarget.focus();
-		const f = fracAt(e.clientX);
-		setDrag(f);
-		onPreview(stopAt(f));
-	};
-	const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-		if (drag === null) return;
-		const f = fracAt(e.clientX);
-		setDrag(f);
-		onPreview(stopAt(f));
-	};
-	const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-		if (drag === null) return;
-		setDrag(null);
-		onCommit(stopAt(fracAt(e.clientX)));
-	};
-	const onPointerCancel = () => {
-		setDrag(null);
-		onPreview(null);
-	};
-	const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-		let next: number | null = null;
-		if (e.key === "ArrowRight" || e.key === "ArrowUp") next = index < 0 ? 0 : Math.min(last, index + 1);
-		else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = index < 0 ? 0 : Math.max(0, index - 1);
-		else if (e.key === "Home") next = 0;
-		else if (e.key === "End") next = last;
-		else if ((e.key === "Enter" || e.key === " ") && index >= 0) {
-			e.preventDefault();
-			onCommit(stops[index]);
-			return;
-		}
-		if (next === null) return;
-		e.preventDefault();
-		onPreview(stops[next]);
-	};
-
-	const at = (f: number) => `calc(${TRACK_H / 2}px + (100% - ${TRACK_H}px) * ${f})`;
-	const animate = drag === null ? "transition-[left,width] duration-150 ease-out" : "";
-	return (
-		<div
-			ref={trackRef}
-			role="slider"
-			tabIndex={0}
-			aria-label={label}
-			aria-valuemin={0}
-			aria-valuemax={last}
-			aria-valuenow={Math.max(0, index)}
-			aria-valuetext={active}
-			onPointerDown={onPointerDown}
-			onPointerMove={onPointerMove}
-			onPointerUp={onPointerUp}
-			onPointerCancel={onPointerCancel}
-			onKeyDown={onKeyDown}
-			style={{ height: TRACK_H }}
-			className={clsx(
-				"relative w-full touch-none select-none rounded-full bg-[var(--switch-off,var(--bg-hover))] outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
-				drag === null ? "cursor-pointer" : "cursor-grabbing",
-			)}
-		>
-			{frac !== null && (
-				<div
-					className={clsx("absolute inset-y-0 left-0 rounded-full", animate)}
-					style={{
-						width: `calc(${TRACK_H}px + (100% - ${TRACK_H}px) * ${frac})`,
-						backgroundImage: "linear-gradient(90deg, var(--accent), var(--accent-strong, var(--accent)))",
-					}}
-				/>
-			)}
-			{stops.map((level, i) => {
-				const filled = frac !== null && i / last <= frac;
-				return (
-					<span
-						key={level}
-						className={clsx(
-							"pointer-events-none absolute top-1/2 size-[5px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors",
-							filled ? "bg-white/70" : "bg-[var(--text-30,var(--text-dim))]",
-						)}
-						style={{ left: at(i / last) }}
-					/>
-				);
-			})}
-			{frac !== null && (
-				<span
-					className={clsx(
-						"pointer-events-none absolute top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.22)]",
-						animate,
-						drag !== null && "scale-105",
-					)}
-					style={{ left: at(frac) }}
-				/>
-			)}
-		</div>
 	);
 }
 

@@ -873,10 +873,8 @@ export function Composer({
 			if (!live?.alive) await ensureLive(sessionId);
 			await rpcSend(sessionId, { type: "set_thinking_level", level });
 			await rpcSend(sessionId, { type: "get_state" });
-			setThinkingOpen(false);
 		} catch (err) {
-			if (isResumeCancelled(err)) setThinkingOpen(false);
-			else toast.error(t("composer.switchThinkingFailed", { error: errMsg(err) }));
+			if (!isResumeCancelled(err)) toast.error(t("composer.switchThinkingFailed", { error: errMsg(err) }));
 		}
 	};
 

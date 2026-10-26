@@ -1606,3 +1606,307 @@ button:active,
 [role="button"]:active {
 	scale: none !important;
 }
+
+/* Effort slider (components/EffortSlider.tsx): replica of the ChatGPT desktop
+   model-picker power slider. `--es-p` (0..100, animated) drives the thumb,
+   range and max effects together; `--es-z` is the index of the last stop.
+   Paint order comes from DOM order, so no z-index is needed. */
+@property --es-p {
+	syntax: "<number>";
+	inherits: true;
+	initial-value: 0;
+}
+@property --es-reveal {
+	syntax: "<percentage>";
+	inherits: false;
+	initial-value: 0%;
+}
+.es-container {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	height: 32px;
+	margin-inline: 2px;
+	padding: 2px 6px;
+}
+.es-root {
+	--es-dur: 0.3s;
+	--es-ease: cubic-bezier(0.23, 1, 0.32, 1);
+	--es-fill: var(--accent);
+	--es-purple: #924ff7;
+	--es-blue: #0285ff;
+	/* Thumb-center offset from p%: +13px at the left end, -13px at the right. */
+	--es-off: calc(13px - var(--es-p) / 50 * 13px);
+	/* Extra range shift so its right edge meets the thumb center; 0 at both ends. */
+	--es-lt: calc(var(--es-off) * min(var(--es-p) * var(--es-z) / 100, (100 - var(--es-p)) * var(--es-z) / 100, 1));
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 100%;
+	height: 28px;
+	touch-action: none;
+	user-select: none;
+	cursor: pointer;
+	outline: none;
+	transition: --es-p var(--es-dur) var(--es-ease);
+}
+.es-root[data-dragging="true"] {
+	--es-dur: 0.15s;
+	cursor: grabbing;
+}
+.es-track {
+	position: relative;
+	flex-grow: 1;
+	height: 24px;
+	border-radius: 12px;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--text) 10%, transparent);
+	box-shadow: inset 0 0 0 0.5px var(--border);
+}
+.es-range {
+	position: absolute;
+	inset-inline-start: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	border-radius: 12px 0 0 12px;
+	background-color: var(--es-fill);
+	transform: translateX(calc((var(--es-p) - 100) * 1% + var(--es-lt)));
+}
+.es-range-empty {
+	visibility: hidden;
+}
+.es-max-effects {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	opacity: 0;
+	/* Counter-shift (90%) so the effects barely move while the range slides. */
+	transform: translateX(calc((var(--es-p) - 100) * -0.9% - var(--es-lt) * 0.9));
+	transition: opacity 0.3s var(--es-ease);
+}
+.es-max-effects[data-visible="true"] {
+	opacity: 1;
+}
+.es-max-fill {
+	position: absolute;
+	inset: -1px;
+	pointer-events: none;
+}
+.es-max-mask {
+	--es-reveal: 0%;
+	position: absolute;
+	inset: 0;
+	contain: paint;
+	isolation: isolate;
+	background: linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--es-blue) 60%, var(--es-purple)),
+		var(--es-purple) 55%,
+		color-mix(in srgb, var(--es-purple) 72%, var(--es-blue))
+	);
+	-webkit-mask-image: linear-gradient(90deg, transparent calc(var(--es-reveal) - 120px), #000 var(--es-reveal), #000 100%);
+	mask-image: linear-gradient(90deg, transparent calc(var(--es-reveal) - 120px), #000 var(--es-reveal), #000 100%);
+	-webkit-mask-size: 100% 100%;
+	mask-size: 100% 100%;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+}
+.es-max-fill[data-reveal="true"] .es-max-mask {
+	animation: es-reveal 2s both;
+}
+@keyframes es-reveal {
+	from {
+		--es-reveal: 100%;
+	}
+	to {
+		--es-reveal: 0%;
+	}
+}
+.es-max-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	mix-blend-mode: luminosity;
+}
+.es-particles {
+	position: absolute;
+	inset-inline: 0;
+	top: 50%;
+	height: 24px;
+	overflow: hidden;
+	pointer-events: none;
+	transform: translateY(-50%);
+	animation: es-fade-in 0.35s cubic-bezier(0.42, 0, 0.58, 1) 0.15s both;
+}
+.es-particle {
+	position: absolute;
+	width: 3px;
+	height: 3px;
+	border-radius: 999px;
+	background: #ffffffb8;
+	box-shadow: 0 0 5px #ffffff57;
+	will-change: left, top;
+	transition-property: left, top;
+	transition-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+}
+@keyframes es-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+.es-tick-rail {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.es-tick {
+	position: absolute;
+	top: 50%;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background-color: currentColor;
+	pointer-events: auto;
+	transform: translate(-50%, -50%);
+	will-change: transform, opacity;
+	transition:
+		background-color var(--es-dur) var(--es-ease),
+		opacity 0.2s ease-in-out,
+		filter 0.12s ease,
+		transform 0.12s ease;
+}
+.es-tick::before {
+	content: "";
+	position: absolute;
+	inset: -6px;
+}
+.es-tick:hover {
+	filter: brightness(0.85);
+	transform: translate(-50%, -50%) scale(2);
+}
+.es-tick[data-selected="true"] {
+	color: #ffffff4d;
+}
+.es-tick[data-selected="false"] {
+	color: color-mix(in srgb, var(--text-dim) 50%, transparent);
+}
+/* At max the dots fade out under the purple fill. */
+.es-root[data-highlighted="true"] .es-tick {
+	opacity: 0;
+	transform: translate(-50%, -50%) scale(0.75);
+	transition:
+		background-color var(--es-dur) var(--es-ease),
+		opacity 0.4s ease-in-out 0.1s,
+		filter 0.12s ease,
+		transform 0.4s ease;
+}
+.es-thumb-rail {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	width: 100%;
+	pointer-events: none;
+}
+.es-thumb-pos {
+	position: absolute;
+	top: 50%;
+	left: calc(var(--es-p) * 1% + var(--es-off));
+	width: 28px;
+	height: 28px;
+	pointer-events: auto;
+	transform: translate(-50%, -50%);
+}
+.es-thumb-spring {
+	position: absolute;
+	inset: 0;
+	transform-origin: 50%;
+	/* Release: soft spring (ChatGPT: stiffness 220, damping 26). */
+	transition: transform 0.5s cubic-bezier(0.22, 1.08, 0.36, 1);
+}
+.es-thumb-spring[data-lifted="true"] {
+	/* Hover / press: stiff spring up to 32px (stiffness 420, damping 38). */
+	transform: scale(calc(32 / 28));
+	transition: transform 0.28s cubic-bezier(0.2, 0.95, 0.3, 1);
+}
+.es-thumb {
+	position: absolute;
+	inset: 0;
+	display: block;
+	border-radius: 50%;
+	background: #fff;
+	border: 0.5px solid color-mix(in srgb, #000 14%, transparent);
+	box-shadow: 0 0 2px #0000001a;
+}
+.es-root[data-keyboard-focused="true"]:focus .es-thumb {
+	outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+	outline-offset: 0;
+}
+.es-burst {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 76px;
+	height: 76px;
+	pointer-events: none;
+	transform: translate(-50%, -50%);
+}
+.es-burst > span {
+	--es-bx: 0px;
+	--es-by: -36px;
+	--es-bc: var(--es-purple);
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 5px;
+	height: 5px;
+	border-radius: 999px;
+	background: var(--es-bc);
+	transform: translate(-50%, -50%) scale(0.2);
+	animation: es-burst 0.62s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+.es-burst > span:nth-child(4n + 3) {
+	--es-bc: color-mix(in srgb, var(--es-purple) 82%, var(--es-blue));
+}
+.es-burst > span:nth-child(4n + 1):not(:first-child) {
+	--es-bc: color-mix(in srgb, var(--es-purple) 68%, var(--es-blue));
+}
+.es-burst > span:nth-child(1) { --es-bx: -3px; --es-by: -34px; }
+.es-burst > span:nth-child(2) { --es-bx: 15px; --es-by: -29px; animation-delay: 8ms; }
+.es-burst > span:nth-child(3) { --es-bx: 30px; --es-by: -19px; }
+.es-burst > span:nth-child(4) { --es-bx: 34px; --es-by: -2px; animation-delay: 12ms; }
+.es-burst > span:nth-child(5) { --es-bx: 26px; --es-by: 20px; }
+.es-burst > span:nth-child(6) { --es-bx: 12px; --es-by: 31px; animation-delay: 10ms; }
+.es-burst > span:nth-child(7) { --es-bx: -6px; --es-by: 34px; }
+.es-burst > span:nth-child(8) { --es-bx: -22px; --es-by: 26px; animation-delay: 14ms; }
+.es-burst > span:nth-child(9) { --es-bx: -32px; --es-by: 9px; }
+.es-burst > span:nth-child(10) { --es-bx: -32px; --es-by: -10px; animation-delay: 8ms; }
+.es-burst > span:nth-child(11) { --es-bx: -21px; --es-by: -26px; }
+.es-burst > span:nth-child(12) { --es-bx: 7px; --es-by: -24px; animation-delay: 6ms; }
+.es-burst > span:nth-child(13) { --es-bx: 24px; --es-by: -9px; }
+.es-burst > span:nth-child(14) { --es-bx: 20px; --es-by: 10px; animation-delay: 10ms; }
+.es-burst > span:nth-child(15) { --es-bx: -9px; --es-by: 21px; }
+.es-burst > span:nth-child(16) { --es-bx: -25px; --es-by: -5px; animation-delay: 12ms; }
+@keyframes es-burst {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.25);
+	}
+	22% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1.28);
+	}
+	to {
+		opacity: 0;
+		transform: translate(calc(-50% + var(--es-bx)), calc(-50% + var(--es-by))) scale(0.55);
+	}
+}
+.es-root[data-reduced-motion="true"],
+.es-root[data-reduced-motion="true"] .es-tick,
+.es-root[data-reduced-motion="true"] .es-max-effects {
+	transition: none;
+}

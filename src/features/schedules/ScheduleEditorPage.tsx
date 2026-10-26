@@ -469,7 +469,6 @@ export function ScheduleEditorPage({
 				? modelSel.selector
 				: composeSelection(modelSel.selector, level),
 		);
-		setOpenMenu(null);
 	};
 
 	const cwdKey = trimTrailingSlash(form.cwd);
