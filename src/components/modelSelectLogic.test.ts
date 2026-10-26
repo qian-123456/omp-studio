@@ -91,13 +91,13 @@ describe("thinking chip helpers", () => {
 		{ provider: "a", id: "plain", name: "Plain", thinking: [] },
 	];
 	it("offers the selected model's levels via resolveThinkingLevels", () => {
-		expect(thinkingLevelsFor("a/m1", CAT, {}, null)).toEqual(["auto", "low", "high", "off"]);
+		expect(thinkingLevelsFor("a/m1", CAT, {}, null)).toEqual(["auto", "off", "low", "high"]);
 		expect(thinkingLevelsFor("a/plain", CAT, {}, null)).toEqual([]);
 		expect(thinkingLevelsFor("a/unknown", CAT, {}, null)).toEqual([]);
 		expect(thinkingLevelsFor("", CAT, {}, null)).toEqual([]);
 	});
 	it("resolves a role to its model's levels", () => {
-		expect(thinkingLevelsFor("smol", CAT, { smol: "a/m2:high" }, null)).toEqual(["auto", "high", "xhigh", "off"]);
+		expect(thinkingLevelsFor("smol", CAT, { smol: "a/m2:high" }, null)).toEqual(["auto", "off", "high", "xhigh"]);
 		expect(thinkingLevelsFor("smol", CAT, {}, null)).toEqual([]);
 	});
 	it("writes auto as the bare selector, other levels as a suffix", () => {

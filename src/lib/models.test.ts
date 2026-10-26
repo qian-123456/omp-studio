@@ -5,18 +5,30 @@ describe("resolveThinkingLevels", () => {
 	it("falls back to configured catalog levels when live metadata is unavailable", () => {
 		expect(resolveThinkingLevels(undefined, ["low", "high"])).toEqual([
 			"auto",
+			"off",
 			"low",
 			"high",
+		]);
+	});
+
+	it("orders auto and off first, then effort ascending, unknown levels last", () => {
+		expect(resolveThinkingLevels(["max", "custom", "low", "xhigh", "medium"], null)).toEqual([
+			"auto",
 			"off",
+			"low",
+			"medium",
+			"xhigh",
+			"max",
+			"custom",
 		]);
 	});
 
 	it("keeps a non-auto current level even when it is not in known capabilities", () => {
 		expect(resolveThinkingLevels(["low", "high"], ["medium"], "xhigh")).toEqual([
 			"auto",
+			"off",
 			"low",
 			"high",
-			"off",
 			"xhigh",
 		]);
 	});

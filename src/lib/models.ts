@@ -48,8 +48,24 @@ export function extractThinkingLevels(thinking: unknown): string[] {
 	return [];
 }
 
+/** Ascending effort order; `auto` and `off` lead, unknown levels keep their order at the end. */
+const THINKING_ORDER = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/** `levels` reordered as `auto`, `off`, then weakest → strongest effort. */
+function sortThinkingLevels(levels: readonly string[]): string[] {
+	const rank = (level: string) => {
+		const i = THINKING_ORDER.indexOf(level);
+		return i === -1 ? THINKING_ORDER.length : i;
+	};
+	return levels
+		.map((level, i) => ({ level, i }))
+		.sort((a, b) => rank(a.level) - rank(b.level) || a.i - b.i)
+		.map((x) => x.level);
+}
+
 /** Resolve selectable thinking levels from live capabilities, then the model catalog.
- * Keep the current RPC value visible even when it is absent from known capabilities. */
+ * Keep the current RPC value visible even when it is absent from known capabilities.
+ * Order: `auto`, `off`, then ascending effort (`sortThinkingLevels`). */
 export function resolveThinkingLevels(
 	liveThinking: unknown,
 	catalogLevels?: readonly string[] | null,
@@ -66,7 +82,7 @@ export function resolveThinkingLevels(
 	const levels = ["auto", ...supported.filter((level) => level !== "auto")];
 	if (!levels.includes("off")) levels.push("off");
 	if (current && !levels.includes(current)) levels.push(current);
-	return levels;
+	return sortThinkingLevels(levels);
 }
 
 /** What the thinking chip shows for a model.

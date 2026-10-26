@@ -6,7 +6,7 @@
 
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
-import { useRef } from "react";
+import { type KeyboardEvent, type PointerEvent, useRef, useState } from "react";
 import { openSettingsTarget } from "../features/settings/settingsTargets";
 import { thinkingChipState } from "../lib/models";
 import { FloatingLayer } from "./FloatingLayer";
@@ -136,39 +136,205 @@ export function ThinkingLevelPicker({
 					onDismiss={() => onOpenChange(false)}
 					className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 				>
-					<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
-						{t("components.thinkingLevel")}
-					</div>
-					<div className="py-0.5">
-						{levels.map((level) => {
-							const opt = thinkingLabel(level);
-							const selected = value === level;
-							return (
-								<button
-									key={level}
-									type="button"
-									onClick={() => onSelect(level)}
-									className={clsx(
-										"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
-										selected
-											? "bg-[var(--bg-active-fill)] text-[var(--text)]"
-											: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
-									)}
-								>
-									<div className="min-w-0 pr-2">
-										<div className="font-medium">{opt.label}</div>
-										{opt.desc && (
-											<div className="text-[10px] text-[var(--text-40,var(--text-dim))]">{opt.desc}</div>
-										)}
-									</div>
-									{selected && (
-										<Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />
-									)}
-								</button>
-							);
-						})}
-					</div>
+					<ThinkingLevelMenu levels={levels} value={value} onSelect={onSelect} />
 				</FloatingLayer>
+			)}
+		</div>
+	);
+}
+
+/** Popover body: the level list plus the effort slider. Mounted only while open,
+ * so a slider preview never outlives the popover. */
+function ThinkingLevelMenu({
+	levels,
+	value,
+	onSelect,
+}: {
+	levels: string[];
+	value: string;
+	onSelect: (level: string) => void;
+}) {
+	const { t } = useT();
+	// Level the slider is hovering over while dragging / arrowing; the list follows it.
+	const [preview, setPreview] = useState<string | null>(null);
+	const shown = preview ?? value;
+	const stops = levels.filter((level) => level !== "auto");
+	const commit = (level: string) => {
+		setPreview(null);
+		if (level !== value) onSelect(level);
+	};
+	return (
+		<>
+			<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
+				{t("components.thinkingLevel")}
+			</div>
+			<div className="py-0.5">
+				{levels.map((level) => {
+					const opt = thinkingLabel(level);
+					return (
+						<button
+							key={level}
+							type="button"
+							onClick={() => onSelect(level)}
+							className={clsx(
+								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
+								shown === level
+									? "bg-[var(--bg-active-fill)] text-[var(--text)]"
+									: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+							)}
+						>
+							<div className="min-w-0 pr-2">
+								<div className="font-medium">{opt.label}</div>
+								{opt.desc && <div className="text-[10px] text-[var(--text-40,var(--text-dim))]">{opt.desc}</div>}
+							</div>
+							{value === level && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
+						</button>
+					);
+				})}
+			</div>
+			{stops.length > 1 && (
+				<div className="border-t border-[var(--line,var(--border-divider))] px-3 pb-2 pt-3">
+					<ThinkingSlider
+						stops={stops}
+						active={shown}
+						label={t("components.thinkingLevel")}
+						onPreview={setPreview}
+						onCommit={commit}
+					/>
+				</div>
+			)}
+		</>
+	);
+}
+
+/** Track height; the end stops sit at the centers of its rounded caps. */
+const TRACK_H = 24;
+
+/** ChatGPT-style effort slider: one stop per level (weakest left → strongest right),
+ * a colored fill up to a white thumb. Dragging moves the thumb freely and previews
+ * the nearest stop; release snaps and commits. Arrow keys preview, Enter commits.
+ * When `active` is not a stop (e.g. `auto`) the thumb and fill are hidden. */
+function ThinkingSlider({
+	stops,
+	active,
+	label,
+	onPreview,
+	onCommit,
+}: {
+	stops: string[];
+	active: string;
+	label: string;
+	onPreview: (level: string | null) => void;
+	onCommit: (level: string) => void;
+}) {
+	const trackRef = useRef<HTMLDivElement>(null);
+	// Free thumb position (0..1) while the pointer is down; null = snapped to `active`.
+	const [drag, setDrag] = useState<number | null>(null);
+	const last = stops.length - 1;
+	const index = stops.indexOf(active);
+	const frac = drag ?? (index >= 0 ? index / last : null);
+
+	const fracAt = (clientX: number) => {
+		const r = trackRef.current?.getBoundingClientRect();
+		if (!r || r.width <= TRACK_H) return 0;
+		return Math.min(1, Math.max(0, (clientX - r.left - TRACK_H / 2) / (r.width - TRACK_H)));
+	};
+	const stopAt = (f: number) => stops[Math.round(f * last)];
+
+	const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		e.currentTarget.setPointerCapture(e.pointerId);
+		e.currentTarget.focus();
+		const f = fracAt(e.clientX);
+		setDrag(f);
+		onPreview(stopAt(f));
+	};
+	const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+		if (drag === null) return;
+		const f = fracAt(e.clientX);
+		setDrag(f);
+		onPreview(stopAt(f));
+	};
+	const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+		if (drag === null) return;
+		setDrag(null);
+		onCommit(stopAt(fracAt(e.clientX)));
+	};
+	const onPointerCancel = () => {
+		setDrag(null);
+		onPreview(null);
+	};
+	const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+		let next: number | null = null;
+		if (e.key === "ArrowRight" || e.key === "ArrowUp") next = index < 0 ? 0 : Math.min(last, index + 1);
+		else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = index < 0 ? 0 : Math.max(0, index - 1);
+		else if (e.key === "Home") next = 0;
+		else if (e.key === "End") next = last;
+		else if ((e.key === "Enter" || e.key === " ") && index >= 0) {
+			e.preventDefault();
+			onCommit(stops[index]);
+			return;
+		}
+		if (next === null) return;
+		e.preventDefault();
+		onPreview(stops[next]);
+	};
+
+	const at = (f: number) => `calc(${TRACK_H / 2}px + (100% - ${TRACK_H}px) * ${f})`;
+	const animate = drag === null ? "transition-[left,width] duration-150 ease-out" : "";
+	return (
+		<div
+			ref={trackRef}
+			role="slider"
+			tabIndex={0}
+			aria-label={label}
+			aria-valuemin={0}
+			aria-valuemax={last}
+			aria-valuenow={Math.max(0, index)}
+			aria-valuetext={active}
+			onPointerDown={onPointerDown}
+			onPointerMove={onPointerMove}
+			onPointerUp={onPointerUp}
+			onPointerCancel={onPointerCancel}
+			onKeyDown={onKeyDown}
+			style={{ height: TRACK_H }}
+			className={clsx(
+				"relative w-full touch-none select-none rounded-full bg-[var(--switch-off,var(--bg-hover))] outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
+				drag === null ? "cursor-pointer" : "cursor-grabbing",
+			)}
+		>
+			{frac !== null && (
+				<div
+					className={clsx("absolute inset-y-0 left-0 rounded-full", animate)}
+					style={{
+						width: `calc(${TRACK_H}px + (100% - ${TRACK_H}px) * ${frac})`,
+						backgroundImage: "linear-gradient(90deg, var(--accent), var(--accent-strong, var(--accent)))",
+					}}
+				/>
+			)}
+			{stops.map((level, i) => {
+				const filled = frac !== null && i / last <= frac;
+				return (
+					<span
+						key={level}
+						className={clsx(
+							"pointer-events-none absolute top-1/2 size-[5px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors",
+							filled ? "bg-white/70" : "bg-[var(--text-30,var(--text-dim))]",
+						)}
+						style={{ left: at(i / last) }}
+					/>
+				);
+			})}
+			{frac !== null && (
+				<span
+					className={clsx(
+						"pointer-events-none absolute top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.22)]",
+						animate,
+						drag !== null && "scale-105",
+					)}
+					style={{ left: at(frac) }}
+				/>
 			)}
 		</div>
 	);
