@@ -5,7 +5,7 @@ import { trimSideChatItems } from "./sideChatView";
  * message + live tool cards. Every turn and step carries `id="msg-<itemId>"` so the
  * heatmap and jump navigators can scroll to it. */
 
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
 	Check,
@@ -94,6 +94,7 @@ import {
 	splitInterimProseBySteer,
 	splitLiveTurn,
 	turnRequestItems,
+	type HistoryTurnRow,
 	type TurnBlock,
 } from "./turnGrouping";
 import {
@@ -109,6 +110,14 @@ import {
 	type FollowScrollState,
 } from "./followScroll";
 import { estimateBlockHeight } from "./blockEstimate";
+import { clearEditDraft, getEditDraft, hasEditDraft, setEditDraft } from "./editDrafts";
+import { buildHistoryRows, findRowIndexByItemId } from "./historyRows";
+import {
+	calculateBlockCost,
+	rowStaticMetrics,
+	selectRenderIndexes,
+	selectTailIndexes,
+} from "./renderBudget";
 import { claimEscape } from "../../lib/escapeClaim";
 import { flashQuote } from "./annotationLocate";
 import { useSessionSubagents } from "./subagents/useSessionSubagents";
@@ -120,6 +129,8 @@ import {
 import { useAnswerStarted } from "./useAnswerStarted";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
+/** Viewport height assumed before the scroll element has been measured. */
+const DEFAULT_VIEWPORT_PX = 800;
 /** Safety net: longest the live row outlives its stream when the post-stream
  *  transcript page never lands (failed refresh). */
 const LIVE_HOLD_MS = 10_000;
@@ -158,14 +169,6 @@ const TRACE_GUTTER_PAD = "px-8 @min-[864px]:px-3";
 const USER_ACTION_BTN =
 	"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
-/** Open inline-edit drafts by transcript item id (outlive the virtualized row). */
-const editDrafts = new Map<string, string>();
-
-/** Drop inline-edit drafts of the given transcript item ids (their session was removed). */
-export function pruneEditDrafts(itemIds: readonly string[]): void {
-	for (const id of itemIds) editDrafts.delete(id);
-}
-
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,
  * --chat-user-bg). Long text collapses to a few lines behind 查看更多.
@@ -187,15 +190,15 @@ const UserRow = React.memo(function UserRow({
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
 	// Edit state survives the row being virtualized away (keyed by item id).
-	const [editing, setEditing] = useState(() => editDrafts.has(item.id));
-	const [draft, setDraft] = useState(() => editDrafts.get(item.id) ?? "");
+	const [editing, setEditing] = useState(() => hasEditDraft(item.id));
+	const [draft, setDraft] = useState(() => getEditDraft(item.id) ?? "");
 	const [resending, setResending] = useState(false);
 	const updateDraft = (v: string) => {
 		setDraft(v);
-		editDrafts.set(item.id, v);
+		setEditDraft(item.id, v);
 	};
 	const closeEditor = () => {
-		editDrafts.delete(item.id);
+		clearEditDraft(item.id);
 		setEditing(false);
 	};
 
@@ -556,7 +559,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	highlightedId,
 }: {
 	sessionId: string;
-	block: TurnBlock;
+	/** One part of a turn (the whole turn when it is not split). */
+	block: HistoryTurnRow;
 	isLatestTurn?: boolean;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	sessionCwd: string;
@@ -584,9 +588,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	);
 	const toggleShare = useShareSelection((s) => s.toggle);
 	const userStartedAt = useMemo(() => {
-		const ts = block.userItem?.ts ? Date.parse(block.userItem.ts) : Number.NaN;
+		const ts = block.turn.userItem?.ts ? Date.parse(block.turn.userItem.ts) : Number.NaN;
 		return Number.isNaN(ts) ? undefined : ts;
-	}, [block.userItem?.ts]);
+	}, [block.turn.userItem?.ts]);
 	// The parent's turn can end while its subagents keep going; then the title
 	// stays live and the final duration covers the subagents' span.
 	const awaitingSubagents = subagentsRunning === true && !streamingThisTurn;
@@ -603,10 +607,18 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		block.endedAtMs,
 		subagentEndedAt,
 	);
+	// A long answer is cut across parts: render only this part's slice.
+	const answerSource = block.answerSlice ?? block.answerItem?.text;
 	const answerText = useMemo(() => {
-		if (!block.answerItem?.text) return "";
-		return stripImageMarkers(block.answerItem.text);
-	}, [block.answerItem?.text]);
+		if (!answerSource) return "";
+		return stripImageMarkers(answerSource);
+	}, [answerSource]);
+	const isAnswerContinuation = (block.answerSliceIndex ?? 0) > 0;
+	// The footer copies the whole answer, not just the last slice.
+	const fullAnswerText = useMemo(() => {
+		if (block.answerSlice === undefined) return answerText;
+		return block.answerItem?.text ? stripImageMarkers(block.answerItem.text) : "";
+	}, [block.answerSlice, block.answerItem?.text, answerText]);
 	const answerTime = formatMessageTimestamp(block.answerItem?.ts);
 	const hasHighlightedStep = useMemo(() => {
 		if (!highlightedId || block.intermediateSteps.length === 0) return false;
@@ -622,12 +634,14 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		[block.intermediateSteps],
 	);
 	// Segments that carry a fold own the header (first) and the live state (last).
-	const firstStepsSeg = segments.findIndex((s) => s.type === "steps" && s.folded.length > 0);
-	const lastStepsSeg = segments.reduce(
-		(acc, s, i) => (s.type === "steps" && s.folded.length > 0 ? i : acc),
-		-1,
-	);
-	const inProgress = streamingThisTurn && !block.answerItem && block.intermediateSteps.length > 0;
+	const firstStepsSeg = block.ownsFirstFold
+		? segments.findIndex((s) => s.type === "steps" && s.folded.length > 0)
+		: -1;
+	const lastStepsSeg = block.ownsLastFold
+		? segments.reduce((acc, s, i) => (s.type === "steps" && s.folded.length > 0 ? i : acc), -1)
+		: -1;
+	const inProgress =
+		streamingThisTurn && !block.turn.answerItem && block.turn.intermediateSteps.length > 0;
 
 	// One model request per assistant message in the turn; the answer's own
 	// request renders under the answer body instead of inside the steps.
@@ -642,11 +656,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				toolCallIds: (item.toolCalls ?? []).map((c) => c.id),
 			});
 		};
-		for (const item of turnRequestItems(block.intermediateSteps)) push(item);
-		push(block.answerItem);
+		for (const item of turnRequestItems(block.turn.intermediateSteps)) push(item);
+		push(block.turn.answerItem);
 		return out;
-	}, [block.intermediateSteps, block.answerItem]);
-	const answerRequestId = block.answerItem?.id;
+	}, [block.turn.intermediateSteps, block.turn.answerItem]);
+	const answerRequestId = block.turn.answerItem?.id;
 	const statsPlan = useMemo<TurnStatsPlan | undefined>(
 		() =>
 			requests.length > 0 ? { requests, answerRequestId } : undefined,
@@ -700,7 +714,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 								sessionId={sessionId}
 								steps={seg.folded}
 								durationMs={isFirst ? turnDurationMs : undefined}
-								isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.answerItem}
+								isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.turn.answerItem}
 								awaitingSubagents={isFirst && awaitingSubagents}
 								liveOpen={inProgress}
 								hideHeader={inProgress && !isFirst}
@@ -735,7 +749,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 			{block.answerItem && (
 				block.answerItem.stopReason === "aborted" ? (
 					<div
-						id={`msg-${block.answerItem.id}`}
+						id={block.renderAnswerAnchor ? `msg-${block.answerItem.id}` : undefined}
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]"
 					>
 						{block.durationMs ? t("chat.message.stoppedWithTime", { time: formatDurationCompact(block.durationMs) }) : t("chat.message.stopped")}
@@ -766,30 +780,31 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					onToggle={() => block.answerItem && toggleShare(block.answerItem.id)}
 				>
 				<div
-					id={`msg-${block.answerItem.id}`}
+					id={block.renderAnswerAnchor ? `msg-${block.answerItem.id}` : undefined}
 					className={ANSWER_WRAP_CLASS}
 				>
 					<div className={ANSWER_TEXT_CLASS}>
 						{answerText ? (
 							<Markdown text={answerText} sessionId={sessionId} />
-						) : (
+						) : isAnswerContinuation ? null : (
 							<span className="italic text-[var(--text-40)]">{t("chat.message.emptyReply")}</span>
 						)}
 					</div>
-					{block.answerItem.stopReason === "error" &&
+					{block.isLastTurnPart &&
+						block.answerItem.stopReason === "error" &&
 						isContextOverflowError(block.answerItem.text) && (
 							<ContextOverflowHint
-								modelRef={block.answerItem.model ?? block.userItem?.model}
+								modelRef={block.answerItem.model ?? block.turn.userItem?.model}
 							/>
 						)}
 
 					{/* The answer request's stats line sits above the footer and is
 					    always visible, even when the steps above stay collapsed. */}
-					{answerStat && !answerStat.error && (
+					{block.isLastTurnPart && answerStat && !answerStat.error && (
 						<RequestStatsLine stat={answerStat} className="mt-0.5" omitTime />
 					)}
 					{/* Hover-only ghost footer */}
-					{!selecting && !isForkDraftId(sessionId) && (
+					{block.isLastTurnPart && !selecting && !isForkDraftId(sessionId) && (
 						<AnswerFooter
 							sessionId={sessionId}
 							cwd={sessionCwd}
@@ -799,7 +814,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							sessionWorking={sessionWorking}
 							answerTime={answerTime}
 							onDoneUndo={onTurnsChange}
-							answerText={answerText}
+							answerText={fullAnswerText}
 							answerItemId={block.answerItem.id}
 						/>
 					)}
@@ -1481,6 +1496,8 @@ export function MessageList({
 
 	// Group visible items into TurnBlocks and ProtocolBlocks
 	const blocks = useMemo(() => groupTurnBlocks(visible), [visible]);
+	// Virtualizer rows: long turns are split so no single row is huge.
+	const rows = useMemo(() => buildHistoryRows(blocks), [blocks]);
 
 	// Subagents outlive the parent prompt turn: extend each turn's span to the
 	// subagents it dispatched (running ones keep its title live).
@@ -1528,13 +1545,51 @@ export function MessageList({
 	const lastTurnIdRef = useRef<unknown>(null);
 	const liveSeenAtRef = useRef(0);
 	const jumpTimerRef = useRef(0);
+	const virtualizerRef = useRef<Virtualizer<HTMLDivElement, Element> | null>(null);
+	// Row height as the virtualizer will lay it out: measured when mounted
+	// before, else the content estimate.
+	const rowHeightOf = (i: number): number => {
+		const row = rows[i];
+		if (!row) return 0;
+		return virtualizerRef.current?.itemSizeCache.get(row.id) ?? estimateBlockHeight(row);
+	};
+	const rowCostOf = (i: number): number => {
+		const row = rows[i];
+		if (!row) return 0;
+		return calculateBlockCost({ height: rowHeightOf(i), ...rowStaticMetrics(row) });
+	};
 	const virtualizer = useVirtualizer({
-		count: blocks.length,
+		count: rows.length,
 		getScrollElement: () => scrollRef.current,
-		estimateSize: (index) => estimateBlockHeight(blocks[index]),
-		overscan: 4,
-		getItemKey: (index) => blocks[index]?.id ?? index,
+		estimateSize: (index) => estimateBlockHeight(rows[index]),
+		// The render budget (not a fixed row count) decides how many neighbours mount.
+		overscan: 0,
+		// Cold open lands on the newest rows, never the oldest.
+		initialOffset: () => Number.MAX_SAFE_INTEGER,
+		rangeExtractor: (range) => {
+			const win = {
+				count: range.count,
+				heightOf: rowHeightOf,
+				costOf: rowCostOf,
+			};
+			// While pinned to the bottom the viewport is (about to be) at the
+			// tail, whatever offset the virtualizer still holds from before the
+			// transcript loaded: mount the newest rows, not the oldest.
+			if (shouldFollow(followRef.current)) {
+				return selectTailIndexes({
+					...win,
+					viewportPx: scrollRef.current?.clientHeight || DEFAULT_VIEWPORT_PX,
+				});
+			}
+			return selectRenderIndexes({
+				...win,
+				startIndex: range.startIndex,
+				endIndex: range.endIndex,
+			});
+		},
+		getItemKey: (index) => rows[index]?.id ?? index,
 	});
+	virtualizerRef.current = virtualizer;
 	// Above-fold size changes must be compensated in every scroll direction.
 	// TanStack's default skips re-measurements during backward scroll, so a
 	// row above the viewport that grows after mount (visualize iframe 240px →
@@ -1567,7 +1622,14 @@ export function MessageList({
 		}
 		return null;
 	}, [blocks]);
-	lastTurnIdRef.current = lastTurnId;
+	// The virtualizer keys rows, not turns: the live hand-off lands in the
+	// last part of the latest turn.
+	lastTurnIdRef.current = useMemo(() => {
+		for (let i = rows.length - 1; i >= 0; i--) {
+			if (rows[i].type === "turn") return rows[i].id;
+		}
+		return null;
+	}, [rows]);
 
 	// The latest turn already shows a live "正在处理" disclosure (persisted
 	// steps, no answer yet); StreamingRow must not add a second timer under it.
@@ -1753,7 +1815,7 @@ export function MessageList({
 			el.scrollTop = el.scrollHeight;
 			followRef.current = onWroteBottom(followRef.current, Date.now());
 		}
-	}, [sessionId, blocks.length, pendingEchoes.length, liveVisible, totalSize, scrollRef]);
+	}, [sessionId, rows.length, pendingEchoes.length, liveVisible, totalSize, scrollRef]);
 
 	// Sending a message re-arms follow-bottom even after the viewport was left
 	// above the stream (the user scrolling away).
@@ -1826,7 +1888,7 @@ export function MessageList({
 		lastHandledScrollReq.current = scrollRequest.timestamp;
 
 		const targetId = scrollRequest.itemId;
-		const targetIndex = blocks.findIndex((b) => {
+		const targetIndex = rows.findIndex((b) => {
 			if (b.allItemIds.includes(targetId)) return true;
 			if (
 				b.type === "turn" &&
@@ -1876,7 +1938,7 @@ export function MessageList({
 			}
 			useLive.getState().clearScrollRequest(sessionId);
 		}
-	}, [scrollRequest, blocks, virtualizer, sessionId, flashHighlight]);
+	}, [scrollRequest, rows, virtualizer, sessionId, flashHighlight]);
 	useEffect(() => () => window.clearTimeout(jumpTimerRef.current), []);
 
 	// Consume cross-feature "jump to chat turn" requests (git timeline → chat)
@@ -1887,12 +1949,10 @@ export function MessageList({
 		if (revealTurn.nonce === lastHandledReveal.current) return;
 		if (isLoadingTranscript) return;
 
-		const idx = blocks.findIndex((b) =>
-			b.allItemIds.includes(revealTurn.userItemId),
-		);
+		const idx = findRowIndexByItemId(rows, revealTurn.userItemId);
 		// Transcript not materialised yet (load not started): keep the target
 		// pending instead of consuming it against an empty list.
-		if (idx < 0 && blocks.length === 0) return;
+		if (idx < 0 && rows.length === 0) return;
 		lastHandledReveal.current = revealTurn.nonce;
 		useTurnNav.getState().clearTurn();
 		if (idx < 0) return;
@@ -1902,8 +1962,8 @@ export function MessageList({
 		flashHighlight(revealTurn.userItemId, 2500);
 		// A target deeper inside the turn (an assistant reply from a search hit):
 		// refine to the message itself once its row has mounted.
-		const blk = blocks[idx];
-		if (blk.type === "turn" && blk.userItem?.id !== revealTurn.userItemId) {
+		const blk = rows[idx];
+		if (blk.type === "turn" && blk.turn.userItem?.id !== revealTurn.userItemId) {
 			const targetId = revealTurn.userItemId;
 			for (const delay of [150, 450, 900]) {
 				window.setTimeout(() => {
@@ -1913,7 +1973,7 @@ export function MessageList({
 				}, delay);
 			}
 		}
-	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
+	}, [revealTurn, rows, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
 
 	// Consume Token-panel "locate this tool call" targets: scroll to the call's
 	// turn, flash it (the turn's fold / group / card mount or force open while
@@ -1926,7 +1986,7 @@ export function MessageList({
 		const callId = currentLocateId(locateTarget);
 		if (!callId) return;
 		lastHandledLocate.current = locateTarget.nonce;
-		const idx = blocks.findIndex(
+		const idx = rows.findIndex(
 			(b) =>
 				b.type === "turn" &&
 				b.intermediateSteps.some(
@@ -1949,7 +2009,7 @@ export function MessageList({
 					?.scrollIntoView({ behavior: "smooth", block: "center" });
 			}, delay);
 		}
-	}, [locateTarget, blocks, virtualizer, isLoadingTranscript, flashHighlight, t]);
+	}, [locateTarget, rows, virtualizer, isLoadingTranscript, flashHighlight, t]);
 	// Anchor the pill to the (non-scrolling) scroll container, not the list root
 	// that moves with scrollTop.
 	const [locateHost, setLocateHost] = useState<HTMLElement | null>(null);
@@ -1999,32 +2059,33 @@ export function MessageList({
 					className="relative mx-auto w-full pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
 				>
 					{/* Virtualized committed transcript */}
-					{blocks.length > 0 && (
+					{rows.length > 0 && (
 						<div
 							style={{ height: virtualizer.getTotalSize() }}
 							className="relative w-full"
 						>
 							{virtualizer.getVirtualItems().map((row) => {
-								const block = blocks[row.index];
+								const block = rows[row.index];
 								if (!block) return null;
 								const isHighlighted = block.allItemIds.includes(
 									highlightedId ?? "",
 								);
 
 								const cp =
-									block.type === "turn" && block.userItem
-										? checkpointByUserItem.get(block.userItem.id)
+									block.type === "turn" && block.turn.userItem
+										? checkpointByUserItem.get(block.turn.userItem.id)
 										: undefined;
 
 								return (
 									<div
 										key={row.key}
 										data-index={row.index}
-										data-turn-id={block.id}
+										data-turn-id={block.type === "turn" ? block.turnId : block.id}
 										ref={virtualizer.measureElement}
 										style={{ transform: `translateY(${row.start}px)` }}
 										className={clsx(
-											"absolute left-0 top-0 w-full py-1 transition-colors duration-300",
+											"absolute left-0 top-0 w-full transition-colors duration-300",
+											block.type === "turn" && block.isContinuation ? "pb-1" : "py-1",
 											traceGutter ? TRACE_GUTTER_PAD : "px-3",
 											isHighlighted &&
 												"rounded-[10px] bg-[var(--ghost-hover)]",
@@ -2034,15 +2095,15 @@ export function MessageList({
 											<TurnBlockRow
 												sessionId={sessionId}
 												block={block}
-												isLatestTurn={block.id === lastTurnId}
+												isLatestTurn={block.turnId === lastTurnId}
 												toolResultsByCallId={toolResultsByCallId}
 												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
 												turnCheckpoint={cp}
 												turns={turns}
 												sessionWorking={sessionWorking}
-												subagentsRunning={subagentSpans.get(block.id)?.running}
-												subagentEndedAt={subagentSpans.get(block.id)?.endedAt}
+												subagentsRunning={subagentSpans.get(block.turnId)?.running}
+												subagentEndedAt={subagentSpans.get(block.turnId)?.endedAt}
 												onTurnsChange={onTurnsChange}
 												highlightedId={highlightedId}
 											/>

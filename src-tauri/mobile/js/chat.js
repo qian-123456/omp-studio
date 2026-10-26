@@ -555,7 +555,7 @@
 	function renderChatHeader() {
 		const s = sessionById(cur);
 		const st = s ? s.status || "idle" : "idle";
-		$("chat-title").textContent = sessionName(s) || "会话";
+		$("chat-title").textContent = sessionName(s) || (isDraft(cur) ? "新会话" : "会话");
 		$("chat-sdot").className = "sdot s-" + (working ? "working" : st);
 		$("chat-st").textContent = working ? "回复中" : STATUS_LABEL[st] || st;
 		const dead = DEAD.includes(st) && !working;
@@ -583,7 +583,7 @@
 	// ---------- transcript sync ----------
 
 	async function fetchTranscript() {
-		if (!cur) return;
+		if (!cur || isDraft(cur)) return;
 		if (fetching) {
 			fetchAgain = true;
 			return;
@@ -808,6 +808,30 @@
 	let lastSend = 0;
 	let stateTimer = null;
 
+	// ---------- drafts: process-free new sessions ----------
+
+	const DRAFT_PREFIX = "mobile-draft-";
+	const isDraft = (id) => !!id && id.startsWith(DRAFT_PREFIX);
+	const draftStash = new Map(); // draft id -> {text, atts}, kept while navigating away
+	let draftTimer = null;
+	let handoffOpt = null; // {id, text}: first message carried over to the real session page
+
+	function draftMeaningful() {
+		return $("input").value.trim() !== "" || atts.length > 0;
+	}
+	function draftActivity(active, id, meaningful) {
+		const target = id || cur;
+		if (!isDraft(target)) return;
+		const m = meaningful === undefined ? draftMeaningful() : meaningful;
+		M.api("POST", "/sessions/" + target + "/draft-activity", { active, meaningful: m }).catch(() => {});
+	}
+	/** Debounced: the first meaningful edit prewarms omp, clearing it releases it. */
+	function draftTouch() {
+		if (!isDraft(cur)) return;
+		clearTimeout(draftTimer);
+		draftTimer = setTimeout(() => draftActivity(true), 600);
+	}
+
 	function shortModel(m) {
 		if (!m) return "";
 		const s = typeof m === "string" ? m : m.id || m.name || m.model || "";
@@ -984,8 +1008,18 @@
 		$("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
 		nearBottom = true;
 		try {
-			await M.api("POST", "/sessions/" + id + "/prompt-ex", { text: prompt, images: [] });
+			const r = await M.api("POST", "/sessions/" + id + "/prompt-ex", { text: prompt, images: [] });
 			for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
+			if (r && r.sessionId && r.sessionId !== id) {
+				// Draft handed off: follow the real session omp created for it.
+				draftStash.delete(id);
+				M.refreshSessions().catch(() => {});
+				if (cur === id) {
+					handoffOpt = { id: r.sessionId, text: prompt };
+					M.nav.replace("chat", { id: r.sessionId });
+				}
+				return;
+			}
 			scheduleFetch(300);
 		} catch (e) {
 			const oi = optimistic.findIndex((o) => o.text === prompt);
@@ -1050,6 +1084,7 @@
 			};
 			atts.push(a);
 			renderAtts();
+			draftTouch();
 			M.upload("/sessions/" + id + "/upload", f, { name: a.name })
 				.then((r) => {
 					a.status = "ok";
@@ -1454,7 +1489,10 @@
 		items = [];
 		offset = 0;
 		tailId = null;
-		optimistic = [];
+		const handed = !!handoffOpt && handoffOpt.id === cur;
+		optimistic = handed ? [{ text: handoffOpt.text }] : [];
+		handoffOpt = null;
+		if (handed) lastSend = Date.now();
 		streamMsg = null;
 		liveTools = {};
 		localOut = [];
@@ -1472,12 +1510,22 @@
 		fetchAgain = false;
 		M.setCurrentSession(cur);
 		const s = sessionById(cur);
-		working = !!s && s.status === "working";
+		working = (!!s && s.status === "working") || handed;
+		if (isDraft(cur)) {
+			const d = draftStash.get(cur);
+			if (d) {
+				atts = d.atts;
+				$("input").value = d.text;
+			}
+		}
 
 		$("back").onclick = () => M.nav.back();
 		$("menu").onclick = () => M.drawer.open("left");
 		$("chip").onclick = () => M.drawer.open("right");
-		$("input").addEventListener("input", autosize);
+		$("input").addEventListener("input", () => {
+			autosize();
+			draftTouch();
+		});
 		$("send").onclick = send;
 		$("plus").onclick = () => openSheet("menu");
 		$("ch-scrim").onclick = closeSheet;
@@ -1498,6 +1546,8 @@
 				if (atts[i].url) URL.revokeObjectURL(atts[i].url);
 				atts.splice(i, 1);
 				renderAtts();
+				updateSendBtn();
+				draftTouch();
 			}
 		});
 		for (const [id, img] of [["f-any", false], ["f-img", true], ["f-cam", true]])
@@ -1563,7 +1613,9 @@
 		};
 
 		for (const [evt, fn] of Object.entries(bus)) M.on(evt, fn);
+		renderAtts();
 		autosize();
+		if (isDraft(cur) && draftMeaningful()) draftActivity(true);
 		renderChatHeader();
 		renderMessages();
 		fetchTranscript().then(() => {
@@ -1584,7 +1636,18 @@
 	function unmount() {
 		clearInterval(stateTimer);
 		clearInterval(tickTimer);
-		clearAtts();
+		if (isDraft(cur)) {
+			// Keep the unsent text/attachments with the draft; a blank draft lets
+			// the server release its prewarmed process.
+			clearTimeout(draftTimer);
+			const text = $("input").value;
+			const meaningful = draftMeaningful();
+			draftActivity(false, cur, meaningful);
+			if (meaningful) draftStash.set(cur, { text, atts });
+			else draftStash.delete(cur);
+		} else {
+			clearAtts();
+		}
 		for (const [evt, fn] of Object.entries(bus)) M.off(evt, fn);
 		clearTimeout(fetchTimer);
 		cur = null;

@@ -312,22 +312,54 @@ mod macos_mem {
 
     extern "C" {
         // macOS libproc APIs (provided by libSystem.B.dylib)
-        fn proc_listallpids(buffer: *mut libc::c_void, buffersize: libc::c_int) -> libc::c_int;
         fn proc_pid_rusage(
             pid: libc::c_int,
             flavor: libc::c_int,
             buffer: *mut libc::c_void,
         ) -> libc::c_int;
-        // Returns the responsible PID for attribution (aligned with macOS Activity Monitor)
+        fn proc_listallpids(buffer: *mut libc::c_void, buffersize: libc::c_int) -> libc::c_int;
+        // Private but long-stable: the pid Activity Monitor charges `pid` to.
         fn responsibility_get_pid_responsible_for_pid(pid: libc::c_int) -> libc::c_int;
     }
 
-    /// Cached snapshot: attributed footprint + per-pid footprints of the
-    /// processes macOS attributes to this app (self + responsible children).
+    /// pid → responsible pid for every live process. Empty when enumeration
+    /// fails. Responsibility is inherited by launch chains (a dev instance
+    /// started from another app shares that app's responsible pid), so callers
+    /// must treat it as a candidate filter, never as proof of ownership.
+    pub fn responsible_map() -> std::collections::HashMap<u32, u32> {
+        let needed = unsafe { proc_listallpids(std::ptr::null_mut(), 0) };
+        let capacity = if needed > 0 {
+            needed as usize + 64
+        } else {
+            1024
+        };
+        let mut pids = vec![0i32; capacity];
+        let n = unsafe {
+            proc_listallpids(
+                pids.as_mut_ptr() as *mut libc::c_void,
+                (pids.len() * std::mem::size_of::<libc::c_int>()) as libc::c_int,
+            )
+        };
+        let mut map = std::collections::HashMap::new();
+        if n > 0 {
+            for &pid in &pids[..(n as usize).min(pids.len())] {
+                if pid <= 0 {
+                    continue;
+                }
+                let resp = unsafe { responsibility_get_pid_responsible_for_pid(pid) };
+                if resp > 0 {
+                    map.insert(pid as u32, resp as u32);
+                }
+            }
+        }
+        map
+    }
+
+    /// Cached snapshot of this process's physical footprint.
     static CACHE: Mutex<Option<(Instant, MemSnapshot)>> = Mutex::new(None);
     const CACHE_TTL: Duration = Duration::from_millis(2500);
 
-    pub fn get_attributed_snapshot() -> MemSnapshot {
+    pub fn get_primary_snapshot() -> MemSnapshot {
         if let Ok(guard) = CACHE.lock() {
             if let Some((cached_at, snap)) = &*guard {
                 if cached_at.elapsed() < CACHE_TTL {
@@ -345,94 +377,26 @@ mod macos_mem {
         snap
     }
 
-    /// Pids whose memory is attributed to this app (responsibility + self).
-    /// Shared with `perf` so classification uses the same tree.
-    pub fn app_responsible_pids() -> Vec<u32> {
-        get_attributed_snapshot()
-            .members
-            .iter()
-            .map(|m| m.pid)
-            .collect()
+    fn compute_snapshot() -> MemSnapshot {
+        compute_snapshot_from(std::process::id())
     }
 
-    fn compute_snapshot() -> MemSnapshot {
-        let self_pid = std::process::id();
+    fn compute_snapshot_from(self_pid: u32) -> MemSnapshot {
+        // Never fold processes macOS attributes to us into our memory merely
+        // because responsibility was inherited by a development instance.
+        // Ownership is pruned and completed with the process graph in `perf`.
+        // Never substitute RSS for physical footprint: failure means unknown.
+        MemSnapshot::from_members(footprint(self_pid as libc::c_int).into_iter().collect())
+    }
 
-        // Query total running PIDs
-        let needed = unsafe { proc_listallpids(std::ptr::null_mut(), 0) };
-        let capacity = if needed > 0 {
-            (needed as usize) + 64
-        } else {
-            1024
-        };
-        let mut pids = vec![0i32; capacity];
-
-        let num_pids = unsafe {
-            proc_listallpids(
-                pids.as_mut_ptr() as *mut libc::c_void,
-                (pids.len() * std::mem::size_of::<libc::c_int>()) as libc::c_int,
-            )
-        };
-
-        let mut members: Vec<PerfMember> = Vec::new();
-
-        if num_pids > 0 {
-            let count = (num_pids as usize).min(pids.len());
-            for &pid in &pids[..count] {
-                if pid <= 0 {
-                    continue;
-                }
-                let is_self = pid == self_pid as libc::c_int;
-                let is_responsible = if !is_self {
-                    let resp = unsafe { responsibility_get_pid_responsible_for_pid(pid) };
-                    resp == self_pid as libc::c_int
-                } else {
-                    true
-                };
-
-                if is_responsible {
-                    let mut ri = rusage_info_v5::default();
-                    let ret = unsafe {
-                        proc_pid_rusage(pid, RUSAGE_INFO_V5, &mut ri as *mut _ as *mut libc::c_void)
-                    };
-                    if ret == 0 {
-                        members.push(PerfMember {
-                            pid: pid as u32,
-                            footprint_bytes: ri.ri_phys_footprint,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Fallback: if process enumeration didn't find even self, query self directly
-        if members.is_empty() {
-            let mut ri = rusage_info_v5::default();
-            let ret = unsafe {
-                proc_pid_rusage(
-                    self_pid as libc::c_int,
-                    RUSAGE_INFO_V5,
-                    &mut ri as *mut _ as *mut libc::c_void,
-                )
-            };
-            if ret == 0 {
-                members.push(PerfMember {
-                    pid: self_pid,
-                    footprint_bytes: ri.ri_phys_footprint,
-                });
-            } else {
-                // Ultimate fallback to mach_task_basic_info
-                let resident = get_mach_resident_size();
-                if resident > 0 {
-                    members.push(PerfMember {
-                        pid: self_pid,
-                        footprint_bytes: resident,
-                    });
-                }
-            }
-        }
-
-        MemSnapshot::from_members(members)
+    pub fn footprint(pid: libc::c_int) -> Option<PerfMember> {
+        let mut ri = rusage_info_v5::default();
+        let ret =
+            unsafe { proc_pid_rusage(pid, RUSAGE_INFO_V5, &mut ri as *mut _ as *mut libc::c_void) };
+        (ret == 0 && ri.ri_phys_footprint > 0).then_some(PerfMember {
+            pid: pid as u32,
+            footprint_bytes: ri.ri_phys_footprint,
+        })
     }
 
     /// Physical RAM (total, used) via `sysctl hw.memsize` + `host_statistics64`.
@@ -486,37 +450,11 @@ mod macos_mem {
 
         (total, used)
     }
-
-    #[allow(deprecated)]
-    fn get_mach_resident_size() -> u64 {
-        use std::mem::MaybeUninit;
-        let mut task_info = MaybeUninit::<libc::mach_task_basic_info>::uninit();
-        let mut count = (std::mem::size_of::<libc::mach_task_basic_info>()
-            / std::mem::size_of::<libc::natural_t>())
-            as libc::mach_msg_type_number_t;
-        let kerr = unsafe {
-            libc::task_info(
-                libc::mach_task_self(),
-                libc::MACH_TASK_BASIC_INFO,
-                task_info.as_mut_ptr() as libc::task_info_t,
-                &mut count,
-            )
-        };
-        if kerr == libc::KERN_SUCCESS {
-            let task_info = unsafe { task_info.assume_init() };
-            task_info.resident_size
-        } else {
-            0
-        }
-    }
 }
 
-/// Shared snapshot of this app's memory: total bytes attributed to the
-/// process tree plus the member pids (used by `perf` for bucket overlap).
+/// Shared snapshot of this app's primary process memory.
 #[derive(Clone, Default)]
 pub(crate) struct MemSnapshot {
-    pub bytes: u64,
-    pub processes: u32,
     /// Per-pid footprint in bytes; empty on non-macOS platforms.
     pub members: Vec<PerfMember>,
 }
@@ -529,22 +467,41 @@ pub(crate) struct PerfMember {
 
 impl MemSnapshot {
     fn from_members(members: Vec<PerfMember>) -> Self {
-        Self {
-            bytes: members.iter().map(|m| m.footprint_bytes).sum(),
-            processes: members.len() as u32,
-            members,
-        }
+        Self { members }
     }
 }
 
 #[cfg(target_os = "macos")]
 pub(crate) fn app_memory_snapshot() -> MemSnapshot {
-    macos_mem::get_attributed_snapshot()
+    macos_mem::get_primary_snapshot()
+}
+
+/// pid → macOS responsible pid (empty off macOS).
+#[cfg(target_os = "macos")]
+pub(crate) fn responsible_map() -> std::collections::HashMap<u32, u32> {
+    macos_mem::responsible_map()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn responsible_map() -> std::collections::HashMap<u32, u32> {
+    std::collections::HashMap::new()
 }
 
 #[cfg(target_os = "macos")]
 pub(crate) fn system_memory() -> (Option<u64>, Option<u64>) {
     macos_mem::system_memory()
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn process_footprint(pid: u32) -> Option<u64> {
+    macos_mem::footprint(pid as libc::c_int).map(|m| m.footprint_bytes)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn process_footprint(_pid: u32) -> Option<u64> {
+    // No equally reliable per-process physical-footprint source is available.
+    // In particular, do not substitute RSS and call it physical footprint.
+    None
 }
 
 #[cfg(target_os = "linux")]
@@ -600,26 +557,19 @@ pub(crate) fn system_memory() -> (Option<u64>, Option<u64>) {
     (None, None)
 }
 
-/// Pids counted inside `app_memory_usage`'s total (macOS responsibility set;
-/// just self elsewhere). Used by `perf` to seed the app process tree.
-#[cfg(target_os = "macos")]
-pub(crate) fn app_tree_pids() -> Vec<u32> {
-    macos_mem::app_responsible_pids()
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn app_tree_pids() -> Vec<u32> {
-    vec![std::process::id()]
-}
-
 #[tauri::command]
 pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
-    // The macOS snapshot walks every system pid via syscalls; keep it off the
-    // async runtime workers.
-    let snap = tokio::task::spawn_blocking(app_memory_snapshot)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mb = (snap.bytes as f64) / (1024.0 * 1024.0);
+    // Same instance-isolated physical-footprint bucket as `perf_breakdown.app`,
+    // so the bottom bar and the popover can never disagree.
+    let bucket = super::perf::app_bucket().await;
+    let Some(bytes) = bucket.bytes else {
+        return Ok(ProcessMemoryInfo {
+            resident_mb: 0.0,
+            formatted: "—".to_string(),
+            processes: 0,
+        });
+    };
+    let mb = (bytes as f64) / (1024.0 * 1024.0);
     let formatted = if mb >= 1024.0 {
         format!("{:.1} GB", mb / 1024.0)
     } else {
@@ -628,7 +578,7 @@ pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
     Ok(ProcessMemoryInfo {
         resident_mb: mb,
         formatted,
-        processes: snap.processes,
+        processes: bucket.processes,
     })
 }
 

@@ -324,6 +324,23 @@
 			history.pushState({ d: stack.length - 1 }, "", hashFor(id, params) || location.pathname + location.search);
 			show(entry);
 		},
+		/** Swap the top page in place (no extra history entry), e.g. draft -> real session. */
+		replace(id, params) {
+			closeDrawers();
+			const top = stack.pop();
+			if (top) {
+				try {
+					top.def.unmount?.call(top.inst);
+				} catch (e) {
+					console.error("unmount", top.id, e);
+				}
+				top.root.remove();
+			}
+			const entry = build(id, params);
+			stack.push(entry);
+			history.replaceState({ d: stack.length - 1 }, "", hashFor(id, params) || location.pathname + location.search);
+			show(entry);
+		},
 		back() {
 			if (stack.length > 1) history.back();
 		},

@@ -6,7 +6,7 @@ import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useT } from "../../stores/language";
 import { PrivacyText } from "../privacy/SecretChip";
-import { getImageTokenPalette } from "./Composer";
+import { getImageTokenPalette } from "./imageTokens";
 import { parseCommandToken } from "./slash/chip";
 import { CommandChipBadge } from "./slash/CommandChip";
 

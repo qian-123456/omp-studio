@@ -113,7 +113,7 @@ class ErrorBoundary extends React.Component<
 
 function MainCenterView({ activeView }: { activeView: CenterView }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const hasPending = usePendingSession((s) => s.pending !== null);
+	const hasPending = usePendingSession((s) => s.selectedId !== null && s.drafts[s.selectedId] !== undefined);
 	const hasForkDraft = useForkDraft((s) => s.draft !== null);
 	const docPath = useUi((s) => s.docPath);
 	let view: ReactNode;

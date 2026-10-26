@@ -297,8 +297,8 @@ pub struct ServiceInfo { pub pid: u32, pub name: String, pub port: u16, pub cwd:
 pub struct ProcessMemoryInfo { pub resident_mb: f64, pub formatted: String, pub processes: u32 }
 pub struct PerfBucket { pub bytes: Option<u64>, pub processes: u32 }        // bytes None = unknown
 pub struct AppInstance { pub pid: u32, pub label: String /* branch|worktree|pid N; never argv */, pub cwd: Option<String>, pub is_this: bool }
-pub struct PerfBreakdown { pub app: PerfBucket /* same footprint semantics as app_memory_usage */, pub omp_spawned: PerfBucket, pub omp_external: PerfBucket,
-  pub bar_omp_bytes: Option<u64> /* spawned+external minus macOS responsibility overlap; disjoint bar segment */, pub other_bytes: Option<u64> /* used - app - bar_omp, ≥0 */,
+pub struct PerfBreakdown { pub app: PerfBucket /* this instance only; phys_footprint; identical to app_memory_usage */, pub omp_spawned: PerfBucket, pub omp_external: PerfBucket,
+  pub bar_omp_bytes: Option<u64> /* spawned+external (disjoint pids, same footprint metric) */, pub other_bytes: Option<u64> /* used - app - bar_omp, ≥0 */,
   pub total_bytes: Option<u64>, pub used_bytes: Option<u64>, pub free_bytes: Option<u64>, pub instances: Vec<AppInstance>, pub generated_at: u64 }
 pub struct PairingInfo { pub url: String, pub qr_svg: String, pub expires_at: String }
 pub enum PairingTarget { Lan, Tunnel, Ipv6 }   // snake_case; default Lan
@@ -645,8 +645,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `import_image_file(path: String) -> String` — copies an existing image file (Finder drop/paste, temp screenshots, files outside the asset scope) into `~/.omp-workspace/images/<ts>.<ext>` so its thumbnail loads and it outlives the source; returns the copy's path (an image already inside `images/` or the legacy `ompws-clip` is returned unchanged; non-files error). Frontend wrapper: `importImageFile` in `src/lib/ipc.ts`
 - `clipboard_file_paths() -> Vec<String>` — macOS-only JXA/NSPasteboard read resolving real POSIX paths of files on the pasteboard (`NSFilenamesPboardType` then per-item `public.file-url`); `[]` elsewhere or when no file URLs exist. Composer paste/drop uses it so Finder-copied files attach by real path
 - `save_share_image(base64_png, path)` — chat share-as-image export: decodes a (optionally `data:`-prefixed) PNG and writes it to the absolute `.png` path chosen in the save dialog; never creates parent dirs. Clipboard copy of the image goes through `plugin-clipboard-manager` `writeImage` (needs the tauri `image-png` feature)
-- `app_memory_usage() -> ProcessMemoryInfo` — footprint attributed to this app (macOS responsibility API / Linux self RSS); ~2.5 s cache, powers the bottom-bar 性能 indicator
-- `perf_breakdown() -> PerfBreakdown` — system memory split for the perf popover: app tree / omp spawned-by-us vs external (ppid ancestry + responsibility set over `ps pid,ppid,rss,comm` rows — no argv) / other / free, plus omp-workspace instances labelled by worktree branch (lsof cwd + git rev-parse); `spawn_blocking`, ~3 s cache, fields `None` when a probe fails
+- `app_memory_usage() -> ProcessMemoryInfo` — `perf::app_bucket()`: this instance's own `ri_phys_footprint` (self + ppid descendants, never crossing another omp-workspace instance's root; macOS responsibility only adds reparented helpers when unshared, otherwise they are left out as ambiguous); formatted `—` when unknown; Linux = self RSS only; powers the bottom-bar 性能 indicator
+- `perf_breakdown() -> PerfBreakdown` — system memory split for the perf popover: app tree / omp spawned-by-us vs external (same instance-isolated tree over `ps pid,ppid,rss,comm` rows — no argv; every byte is `ri_phys_footprint`, RSS is never summed or mixed in; unreadable/exited members are skipped, a bucket with none readable is `None`; the Dev-only 活跃窗口/进程 sections are hidden in release builds) / other / free, plus omp-workspace instances labelled by worktree branch (lsof cwd + git rev-parse); `spawn_blocking`, ~3 s cache, fields `None` when a probe fails
 
 **D — todos / backlog / notify:**
 - `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`

@@ -36,6 +36,8 @@ import { toast } from "../../lib/toast";
 import { tNow, useT } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { isLocalDraftId, selectSessionOrDraft, usePendingSession } from "./pendingSession";
+import { discardDraft } from "./draftSession";
 import { HoverScrollText } from "../../components/HoverScrollText";
 import {
 	FloatingLayer,
@@ -146,7 +148,7 @@ const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
 // Store actions are stable; calling them via getState() avoids one zustand
 // subscription per row for each action.
-const selectSession = (id: string | null) => useUi.getState().selectSession(id);
+const selectSession = (id: string | null) => selectSessionOrDraft(id);
 const setSelectedIds = (ids: Set<string> | string[]) => useUi.getState().setSelectedIds(ids);
 const toggleSelectId = (id: string) => useUi.getState().toggleSelectId(id);
 const setHighlightId = (id: string | null) => useUi.getState().setHighlightId(id);
@@ -198,7 +200,13 @@ function SessionRowComponent({
 	// own flags flip (selectedIds is a fresh Set on every change).
 	const isInSelectedSet = useUi((s) => s.selectedIds.has(session.id));
 	const hasMultiSelection = useUi((s) => s.selectedIds.size > 1);
-	const isPrimarySelected = useUi((s) => s.selectedSessionId === session.id);
+	// A local draft row is selected while its view is the center pane.
+	const isDraftRow = isLocalDraftId(session.id);
+	const isDraftShown = usePendingSession((s) => isDraftRow && s.selectedId === session.id);
+	const isPrimarySelected = useUi((s) =>
+		s.selectedSessionId === session.id ||
+		(isDraftShown && s.selectedSessionId === null && s.centerView === "session"),
+	);
 
 	// Derive selection styling: primary accent only when in set (R24, C4)
 	const isSelected = isPrimarySelected && (!hasMultiSelection || isInSelectedSet);
@@ -419,6 +427,8 @@ function SessionRowComponent({
 	const handleContextMenu = (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
+		// A local draft has no session to act on; its trash button is the only action.
+		if (isDraftRow) return;
 		onRowFocus?.();
 		prevActiveElementRef.current =
 			(document.activeElement as HTMLElement) ?? null;
@@ -804,16 +814,31 @@ function SessionRowComponent({
 							className="shrink-0 fill-amber-400/40 text-amber-400 @max-[220px]:hidden"
 						/>
 					)}
-					<button
-						ref={menuBtnRef}
-						tabIndex={-1}
-						type="button"
-						onClick={handleMenuBtnClick}
-						className="press-scale flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] transition-colors p-0.5"
-						title={t("sessions.actionsMenu")}
-					>
-						<MoreHorizontal size={14} />
-					</button>
+					{isDraftRow ? (
+						<button
+							tabIndex={-1}
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								void discardDraft(session.id);
+							}}
+							className="press-scale flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] transition-colors p-0.5"
+							title={t("common.delete")}
+						>
+							<Trash2 size={14} />
+						</button>
+					) : (
+						<button
+							ref={menuBtnRef}
+							tabIndex={-1}
+							type="button"
+							onClick={handleMenuBtnClick}
+							className="press-scale flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] transition-colors p-0.5"
+							title={t("sessions.actionsMenu")}
+						>
+							<MoreHorizontal size={14} />
+						</button>
+					)}
 				</div>
 			</div>
 

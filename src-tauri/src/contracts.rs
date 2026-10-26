@@ -781,19 +781,18 @@ pub struct AppInstance {
 }
 
 /// Result of `perf_breakdown`: where physical memory goes + active windows.
-/// `app` shares `app_memory_usage`'s footprint semantics (so the popover matches
-/// the bottom bar); `omp_spawned`/`omp_external` split `omp` agent processes by
-/// whether this instance spawned them. Bar segments are `bar_app_bytes`,
-/// `bar_omp_bytes`, `other.bytes`, `free_bytes` and are disjoint (spawned omp
-/// already attributed to the app on macOS is counted only inside `app`).
+/// `app` is this instance's own physical footprint (identical to
+/// `app_memory_usage`); other omp-workspace instances are never included. OMP
+/// buckets are disjoint by PID and use the same physical-footprint metric;
+/// members that cannot be read are skipped and a bucket with none readable is
+/// unknown. No RSS sums or overlap compensation are used.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerfBreakdown {
     pub app: PerfBucket,
     pub omp_spawned: PerfBucket,
     pub omp_external: PerfBucket,
-    /// OMP legend segment: spawned + external, minus any spawned footprint
-    /// already included in `app` on macOS.
+    /// OMP legend segment: exactly spawned + external when both are known.
     pub bar_omp_bytes: Option<u64>,
     /// Other processes/system: used - app - bar_omp (floored at 0).
     pub other_bytes: Option<u64>,

@@ -35,7 +35,8 @@ import { SearchInput } from "../../components/SearchInput";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 
-import { tNow, useT } from "../../stores/language";
+import { useT } from "../../stores/language";
+import { validateBranchName } from "./branchName";
 const PILL =
 	"flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] select-none";
 const ROW =
@@ -178,17 +179,6 @@ export function WorkspacePickerPopover({
 		</FloatingLayer>
 	);
 }
-export function validateBranchName(name: string): string | null {
-	const trimmed = name.trim();
-	if (!trimmed) return null;
-	if (trimmed.endsWith("/")) return tNow("chat.pill.branchSlashEnd");
-	if (trimmed.startsWith("/")) return tNow("chat.pill.branchSlashStart");
-	if (/\s/.test(trimmed)) return tNow("chat.pill.branchSpace");
-	if (/[\^~:?*\[\\]/.test(trimmed)) return tNow("chat.pill.branchInvalidChar");
-	if (trimmed.includes("..")) return tNow("chat.pill.branchDoubleDot");
-	return null;
-}
-
 export function CreateBranchDialog({
 	sessionId,
 	initialName,

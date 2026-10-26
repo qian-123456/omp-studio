@@ -175,7 +175,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 
 	// New-session placeholder: a fresh session is on its way, so no "back" affordance.
 	const placeholderShowing = usePendingSession(
-		(s) => s.pending !== null && effectiveCenterView === "session" && !selectedSessionId,
+		(s) => s.selectedId !== null && effectiveCenterView === "session" && !selectedSessionId,
 	);
 	const isViewingSession =
 		effectiveCenterView === "session" && !!selectedSessionId && !!activeSession;

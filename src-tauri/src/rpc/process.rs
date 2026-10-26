@@ -1,7 +1,7 @@
 //! RpcProcess: spawn `omp --mode rpc`, protocol handshake, stdout reader,
 //! stdin writer, request/response correlation.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -99,7 +99,19 @@ pub struct SessionHandle {
     pub stdout_closed: watch::Sender<bool>,
     pub streaming: AtomicBool,
     pub alive: AtomicBool,
+    /// Last frame or host command, not elapsed wall-clock time alone. Internal
+    /// idle probes must not move this clock.
     pub last_activity: parking_lot::Mutex<Instant>,
+    /// Monotonic user/background activity version. Idle timers capture it and
+    /// must recheck it after their delay and after the authoritative probe.
+    pub activity_version: AtomicU64,
+    /// Serializes every host command against conditional suspension. Without
+    /// this, a prompt can slip between the idle check and stdin close.
+    pub dispatch_lock: tokio::sync::Mutex<()>,
+    /// Cached only as a cheap rejection; `get_state` is authoritative at stop.
+    pub awaiting_async_work: AtomicBool,
+    pub settled: AtomicBool,
+    pub active_subagents: parking_lot::Mutex<HashSet<String>>,
     /// Identity of the omp binary exec'd at spawn (`omp_fingerprint`); None if unknown.
     pub omp_fingerprint: Option<String>,
     /// `privacy::native_hash()` at spawn (native secrets.yml snapshot the process loaded).
@@ -126,6 +138,11 @@ impl SessionHandle {
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
+            activity_version: AtomicU64::new(1),
+            dispatch_lock: tokio::sync::Mutex::new(()),
+            awaiting_async_work: AtomicBool::new(false),
+            settled: AtomicBool::new(true),
+            active_subagents: parking_lot::Mutex::new(HashSet::new()),
             omp_fingerprint: None,
             native_hash: String::new(),
         }
@@ -142,6 +159,15 @@ impl SessionHandle {
 
     pub fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
+        self.activity_version.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn refresh_settled(&self) {
+        self.settled.store(
+            !self.streaming.load(Ordering::SeqCst)
+                && !self.awaiting_async_work.load(Ordering::SeqCst),
+            Ordering::SeqCst,
+        );
     }
 
     /// Wait until the stdout reader reports EOF, at most `timeout`.
@@ -206,8 +232,11 @@ pub(crate) fn stale_session_ids<'a>(
 /// Apply one inbound logical frame to handle state (no emission).
 /// Testable without a running process.
 pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
-    handle.touch();
     let ty = frame.get("type").and_then(Value::as_str).unwrap_or("");
+    // Responses to the reaper's own probes do not represent session activity.
+    if ty != "response" {
+        handle.touch();
+    }
     match ty {
         "response" => {
             if let Some(id) = frame.get("id").and_then(Value::as_str) {
@@ -237,9 +266,37 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
                 }
             }
         }
-        "agent_start" => handle.streaming.store(true, Ordering::SeqCst),
+        "agent_start" => {
+            handle.streaming.store(true, Ordering::SeqCst);
+            handle.awaiting_async_work.store(false, Ordering::SeqCst);
+            handle.settled.store(false, Ordering::SeqCst);
+        }
         "agent_end" if crate::catalog::status::agent_end_settles(frame) => {
             handle.streaming.store(false, Ordering::SeqCst);
+            handle.awaiting_async_work.store(
+                frame.get("awaitingAsyncWork").and_then(Value::as_bool) == Some(true),
+                Ordering::SeqCst,
+            );
+            handle.refresh_settled();
+        }
+        "session_settled" => {
+            handle.streaming.store(false, Ordering::SeqCst);
+            handle.awaiting_async_work.store(false, Ordering::SeqCst);
+            handle.settled.store(true, Ordering::SeqCst);
+        }
+        "subagent_lifecycle" => {
+            let payload = frame.get("payload").unwrap_or(frame);
+            let Some(id) = payload.get("id").and_then(Value::as_str) else {
+                return;
+            };
+            match payload.get("status").and_then(Value::as_str) {
+                Some("completed" | "failed" | "aborted") => {
+                    handle.active_subagents.lock().remove(id);
+                }
+                _ => {
+                    handle.active_subagents.lock().insert(id.to_string());
+                }
+            }
         }
         _ => {}
     }
@@ -515,13 +572,26 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
 
 /// Send one command, correlating the response by generated id.
 /// `success:false` → `Err(error)`.
-pub async fn send_command(
+pub async fn send_command(handle: &Arc<SessionHandle>, command: Value) -> Result<Value, String> {
+    let _dispatch = handle.dispatch_lock.lock().await;
+    send_command_locked(handle, command).await
+}
+
+/// Dispatch while the caller owns `dispatch_lock`. Only the idle suspender may
+/// use this; holding the lock across both probes and stdin close is what makes
+/// the check-and-stop operation indivisible to host prompts.
+pub(crate) async fn send_command_locked(
     handle: &Arc<SessionHandle>,
     mut command: Value,
 ) -> Result<Value, String> {
     if !command.is_object() {
         return Err("command must be a JSON object".into());
     }
+    if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
+        return Err("session process is not running".into());
+    }
+    // Recheck after waiting: suspension may have closed stdin while this call
+    // waited for another command to finish.
     if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
         return Err("session process is not running".into());
     }
@@ -534,7 +604,13 @@ pub async fn send_command(
         .map_err(|_| "session stdin closed".to_string())?;
     // A long command may produce no inbound frames for minutes (`compact`),
     // so the send itself counts as activity for the idle reaper.
-    handle.touch();
+    // The suspender's internal probes are deliberately not user activity.
+    if !matches!(
+        command.get("type").and_then(Value::as_str),
+        Some("get_state" | "get_subagents")
+    ) {
+        handle.touch();
+    }
     let timeout = match command.get("type").and_then(Value::as_str) {
         Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
         _ => CMD_TIMEOUT,
@@ -556,7 +632,8 @@ pub async fn send_command(
 }
 
 /// Write a fire-and-forget frame (extension_ui_response etc.).
-pub fn send_raw(handle: &Arc<SessionHandle>, frame: Value) -> Result<(), String> {
+pub async fn send_raw(handle: &Arc<SessionHandle>, frame: Value) -> Result<(), String> {
+    let _dispatch = handle.dispatch_lock.lock().await;
     if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
         return Err("session process is not running".into());
     }
@@ -633,6 +710,11 @@ pub async fn spawn_with_sink(
         streaming: AtomicBool::new(false),
         alive: AtomicBool::new(true),
         last_activity: parking_lot::Mutex::new(Instant::now()),
+        activity_version: AtomicU64::new(1),
+        dispatch_lock: tokio::sync::Mutex::new(()),
+        awaiting_async_work: AtomicBool::new(false),
+        settled: AtomicBool::new(false),
+        active_subagents: parking_lot::Mutex::new(HashSet::new()),
         omp_fingerprint,
         native_hash,
     });
@@ -755,7 +837,7 @@ pub async fn spawn_with_sink(
     guard.armed = false;
     Ok(handle)
 }
-fn apply_state(handle: &SessionHandle, resp: &Value) {
+pub(crate) fn apply_state(handle: &SessionHandle, resp: &Value) {
     let data = resp.get("data").unwrap_or(resp);
     if let Some(id) = data.get("sessionId").and_then(Value::as_str) {
         *handle.session_id.write() = id.to_string();
@@ -765,6 +847,12 @@ fn apply_state(handle: &SessionHandle, resp: &Value) {
     }
     if let Some(streaming) = data.get("isStreaming").and_then(Value::as_bool) {
         handle.streaming.store(streaming, Ordering::SeqCst);
+    }
+    if let Some(waiting) = data.get("hasPendingAsyncWork").and_then(Value::as_bool) {
+        handle.awaiting_async_work.store(waiting, Ordering::SeqCst);
+    }
+    if let Some(settled) = data.get("isSettled").and_then(Value::as_bool) {
+        handle.settled.store(settled, Ordering::SeqCst);
     }
 }
 
@@ -840,6 +928,7 @@ async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
 
 /// Close stdin, wait ≤5s for exit, then SIGKILL.
 pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
+    let _dispatch = handle.dispatch_lock.lock().await;
     let _ = handle.shutdown.send(true);
     // An explicit stop cancels its callers: fail them now instead of waiting
     // for the exit path (the reader may still resolve responses that already
@@ -904,6 +993,36 @@ mod tests {
 
     fn test_handle() -> Arc<SessionHandle> {
         Arc::new(SessionHandle::for_test())
+    }
+
+    #[test]
+    fn lifecycle_frames_track_detached_work_and_internal_probes_are_quiet() {
+        let h = test_handle();
+        let before = h.activity_version.load(Ordering::SeqCst);
+        apply_frame(&h, &json!({"type":"response","success":true,"data":{}}));
+        assert_eq!(h.activity_version.load(Ordering::SeqCst), before);
+        apply_frame(&h, &json!({"type":"agent_start"}));
+        assert!(!h.settled.load(Ordering::SeqCst));
+        apply_frame(
+            &h,
+            &json!({"type":"agent_end","isTerminal":false,"awaitingAsyncWork":true}),
+        );
+        assert!(!h.streaming.load(Ordering::SeqCst));
+        assert!(h.awaiting_async_work.load(Ordering::SeqCst));
+        assert!(!h.settled.load(Ordering::SeqCst));
+        apply_frame(
+            &h,
+            &json!({"type":"subagent_lifecycle","payload":{"id":"a1","status":"running"}}),
+        );
+        assert!(h.active_subagents.lock().contains("a1"));
+        apply_frame(
+            &h,
+            &json!({"type":"subagent_lifecycle","payload":{"id":"a1","status":"completed"}}),
+        );
+        assert!(h.active_subagents.lock().is_empty());
+        apply_frame(&h, &json!({"type":"session_settled"}));
+        assert!(h.settled.load(Ordering::SeqCst));
+        assert!(!h.awaiting_async_work.load(Ordering::SeqCst));
     }
 
     #[test]

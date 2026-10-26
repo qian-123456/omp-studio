@@ -560,9 +560,9 @@ export interface AppInstance {
 }
 
 /**
- * `perf_breakdown` result. `app` matches the bottom-bar number;
- * bar segments (barAppBytes = app.bytes, barOmpBytes, otherBytes, freeBytes)
- * are disjoint and sum to `totalBytes` when known.
+ * `perf_breakdown` result. All process buckets use physical footprint and are
+ * disjoint by PID. `barOmpBytes` equals spawned + external when both are known;
+ * a bucket with no readable member is null, never zero; other instances are excluded.
  */
 export interface PerfBreakdown {
 	app: PerfBucket;

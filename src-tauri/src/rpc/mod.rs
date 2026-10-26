@@ -14,7 +14,8 @@ mod process;
 pub(crate) mod sidechat;
 pub(crate) mod subagents;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -31,6 +32,10 @@ type ResumeLocks = parking_lot::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>
 static REGISTRY: OnceLock<parking_lot::RwLock<HashMap<String, Arc<SessionHandle>>>> =
     OnceLock::new();
 static RESUME_LOCKS: OnceLock<ResumeLocks> = OnceLock::new();
+static IDLE_TIMERS: std::sync::LazyLock<parking_lot::Mutex<HashMap<String, u64>>> =
+    std::sync::LazyLock::new(Default::default);
+static ACTIVITY_GUARDS: std::sync::LazyLock<parking_lot::Mutex<HashMap<String, HashSet<String>>>> =
+    std::sync::LazyLock::new(Default::default);
 
 pub(crate) fn registry() -> &'static parking_lot::RwLock<HashMap<String, Arc<SessionHandle>>> {
     REGISTRY.get_or_init(Default::default)
@@ -60,42 +65,215 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
         .cloned()
 }
 
-/// Idle-suspend loop (§11 B): every 60 s suspend live sessions that are not
-/// streaming, have no pending UI, no command awaiting a response, and were
-/// inactive for `idle_suspend_minutes`.
+/// Settlement starts an event-driven countdown; a low-frequency sweep remains
+/// as a fallback for missed events and system sleep. Every actual suspension
+/// repeats the complete check under the session's dispatch lock.
 pub fn init(state: AppState) {
     privacy_ext::install();
     crate::visualize::install();
     autotitle::spawn(state.clone());
+    let mut events = state.bus.subscribe();
+    let event_state = state.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(AppEvent::RpcFrame { session_id, frame }) => {
+                    // End-of-work events are candidates only; ordinary stream
+                    // frames need not allocate a sleeping task per token.
+                    if matches!(
+                        frame.get("type").and_then(Value::as_str),
+                        Some("session_settled" | "agent_end" | "subagent_lifecycle")
+                    ) {
+                        schedule_idle_suspend(event_state.clone(), session_id, None).await;
+                    }
+                }
+                Ok(AppEvent::RpcProcess { running: false, .. }) => {}
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    sweep_idle(&event_state).await;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            let minutes = state.settings.read().idle_suspend_minutes;
-            if minutes == 0 {
-                continue;
-            }
-            let threshold = Duration::from_secs(u64::from(minutes) * 60);
-            let handles: Vec<Arc<SessionHandle>> = registry().read().values().cloned().collect();
-            for handle in handles {
-                if idle_suspendable(&handle, threshold) {
-                    let session_id = handle.session_id.read().clone();
-                    if stop(&handle).await.is_ok() {
-                        set_suspended(&state, &session_id, true);
-                    }
-                }
-            }
+            sweep_idle(&state).await;
         }
     });
 }
 
-/// Whether the idle reaper may stop `handle`: not streaming, no dialog open,
-/// no command awaiting its response (`compact`/`handoff` can run for 15
-/// minutes without emitting frames), and quiet for at least `threshold`.
+async fn sweep_idle(state: &AppState) {
+    let ids: Vec<String> = registry().read().keys().cloned().collect();
+    for id in ids {
+        schedule_idle_suspend(state.clone(), id, Some(Duration::ZERO)).await;
+    }
+}
+
+fn session_retained(id: &str) -> bool {
+    ACTIVITY_GUARDS.lock().contains_key(id)
+}
+
+/// An RAII editing guard for non-IPC owners (notably the mobile HTTP client).
+/// Owner keys are idempotent, so reconnecting a view cannot leak a second hold.
+pub struct SessionActivityGuard {
+    session_id: String,
+    owner: String,
+}
+
+impl Drop for SessionActivityGuard {
+    fn drop(&mut self) {
+        let mut guards = ACTIVITY_GUARDS.lock();
+        if let Some(owners) = guards.get_mut(&self.session_id) {
+            owners.remove(&self.owner);
+            if owners.is_empty() {
+                guards.remove(&self.session_id);
+            }
+        }
+    }
+}
+
+pub fn retain_session_activity(session_id: &str, owner: &str) -> SessionActivityGuard {
+    ACTIVITY_GUARDS
+        .lock()
+        .entry(session_id.to_string())
+        .or_default()
+        .insert(owner.to_string());
+    SessionActivityGuard {
+        session_id: session_id.to_string(),
+        owner: owner.to_string(),
+    }
+}
+
+pub fn retain_session(session_id: &str) {
+    ACTIVITY_GUARDS
+        .lock()
+        .entry(session_id.to_string())
+        .or_default()
+        .insert("desktop".to_string());
+}
+
+pub fn release_session(session_id: &str) {
+    let mut guards = ACTIVITY_GUARDS.lock();
+    if let Some(owners) = guards.get_mut(session_id) {
+        owners.remove("desktop");
+        if owners.is_empty() {
+            guards.remove(session_id);
+        }
+    }
+}
+
+pub fn touch_session(session_id: &str) {
+    if let Some(handle) = get_handle(session_id) {
+        handle.touch();
+    }
+}
+
+/// Cheap local eligibility. Unknown runtime state is not proof of idleness.
 fn idle_suspendable(handle: &SessionHandle, threshold: Duration) -> bool {
-    !handle.streaming.load(std::sync::atomic::Ordering::SeqCst)
+    let id = handle.session_id.read();
+    !session_retained(&id)
+        && handle.alive.load(Ordering::SeqCst)
+        && !handle.streaming.load(Ordering::SeqCst)
+        && handle.settled.load(Ordering::SeqCst)
+        && !handle.awaiting_async_work.load(Ordering::SeqCst)
+        && handle.active_subagents.lock().is_empty()
         && handle.pending_ui.lock().is_empty()
         && handle.pending.is_empty()
         && handle.last_activity.lock().elapsed() >= threshold
+}
+
+async fn schedule_idle_suspend(state: AppState, session_id: String, delay: Option<Duration>) {
+    let Some(handle) = get_handle(&session_id) else {
+        return;
+    };
+    if session_retained(&session_id) || !handle.alive.load(Ordering::SeqCst) {
+        return;
+    }
+    let minutes = state.settings.read().idle_suspend_minutes;
+    if minutes == 0 {
+        return;
+    }
+    let delay = delay.unwrap_or_else(|| Duration::from_secs(u64::from(minutes) * 60));
+    let version = handle.activity_version.load(Ordering::SeqCst);
+    if IDLE_TIMERS.lock().insert(session_id.clone(), version) == Some(version) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let should_stop = {
+            let resume = session_resume_lock(&session_id);
+            let _resume_guard = resume.lock().await;
+            if !get_handle(&session_id).is_some_and(|current| Arc::ptr_eq(&current, &handle)) {
+                false
+            } else {
+                let threshold =
+                    Duration::from_secs(u64::from(state.settings.read().idle_suspend_minutes) * 60);
+                idle_suspendable(&handle, threshold) && suspend_if_idle(&handle, version).await
+            }
+        };
+        let mut timers = IDLE_TIMERS.lock();
+        if timers.get(&session_id) == Some(&version) {
+            timers.remove(&session_id);
+        }
+        drop(timers);
+        if should_stop {
+            set_suspended(&state, &session_id, true);
+        }
+    });
+}
+
+/// Atomically with respect to host dispatch: query authoritative state and
+/// active subagents, verify that no frame arrived meanwhile, then close stdin.
+/// Missing fields, query errors and new activity all conservatively keep it.
+async fn suspend_if_idle(handle: &Arc<SessionHandle>, version: u64) -> bool {
+    if !idle_suspendable(handle, Duration::ZERO) {
+        return false;
+    }
+    let _dispatch = handle.dispatch_lock.lock().await;
+    if handle.activity_version.load(Ordering::SeqCst) != version
+        || !idle_suspendable(handle, Duration::ZERO)
+    {
+        return false;
+    }
+    let Ok(state) = process::send_command_locked(handle, json!({"type": "get_state"})).await else {
+        return false;
+    };
+    process::apply_state(handle, &state);
+    let data = state.get("data").unwrap_or(&state);
+    let fully_settled = data.get("isSettled").and_then(Value::as_bool) == Some(true)
+        && data.get("isStreaming").and_then(Value::as_bool) == Some(false)
+        && data.get("hasPendingAsyncWork").and_then(Value::as_bool) == Some(false)
+        && data.get("queuedMessageCount").and_then(Value::as_u64) == Some(0);
+    if !fully_settled {
+        return false;
+    }
+    let Ok(subagents) =
+        process::send_command_locked(handle, json!({"type": "get_subagents"})).await
+    else {
+        return false;
+    };
+    let subagent_data = subagents.get("data").unwrap_or(&subagents);
+    let no_active_subagents = subagent_data
+        .get("subagents")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().all(|item| {
+                !matches!(
+                    item.get("status").and_then(Value::as_str),
+                    Some("pending" | "running")
+                )
+            })
+        });
+    if !no_active_subagents
+        || handle.activity_version.load(Ordering::SeqCst) != version
+        || !idle_suspendable(handle, Duration::ZERO)
+    {
+        return false;
+    }
+    let _ = handle.shutdown.send(true);
+    true
 }
 
 /// Stop all app-owned rpc session processes concurrently.
@@ -321,6 +499,7 @@ pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Resu
     } else {
         json!({"type": "prompt", "message": text})
     };
+    handle.touch();
     process::send_command(&handle, command).await?;
     state.emit(AppEvent::PromptSent {
         session_id: info.session_id,
@@ -352,6 +531,7 @@ pub async fn refresh_privacy(
 /// Write an `extension_ui_response`, emit `UiResponded`.
 pub async fn ui_respond(state: &AppState, session_id: &str, response: Value) -> Result<(), String> {
     let handle = get_handle(session_id).ok_or("session is not live")?;
+    handle.touch();
     let mut frame = json!({});
     if let Value::Object(map) = response {
         for (k, v) in map {
@@ -364,7 +544,7 @@ pub async fn ui_respond(state: &AppState, session_id: &str, response: Value) -> 
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    process::send_raw(&handle, frame)?;
+    process::send_raw(&handle, frame).await?;
     if !request_id.is_empty() {
         handle
             .pending_ui
@@ -666,6 +846,28 @@ mod tests {
         *h.last_activity.lock() = std::time::Instant::now() - Duration::from_secs(3600);
         h.streaming.store(true, std::sync::atomic::Ordering::SeqCst);
         assert!(!idle_suspendable(&h, long_ago));
+    }
+
+    #[test]
+    fn idle_suspend_rejects_async_work_subagents_and_editing() {
+        let h = SessionHandle::for_test();
+        *h.last_activity.lock() = std::time::Instant::now() - Duration::from_secs(3600);
+        h.awaiting_async_work.store(true, Ordering::SeqCst);
+        h.settled.store(false, Ordering::SeqCst);
+        assert!(!idle_suspendable(&h, Duration::from_secs(60)));
+        h.awaiting_async_work.store(false, Ordering::SeqCst);
+        h.settled.store(true, Ordering::SeqCst);
+        h.active_subagents.lock().insert("agent-1".into());
+        assert!(!idle_suspendable(&h, Duration::from_secs(60)));
+        h.active_subagents.lock().clear();
+        let _guard = retain_session_activity("s1", "mobile:test");
+        assert!(!idle_suspendable(&h, Duration::from_secs(60)));
+        // A second source remains protected after the first source leaves.
+        retain_session("s1");
+        drop(_guard);
+        assert!(!idle_suspendable(&h, Duration::from_secs(60)));
+        release_session("s1");
+        assert!(idle_suspendable(&h, Duration::from_secs(60)));
     }
 
     #[test]

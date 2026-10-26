@@ -1,5 +1,21 @@
 /** Expand composer image tokens into the wire form omp reads. */
 
+export const IMAGE_TOKEN_PALETTES = [
+	{ text: "text-amber-400", decoration: "decoration-amber-400", hex: "#fbbf24" },
+	{ text: "text-sky-400", decoration: "decoration-sky-400", hex: "#38bdf8" },
+	{ text: "text-emerald-400", decoration: "decoration-emerald-400", hex: "#34d399" },
+	{ text: "text-purple-400", decoration: "decoration-purple-400", hex: "#c084fc" },
+	{ text: "text-rose-400", decoration: "decoration-rose-400", hex: "#fb7185" },
+	{ text: "text-teal-400", decoration: "decoration-teal-400", hex: "#2dd4bf" },
+	{ text: "text-yellow-300", decoration: "decoration-yellow-300", hex: "#fde047" },
+	{ text: "text-indigo-400", decoration: "decoration-indigo-400", hex: "#818cf8" },
+];
+
+export function getImageTokenPalette(index: number) {
+	const i = Math.max(1, index);
+	return IMAGE_TOKEN_PALETTES[(i - 1) % IMAGE_TOKEN_PALETTES.length];
+}
+
 export interface WireImage {
 	path: string;
 	width?: number;

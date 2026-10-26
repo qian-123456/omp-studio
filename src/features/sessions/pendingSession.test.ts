@@ -1,100 +1,55 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionMeta } from "../../lib/contracts";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useComposer } from "../../stores/composer";
-import { useSessions } from "../../stores/sessions";
-import { useUi } from "../../stores/ui";
-import { startSessionOptimistic, usePendingSession } from "./pendingSession";
-
-const createSession = vi.fn();
-const sendPrompt = vi.fn().mockResolvedValue(undefined);
-
-vi.mock("../../lib/createSession", () => ({
-	createSession: (...a: unknown[]) => createSession(...a),
-}));
-vi.mock("../chat/send", () => ({
-	sendPrompt: (...a: unknown[]) => sendPrompt(...a),
-}));
-
-function deferred<T>() {
-	let resolve!: (v: T) => void;
-	let reject!: (e: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
-const stub = { id: "real-1", cwd: "/repo" } as SessionMeta;
+import { isBlankLocalDraft, isLocalDraftId, usePendingSession } from "./pendingSession";
 
 beforeEach(() => {
-	createSession.mockReset();
-	sendPrompt.mockClear();
-	usePendingSession.setState({ pending: null });
-	useUi.setState({ selectedSessionId: null, centerView: "home" });
-	useComposer.setState({ drafts: {} });
-	useSessions.setState({ sessions: {} });
+	usePendingSession.setState({ drafts: {}, selectedId: null });
+	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {}, planModes: {} });
 });
 
-describe("startSessionOptimistic", () => {
-	it("shows the placeholder immediately and moves typed text into the real composer", async () => {
-		const d = deferred<{ sessionId: string; stub: SessionMeta }>();
-		createSession.mockReturnValue(d.promise);
-		const run = startSessionOptimistic({ cwd: "/repo" });
-
-		expect(useUi.getState().centerView).toBe("session");
-		expect(useUi.getState().selectedSessionId).toBeNull();
-		usePendingSession.getState().setText("fix the bug");
-
-		d.resolve({ sessionId: "real-1", stub });
-		await run;
-
-		expect(useUi.getState().selectedSessionId).toBe("real-1");
-		expect(useComposer.getState().drafts["real-1"]).toBe("fix the bug");
-		expect(usePendingSession.getState().pending).toBeNull();
-		expect(sendPrompt).not.toHaveBeenCalled();
+describe("usePendingSession.open", () => {
+	it("creates a local draft without any session id", () => {
+		const id = usePendingSession.getState().open({ cwd: "/repo" });
+		expect(isLocalDraftId(id)).toBe(true);
+		expect(usePendingSession.getState().drafts[id].sessionId).toBeNull();
+		expect(usePendingSession.getState().selectedId).toBe(id);
 	});
 
-	it("sends the text once ready when Enter was pressed before the session was up", async () => {
-		const d = deferred<{ sessionId: string; stub: SessionMeta }>();
-		createSession.mockReturnValue(d.promise);
-		const run = startSessionOptimistic({ cwd: "/repo" });
-		usePendingSession.getState().setText("hello");
-		usePendingSession.getState().submit();
-		d.resolve({ sessionId: "real-1", stub });
-		await run;
-
-		expect(sendPrompt).toHaveBeenCalledWith("real-1", "hello");
-		expect(useComposer.getState().drafts["real-1"]).toBeUndefined();
+	it("reuses a blank draft with the same cwd, mode and group", () => {
+		const a = usePendingSession.getState().open({ cwd: "/repo", mode: "code" });
+		const b = usePendingSession.getState().open({ cwd: "/repo", mode: "code", groupId: null });
+		expect(b).toBe(a);
+		expect(Object.keys(usePendingSession.getState().drafts)).toHaveLength(1);
 	});
 
-	it("keeps slash commands as a draft instead of sending them literally", async () => {
-		createSession.mockResolvedValue({ sessionId: "real-1", stub });
-		const run = startSessionOptimistic({ cwd: "/repo" });
-		usePendingSession.getState().setText("/model");
-		usePendingSession.getState().submit();
-		await run;
-		expect(sendPrompt).not.toHaveBeenCalled();
-		expect(useComposer.getState().drafts["real-1"]).toBe("/model");
+	it("does not reuse across cwd, mode or group", () => {
+		const a = usePendingSession.getState().open({ cwd: "/repo" });
+		const ids = new Set([
+			a,
+			usePendingSession.getState().open({ cwd: "/other" }),
+			usePendingSession.getState().open({ cwd: "/repo", mode: "chat" }),
+			usePendingSession.getState().open({ cwd: "/repo", groupId: "g1" }),
+		]);
+		expect(ids.size).toBe(4);
 	});
 
-	it("does not steal focus when the user navigated away, but keeps the typed text", async () => {
-		const d = deferred<{ sessionId: string; stub: SessionMeta }>();
-		createSession.mockReturnValue(d.promise);
-		const run = startSessionOptimistic({ cwd: "/repo" });
-		usePendingSession.getState().setText("later");
-		useUi.getState().selectSession("other");
-		d.resolve({ sessionId: "real-1", stub });
-		await run;
-
-		expect(useUi.getState().selectedSessionId).toBe("other");
-		expect(useComposer.getState().drafts["real-1"]).toBe("later");
+	it("does not reuse a draft that holds input", () => {
+		const a = usePendingSession.getState().open({ cwd: "/repo" });
+		useComposer.getState().setDraft(a, "half-written prompt");
+		const b = usePendingSession.getState().open({ cwd: "/repo" });
+		expect(b).not.toBe(a);
+		expect(usePendingSession.getState().drafts[a]).toBeDefined();
 	});
+});
 
-	it("returns to the start page when creation fails", async () => {
-		createSession.mockRejectedValue(new Error("boom"));
-		await startSessionOptimistic({ cwd: "/repo" });
-		expect(usePendingSession.getState().pending).toBeNull();
-		expect(useUi.getState().centerView).toBe("home");
+describe("isBlankLocalDraft", () => {
+	it("treats whitespace as blank but a chosen model or thinking level as input", () => {
+		const id = usePendingSession.getState().open({ cwd: "/repo" });
+		useComposer.getState().setDraft(id, "  \n ");
+		expect(isBlankLocalDraft(usePendingSession.getState().drafts[id])).toBe(true);
+		usePendingSession.getState().update(id, { thinking: "high" });
+		expect(isBlankLocalDraft(usePendingSession.getState().drafts[id])).toBe(false);
+		usePendingSession.getState().update(id, { thinking: null, model: "p/m" });
+		expect(isBlankLocalDraft(usePendingSession.getState().drafts[id])).toBe(false);
 	});
 });

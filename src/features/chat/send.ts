@@ -13,6 +13,8 @@ import { errMsg } from "../../lib/dialogs";
 import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/contracts";
 import { resolveLinkScope } from "./privacy/composerPrivacy";
 import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
+import { isLocalDraftId } from "../sessions/pendingSession";
+import { sendFromDraft } from "../sessions/draftSession";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { tNow } from "../../stores/language";
 
@@ -49,10 +51,16 @@ export const useAbortState = create<AbortState>((set) => ({
 export async function sendPrompt(
 	sessionId: string,
 	text: string,
-	opts?: { steer?: boolean; images?: ImageAttachment[]; onEchoed?: () => void },
+	opts?: { steer?: boolean; images?: ImageAttachment[]; onEchoed?: (sessionId?: string) => void },
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	// Local draft: no process exists yet. Spawn/join the prewarm, apply the
+	// chosen model and thinking level, then send once on the real session
+	// (its own echo releases the composer, keyed by the real id).
+	if (isLocalDraftId(sessionId)) {
+		return sendFromDraft(sessionId, (realId) => sendPrompt(realId, trimmed, opts));
+	}
 	// Fork draft: the first send creates the fork, then sends this text there.
 	if (isForkDraftId(sessionId)) {
 		const { onEchoed, ...rest } = opts ?? {};
@@ -84,7 +92,7 @@ export async function sendPrompt(
 	// The message is now visible in the thread: let the caller release its input
 	// instead of holding the text until slow resume/RPC calls below finish.
 	emitPromptSend("echoed", sessionId, trimmed);
-	opts?.onEchoed?.();
+	opts?.onEchoed?.(sessionId);
 	try {
 		if (external) {
 			await takeoverExternal(sessionId);

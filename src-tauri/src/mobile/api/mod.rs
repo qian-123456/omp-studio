@@ -10,6 +10,7 @@ use super::backend::Backend;
 use super::server::Ctx;
 
 pub mod chat;
+pub mod draft;
 pub mod files;
 pub mod ideas;
 pub mod left;

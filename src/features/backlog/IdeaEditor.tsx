@@ -2,7 +2,7 @@ import { ChevronDown, Paperclip } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { exceedsLines, useLineClampOverflow } from "../../lib/useLineClamp";
-import { getImageTokenPalette } from "../chat/Composer";
+import { getImageTokenPalette } from "../chat/imageTokens";
 import { splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
 import { useT, tNow } from "../../stores/language";
 export interface IdeaEditorHandle {

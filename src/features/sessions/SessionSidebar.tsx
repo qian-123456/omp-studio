@@ -73,6 +73,7 @@ import {
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
+import { draftMeta, isBlankLocalDraft, isLocalDraftId, selectSessionOrDraft, usePendingSession } from "./pendingSession";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { tNow, useT } from "../../stores/language";
@@ -252,7 +253,7 @@ export function SessionSidebar() {
 	const storeLoadError = useSessions((s) => s.loadError);
 	const loadState = deriveLoadState(hasLoaded, storeLoadError);
 
-	const selectSession = useUi((s) => s.selectSession);
+	const selectSession = selectSessionOrDraft;
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const highlightId = useUi((s) => s.highlightId);
 	const setHighlightId = useUi((s) => s.setHighlightId);
@@ -473,16 +474,34 @@ export function SessionSidebar() {
 			.sort()
 			.join(","),
 	);
+	// Local drafts (no process yet) are listed once they hold input; the one
+	// being edited is listed too when filed under a group. A prewarmed stub is hidden behind its draft.
+	const localDrafts = usePendingSession((s) => s.drafts);
+	const shownDraftId = usePendingSession((s) => s.selectedId);
+	const draftInputKey = useComposer((s) => {
+		const ids = new Set<string>();
+		for (const m of [s.drafts, s.images, s.files, s.annotations, s.planModes]) {
+			for (const id of Object.keys(m)) if (isLocalDraftId(id)) ids.add(id);
+		}
+		return Array.from(ids).sort().join(",");
+	});
 	const sessionsList = useMemo(() => {
 		const active = new Set(composerActiveIds ? composerActiveIds.split(",") : []);
 		const lives = useLive.getState().sessions;
-		return Object.values(sessions).filter(
+		const draftList = Object.values(localDrafts);
+		const owned = new Set(draftList.map((d) => d.sessionId));
+		const rows = Object.values(sessions).filter(
 			(s) =>
-				active.has(s.id) ||
-				!isBlankDraft(s, lives[s.id]) ||
-				(selectedSessionId === s.id && s.groupId !== null),
+				!owned.has(s.id) &&
+				(active.has(s.id) ||
+					!isBlankDraft(s, lives[s.id]) ||
+					(selectedSessionId === s.id && s.groupId !== null)),
 		);
-	}, [sessions, composerActiveIds, selectedSessionId]);
+		for (const d of draftList) {
+			if ((d.id === shownDraftId && d.groupId !== null) || !isBlankLocalDraft(d)) rows.push(draftMeta(d));
+		}
+		return rows;
+	}, [sessions, composerActiveIds, selectedSessionId, localDrafts, shownDraftId, draftInputKey]);
 	// Worktree grouping is a code-mode concept; other modes always get a flat list per project.
 	const groupByWorktreeSetting = useSettings((s) => s.settings?.sessionGroupByWorktree ?? true);
 	const groupByWorktree = activeMode === "code" && groupByWorktreeSetting;

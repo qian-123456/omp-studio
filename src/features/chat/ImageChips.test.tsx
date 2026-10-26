@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const openPath = vi.fn(async (_p: string) => {});
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: (p: string) => openPath(p) }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
-vi.mock("./Composer", () => ({ getImageTokenPalette: () => ({ hex: "#888" }) }));
+vi.mock("./imageTokens", async (orig) => ({ ...(await orig<Record<string, unknown>>()), getImageTokenPalette: () => ({ hex: "#888" }) }));
 vi.mock("../../lib/ipc", () => ({ validatePath: vi.fn() }));
 vi.mock("../../lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 

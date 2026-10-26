@@ -33,7 +33,7 @@ async function launch(manual: boolean): Promise<void> {
 	await startNewSession();
 	const started =
 		useUi.getState().selectedSessionId !== null ||
-		usePendingSession.getState().pending !== null;
+		usePendingSession.getState().selectedId !== null;
 	if (started) useLauncher.setState({ attempts: 0 });
 	else if (manual) useLauncher.setState({ attempts: MAX_AUTO_ATTEMPTS });
 }
@@ -68,11 +68,10 @@ function LaunchComposer({
 		setText(value);
 		if (!value) return;
 		void onLaunch();
-		// `startSessionOptimistic` installs the placeholder synchronously; the
-		// draft-reuse path selects an existing session instead.
-		const sid = useUi.getState().selectedSessionId;
-		if (sid) useComposer.getState().setDraft(sid, value);
-		else usePendingSession.getState().setText(value);
+		// The local draft is selected synchronously; reusing an existing empty
+		// session selects that session instead.
+		const sink = useUi.getState().selectedSessionId ?? usePendingSession.getState().selectedId;
+		if (sink) useComposer.getState().setDraft(sink, value);
 	};
 
 	return (

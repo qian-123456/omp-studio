@@ -132,7 +132,8 @@ async fn live_rpc_prompt_with_approval() {
                     let _ = process::send_raw(
                         &handle,
                         json!({"type": "extension_ui_response", "id": id, "value": val}),
-                    );
+                    )
+                    .await;
                     handle.pending_ui.lock().retain(|r| {
                         r.request.get("id").and_then(Value::as_str) != Some(id.as_str())
                     });

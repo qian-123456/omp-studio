@@ -71,7 +71,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::Manager as _;
 
-use crate::contracts::{SessionMeta, StartOpts};
+use crate::contracts::SessionMeta;
 use crate::mobile::backend::Backend;
 use crate::mobile::server::{ApiError, Ctx};
 use crate::state::{AppEvent, AppState};
@@ -104,6 +104,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/sessions/{id}/slash-commands", get(slash_commands::<B>))
         .route("/sessions/{id}/slash", post(slash::<B>))
         .route("/sessions/{id}/composer-state", get(composer_state::<B>))
+        .route("/sessions/{id}/draft-activity", post(draft_activity::<B>))
         .route("/sessions/{id}/models", get(models_get::<B>))
         .route("/sessions/{id}/model", post(model_set::<B>))
         .route("/sessions/{id}/thinking", post(thinking_set::<B>))
@@ -153,11 +154,11 @@ fn app<B: Backend>(ctx: &Ctx<B>) -> Result<&AppState, ApiError> {
 /// Validate the id and load a non-archived session.
 async fn load_session<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<SessionMeta, ApiError> {
     check_id(id)?;
-    let meta = ctx
-        .backend
-        .session(id)
-        .await
-        .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
+    let meta = match ctx.backend.session(id).await {
+        Some(meta) => Some(meta),
+        None => super::draft::meta(id).await,
+    }
+    .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
     if meta.archived {
         return Err(bad_request("已归档的会话不可操作"));
     }
@@ -212,6 +213,63 @@ async fn live_state(id: &str) -> Option<Value> {
 
 /// Send a prompt (optionally with images) the way desktop `sendPrompt` does.
 async fn send_prompt_ex(
+    state: &AppState,
+    id: &str,
+    message: &str,
+    images: Vec<Value>,
+    behavior: Option<&str>,
+) -> Result<bool, ApiError> {
+    if super::draft::is_draft(id) {
+        let owned_state = state.clone();
+        let message = message.to_string();
+        let behavior = behavior.map(str::to_string);
+        let Some((_real, result)) = super::draft::handoff(state, id, move |real, selection| {
+            let state = owned_state.clone();
+            let message = message.clone();
+            let behavior = behavior.clone();
+            async move {
+                apply_selection(&state, &real, selection).await?;
+                let streaming =
+                    send_prompt_live(&state, &real, &message, images, behavior.as_deref()).await?;
+                Ok(json!({"streaming": streaming}))
+            }
+        })
+        .await?
+        else {
+            return Err(err(StatusCode::NOT_FOUND, "会话不存在"));
+        };
+        return Ok(result["streaming"].as_bool().unwrap_or(false));
+    }
+    send_prompt_live(state, id, message, images, behavior).await
+}
+
+async fn apply_selection(
+    state: &AppState,
+    id: &str,
+    selection: super::draft::Selection,
+) -> Result<(), ApiError> {
+    if let Some((provider, model_id)) = selection.model {
+        rpc_cmd(
+            state,
+            id,
+            json!({"type":"set_model", "provider":provider, "modelId":model_id}),
+        )
+        .await
+        .map_err(bad_gateway)?;
+    }
+    if let Some(level) = selection.thinking {
+        rpc_cmd(
+            state,
+            id,
+            json!({"type":"set_thinking_level", "level":level}),
+        )
+        .await
+        .map_err(bad_gateway)?;
+    }
+    Ok(())
+}
+
+async fn send_prompt_live(
     state: &AppState,
     id: &str,
     message: &str,
@@ -424,14 +482,22 @@ async fn prompt_ex<B: Backend>(
         text
     };
     let message = apply_plan_prefix(text, is_plan_on(&id));
-    let streaming = send_prompt_ex(
-        state,
-        &id,
-        &message,
-        images,
-        body.streaming_behavior.as_deref(),
-    )
-    .await?;
+    let behavior = body.streaming_behavior.as_deref();
+    if let Some((_real_id, result)) = super::draft::handoff(state, &id, |real, selection| {
+        let state = state.clone();
+        let message = message.clone();
+        let images = images.clone();
+        async move {
+            apply_selection(&state, &real, selection).await?;
+            let streaming = send_prompt_ex(&state, &real, &message, images, behavior).await?;
+            Ok(json!({"ok": true, "streaming": streaming, "sessionId": real}))
+        }
+    })
+    .await?
+    {
+        return Ok(Json(result));
+    }
+    let streaming = send_prompt_ex(state, &id, &message, images, behavior).await?;
     Ok(Json(json!({"ok": true, "streaming": streaming})))
 }
 
@@ -730,7 +796,7 @@ async fn slash_commands<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
-    load_session(&ctx, &id).await?;
+    let meta = load_session(&ctx, &id).await?;
     let mut list: Vec<Value> = CURATED
         .iter()
         .map(|c| {
@@ -785,6 +851,26 @@ async fn slash_commands<B: Backend>(
                         "needsArg": false,
                     }));
                 }
+            }
+        }
+    }
+    // A draft has no process yet: custom commands come from disk skills.
+    if super::draft::is_draft(&id) {
+        if let Ok(catalog) = crate::skills::commands::skills_list(Some(meta.cwd.clone())).await {
+            for s in catalog.skills {
+                let name = format!("skill:{}", s.name);
+                if !valid_cmd_name(&name) || list.iter().any(|v| v["name"] == name.as_str()) {
+                    continue;
+                }
+                list.push(json!({
+                    "name": name,
+                    "title": name,
+                    "description": s.description,
+                    "argHint": Value::Null,
+                    "group": "自定义",
+                    "kind": "custom",
+                    "needsArg": false,
+                }));
             }
         }
     }
@@ -997,16 +1083,13 @@ async fn slash<B: Backend>(
             if meta.cwd.is_empty() {
                 return Err(bad_request("无法确定当前目录"));
             }
-            let info = crate::rpc::start(
-                state,
-                &StartOpts {
-                    cwd: meta.cwd.clone(),
-                    mode: Some(meta.mode),
-                    ..Default::default()
-                },
+            let info = super::draft::create(
+                meta.cwd.clone(),
+                meta.mode,
+                meta.group_id.clone(),
+                meta.workspace_id.clone(),
             )
-            .await
-            .map_err(bad_gateway)?;
+            .await;
             ok(json!({"sessionId": info.session_id}))
         }
         "fork" => {
@@ -1178,25 +1261,61 @@ async fn slash<B: Backend>(
 
 // -------------------------------------------------- composer state & goal
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DraftActivityBody {
+    active: bool,
+    #[serde(default)]
+    meaningful: bool,
+}
+
+async fn draft_activity<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<DraftActivityBody>,
+) -> ApiResult<Value> {
+    check_id(&id)?;
+    if super::draft::is_draft(&id) {
+        super::draft::set_active(app(&ctx)?, &id, body.active, body.meaningful).await;
+    }
+    Ok(Json(json!({"ok": true})))
+}
+
 async fn composer_state<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     let meta = load_session(&ctx, &id).await?;
+    let selection = super::draft::selection(&id).await;
+    let draft_model = match &selection {
+        Some(s) if s.model.is_none() => super::draft::default_model(app(&ctx)?, &id).await,
+        _ => None,
+    };
+    let draft_thinking = selection
+        .as_ref()
+        .and_then(|s| s.thinking.clone())
+        .map(Value::String);
+    let selected_model = selection
+        .as_ref()
+        .and_then(|s| s.model.as_ref())
+        .map(|(p, m)| format!("{p}/{m}"));
     let st = live_state(&id).await;
     let streaming = crate::rpc::get_handle(&id)
         .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
-    let model = st
-        .as_ref()
-        .and_then(|s| s.get("model"))
-        .map(model_text)
-        .filter(|s| !s.is_empty())
-        .or(meta.model.clone());
+    let model = selected_model
+        .or_else(|| {
+            st.as_ref()
+                .and_then(|s| s.get("model"))
+                .map(model_text)
+                .filter(|s| !s.is_empty())
+        })
+        .or(meta.model.clone())
+        .or(draft_model);
     Ok(Json(json!({
         "live": st.is_some(),
         "streaming": streaming,
         "model": model,
-        "thinkingLevel": st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned(),
+        "thinkingLevel": draft_thinking.or_else(|| st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned()),
         "planMode": is_plan_on(&id),
         "goal": st.as_ref().map_or(Value::Null, goal_json),
         "fastMode": st.as_ref().and_then(|s| s.get("fastModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
@@ -1233,11 +1352,28 @@ fn split_model(text: &str) -> (String, String) {
 /// session metadata are used. Never resumes the session.
 async fn model_facts(state: &AppState, meta: &SessionMeta, id: &str) -> Value {
     let st = live_state(id).await;
-    let model_v = st.as_ref().and_then(|s| s.get("model"));
-    let text = model_v
-        .map(model_text)
-        .filter(|s| !s.is_empty())
+    let draft = super::draft::selection(id).await;
+    let is_draft = draft.is_some();
+    // A draft's own choice always wins over the prewarmed process and over
+    // the default model; the draft default only fills an untouched draft.
+    let selected_model = draft
+        .as_ref()
+        .and_then(|s| s.model.as_ref())
+        .map(|(p, m)| format!("{p}/{m}"));
+    let model_v = if selected_model.is_some() {
+        None
+    } else {
+        st.as_ref().and_then(|s| s.get("model"))
+    };
+    let draft_model = if is_draft && selected_model.is_none() && model_v.is_none() {
+        super::draft::default_model(state, id).await
+    } else {
+        None
+    };
+    let text = selected_model
+        .or_else(|| model_v.map(model_text).filter(|s| !s.is_empty()))
         .or_else(|| meta.model.clone())
+        .or(draft_model)
         .unwrap_or_default();
     let (provider, model_id) = split_model(&text);
     let live_level = st
@@ -1245,8 +1381,10 @@ async fn model_facts(state: &AppState, meta: &SessionMeta, id: &str) -> Value {
         .and_then(|s| s.get("thinkingLevel"))
         .and_then(Value::as_str)
         .map(str::to_string);
-    let thinking_level = match live_level {
+    let draft_thinking = draft.as_ref().and_then(|s| s.thinking.clone());
+    let thinking_level = match draft_thinking.or(live_level) {
         Some(l) => Some(l),
+        None if is_draft => None,
         None => crate::catalog::commands::session_snapshot(
             state.app.state::<AppState>(),
             id.to_string(),
@@ -1298,6 +1436,12 @@ async fn model_set<B: Backend>(
     if provider.is_empty() || model_id.is_empty() || provider.len() > 200 || model_id.len() > 400 {
         return Err(bad_request("模型参数无效"));
     }
+    if super::draft::set_model(&id, provider.to_string(), model_id.to_string()).await {
+        super::draft::set_active(state, &id, true, true).await;
+        let mut out = model_facts(state, &meta, &id).await;
+        out["ok"] = json!(true);
+        return Ok(Json(out));
+    }
     live(state, &id).await?;
     rpc_cmd(
         state,
@@ -1331,6 +1475,12 @@ async fn thinking_set<B: Backend>(
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(bad_request("思考等级无效"));
+    }
+    if super::draft::set_thinking(&id, level.clone()).await {
+        super::draft::set_active(state, &id, true, true).await;
+        let mut out = model_facts(state, &meta, &id).await;
+        out["ok"] = json!(true);
+        return Ok(Json(out));
     }
     live(state, &id).await?;
     rpc_cmd(

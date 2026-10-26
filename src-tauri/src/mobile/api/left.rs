@@ -94,7 +94,7 @@ use tauri::Manager as _;
 use crate::catalog::store;
 use crate::contracts::{
     Attention, ScheduleDraft, SessionGroup, SessionMeta, SessionMetaPatch, SessionStatus,
-    SpaceMode, StartOpts, Workspace, WorkspaceKind,
+    SpaceMode, Workspace, WorkspaceKind,
 };
 use crate::mobile::backend::Backend;
 use crate::mobile::server::{ApiError, Ctx};
@@ -110,6 +110,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
             get(session_tree::<B>).post(new_session::<B>),
         )
         .route("/left/dirs", get(list_dirs::<B>))
+        .route("/left/drafts/{id}/discard", post(discard_draft::<B>))
         .route("/left/sessions/{id}", patch(patch_session::<B>))
         .route("/left/inbox", get(inbox::<B>))
         .route("/left/inbox/read-all", post(inbox_read_all::<B>))
@@ -700,7 +701,8 @@ async fn session_tree<B: Backend>(
 ) -> ApiResult<SessionTree> {
     let st = app(&ctx)?;
     let mode = q.mode.unwrap_or_default();
-    let metas = ctx.backend.sessions().await;
+    let mut metas = ctx.backend.sessions().await;
+    metas.extend(super::draft::all_metas().await);
     let (workspaces, groups) = {
         let db = st.db.lock();
         (
@@ -857,6 +859,16 @@ struct NewSessionBody {
     cwd: String,
 }
 
+async fn discard_draft<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    if !super::draft::discard(&id).await {
+        return Err(not_found("草稿不存在"));
+    }
+    Ok(Json(json!({"ok": true})))
+}
+
 async fn new_session<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Json(body): Json<NewSessionBody>,
@@ -870,16 +882,7 @@ async fn new_session<B: Backend>(
     } else {
         entry.mode
     };
-    let info = crate::rpc::start(
-        st,
-        &StartOpts {
-            cwd,
-            mode: Some(mode),
-            ..Default::default()
-        },
-    )
-    .await
-    .map_err(bad_gateway)?;
+    let info = super::draft::create(cwd, mode, None, Some(entry.workspace_id.clone())).await;
     Ok(Json(serde_json::to_value(info).map_err(internal)?))
 }
 

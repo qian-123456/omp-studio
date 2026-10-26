@@ -8,22 +8,29 @@
  * column at 15px text; they only need to be roughly right.
  */
 import type { TranscriptItem } from "../../lib/contracts";
-import { type DisplayBlock, splitInterimProse } from "./turnGrouping";
+import { type DisplayBlock, type HistoryRow, splitInterimProse } from "./turnGrouping";
 
 const PROTOCOL_ROW = 36;
-const ROW_PADDING = 8;
+export const ROW_PADDING = 8;
 const MIN_TURN = 60;
 const USER_BUBBLE_BASE = 44;
 const USER_LINE = 24;
-const DISCLOSURE_ROW = 40;
-const FOOTER_ROW = 52;
+/** Collapsed 「已处理」 header + hairline + margins. */
+export const DISCLOSURE_ROW = 48;
+export const FOOTER_ROW = 56;
+/** A steer bubble rendered between activity groups. */
+export const STEER_ROW = 64;
+export const INTERIM_PROSE_MAX = 360;
 const TEXT_LINE = 26;
 const PARAGRAPH_GAP = 12;
 const CODE_LINE = 20;
+/** Code block chrome (header strip + padding + margins) beyond its lines. */
+const CODE_BLOCK_CHROME = 44;
+const LIST_ITEM_GAP = 6;
 const TABLE_ROW = 36;
 const HEADING_ROW = 40;
 /** Display columns per wrapped line; CJK glyphs count 1, other glyphs 0.5. */
-const COLUMNS_PER_LINE = 46;
+const COLUMNS_PER_LINE = 40;
 
 function displayWidth(line: string): number {
 	let w = 0;
@@ -35,13 +42,15 @@ function wrappedLines(line: string): number {
 	return Math.max(1, Math.ceil(displayWidth(line) / COLUMNS_PER_LINE));
 }
 
-function userBubbleHeight(text: string): number {
+export function estimateUserBubbleHeight(text: string): number {
 	const lines = text
 		.split("\n")
 		.reduce((n, l) => n + wrappedLines(l.trim() === "" ? "x" : l), 0);
 	const shown = Math.min(lines, USER_CLAMP_LINES);
 	return USER_BUBBLE_BASE + shown * USER_LINE + (lines > USER_CLAMP_LINES ? USER_CLAMP_PILL : 0);
 }
+const LIST_ITEM_RE = /^([-*+]|\d+[.)])\s/;
+
 /** Rough rendered height (px) of markdown-ish text. */
 export function estimateTextHeight(text: string | null | undefined): number {
 	if (!text) return 0;
@@ -51,7 +60,8 @@ export function estimateTextHeight(text: string | null | undefined): number {
 	for (const line of text.split("\n")) {
 		if (line.trimStart().startsWith("```")) {
 			inFence = !inFence;
-			h += PARAGRAPH_GAP;
+			// The opening fence pays for the block chrome; the closing one only a gap.
+			h += inFence ? CODE_BLOCK_CHROME : PARAGRAPH_GAP;
 			continue;
 		}
 		if (inFence) {
@@ -67,6 +77,7 @@ export function estimateTextHeight(text: string | null | undefined): number {
 		prevBlank = false;
 		if (t.startsWith("|")) h += TABLE_ROW;
 		else if (t.startsWith("#")) h += HEADING_ROW;
+		else if (LIST_ITEM_RE.test(t)) h += wrappedLines(t) * TEXT_LINE + LIST_ITEM_GAP;
 		else h += wrappedLines(t) * TEXT_LINE;
 	}
 	return h;
@@ -78,7 +89,7 @@ const USER_CLAMP_PILL = 24;
 /** Local-row cards (command output) are capped and scroll inside. */
 const LOCAL_ROW_MAX = 280;
 
-export function estimateBlockHeight(block: DisplayBlock | undefined): number {
+export function estimateBlockHeight(block: DisplayBlock | HistoryRow | undefined): number {
 	if (!block) return PROTOCOL_ROW;
 	if (block.type === "protocol") {
 		const item = block.item as TranscriptItem & { localRow?: { type: string } };
@@ -88,20 +99,25 @@ export function estimateBlockHeight(block: DisplayBlock | undefined): number {
 			return Math.min(LOCAL_ROW_MAX, ROW_PADDING + 40 + lines);
 		}
 		if (item.localRow?.type === "echo") {
-			return ROW_PADDING + userBubbleHeight(item.text ?? "");
+			return ROW_PADDING + estimateUserBubbleHeight(item.text ?? "");
 		}
 		return PROTOCOL_ROW;
 	}
+	// A part of a split turn: only what this part renders, footer on the last.
+	const part = "turnId" in block ? block : null;
 	let h = ROW_PADDING;
-	if (block.userItem) h += userBubbleHeight(block.userItem.text ?? "");
+	if (block.userItem) h += estimateUserBubbleHeight(block.userItem.text ?? "");
 	const { folded, prose } = splitInterimProse(block.intermediateSteps);
-	if (folded.length > 0) h += DISCLOSURE_ROW;
+	// Steers render as their own bubbles, not inside the fold.
+	if (folded.some((step) => step.kind !== "steer")) h += DISCLOSURE_ROW;
 	for (const step of prose) {
 		// Long interim prose is clamped (ClampedProse) to ~320px plus its pill.
-		if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), 360);
+		if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX);
 	}
+	for (const step of block.intermediateSteps) if (step.kind === "steer") h += STEER_ROW;
 	if (block.answerItem) {
-		h += estimateTextHeight(block.answerItem.text) + FOOTER_ROW;
+		h += estimateTextHeight(part?.answerSlice ?? block.answerItem.text);
+		if (!part || part.isLastTurnPart) h += FOOTER_ROW;
 	}
-	return Math.max(MIN_TURN, h);
+	return Math.max(part?.isContinuation ? ROW_PADDING + 24 : MIN_TURN, h);
 }

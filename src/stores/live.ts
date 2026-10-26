@@ -1922,8 +1922,8 @@ export function pruneRemovedSessions(ids: readonly string[]): void {
 		import("../features/backlog/fillComposer"),
 		import("../features/sidechat/viewStore"),
 		import("../features/chat/ask/AskPanel"),
-		import("../features/chat/ToolCard"),
-		import("../features/chat/MessageList"),
+		import("../features/chat/toolCardState"),
+		import("../features/chat/editDrafts"),
 	]).then(([fill, side, ask, tool, list]) => {
 		fill.prunePendingFills(ids);
 		side.useSideChatView.getState().pruneSessions(ids);

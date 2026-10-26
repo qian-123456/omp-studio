@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
-vi.mock("./Composer", () => ({ getImageTokenPalette: () => ({ hex: "#888" }) }));
+vi.mock("./imageTokens", async (orig) => ({ ...(await orig<Record<string, unknown>>()), getImageTokenPalette: () => ({ hex: "#888" }) }));
 vi.mock("../../lib/ipc", () => ({ validatePath: vi.fn() }));
 vi.mock("../privacy/SecretChip", async (orig) => ({
 	...(await orig<Record<string, unknown>>()),

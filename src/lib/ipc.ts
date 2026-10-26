@@ -208,6 +208,15 @@ export const rpcEnsureLive = (sessionId: string, cwd?: string) =>
 export const rpcSend = (sessionId: string, command: unknown) =>
 	invoke<unknown>("rpc_send", { sessionId, command });
 
+export const rpcTouch = (sessionId: string) =>
+	invoke<void>("rpc_touch", { sessionId });
+
+export const rpcRetain = (sessionId: string) =>
+	invoke<void>("rpc_retain", { sessionId });
+
+export const rpcRelease = (sessionId: string) =>
+	invoke<void>("rpc_release", { sessionId });
+
 export const rpcUiRespond = (sessionId: string, response: unknown) =>
 	invoke<void>("rpc_ui_respond", { sessionId, response });
 

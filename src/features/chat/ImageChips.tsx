@@ -3,7 +3,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import { ImageOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getImageTokenPalette } from "./Composer";
+import { getImageTokenPalette } from "./imageTokens";
 import { baseName } from "./fileAttach";
 import { formatBytes } from "../../lib/format";
 import { errMsg } from "../../lib/dialogs";

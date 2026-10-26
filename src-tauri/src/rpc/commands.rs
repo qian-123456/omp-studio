@@ -45,11 +45,30 @@ pub async fn rpc_send(
         command.get("type").and_then(Value::as_str),
         Some("prompt" | "steer" | "follow_up" | "abort_and_prompt")
     );
+    handle.touch();
     let resp = crate::rpc::process::send_command(&handle, command).await?;
     if is_prompt {
         state.emit(AppEvent::PromptSent { session_id });
     }
     Ok(resp)
+}
+
+#[tauri::command]
+pub async fn rpc_touch(session_id: String) -> Result<(), String> {
+    crate::rpc::touch_session(&session_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rpc_retain(session_id: String) -> Result<(), String> {
+    crate::rpc::retain_session(&session_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rpc_release(session_id: String) -> Result<(), String> {
+    crate::rpc::release_session(&session_id);
+    Ok(())
 }
 
 #[tauri::command]

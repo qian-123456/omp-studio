@@ -29,14 +29,7 @@ interface ProcRow {
 	name: string;
 	ports: number[];
 	command: string;
-	memoryKb: number | null;
 	startedByApp: boolean;
-}
-
-function formatKb(kb: number | null): string {
-	if (kb == null) return "—";
-	const mb = kb / 1024;
-	return mb < 10 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
 }
 
 function formatBytes(bytes: number | null | undefined): string {
@@ -102,24 +95,22 @@ export function PerfPopover({
 				name: s.name,
 				ports: [s.port],
 				command: s.command,
-				memoryKb: s.memoryKb,
 				startedByApp: s.startedByApp,
 			});
 		}
-		return Array.from(byPid.values()).sort(
-			(a, b) => (b.memoryKb ?? 0) - (a.memoryKb ?? 0),
-		);
+		return Array.from(byPid.values()).sort((a, b) => a.pid - b.pid);
 	}, [rows, workspaces]);
 
-	// Disjoint bar segments: app tree footprint, omp not already attributed to
-	// the app, other processes/system, free.
+	// Disjoint physical-footprint segments. Do not turn an unknown probe into a
+	// zero-width segment: that would make the total and the details disagree.
 	const segments = useMemo(() => {
-		if (!bd?.totalBytes) return null;
+		if (!bd?.totalBytes || bd.app.bytes == null || bd.barOmpBytes == null ||
+			bd.otherBytes == null || bd.freeBytes == null) return null;
 		const parts = [
-			{ key: "app" as const, bytes: bd.app.bytes ?? 0 },
-			{ key: "omp" as const, bytes: bd.barOmpBytes ?? 0 },
-			{ key: "other" as const, bytes: bd.otherBytes ?? 0 },
-			{ key: "free" as const, bytes: bd.freeBytes ?? 0 },
+			{ key: "app" as const, bytes: bd.app.bytes },
+			{ key: "omp" as const, bytes: bd.barOmpBytes },
+			{ key: "other" as const, bytes: bd.otherBytes },
+			{ key: "free" as const, bytes: bd.freeBytes },
 		];
 		const total = bd.totalBytes;
 		return parts.map((p) => ({ ...p, pct: (p.bytes / total) * 100 }));
@@ -260,7 +251,8 @@ export function PerfPopover({
 				</div>
 			</div>
 
-			{/* 活跃窗口 */}
+			{/* Instance labels and process IDs are development diagnostics only. */}
+			{import.meta.env.DEV && (
 			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
 				<div className="mb-1.5 flex items-center justify-between text-[10px] font-medium tracking-wide text-[var(--text-40)]">
 					<span>{t("chatView.perf.activeWindows")}</span>
@@ -301,8 +293,10 @@ export function PerfPopover({
 					</div>
 				)}
 			</div>
+			)}
 
-			{/* Service processes */}
+			{/* Process/close/debug management is not offered by formal releases. */}
+			{import.meta.env.DEV && (
 			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
 				<div className="mb-1.5 flex items-center gap-1 text-[10px] font-medium tracking-wide text-[var(--text-40)]">
 					<Layers size={10} className="text-[var(--text-40)]" />
@@ -341,14 +335,15 @@ export function PerfPopover({
 										:{p.ports.join(",:")}
 									</span>
 								</div>
-								<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
-									{formatKb(p.memoryKb)}
+								<span className="shrink-0 font-mono text-[10px] text-[var(--text-40)]">
+									pid {p.pid}
 								</span>
 							</div>
 						))}
 					</div>
 				)}
 			</div>
+			)}
 		</FloatingLayer>
 	);
 }

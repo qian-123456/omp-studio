@@ -3,6 +3,7 @@
 
 import clsx from "clsx";
 import { caretVisualLines } from "./caretLine";
+import { getImageTokenPalette } from "./imageTokens";
 import {
 	ArrowUp,
 	ChevronDown,
@@ -35,22 +36,6 @@ export interface InlineImageToken {
 	index: number;
 	path?: string;
 }
-export const IMAGE_TOKEN_PALETTES = [
-	{ text: "text-amber-400", decoration: "decoration-amber-400", hex: "#fbbf24" }, // #1: Amber/Peach
-	{ text: "text-sky-400", decoration: "decoration-sky-400", hex: "#38bdf8" },     // #2: Sky Blue
-	{ text: "text-emerald-400", decoration: "decoration-emerald-400", hex: "#34d399" }, // #3: Emerald
-	{ text: "text-purple-400", decoration: "decoration-purple-400", hex: "#c084fc" }, // #4: Purple
-	{ text: "text-rose-400", decoration: "decoration-rose-400", hex: "#fb7185" },     // #5: Rose Pink
-	{ text: "text-teal-400", decoration: "decoration-teal-400", hex: "#2dd4bf" },     // #6: Teal
-	{ text: "text-yellow-300", decoration: "decoration-yellow-300", hex: "#fde047" }, // #7: Yellow
-	{ text: "text-indigo-400", decoration: "decoration-indigo-400", hex: "#818cf8" }, // #8: Indigo
-];
-
-export function getImageTokenPalette(index: number) {
-	const i = Math.max(1, index);
-	return IMAGE_TOKEN_PALETTES[(i - 1) % IMAGE_TOKEN_PALETTES.length];
-}
-
 export function renderHighlightedText(content: string) {
 	const regex = /(🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+\])/gu;
 	const parts: React.ReactNode[] = [];
@@ -229,6 +214,11 @@ import { textAnnotationsOf } from "./annotations";
 import { AnnotationChip } from "./AnnotationChip";
 import { GoalBar } from "./GoalBar";
 import { claimEscape } from "../../lib/escapeClaim";
+import { draftMeta, isLocalDraftId, usePendingSession } from "../sessions/pendingSession";
+import { materializeDraft, setDraftModel, setDraftThinking, warmDraft } from "../sessions/draftSession";
+
+/** Slash commands that only drive composer UI and therefore run on a local draft. */
+const DRAFT_LOCAL_SLASH: ReadonlySet<string> = new Set(["model", "thinking", "context", "plan"]);
 
 /** How long an interrupt waits for the aborted turn to stop before holding the message. */
 const INTERRUPT_WAIT_MS = 15_000;
@@ -279,6 +269,8 @@ export function Composer({
 	compact?: boolean;
 }) {
 	const { t, locale } = useT();
+	const isLocalDraft = isLocalDraftId(sessionId);
+	const localDraft = usePendingSession((s) => isLocalDraft ? s.drafts[sessionId] : undefined);
 	const [busy, setBusy] = useState(false);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [menuDismissed, setMenuDismissed] = useState(false);
@@ -441,7 +433,8 @@ export function Composer({
 
 
 	// @ file-completion state
-	const sessionMeta = useSessions((s) => s.sessions[sessionId]);
+	const realSessionMeta = useSessions((s) => s.sessions[sessionId]);
+	const sessionMeta = isLocalDraft && localDraft ? draftMeta(localDraft) : realSessionMeta;
 	// Typing into a stopped session starts its omp process in the background so
 	// the slash menu lists omp's own commands (incl. skills); the disk-skill
 	// fallback below covers the spawn window and failed starts.
@@ -450,6 +443,16 @@ export function Composer({
 		live?.alive === true,
 		canStartOnType(sessionMeta, sessionId, readonly),
 	);
+	// Meaningful input (text, attachment, quote, plan mode, model/thinking) prewarms
+	// exactly one process for a local draft; blank drafts spawn nothing.
+	useEffect(() => {
+		if (!isLocalDraft) return;
+		warmDraft(sessionId);
+		return useComposer.subscribe(() => warmDraft(sessionId));
+	}, [isLocalDraft, sessionId]);
+	useEffect(() => {
+		if (isLocalDraft) warmDraft(sessionId);
+	}, [isLocalDraft, sessionId, chip, localDraft?.model, localDraft?.thinking, localDraft?.startError]);
 	// Annotation move ⇄: main composer → side chat; a side chat's own composer (embedded
 	// in the right panel) → its parent's main composer. Depth-capped parents cannot fork.
 	const annotationMove = useMemo(() => {
@@ -504,12 +507,14 @@ export function Composer({
 	// the thinking level / context size come from the transcript instead of
 	// falling back to "auto" / 0%.
 	const hasLiveState = live?.state != null;
+	// A draft has no transcript: snapshot/usage RPCs would only fail.
+	const isPrewarming = isLocalDraft;
 	// External (terminal) sessions keep writing the transcript: re-read the
 	// snapshot / usage whenever the catalog reports new activity.
 	const externalTick = readonly ? sessionMeta?.updatedAt : undefined;
 	const [snapshotRec, setSnapshotRec] = useState<{ id: string; snap: SessionSnapshot } | null>(null);
 	useEffect(() => {
-		if (hasLiveState) return;
+		if (hasLiveState || isPrewarming) return;
 		let cancelled = false;
 		sessionSnapshot(sessionId)
 			.then((snap) => {
@@ -519,13 +524,14 @@ export function Composer({
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, hasLiveState, externalTick]);
+	}, [sessionId, hasLiveState, externalTick, isPrewarming]);
 	const snapshot = snapshotRec?.id === sessionId ? snapshotRec.snap : null;
 
 	// Total tokens summary
 	const [totalTokensRec, setTotalTokensRec] = useState<{ id: string; str: string } | null>(null);
 	const totalTokensStr = totalTokensRec?.id === sessionId ? totalTokensRec.str : null;
 	useEffect(() => {
+		if (isPrewarming) return;
 		let cancelled = false;
 		sessionUsage(sessionId)
 			.then((u) => {
@@ -537,7 +543,7 @@ export function Composer({
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, streaming, externalTick]);
+	}, [sessionId, streaming, externalTick, isPrewarming]);
 
 	// Pull the slash-command list once when the session comes up empty —
 	// available_commands_update only arrives when the list changes.
@@ -816,14 +822,18 @@ export function Composer({
 	const state = live?.state ?? {};
 	const stateThinkingLevel =
 		typeof state.thinkingLevel === "string" ? state.thinkingLevel : (snapshot?.thinkingLevel ?? undefined);
-	const currentThinking = stateThinkingLevel ?? "auto";
+	const currentThinking = localDraft?.thinking ?? stateThinkingLevel ?? "auto";
 
 	const current = useMemo(
 		// A read-only (terminal-driven) session has no live process of ours: its model
 		// is whatever the transcript last recorded, not a leftover get_state frame.
 		() =>
-			pickCurrentModel(readonly ? [sessionMeta?.model, state.model] : [state.model, sessionMeta?.model], models),
-		[readonly, state.model, sessionMeta?.model, models],
+			pickCurrentModel(
+				// A draft's own choice wins over the prewarmed process's default.
+				isLocalDraft || readonly ? [sessionMeta?.model, state.model] : [state.model, sessionMeta?.model],
+				models,
+			),
+		[readonly, isLocalDraft, state.model, sessionMeta?.model, models],
 	);
 
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
@@ -860,15 +870,19 @@ export function Composer({
 	const thinkingLevels = useMemo(
 		() =>
 			resolveThinkingLevels(
-				(state.model as Record<string, unknown> | undefined)?.thinking,
+				isLocalDraft ? undefined : (state.model as Record<string, unknown> | undefined)?.thinking,
 				currentModelOption?.thinking,
-				stateThinkingLevel,
+				localDraft?.thinking ?? stateThinkingLevel,
 			),
-		[state.model, currentModelOption, stateThinkingLevel],
+		[isLocalDraft, state.model, currentModelOption, stateThinkingLevel, localDraft?.thinking],
 	);
 
 
 	const selectThinkingLevel = async (level: string) => {
+		if (isLocalDraft) {
+			setDraftThinking(sessionId, level);
+			return;
+		}
 		try {
 			if (!live?.alive) await ensureLive(sessionId);
 			await rpcSend(sessionId, { type: "set_thinking_level", level });
@@ -978,6 +992,9 @@ export function Composer({
 		insertText: (t) =>
 			setText(`${useComposer.getState().drafts[sessionId] ?? ""}${t}`),
 	});
+	/** Commands that only drive composer UI can run on a draft; the rest need a real process. */
+	const slashTarget = async (name: string): Promise<string> =>
+		isLocalDraft && !DRAFT_LOCAL_SLASH.has(name) ? materializeDraft(sessionId) : sessionId;
 
 	/** Menu selection: arg commands become an atomic chip at the input start
 	 * (draft keeps only the args); the rest run now, removing only the
@@ -1059,10 +1076,10 @@ export function Composer({
 		void (async () => {
 			try {
 				if (item.registry) {
-					await runSlashInput(sessionId, `/${item.name}`, makeSlashDeps());
+					await runSlashInput(await slashTarget(item.name), `/${item.name}`, makeSlashDeps());
 				} else {
 					pushHistory(`/${item.name}`);
-					await sendSlashPrompt(sessionId, `/${item.name}`);
+					await sendSlashPrompt(await slashTarget(item.name), `/${item.name}`);
 				}
 			} catch (err) {
 				if (!isResumeCancelled(err))
@@ -1082,7 +1099,7 @@ export function Composer({
 			setCursorPos(0);
 			setMenuDismissed(true);
 			setArgHintLine(null);
-			void runSlashInput(sessionId, `/${name}`, makeSlashDeps()).catch((err) => {
+			void slashTarget(name).then((target) => runSlashInput(target, `/${name}`, makeSlashDeps())).catch((err) => {
 				if (!isResumeCancelled(err)) toast.error(t("composer.cmdFailed", { name, error: errMsg(err) }));
 			});
 			setTimeout(() => taRef.current?.focus(), 0);
@@ -1128,6 +1145,8 @@ export function Composer({
 	};
 	const submit = async (action: FollowUpAction) => {
 		const raw = text;
+		// A local draft hands its composer state to the real session before the echo.
+		let inputOwner = sessionId;
 		if (!hasPayload || busy) return;
 		// Chip + args serialize to the exact `/name args` the user would have
 		// typed — history, masking and dispatch all run on that form.
@@ -1143,7 +1162,7 @@ export function Composer({
 			privacy.reset();
 			if (sentSecrets.length === 0) return;
 			setLibraryPromptArmed(true);
-			void linkSentSecrets(sessionId, sentSecrets, sessionEntryIds, markScopes);
+			void linkSentSecrets(inputOwner, sentSecrets, sessionEntryIds, markScopes);
 		};
 		setArgHintLine(null);
 		const slashImages = useComposer.getState().images[sessionId] ?? [];
@@ -1159,8 +1178,11 @@ export function Composer({
 			// Registry command (/fork, /status, …) — run natively or forward.
 			setBusy(true);
 			try {
+				// A draft becomes a real session first unless the command is UI-only.
+				const target = await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "");
+				inputOwner = target;
 				const outcome = await runSlashInput(
-					sessionId,
+					target,
 					expandImageTokens(trimmedMasked, slashImages),
 					makeSlashDeps(),
 				);
@@ -1169,7 +1191,7 @@ export function Composer({
 					// Unknown `/x`: send to omp so its own builtins still run. The
 					// command stays first; file markers and quote blocks follow it.
 					pushHistory(trimmedRaw);
-					const slashFiles = useComposer.getState().files[sessionId] ?? [];
+					const slashFiles = useComposer.getState().files[target] ?? [];
 					const command = expandFilesForSend(
 						expandImagesForSend(trimmedMasked, slashImages, "suffix"),
 						slashFiles,
@@ -1177,22 +1199,22 @@ export function Composer({
 					);
 					const quoteBlocks = formatWithAnnotations("", textAnnotations);
 					await sendSlashPrompt(
-						sessionId,
+						target,
 						quoteBlocks ? `${command.trimEnd()}\n\n${quoteBlocks}` : command,
 						slashAttachments,
 					);
 					finishPrivacySend();
 					setChip(null);
-					clearDraft(sessionId);
-					clearAnnotations(sessionId);
-					clearImages(sessionId);
-					clearFiles(sessionId);
+					clearDraft(target);
+					clearAnnotations(target);
+					clearImages(target);
+					clearFiles(target);
 				} else {
 					// A native command ran: nothing was sent, so attachments and
 					// quotes stay for the next real message.
 					finishPrivacySend();
 					setChip(null);
-					clearDraft(sessionId);
+					clearDraft(target);
 				}
 			} catch (err) {
 				if (!isResumeCancelled(err))
@@ -1236,59 +1258,54 @@ export function Composer({
 		// resume/RPC awaits below can take seconds. Restore everything if the send fails.
 		const prevAnnotations = annotations;
 		let released = false;
-		const releaseComposer = () => {
+		const releaseComposer = (targetId = sessionId) => {
 			released = true;
+			inputOwner = targetId;
 			const store = useComposer.getState();
-			const cur = store.drafts[sessionId] ?? "";
+			const cur = store.drafts[targetId] ?? "";
 			if (cur === raw) {
-				clearDraft(sessionId);
-				clearAnnotations(sessionId);
-				clearImages(sessionId);
-				clearFiles(sessionId);
+				clearDraft(targetId);
+				clearAnnotations(targetId);
+				clearImages(targetId);
+				clearFiles(targetId);
 				return;
 			}
 			// Typed while the send was in flight: keep the new input and drop
 			// only what this send consumed (sent attachments + their tokens).
 			const nImg = currentSessionImages.length;
 			const nFile = currentSessionFiles.length;
-			setDraft(sessionId, remainingDraft(cur, raw, nImg, nFile));
+			setDraft(targetId, remainingDraft(cur, raw, nImg, nFile));
 			if (nImg > 0) {
 				const sentIds = new Set(currentSessionImages);
-				store.setImages(
-					sessionId,
-					(store.images[sessionId] ?? []).filter((i) => !sentIds.has(i)),
-				);
+				store.setImages(targetId, (store.images[targetId] ?? []).filter((i) => !sentIds.has(i)));
 			}
 			if (nFile > 0) {
 				const sentIds = new Set(currentSessionFiles);
-				store.setFiles(
-					sessionId,
-					(store.files[sessionId] ?? []).filter((f) => !sentIds.has(f)),
-				);
+				store.setFiles(targetId, (store.files[targetId] ?? []).filter((f) => !sentIds.has(f)));
 			}
-			for (const a of prevAnnotations) store.removeAnnotation(sessionId, a.id);
+			for (const a of prevAnnotations) store.removeAnnotation(targetId, a.id);
 		};
 		const restoreComposer = () => {
 			if (!released) return;
 			const store = useComposer.getState();
-			const cur = store.drafts[sessionId] ?? "";
+			const cur = store.drafts[inputOwner] ?? "";
 			// Typed while the send was in flight: the original goes first, the
 			// newer draft follows with its attachment tokens shifted past ours.
 			setDraft(
-				sessionId,
+				inputOwner,
 				cur === raw
 					? raw
 					: mergeFailedDraft(raw, cur, currentSessionImages.length, currentSessionFiles.length),
 			);
-			store.setImages(sessionId, [
+			store.setImages(inputOwner, [
 				...currentSessionImages,
-				...(store.images[sessionId] ?? []).filter((i) => !currentSessionImages.includes(i)),
+				...(store.images[inputOwner] ?? []).filter((i) => !currentSessionImages.includes(i)),
 			]);
-			store.setFiles(sessionId, [
+			store.setFiles(inputOwner, [
 				...currentSessionFiles,
-				...(store.files[sessionId] ?? []).filter((f) => !currentSessionFiles.includes(f)),
+				...(store.files[inputOwner] ?? []).filter((f) => !currentSessionFiles.includes(f)),
 			]);
-			for (const { id: _id, ...a } of prevAnnotations) addAnnotation(sessionId, a);
+			for (const { id: _id, ...a } of prevAnnotations) addAnnotation(inputOwner, a);
 		};
 		try {
 			// Interrupt: abort and wait for the turn to stop. If it keeps running,
@@ -2099,7 +2116,7 @@ export function Composer({
 						: "border-[var(--line,var(--border))]",
 				)}
 			>
-				{!sessionHasMessages && !readonly && (
+				{!sessionHasMessages && !readonly && !isLocalDraft && (
 					<ContextPillBar
 						sessionId={sessionId}
 						onWorkspaceClick={() => setWorkspacePickerOpen((v) => !v)}
@@ -2507,7 +2524,10 @@ export function Composer({
 										currentValue={current.value}
 										onSelect={async (key) => {
 											const payload = buildSetModelPayload(key, models);
-											if (payload) {
+											if (isLocalDraft) {
+												// No process yet: stage the choice; it is applied before the first send.
+												if (payload) setDraftModel(sessionId, key);
+											} else if (payload) {
 												try {
 													if (!live?.alive) {
 														await ensureLive(sessionId);

@@ -8,7 +8,7 @@ vi.mock("../../lib/ipc", () => ({ backlogAdd, backlogList, saveClipboardImage: v
 vi.mock("../../lib/events", () => ({ onBacklogChanged: vi.fn(() => Promise.resolve(() => {})) }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => p }));
 vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
-vi.mock("../chat/Composer", () => ({ getImageTokenPalette: () => ({ hex: "#888888" }) }));
+vi.mock("../chat/imageTokens", () => ({ getImageTokenPalette: () => ({ hex: "#888888" }) }));
 
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";

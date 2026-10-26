@@ -83,6 +83,40 @@ export interface ProtocolBlock {
 export type DisplayBlock = TurnBlock | ProtocolBlock;
 
 /**
+ * Part bookkeeping of a virtualized history row. A long turn renders as
+ * several rows so the virtualizer never has to mount the whole turn at once.
+ * Each row carries only the user message / steps / answer slice it renders;
+ * `turn` is the untouched source block for whole-turn facts (request stats,
+ * subagent spans).
+ */
+export interface TurnPartInfo {
+	/** Source turn id (`TurnBlock.id`); shared by every part of the turn. */
+	turnId: string;
+	partIndex: number;
+	partCount: number;
+	isFirstTurnPart: boolean;
+	isLastTurnPart: boolean;
+	/** partIndex > 0: no user bubble, tighter top spacing. */
+	isContinuation: boolean;
+	/** Only the first part that renders the answer emits the `msg-<answer id>` anchor. */
+	renderAnswerAnchor: boolean;
+	/** The turn's first / last folded-activity disclosure renders in this part. */
+	ownsFirstFold: boolean;
+	ownsLastFold: boolean;
+	/** Answer text this part renders when the answer is split across parts. */
+	answerSlice?: string;
+	/** Position of `answerSlice` among the answer's slices. */
+	answerSliceIndex?: number;
+	answerSliceCount?: number;
+	turn: TurnBlock;
+}
+
+/** A TurnBlock restricted to one part of its turn (the whole turn when partCount is 1). */
+export type HistoryTurnRow = TurnBlock & TurnPartInfo;
+
+export type HistoryRow = HistoryTurnRow | ProtocolBlock;
+
+/**
  * Element anchor (rendered as `msg-<anchor>`) of the newest user request: the
  * last turn's latest steer, else its user message. null when the last turn has
  * no visible request of its own.

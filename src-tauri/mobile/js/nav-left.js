@@ -137,6 +137,7 @@
 		try {
 			const r = await M.api("POST", "/left/sessions", { cwd });
 			await M.refreshSessions().catch(() => {});
+			M.emit("lf:sessions-dirty", null);
 			M.nav.open("chat", { id: r.sessionId });
 		} catch (e) {
 			M.toast("新建失败：" + e.message);
@@ -167,7 +168,27 @@
 		}
 	}
 
+	const isDraftId = (id) => typeof id === "string" && id.startsWith("mobile-draft-");
+
+	async function discardDraft(s) {
+		if (!(await M.confirm("丢弃这个未发送的草稿？"))) return;
+		try {
+			await M.api("POST", "/left/drafts/" + encodeURIComponent(s.id) + "/discard");
+			await M.refreshSessions().catch(() => {});
+			M.emit("lf:sessions-dirty", null);
+		} catch (e) {
+			M.toast("操作失败：" + e.message);
+		}
+	}
+
 	function sessionActions(s) {
+		if (isDraftId(s.id)) {
+			sheet("未发送的草稿", [
+				{ label: "打开", run: () => M.nav.open("chat", { id: s.id }) },
+				{ label: "丢弃草稿", danger: true, run: () => discardDraft(s) },
+			]);
+			return;
+		}
 		const busy = BUSY.has(s.status) || s.live === true && s.status === "working";
 		sheet(sessionName(s), [
 			{ label: "打开", run: () => M.nav.open("chat", { id: s.id }) },
@@ -394,7 +415,13 @@
 			const list = sessions.filter((s) => !s.archived);
 			if (!list.length) return M.toast("该分组下无需要归档的会话");
 			if (!(await M.confirm("确定批量归档「" + title + "」下的 " + list.length + " 个会话？"))) return;
-			const rs = await Promise.allSettled(list.map((s) => M.api("PATCH", "/left/sessions/" + encodeURIComponent(s.id), { archived: true })));
+			const rs = await Promise.allSettled(
+				list.map((s) =>
+					isDraftId(s.id)
+						? M.api("POST", "/left/drafts/" + encodeURIComponent(s.id) + "/discard")
+						: M.api("PATCH", "/left/sessions/" + encodeURIComponent(s.id), { archived: true }),
+				),
+			);
 			const fail = rs.filter((r) => r.status === "rejected").length;
 			M.toast(fail ? "已归档 " + (list.length - fail) + " 个，" + fail + " 个失败" : "已归档 " + list.length + " 个会话");
 			await M.refreshSessions().catch(() => {});

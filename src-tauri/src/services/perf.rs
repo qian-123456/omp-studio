@@ -32,6 +32,143 @@ pub struct PsRow {
     pub comm: String,
 }
 
+/// Pids owned by this instance. `current` = everything it owns (including
+/// `omp` agents); `app` = `current` minus `omp` agents.
+#[derive(Debug)]
+struct InstanceTrees {
+    app: HashSet<u32>,
+    current: HashSet<u32>,
+}
+
+/// Every pid reachable downward from `seeds` through `children`, never
+/// entering `blocked` pids.
+fn expand_down(
+    seeds: impl IntoIterator<Item = u32>,
+    children: &HashMap<u32, Vec<u32>>,
+    blocked: &HashSet<u32>,
+) -> HashSet<u32> {
+    let mut seen: HashSet<u32> = HashSet::new();
+    let mut stack: Vec<u32> = seeds.into_iter().collect();
+    while let Some(pid) = stack.pop() {
+        if !seen.insert(pid) {
+            continue;
+        }
+        if let Some(kids) = children.get(&pid) {
+            stack.extend(kids.iter().copied().filter(|k| !blocked.contains(k)));
+        }
+    }
+    seen
+}
+
+/// Isolate this instance from every other omp-workspace instance.
+///
+/// Ownership = self + its ppid descendants, never crossing another instance's
+/// root (same executable, different pid) — so a dev instance launched from the
+/// formal app is excluded from the formal app, and vice versa. macOS
+/// responsibility only adds reparented helpers (WebKit processes have ppid 1):
+/// candidates are processes charged to `self_pid`, minus any other instance's
+/// tree. Responsibility is inherited across launch chains, so it is used only
+/// when this process is its own responsible pid and no other instance is
+/// charged to it; otherwise the reparented helpers are ambiguous and left out
+/// (an honest undercount beats charging another instance's memory to us).
+fn prune_instance_trees(
+    rows: &[PsRow],
+    responsible: &HashMap<u32, u32>,
+    self_pid: u32,
+    own_exe: &str,
+    omp_exe: &str,
+) -> InstanceTrees {
+    let other_roots: HashSet<u32> = rows
+        .iter()
+        .filter(|row| row.pid != self_pid && exe_base(&row.comm) == own_exe)
+        .map(|row| row.pid)
+        .collect();
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for row in rows {
+        if row.pid != row.ppid {
+            children.entry(row.ppid).or_default().push(row.pid);
+        }
+    }
+    let foreign = expand_down(
+        other_roots.iter().copied(),
+        &children,
+        &HashSet::from([self_pid]),
+    );
+
+    let self_is_responsible = responsible.get(&self_pid).map_or(true, |r| *r == self_pid);
+    let shares_responsibility = other_roots
+        .iter()
+        .any(|pid| responsible.get(pid) == Some(&self_pid));
+    let mut seeds = vec![self_pid];
+    if self_is_responsible && !shares_responsibility {
+        seeds.extend(
+            rows.iter()
+                .filter(|row| {
+                    row.pid != self_pid
+                        && responsible.get(&row.pid) == Some(&self_pid)
+                        && !foreign.contains(&row.pid)
+                })
+                .map(|row| row.pid),
+        );
+    }
+    let current = expand_down(seeds, &children, &other_roots);
+    let by_pid: HashMap<u32, &PsRow> = rows.iter().map(|r| (r.pid, r)).collect();
+    let mut app = current.clone();
+    app.retain(|pid| {
+        by_pid
+            .get(pid)
+            .map_or(true, |row| exe_base(&row.comm) != omp_exe)
+    });
+    InstanceTrees { app, current }
+}
+
+/// `omp` agents split into (spawned by this instance, external). Both are
+/// physical-footprint buckets over PIDs disjoint from the app bucket.
+fn aggregate_omp(
+    rows: &[PsRow],
+    self_pid: u32,
+    current: &HashSet<u32>,
+    footprints: &HashMap<u32, Option<u64>>,
+    own_exe: &str,
+    omp_exe: &str,
+) -> (PerfBucket, PerfBucket) {
+    let by_pid: HashMap<u32, &PsRow> = rows.iter().map(|r| (r.pid, r)).collect();
+    let mut spawned: Vec<u32> = Vec::new();
+    let mut external: Vec<u32> = Vec::new();
+    for row in rows {
+        match classify(row, self_pid, current, own_exe, omp_exe, &by_pid) {
+            PerfClass::OmpSpawned => spawned.push(row.pid),
+            PerfClass::OmpExternal => external.push(row.pid),
+            _ => {}
+        }
+    }
+    (
+        aggregate_bucket(spawned, footprints),
+        aggregate_bucket(external, footprints),
+    )
+}
+
+/// Sum physical footprints. Members whose probe failed (typically exited
+/// between the `ps` scan and the probe) are skipped and not counted; a
+/// non-empty set with no readable member is unknown (`None`), never zero.
+fn aggregate_bucket(
+    pids: impl IntoIterator<Item = u32>,
+    footprints: &HashMap<u32, Option<u64>>,
+) -> PerfBucket {
+    let (mut total, mut known, mut any) = (0u64, 0u32, false);
+    for pid in pids {
+        any = true;
+        if let Some(bytes) = footprints.get(&pid).copied().flatten() {
+            total = total.saturating_add(bytes);
+            known += 1;
+        }
+    }
+    PerfBucket {
+        bytes: if any && known == 0 { None } else { Some(total) },
+        processes: known,
+    }
+}
+
 /// Parse `ps -axo pid=,ppid=,rss=,comm=` output. `comm` may contain spaces
 /// (macOS prints the full path, e.g. `.../Google Chrome Helper (Renderer)`), so
 /// an empty `rss` column folds into `comm` and a non-numeric third token is
@@ -88,8 +225,14 @@ pub enum PerfClass {
 }
 
 /// Walk `row`'s ancestor chain via `ppid`; true when any ancestor (bounded
-/// walk) sits inside `app_pids` (which already contains `self_pid`).
-fn descendant_of(row: &PsRow, rows: &HashMap<u32, &PsRow>, app_pids: &HashSet<u32>) -> bool {
+/// walk) sits inside `app_pids`. The walk stops at another instance's root
+/// (same executable, not in `app_pids`) so its subtree is never ours.
+fn descendant_of(
+    row: &PsRow,
+    rows: &HashMap<u32, &PsRow>,
+    app_pids: &HashSet<u32>,
+    own_exe: &str,
+) -> bool {
     let mut ppid = row.ppid;
     for _ in 0..64 {
         if ppid <= 1 {
@@ -99,6 +242,7 @@ fn descendant_of(row: &PsRow, rows: &HashMap<u32, &PsRow>, app_pids: &HashSet<u3
             return true;
         }
         match rows.get(&ppid) {
+            Some(parent) if exe_base(&parent.comm) == own_exe => return false,
             Some(parent) if parent.ppid != ppid => ppid = parent.ppid,
             _ => return false,
         }
@@ -126,14 +270,14 @@ pub fn classify(
         return PerfClass::AppInstance;
     }
     if exe == omp_exe {
-        let inside = app_pids.contains(&row.pid) || descendant_of(row, rows, app_pids);
+        let inside = app_pids.contains(&row.pid) || descendant_of(row, rows, app_pids, own_exe);
         return if inside {
             PerfClass::OmpSpawned
         } else {
             PerfClass::OmpExternal
         };
     }
-    if app_pids.contains(&row.pid) || descendant_of(row, rows, app_pids) {
+    if app_pids.contains(&row.pid) || descendant_of(row, rows, app_pids, own_exe) {
         return PerfClass::AppTree;
     }
     PerfClass::Other
@@ -259,16 +403,96 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+fn own_exe_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| {
+            p.file_name()
+                .map(|s| exe_base(&s.to_string_lossy()).to_string())
+        })
+        .unwrap_or_else(|| "omp-workspace".to_string())
+}
+
+/// Physical footprint per pid. This process uses the primary snapshot (the
+/// only source on platforms without a per-pid probe); others use
+/// `process_footprint`, which is None where no footprint API exists. RSS is
+/// never substituted.
+fn footprints_for(
+    pids: impl IntoIterator<Item = u32>,
+    self_pid: u32,
+    self_footprint: Option<u64>,
+) -> HashMap<u32, Option<u64>> {
+    pids.into_iter()
+        .map(|pid| {
+            let bytes = if pid == self_pid {
+                self_footprint
+            } else {
+                super::commands::process_footprint(pid)
+            };
+            (pid, bytes)
+        })
+        .collect()
+}
+
+/// App bucket over this instance's own pids. Unknown when this process's own
+/// footprint cannot be read, since the total would silently omit the main
+/// process.
+fn app_bucket_from(
+    app: &HashSet<u32>,
+    self_pid: u32,
+    footprints: &HashMap<u32, Option<u64>>,
+) -> PerfBucket {
+    let mut bucket = aggregate_bucket(app.iter().copied(), footprints);
+    if footprints.get(&self_pid).copied().flatten().is_none() {
+        bucket.bytes = None;
+    }
+    bucket
+}
+
+fn compute_app_bucket() -> PerfBucket {
+    let self_pid = std::process::id();
+    let snap = super::commands::app_memory_snapshot();
+    let self_footprint = snap
+        .members
+        .iter()
+        .find(|m| m.pid == self_pid)
+        .map(|m| m.footprint_bytes);
+    let Some(rows) = collect_ps_rows() else {
+        return PerfBucket {
+            bytes: self_footprint,
+            processes: u32::from(self_footprint.is_some()),
+        };
+    };
+    let trees = prune_instance_trees(
+        &rows,
+        &super::commands::responsible_map(),
+        self_pid,
+        &own_exe_name(),
+        "omp",
+    );
+    let footprints = footprints_for(trees.app.iter().copied(), self_pid, self_footprint);
+    app_bucket_from(&trees.app, self_pid, &footprints)
+}
+
+/// This instance's app bucket (physical footprint, other instances excluded).
+/// Backs the bottom-bar number so it always matches `perf_breakdown().app`.
+pub async fn app_bucket() -> PerfBucket {
+    tokio::task::spawn_blocking(compute_app_bucket)
+        .await
+        .unwrap_or_default()
+}
+
 fn collect() -> PerfBreakdown {
     let self_pid = std::process::id();
     let snap = super::commands::app_memory_snapshot();
+    let self_footprint = snap
+        .members
+        .iter()
+        .find(|m| m.pid == self_pid)
+        .map(|m| m.footprint_bytes);
     let (total_bytes, used_bytes) = super::commands::system_memory();
 
     let mut bd = PerfBreakdown {
-        app: PerfBucket {
-            bytes: (snap.bytes > 0).then_some(snap.bytes),
-            processes: snap.processes,
-        },
         generated_at: now_ms(),
         ..PerfBreakdown::default()
     };
@@ -280,7 +504,11 @@ fn collect() -> PerfBreakdown {
     };
 
     let Some(rows) = collect_ps_rows() else {
-        // ps failed: still surface this window as the only known instance.
+        // ps failed: only this process is known; omp buckets stay unknown.
+        bd.app = PerfBucket {
+            bytes: self_footprint,
+            processes: u32::from(self_footprint.is_some()),
+        };
         bd.instances = vec![AppInstance {
             pid: self_pid,
             label: "本窗口".to_string(),
@@ -292,92 +520,52 @@ fn collect() -> PerfBreakdown {
         return bd;
     };
 
-    // Seed app tree with the responsibility set (macOS) or self, then grow it
-    // over ppid ancestry so Linux descendants and dev-mode children count too.
-    let by_pid: HashMap<u32, &PsRow> = rows.iter().map(|r| (r.pid, r)).collect();
-    let mut app_pids: HashSet<u32> = super::commands::app_tree_pids().into_iter().collect();
-    app_pids.insert(self_pid);
-    // Fixed-point growth: children of known tree pids join the tree.
-    loop {
-        let mut added = 0usize;
-        for row in &rows {
-            if app_pids.contains(&row.pid) {
-                continue;
-            }
-            if descendant_of(row, &by_pid, &app_pids) {
-                app_pids.insert(row.pid);
-                added += 1;
-            }
-        }
-        if added == 0 {
-            break;
-        }
-    }
-
-    let own_exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| {
-            p.file_name()
-                .map(|s| exe_base(&s.to_string_lossy()).to_string())
-        })
-        .unwrap_or_else(|| "omp-workspace".to_string());
+    let own_exe = own_exe_name();
     let omp_exe = "omp";
-
-    let mut spawned_kb = 0u64;
-    let mut spawned_n = 0u32;
-    let mut external_kb = 0u64;
-    let mut external_n = 0u32;
-    let mut spawned_pids: Vec<u32> = Vec::new();
-    let mut instance_pids: Vec<u32> = Vec::new();
-
-    for row in &rows {
-        let kb = row.rss_kb.unwrap_or(0);
-        match classify(row, self_pid, &app_pids, &own_exe, omp_exe, &by_pid) {
-            PerfClass::OmpSpawned => {
-                spawned_kb += kb;
-                spawned_n += 1;
-                spawned_pids.push(row.pid);
-            }
-            PerfClass::OmpExternal => {
-                external_kb += kb;
-                external_n += 1;
-            }
-            PerfClass::AppInstance => instance_pids.push(row.pid),
-            _ => {}
-        }
-    }
-
-    bd.omp_spawned = PerfBucket {
-        bytes: Some(spawned_kb * 1024),
-        processes: spawned_n,
-    };
-    bd.omp_external = PerfBucket {
-        bytes: Some(external_kb * 1024),
-        processes: external_n,
-    };
-
-    // Overlap: spawned omp pids whose footprint the macOS responsibility
-    // attribution already folded into `app.bytes` must not double-count in the
-    // stacked bar. `snap.members` is empty off macOS (ppid walk is complete).
-    let member_bytes: HashMap<u32, u64> = snap
-        .members
-        .iter()
-        .map(|m| (m.pid, m.footprint_bytes))
-        .collect();
-    let overlap: u64 = spawned_pids
-        .iter()
-        .filter_map(|p| member_bytes.get(p).copied())
-        .sum();
-    bd.bar_omp_bytes = Some(
-        spawned_kb
-            .saturating_mul(1024)
-            .saturating_add(external_kb.saturating_mul(1024))
-            .saturating_sub(overlap),
+    let trees = prune_instance_trees(
+        &rows,
+        &super::commands::responsible_map(),
+        self_pid,
+        &own_exe,
+        omp_exe,
     );
-    bd.other_bytes = used_bytes.map(|u| {
-        u.saturating_sub(snap.bytes)
-            .saturating_sub(bd.bar_omp_bytes.unwrap_or(0))
-    });
+    let mut instance_pids: Vec<u32> = rows
+        .iter()
+        .filter(|row| row.pid != self_pid && exe_base(&row.comm) == own_exe)
+        .map(|row| row.pid)
+        .collect();
+
+    let footprints = footprints_for(
+        trees.app.iter().copied().chain(
+            rows.iter()
+                .filter(|r| exe_base(&r.comm) == omp_exe)
+                .map(|r| r.pid),
+        ),
+        self_pid,
+        self_footprint,
+    );
+    bd.app = app_bucket_from(&trees.app, self_pid, &footprints);
+    let (spawned, external) = aggregate_omp(
+        &rows,
+        self_pid,
+        &trees.current,
+        &footprints,
+        &own_exe,
+        omp_exe,
+    );
+    bd.omp_spawned = spawned;
+    bd.omp_external = external;
+
+    // The OMP legend segment is exactly spawned + external (disjoint PIDs,
+    // same footprint metric); either unknown makes it unknown.
+    bd.bar_omp_bytes = match (bd.omp_spawned.bytes, bd.omp_external.bytes) {
+        (Some(spawned), Some(external)) => Some(spawned.saturating_add(external)),
+        _ => None,
+    };
+    bd.other_bytes = match (used_bytes, bd.app.bytes, bd.bar_omp_bytes) {
+        (Some(used), Some(app), Some(omp)) => Some(used.saturating_sub(app).saturating_sub(omp)),
+        _ => None,
+    };
 
     // Running app instances (self + others), labelled by worktree/branch.
     instance_pids.push(self_pid);
@@ -562,6 +750,110 @@ mod tests {
             classify(&extra, 100, &app_pids, "omp-workspace", "omp", &bp),
             PerfClass::OmpExternal
         );
+    }
+
+    /// Formal app 100 with a dev instance 300 launched from it. Both inherit
+    /// responsibility 100; WebContent helpers are reparented to launchd.
+    fn nested_fixture() -> (Vec<PsRow>, HashMap<u32, u32>) {
+        let rows = vec![
+            row(100, 1, "1", "/Applications/omp-workspace"),
+            rown(101, 1, "com.apple.WebKit.WebContent"),
+            row(200, 100, "2", "omp"),
+            rown(201, 200, "node"),
+            row(300, 100, "3", "target/debug/omp-workspace"),
+            rown(301, 1, "com.apple.WebKit.WebContent"),
+            row(302, 300, "4", "omp"),
+            rown(303, 302, "node"),
+            rown(900, 1, "zsh"),
+        ];
+        let responsible = [
+            (100, 100),
+            (101, 100),
+            (200, 100),
+            (201, 100),
+            (300, 100),
+            (301, 100),
+            (302, 100),
+            (303, 100),
+            (900, 900),
+        ]
+        .into_iter()
+        .collect();
+        (rows, responsible)
+    }
+
+    #[test]
+    fn formal_instance_excludes_nested_dev_instance() {
+        let (rows, responsible) = nested_fixture();
+        let trees = prune_instance_trees(&rows, &responsible, 100, "omp-workspace", "omp");
+        // Dev instance 300, its omp/node and its reparented helper 301 are not
+        // ours. Our own reparented helper 101 is ambiguous (the dev instance
+        // shares our responsibility) and stays out rather than risk 301.
+        assert_eq!(trees.current, [100, 200, 201].into_iter().collect());
+        // `omp` itself is its own bucket; its tool children stay in the app.
+        assert_eq!(trees.app, [100, 201].into_iter().collect());
+    }
+
+    #[test]
+    fn dev_instance_excludes_parent_and_uses_own_tree() {
+        let (rows, responsible) = nested_fixture();
+        let trees = prune_instance_trees(&rows, &responsible, 300, "omp-workspace", "omp");
+        // Responsibility points at the formal app, so it is not evidence.
+        assert_eq!(trees.current, [300, 302, 303].into_iter().collect());
+        assert_eq!(trees.app, [300, 303].into_iter().collect());
+    }
+
+    #[test]
+    fn own_helpers_included_when_responsibility_is_unshared() {
+        let (rows, mut responsible) = nested_fixture();
+        // Dev instance launched independently: it is its own responsible pid.
+        for pid in [300, 301, 302] {
+            responsible.insert(pid, 300);
+        }
+        // 303 stays charged to 100 but lives in the foreign tree.
+        let trees = prune_instance_trees(&rows, &responsible, 100, "omp-workspace", "omp");
+        assert_eq!(trees.current, [100, 101, 200, 201].into_iter().collect());
+        assert_eq!(trees.app, [100, 101, 201].into_iter().collect());
+
+        let footprints = trees
+            .app
+            .iter()
+            .map(|&pid| (pid, Some(pid as u64 * 10)))
+            .collect();
+        let app = aggregate_bucket(trees.app.iter().copied(), &footprints);
+        assert_eq!(app.bytes, Some(4020));
+        assert_eq!(app.processes, 3);
+    }
+
+    #[test]
+    fn aggregation_uses_footprints_and_skips_unreadable_members() {
+        let rows = [
+            row(100, 1, "999999", "omp-workspace"),
+            row(200, 100, "999999", "omp"),
+            row(300, 1, "999999", "omp"),
+        ];
+        let current: HashSet<u32> = [100, 200].into_iter().collect();
+        let footprints = [(200, Some(20)), (300, Some(30))].into_iter().collect();
+        let (spawned, external) =
+            aggregate_omp(&rows, 100, &current, &footprints, "omp-workspace", "omp");
+        assert_eq!(spawned.bytes, Some(20));
+        assert_eq!(external.bytes, Some(30));
+        assert_eq!((spawned.processes, external.processes), (1, 1));
+
+        // Unreadable member: bucket with no readable member is unknown.
+        let footprints = [(200, None), (300, Some(30))].into_iter().collect();
+        let (spawned, external) =
+            aggregate_omp(&rows, 100, &current, &footprints, "omp-workspace", "omp");
+        assert_eq!(spawned.bytes, None);
+        assert_eq!(spawned.processes, 0);
+        assert_eq!(external.bytes, Some(30));
+
+        // Partially readable: exited members are skipped, not counted as zero.
+        let footprints = [(1, Some(5)), (2, None)].into_iter().collect();
+        let bucket = aggregate_bucket([1, 2], &footprints);
+        assert_eq!((bucket.bytes, bucket.processes), (Some(5), 1));
+        let empty = aggregate_bucket(Vec::<u32>::new(), &footprints);
+        assert_eq!((empty.bytes, empty.processes), (Some(0), 0));
     }
 
     #[test]

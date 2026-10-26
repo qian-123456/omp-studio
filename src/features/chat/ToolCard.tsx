@@ -30,6 +30,7 @@ import { toast } from "../../lib/toast";
 import { PrivacyText } from "../privacy/SecretChip";
 import { askResultSummary } from "./ask/askDriver";
 import { ActivityHeader } from "./ActivityHeader";
+import { isToolCardOpen, setToolCardOpen } from "./toolCardState";
 import { useT, tNow } from "../../stores/language";
 
 export type ToolStatus = "running" | "done" | "error" | "called";
@@ -241,21 +242,15 @@ function diffStat(diff: string | null): { adds: number; dels: number } | null {
 	return adds + dels > 0 ? { adds, dels } : null;
 }
 
-/** Remembered open state of tool cards, keyed by session + call id. */
-const openToolCards = new Set<string>();
-
-/** Forget remembered open state of the given sessions (call when sessions are removed). */
-export function pruneToolCards(sessionIds: readonly string[]): void {
-	const prefixes = sessionIds.map((sid) => `${sid}:`);
-	for (const key of [...openToolCards]) {
-		if (prefixes.some((p) => key.startsWith(p))) openToolCards.delete(key);
-	}
-}
-
 /** Only real filesystem paths get an open button; `proc://…` style URIs don't. */
 function openableFile(path: string): boolean {
 	return !/^(?!file:)[a-z][a-z0-9+.-]*:\/\//i.test(path);
 }
+
+const EMPTY_SPLIT_ARGS = {
+	restArgs: {} as Record<string, unknown>,
+	longFields: [] as [string, string][],
+};
 
 /** Multi-line / long string args become their own mono blocks. */
 function splitArgs(args: unknown): {
@@ -412,7 +407,7 @@ function ToolCardBodyImpl({
 	// header's error tone, not by dumping the body open mid-run.
 	const openKey = callId ? `${sessionId}:${callId}` : undefined;
 	const [open, setOpen] = useState(
-		expanded === true || (openKey !== undefined && openToolCards.has(openKey)),
+		expanded === true || (openKey !== undefined && isToolCardOpen(openKey)),
 	);
 	const cwd = useSessions((s) => s.sessions[sessionId]?.cwd ?? null);
 	const home = useHomeDir();
@@ -427,8 +422,7 @@ function ToolCardBodyImpl({
 	// neighbours fold into a group, and must come back as the user left it.
 	useEffect(() => {
 		if (openKey === undefined) return;
-		if (open) openToolCards.add(openKey);
-		else openToolCards.delete(openKey);
+		setToolCardOpen(openKey, open);
 	}, [open, openKey]);
 
 	const det = asObj(details);
@@ -443,7 +437,11 @@ function ToolCardBodyImpl({
 		status,
 	);
 	const stat = useMemo(() => diffStat(diff), [diff]);
-	const { restArgs, longFields } = useMemo(() => splitArgs(args), [args]);
+	// Only the expanded body needs the split; skip it while collapsed.
+	const { restArgs, longFields } = useMemo(
+		() => (open ? splitArgs(args) : EMPTY_SPLIT_ARGS),
+		[args, open],
+	);
 	// An empty `{}` payload is noise, and a wait call has nothing to show but
 	// its description.
 	const hasArgsBody =

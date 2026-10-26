@@ -6,6 +6,7 @@ import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { installDraftAutoCleanup, startSessionInDir } from "./newSession";
+import { usePendingSession } from "./pendingSession";
 import { resolveNewSessionTargetWorkspace } from "./modes";
 import { useSidebarStore } from "./sidebarStore";
 import { useSessionGroups } from "./sessionGroups";
@@ -293,5 +294,47 @@ describe("startSessionInDir with groupId", () => {
 		expect(useSidebarStore.getState().groupOpen["grp:g_omp"]).toBe(true);
 		expect(useUi.getState().selectedSessionId).toBe("draft-1");
 		expect(toast.success).toHaveBeenCalledWith("已在分组「omp相关」新建会话");
+	});
+});
+
+describe("startSessionInDir local drafts", () => {
+	const ws = makeWs({ id: "p1", name: "proj", kind: "project", mode: "code", path: "/repo/proj" });
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		useSessions.setState({ sessions: {}, workspaces: [ws] });
+		useLive.setState({ sessions: {} });
+		useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {}, planModes: {} });
+		usePendingSession.setState({ drafts: {}, selectedId: null });
+		useUi.setState({ selectedSessionId: null, centerView: "home" });
+	});
+
+	it("opens one local draft and reuses it for repeated new-session clicks", async () => {
+		await startSessionInDir(ws, false);
+		await startSessionInDir(ws, false);
+		await startSessionInDir(ws, false);
+		const { drafts, selectedId } = usePendingSession.getState();
+		expect(Object.keys(drafts)).toHaveLength(1);
+		expect(selectedId).toBe(Object.keys(drafts)[0]);
+		expect(drafts[selectedId as string].sessionId).toBeNull();
+		expect(useUi.getState().selectedSessionId).toBeNull();
+		expect(useUi.getState().centerView).toBe("session");
+	});
+
+	it("starts a second draft once the first one holds input", async () => {
+		await startSessionInDir(ws, false);
+		const first = usePendingSession.getState().selectedId as string;
+		useComposer.getState().setDraft(first, "typed");
+		await startSessionInDir(ws, false);
+		expect(Object.keys(usePendingSession.getState().drafts)).toHaveLength(2);
+		expect(usePendingSession.getState().selectedId).not.toBe(first);
+	});
+
+	it("reuses an existing empty real session instead of creating a draft", async () => {
+		const empty = makeSession({ id: "empty-1", cwd: "/repo/proj", mode: "code", live: true });
+		useSessions.setState({ sessions: { [empty.id]: empty } });
+		await startSessionInDir(ws, false);
+		expect(useUi.getState().selectedSessionId).toBe("empty-1");
+		expect(Object.keys(usePendingSession.getState().drafts)).toHaveLength(0);
 	});
 });

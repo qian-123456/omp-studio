@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptySessionLive, hasLiveUserActivity } from "../../stores/live";
 import type { TranscriptItem } from "../../lib/contracts";
 
-import { validateBranchName } from "./ContextPillBar";
+import { validateBranchName } from "./branchName";
 
 describe("validateBranchName", () => {
 	it("accepts valid git branch names", () => {
