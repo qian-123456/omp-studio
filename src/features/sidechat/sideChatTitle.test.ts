@@ -19,9 +19,9 @@ describe("sideChatTitle", () => {
 	};
 
 	it("numbers per parent in creation order, ignoring forks and other parents", () => {
-		expect(sideChatTitle("a", sessions)).toBe("侧边对话1");
-		expect(sideChatTitle("b", sessions)).toBe("侧边对话2");
-		expect(sideChatTitle("o", sessions)).toBe("侧边对话1");
+		expect(sideChatTitle("a", sessions)).toBe("辅助对话1");
+		expect(sideChatTitle("b", sessions)).toBe("辅助对话2");
+		expect(sideChatTitle("o", sessions)).toBe("辅助对话1");
 	});
 
 	it("returns null for main sessions, forks and unknown ids", () => {

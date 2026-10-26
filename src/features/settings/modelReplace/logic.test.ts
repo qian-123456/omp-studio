@@ -320,7 +320,7 @@ describe("buildOverview", () => {
 			{ scope: "全局", title: "default · 主力模型" },
 			{ scope: "alpha", title: "fast" },
 			{ scope: "全局", title: "子代理 worker" },
-			{ scope: "应用设置", title: "侧边对话专用模型" },
+			{ scope: "应用设置", title: "辅助对话专用模型" },
 			{ scope: "定时任务", title: "日报" },
 			{ scope: "定时任务", title: "周报" },
 			{ scope: "回退链", title: "链 default" },
@@ -373,7 +373,7 @@ describe("buildPlan value rows", () => {
 		});
 		expect(fast).toMatchObject({ group: "project", context: "alpha" });
 		expect(override.title).toBe("子代理 worker");
-		expect(app).toMatchObject({ group: "appSetting", title: "侧边对话专用模型" });
+		expect(app).toMatchObject({ group: "appSetting", title: "辅助对话专用模型" });
 		// Schedules keep the bare selector in the model column; the row shows the
 		// resulting model + thinking pair.
 		expect(schedule).toMatchObject({

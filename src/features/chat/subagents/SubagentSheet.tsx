@@ -40,9 +40,9 @@ import { tNow, useT } from "../../../stores/language";
 import { Markdown } from "../../../components/Markdown";
 import { formatTokens } from "../sessionStats";
 import { formatDurationCompact, formatShortModel } from "../turnGrouping";
-import type { AgentRow } from "./merge";
+import { type AgentRow, isTerminalStatus, normStatus } from "./merge";
+import { formatClockTime } from "./subagentTree";
 import type { SubagentStatus } from "./types";
-
 const ICON: Record<
 	SubagentStatus,
 	{ Icon: typeof Check; color: string; spin?: boolean }
@@ -226,17 +226,85 @@ export function SubagentSheet({
 	const nextByteRef = useRef(0);
 	const itemsRef = useRef<TranscriptItem[]>([]);
 	const [items, setItems] = useState<TranscriptItem[]>([]);
-	const { Icon, color, spin } = ICON[row.status];
 
 	useEscapeKey(onClose, true);
 
-	const isLive = row.status === "running" || row.status === "pending";
+	const summary = data?.summary;
+	const summaryStatus = summary?.status ? normStatus(summary.status) : undefined;
+	const rowStatus = normStatus(row.status);
+	const effectiveStatus: SubagentStatus = isTerminalStatus(summaryStatus)
+		? summaryStatus!
+		: isTerminalStatus(rowStatus)
+			? rowStatus!
+			: (summaryStatus ?? rowStatus ?? "pending");
+
+	const isLive = effectiveStatus === "running" || effectiveStatus === "pending";
+
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!isLive) return;
+		setNow(Date.now());
+		const timer = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(timer);
+	}, [isLive]);
+
+	const { Icon, color, spin } = ICON[effectiveStatus];
+
+	const startedAt =
+		summary?.startedAt ??
+		row.startedAt ??
+		(items.length > 0 ? items[0]?.ts : undefined);
+	const endedAt =
+		summary?.endedAt ??
+		row.endedAt ??
+		(isTerminalStatus(effectiveStatus) && items.length > 0
+			? items[items.length - 1]?.ts
+			: undefined);
+
+	const startClock = formatClockTime(startedAt);
+	const endClock = formatClockTime(endedAt);
+
+	const durationMs = useMemo(() => {
+		if (effectiveStatus === "pending") return undefined;
+		if (effectiveStatus === "running") {
+			const startMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+			if (Number.isFinite(startMs) && startMs > 0) {
+				return Math.max(0, now - startMs);
+			}
+			return row.durationMs && row.durationMs > 0 ? row.durationMs : undefined;
+		}
+		// Finished states
+		if (startedAt && endedAt) {
+			const ms = Date.parse(endedAt) - Date.parse(startedAt);
+			if (Number.isFinite(ms) && ms > 0) return ms;
+		}
+		if (row.durationMs && row.durationMs > 0) return row.durationMs;
+		return undefined;
+	}, [effectiveStatus, startedAt, endedAt, now, row.durationMs]);
+
+	const duration = durationMs && durationMs > 0 ? formatDurationCompact(durationMs) : undefined;
+	const statusText = t(STATUS_TEXT_KEYS[effectiveStatus] ?? STATUS_TEXT_KEYS.pending);
+
+	const effectiveModel = summary?.model ?? row.model;
+	const effectiveThinking = summary?.thinkingLevel ?? row.thinkingLevel;
+	const effectiveToolCount = summary?.toolCallCount || row.toolCount;
+	const effectiveRequests = summary?.requestCount || row.requests;
+	const effectiveTokens = summary?.tokens || row.tokens;
+	const effectiveCost =
+		typeof summary?.cost === "number" && summary.cost > 0
+			? summary.cost
+			: typeof row.cost === "number" && row.cost > 0
+				? row.cost
+				: undefined;
+
 	// subagent_transcript takes the PARENT session file. `row.filePath` is the
 	// agent's own `<parent-stem>/<id>.jsonl`; derive the parent from it when
 	// the caller could not resolve one.
 	const file =
 		parentFile ??
 		(row.filePath ? deriveParentFile(row.filePath) : undefined);
+	const isLiveRef = useRef(isLive);
+	isLiveRef.current = isLive;
 
 	// Load the subagent transcript (systemPrompt/prompt/output/items) once per
 	// open sheet; while the agent is live, keep tailing via nextByte so the
@@ -263,11 +331,12 @@ export function SubagentSheet({
 				itemsRef.current = [...itemsRef.current, ...t.items];
 				nextByteRef.current = t.nextByte;
 				setItems(itemsRef.current);
-				if (isLive) timer = window.setTimeout(tick, POLL_MS);
+				const terminal = isTerminalStatus(t?.summary?.status);
+				if (!terminal && isLiveRef.current) timer = window.setTimeout(tick, POLL_MS);
 			} catch (e) {
 				if (cancelled) return;
 				setError(errMsg(e));
-				if (isLive) timer = window.setTimeout(tick, POLL_MS);
+				if (isLiveRef.current) timer = window.setTimeout(tick, POLL_MS);
 			}
 		};
 		void tick();
@@ -275,8 +344,7 @@ export function SubagentSheet({
 			cancelled = true;
 			clearTimeout(timer);
 		};
-		// Only re-arm when the file/identity/liveness changes, not every tick.
-	}, [file, row.id, isLive]);
+	}, [file, row.id]);
 
 	// Map toolCallId -> toolResult item for compact process rows.
 	const callIds = useMemo(() => {
@@ -296,11 +364,6 @@ export function SubagentSheet({
 		return m;
 	}, [items]);
 
-	const statusText = t(STATUS_TEXT_KEYS[row.status] ?? STATUS_TEXT_KEYS.pending);
-	const duration =
-		row.durationMs !== undefined
-			? formatDurationCompact(row.durationMs)
-			: undefined;
 	// Verbatim prompt: live/details task, else the first user message in the transcript.
 	const taskPrompt = row.task ?? data?.prompt ?? undefined;
 	// omp prefixes every subagent prompt with this; hide it in the "负责什么" summary.
@@ -376,14 +439,21 @@ export function SubagentSheet({
 					</div>
 					<div className="flex flex-wrap items-center gap-1.5 text-[11px]">
 						{row.agent && <span className={CHIP}>{row.agent}</span>}
-						{row.model && <span className={CHIP} title={row.model}>{formatShortModel(row.model)}</span>}
-						{row.thinkingLevel && <span className={CHIP}>{row.thinkingLevel}</span>}
+						{effectiveModel && <span className={CHIP} title={effectiveModel}>{formatShortModel(effectiveModel)}</span>}
+						{effectiveThinking && <span className={CHIP}>{effectiveThinking}</span>}
 						<span className={CHIP} style={{ color }}>
-							{[statusText, duration].filter(Boolean).join(" · ")}
+							{[
+								statusText,
+								duration,
+								isTerminalStatus(effectiveStatus) && endClock
+									? t("subagents.completedAtShort", { time: endClock })
+									: undefined,
+							]
+								.filter(Boolean)
+								.join(" · ")}
 						</span>
 					</div>
 				</div>
-
 				{/* Tabs: segmented pill with sliding highlight */}
 				<div className="px-4 pb-2.5">
 					<div className="relative grid grid-cols-4 rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] p-0.5">
@@ -441,8 +511,8 @@ export function SubagentSheet({
 								</section>
 							)}
 							<section className="grid grid-cols-2 gap-2">
-								<StatCard icon={Cpu} label={t("subagents.statModel")} value={row.model} wide />
-								<StatCard icon={Brain} label={t("subagents.statThinking")} value={row.thinkingLevel} />
+								<StatCard icon={Cpu} label={t("subagents.statModel")} value={effectiveModel} wide />
+								<StatCard icon={Brain} label={t("subagents.statThinking")} value={effectiveThinking} />
 								<StatCard icon={Tag} label={t("subagents.statRole")} value={row.modelRole} />
 								<StatCard
 									icon={Layers}
@@ -452,17 +522,17 @@ export function SubagentSheet({
 								<StatCard
 									icon={Wrench}
 									label={t("subagents.statToolCalls")}
-									value={row.toolCount ? String(row.toolCount) : undefined}
+									value={effectiveToolCount ? String(effectiveToolCount) : undefined}
 								/>
 								<StatCard
 									icon={Send}
 									label={t("subagents.statRequests")}
-									value={row.requests ? String(row.requests) : undefined}
+									value={effectiveRequests ? String(effectiveRequests) : undefined}
 								/>
 								<StatCard
 									icon={Coins}
 									label={t("subagents.statTokens")}
-									value={row.tokens ? formatTokens(row.tokens) : undefined}
+									value={effectiveTokens ? formatTokens(effectiveTokens) : undefined}
 								/>
 								<StatCard
 									icon={Gauge}
@@ -478,15 +548,15 @@ export function SubagentSheet({
 								<StatCard
 									icon={CircleDollarSign}
 									label={t("subagents.statCost")}
-									value={
-										typeof row.cost === "number" && Number.isFinite(row.cost)
-											? `$${row.cost.toFixed(3)}`
-											: undefined
-									}
+									value={effectiveCost !== undefined ? `$${effectiveCost.toFixed(3)}` : undefined}
 								/>
 								<StatCard icon={Timer} label={t("subagents.statElapsed")} value={duration} />
+								<StatCard icon={Clock} label={t("subagents.statStartedAt")} value={startClock} />
+								{isTerminalStatus(effectiveStatus) && (
+									<StatCard icon={Check} label={t("subagents.statCompletedAt")} value={endClock} />
+								)}
 							</section>
-							{row.status === "running" && row.currentTool && (
+							{effectiveStatus === "running" && row.currentTool && (
 								<section>
 									<div className="mb-1 text-[11px] text-[var(--text-30)]">
 										{t("subagents.currentTool")}

@@ -186,6 +186,35 @@ describe("turnGrouping", () => {
 		]);
 	});
 
+	it("renders failed request with thinking as a thinking step and anchors stat, without duplicate request-failed step", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({
+				id: "a-1",
+				kind: "assistant",
+				text: "ECONNRESET: The socket connection was closed unexpectedly",
+				thinking: "trying to connect...",
+				stopReason: "error",
+			}),
+			makeItem({ id: "a-2", kind: "assistant", text: null, toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+			makeItem({ id: "a-3", kind: "assistant", text: "done", stopReason: "stop" }),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		// Exactly one step for a-1 (thinking), no duplicate failed-a-1 step!
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["thinking", "tool"]);
+		expect(turn.intermediateSteps[0].id).toBe("thinking-a-1");
+		// Anchors a-1 to thinking-a-1 exactly once
+		const anchors = requestAnchors(turn.intermediateSteps, [{ id: "a-1", toolCallIds: [] }]);
+		expect(anchors.get("a-1")).toBe("thinking-a-1");
+	});
+
 	it("surfaces text accompanying a final ask call as the answer, call in steps", () => {
 		const ask: ToolCall = { id: "ask-1", name: "ask", args: { question: "继续吗？" }, intent: null };
 		const blocks = groupTurnBlocks([
@@ -544,7 +573,7 @@ describe("activity grouping", () => {
 		).toBe("已编辑 2 个文件");
 	});
 
-	it("folds same-kind runs, splits on kind change, absorbs thinking", () => {
+	it("folds same-kind runs, splits on kind change, breaks on thinking", () => {
 		const thinking: TurnStep = {
 			id: "th-1",
 			kind: "thinking",
@@ -564,18 +593,17 @@ describe("activity grouping", () => {
 		]);
 
 		expect(units.map((u) => (u.kind === "group" ? u.group : u.step.id))).toEqual(
-			["exploration", "commands", "e1", "c4"],
+			["exploration", "th-1", "c3", "commands", "e1", "c4"],
 		);
 		if (units[0].kind === "group") {
 			expect(units[0].steps.map((s) => s.call.name)).toEqual([
 				"read",
 				"grep",
-				"glob",
 			]);
 		}
 	});
 
-	it("keeps thinking that leads into a different tool, absorbs it inside a run", () => {
+	it("does not absorb thinking inside a run", () => {
 		const thinking: TurnStep = {
 			id: "th-1",
 			kind: "thinking",
@@ -589,7 +617,49 @@ describe("activity grouping", () => {
 			"r1",
 		]);
 		const inRun = groupActivityUnits([tool("c1", "read"), thinking, tool("c2", "grep")]);
-		expect(inRun).toHaveLength(1);
+		expect(inRun.map((u) => (u.kind === "step" ? u.step.id : u.group))).toEqual([
+			"c1",
+			"th-1",
+			"c2",
+		]);
+	});
+
+	it("merges only consecutive tool calls with no assistant text between them [tool×N, text, tool×M]", () => {
+		const textStep = { id: "txt-1", kind: "text", text: "收到，停止本地逆向。现在联网查询..." };
+		const units = groupActivityUnits([
+			tool("c1", "bash"),
+			tool("c2", "bash"),
+			textStep,
+			tool("c3", "bash"),
+			tool("c4", "bash"),
+			tool("c5", "bash"),
+		]);
+		expect(units).toEqual([
+			{ kind: "group", group: "commands", steps: [tool("c1", "bash"), tool("c2", "bash")] },
+			{ kind: "step", step: textStep },
+			{ kind: "group", group: "commands", steps: [tool("c3", "bash"), tool("c4", "bash"), tool("c5", "bash")] },
+		]);
+	});
+
+	it("merges only consecutive tool calls with no thinking between them [tool×N, thinking, tool×M]", () => {
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "思考中...",
+		};
+		const units = groupActivityUnits([
+			tool("c1", "bash"),
+			tool("c2", "bash"),
+			thinking,
+			tool("c3", "bash"),
+			tool("c4", "bash"),
+		]);
+		expect(units).toEqual([
+			{ kind: "group", group: "commands", steps: [tool("c1", "bash"), tool("c2", "bash")] },
+			{ kind: "step", step: thinking },
+			{ kind: "group", group: "commands", steps: [tool("c3", "bash"), tool("c4", "bash")] },
+		]);
 	});
 
 	it("never absorbs a running thinking row", () => {
@@ -667,6 +737,12 @@ describe("per-request stats placement", () => {
 	it("never anchors a request under a failed-request row", () => {
 		const failedRow = { id: "failed-a0", kind: "request-failed", item: makeItem({ id: "a0", kind: "assistant" }) };
 		expect(requestAnchors([failedRow], [{ id: "a0", toolCallIds: [] }]).get("a0")).toBeNull();
+	});
+
+	it("never anchors to thinking when request already has a failed-request row", () => {
+		const thinkingRow = { id: "th-a0", kind: "thinking", item: makeItem({ id: "a0", kind: "assistant" }) };
+		const failedRow = { id: "failed-a0", kind: "request-failed", item: makeItem({ id: "a0", kind: "assistant" }) };
+		expect(requestAnchors([thinkingRow, failedRow], [{ id: "a0", toolCallIds: [] }]).get("a0")).toBeNull();
 	});
 
 	it("orders request items by first appearance, answer last", () => {
@@ -807,6 +883,36 @@ describe("splitInterimProseBySteer", () => {
 		]);
 		expect(segs).toHaveLength(2);
 		expect(segs[1]).toMatchObject({ type: "steps", folded: [], prose: [{ id: "p1" }] });
+		expect(segs[1]).toMatchObject({ type: "steps", folded: [], prose: [{ id: "p1" }] });
+	});
+
+	it("slices interim prose and folded steps chronologically so later tools stay after earlier text", () => {
+		const t = (id: string): TurnStep => ({ id, kind: "tool", item: asst(id) } as TurnStep);
+		const text1: TurnStep = {
+			id: "text-1",
+			kind: "text",
+			text: "收到，停止本地逆向。现在联网查询...",
+			item: makeItem({ id: "a1", kind: "assistant" }),
+		};
+		const steps: TurnStep[] = [
+			t("b1"),
+			t("b2"),
+			text1,
+			t("b3"),
+			t("b4"),
+		];
+		const segs = splitInterimProseBySteer(steps);
+		expect(segs).toHaveLength(2);
+		expect(segs[0]).toEqual({
+			type: "steps",
+			folded: [steps[0], steps[1]],
+			prose: [steps[2]],
+		});
+		expect(segs[1]).toEqual({
+			type: "steps",
+			folded: [steps[3], steps[4]],
+			prose: [],
+		});
 	});
 });
 

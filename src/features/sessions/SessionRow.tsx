@@ -144,6 +144,10 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 	return <span className="flex shrink-0 items-center">{mark}</span>;
 }
 
+const isMac = () =>
+	typeof navigator !== "undefined" &&
+	/Macintosh|Mac OS X|macOS|iPhone|iPad/i.test(navigator.userAgent);
+
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
 // Store actions are stable; calling them via getState() avoids one zustand
@@ -380,6 +384,14 @@ function SessionRowComponent({
 	};
 
 	const handleRowClick = (e: React.MouseEvent) => {
+		// macOS Ctrl+Click is a context-menu gesture, not a row selection / multi-select.
+		if (isMac() && e.ctrlKey && !e.metaKey) {
+			if (!menuOpen) {
+				handleContextMenu(e);
+			}
+			return;
+		}
+
 		onRowFocus?.();
 
 		// Shift-click range select uses getVisibleSessionIds() at event time (R4, R5)
@@ -401,7 +413,7 @@ function SessionRowComponent({
 			} else {
 				selectSession(session.id);
 			}
-		} else if (e.metaKey || e.ctrlKey) {
+		} else if (e.metaKey || (!isMac() && e.ctrlKey)) {
 			// Cmd/Ctrl-click: update primary selection if deselected (R24)
 			const currentSet = useUi.getState().selectedIds;
 			if (currentSet.has(session.id)) {
@@ -423,8 +435,8 @@ function SessionRowComponent({
 		// Notice: markSeen is centralized in store (slice C / R11)
 	};
 
-	// Right-click selects the row if not in multi-selection, then opens the menu.
-	const handleContextMenu = (e: MouseEvent) => {
+	// Right-click opens the context menu without switching the active session.
+	const handleContextMenu = (e: MouseEvent | React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		// A local draft has no session to act on; its trash button is the only action.
@@ -432,10 +444,6 @@ function SessionRowComponent({
 		onRowFocus?.();
 		prevActiveElementRef.current =
 			(document.activeElement as HTMLElement) ?? null;
-		const currentSelected = useUi.getState().selectedIds;
-		if (!currentSelected.has(session.id)) {
-			selectSession(session.id);
-		}
 		setMenuAnchor({ x: e.clientX, y: e.clientY });
 		setMenuPlacement("bottom-start");
 		setMenuOpen(true);

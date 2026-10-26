@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import type { Workspace } from "../../../lib/contracts";
 import {
 	bucketRecent,
 	limitBuckets,
 	mergeResults,
 	metadataMatches,
 	searchableSessions,
+	matchesSearchFilters,
+	countActiveFilters,
+	DEFAULT_SEARCH_FILTERS,
+	type SearchFilters,
 } from "./searchModel";
 import { makeHit as hit, makeSession } from "./testFixtures";
 
@@ -101,5 +106,69 @@ describe("mergeResults", () => {
 	it("drops content hits of sessions that are not listable", () => {
 		const rows = mergeResults([], [hit("ghost"), hit("b")], listable);
 		expect(rows.map((r) => r.session.id)).toEqual(["b"]);
+	});
+});
+
+describe("searchFilters", () => {
+	const now = new Date(2026, 9, 23, 15, 0, 0).getTime();
+	const at = (daysAgo: number) => new Date(2026, 9, 23 - daysAgo, 10, 0, 0).toISOString();
+
+	const ws1 = { id: "ws1", name: "Project 1", path: "/p1", kind: "project" as const, sort: 0, mode: "code" as const };
+	const wsGlobal = { id: "global", name: "Universal", path: "/global", kind: "global" as const, sort: 99, mode: "chat" as const };
+	const workspacesById = new Map<string, Workspace>([
+		[ws1.id, ws1],
+		[wsGlobal.id, wsGlobal],
+	]);
+
+	const projectSession = makeSession({ id: "p-today", workspaceId: "ws1", updatedAt: at(0) });
+	const universalSession = makeSession({ id: "u-week", workspaceId: "global", updatedAt: at(5) });
+	const noWsSession = makeSession({ id: "u-old", workspaceId: null, updatedAt: at(60) });
+	const archivedSession = makeSession({ id: "archived", workspaceId: "ws1", archived: true, updatedAt: at(2) });
+
+	it("countActiveFilters counts non-default filters", () => {
+		expect(countActiveFilters(DEFAULT_SEARCH_FILTERS)).toBe(0);
+		expect(countActiveFilters({ ...DEFAULT_SEARCH_FILTERS, scope: "project" })).toBe(1);
+		expect(countActiveFilters({ ...DEFAULT_SEARCH_FILTERS, scope: "project", projectId: "ws1" })).toBe(2);
+		expect(countActiveFilters({ ...DEFAULT_SEARCH_FILTERS, scope: "project", projectId: "ws1", timeRange: "today" })).toBe(3);
+		expect(countActiveFilters({ scope: "project", projectId: "ws1", timeRange: "today", includeArchived: false })).toBe(4);
+	});
+
+	it("filters by archived status", () => {
+		expect(matchesSearchFilters(archivedSession, DEFAULT_SEARCH_FILTERS, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(archivedSession, { ...DEFAULT_SEARCH_FILTERS, includeArchived: false }, workspacesById, now)).toBe(false);
+		expect(matchesSearchFilters(projectSession, { ...DEFAULT_SEARCH_FILTERS, includeArchived: false }, workspacesById, now)).toBe(true);
+	});
+
+	it("filters by scope (project vs universal)", () => {
+		const projectFilters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, scope: "project" };
+		expect(matchesSearchFilters(projectSession, projectFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(universalSession, projectFilters, workspacesById, now)).toBe(false);
+		expect(matchesSearchFilters(noWsSession, projectFilters, workspacesById, now)).toBe(false);
+
+		const universalFilters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, scope: "universal" };
+		expect(matchesSearchFilters(projectSession, universalFilters, workspacesById, now)).toBe(false);
+		expect(matchesSearchFilters(universalSession, universalFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(noWsSession, universalFilters, workspacesById, now)).toBe(true);
+	});
+
+	it("filters by specific project", () => {
+		const filters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, projectId: "ws1" };
+		expect(matchesSearchFilters(projectSession, filters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(universalSession, filters, workspacesById, now)).toBe(false);
+	});
+
+	it("filters by time range (today, 7days, 30days)", () => {
+		const todayFilters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, timeRange: "today" };
+		expect(matchesSearchFilters(projectSession, todayFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(universalSession, todayFilters, workspacesById, now)).toBe(false);
+
+		const weekFilters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, timeRange: "7days" };
+		expect(matchesSearchFilters(projectSession, weekFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(universalSession, weekFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(noWsSession, weekFilters, workspacesById, now)).toBe(false);
+
+		const monthFilters: SearchFilters = { ...DEFAULT_SEARCH_FILTERS, timeRange: "30days" };
+		expect(matchesSearchFilters(universalSession, monthFilters, workspacesById, now)).toBe(true);
+		expect(matchesSearchFilters(noWsSession, monthFilters, workspacesById, now)).toBe(false);
 	});
 });

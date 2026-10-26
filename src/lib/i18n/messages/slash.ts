@@ -62,7 +62,7 @@ export default defineMessages({
 		"cmd.fork.abortInFork": "已在分支草稿中，直接发送消息即可",
 
 		"cmd.btw.title": "顺便问一句",
-		"cmd.btw.desc": "开一个侧聊提问，不打断当前会话",
+		"cmd.btw.desc": "开一个辅助对话提问，不打断当前会话",
 		"cmd.btw.argHint": "[问题]",
 
 		"cmd.rename.title": "重命名",

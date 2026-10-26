@@ -18,7 +18,7 @@ export default defineMessages({
 		},
 		appSetting: {
 			newSessionModel: "新会话默认模型",
-			sideChatModel: "侧边对话专用模型",
+			sideChatModel: "辅助对话专用模型",
 			doctorModel: "诊断模型",
 		},
 		tabOther: "其他",

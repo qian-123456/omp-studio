@@ -1,4 +1,4 @@
-/** Stable display names for side chats: 「侧边对话1」, 「侧边对话2」… per parent session. */
+/** Stable display names for side chats: 「辅助对话1」, 「辅助对话2」… per parent session. */
 
 import type { SessionMeta } from "../../lib/contracts";
 import { tNow } from "../../stores/language";

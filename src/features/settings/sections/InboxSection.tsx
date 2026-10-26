@@ -32,17 +32,6 @@ function getRoleLabels(t: (k: string) => string): Record<string, string> {
 	};
 }
 
-const THINKING_ZH: Record<string, string> = {
-	off: "off",
-	minimal: "minimal",
-	low: "low",
-	medium: "medium",
-	high: "high",
-	xhigh: "xhigh",
-	max: "max",
-	auto: "auto",
-};
-
 export function InboxSection() {
 	const { t } = useT();
 	const { settings, save } = useAppSettings();
@@ -97,8 +86,7 @@ export function DoctorSection() {
 	const doctorBase = doctorIsRole
 		? roleLabels[doctorSelector]
 		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.id ?? (doctorSelector || t("notifications.doctor.selectModel")));
-	const doctorLevel = parseSelection(doctorCurrent).level;
-	const doctorLabel = doctorLevel ? `${doctorBase}${t("notifications.doctor.thinkingPrefix")}${THINKING_ZH[doctorLevel] ?? doctorLevel}` : doctorBase;
+	const doctorLabel = doctorBase;
 	const doctorMode = settings?.doctorAutoMode ?? "manual";
 	return (
 		<div className="space-y-6">

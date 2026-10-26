@@ -118,13 +118,14 @@ export function collapseTree(roots: TreeNode[], collapsed: ReadonlySet<string>):
 
 export interface DescendantStats {
 	total: number;
+	direct: number;
 }
 
-/** Per node id: how many descendants (any depth) it has. */
+/** Per node id: how many direct children and total descendants it has. */
 export function descendantStats(roots: TreeNode[]): Map<string, DescendantStats> {
 	const out = new Map<string, DescendantStats>();
 	const walk = (n: TreeNode): DescendantStats => {
-		const s: DescendantStats = { total: 0 };
+		const s: DescendantStats = { total: 0, direct: n.children.length };
 		for (const c of n.children) {
 			const cs = walk(c);
 			s.total += 1 + cs.total;
@@ -205,16 +206,28 @@ export function shouldAutoExpand(
 	);
 }
 
-/** "9分15秒" / "21秒" / "1小时2分5秒"; "—" when unknown. */
+/** Local clock time "HH:mm:ss" from an ISO timestamp or epoch ms. Returns undefined when invalid. */
+export function formatClockTime(isoOrMs?: string | number): string | undefined {
+	if (!isoOrMs) return undefined;
+	const ms = typeof isoOrMs === "number" ? isoOrMs : Date.parse(isoOrMs);
+	if (!Number.isFinite(ms)) return undefined;
+	const d = new Date(ms);
+	const h = String(d.getHours()).padStart(2, "0");
+	const m = String(d.getMinutes()).padStart(2, "0");
+	const s = String(d.getSeconds()).padStart(2, "0");
+	return `${h}:${m}:${s}`;
+}
+
+/** "9分15秒" / "21秒" / "1小时2分5秒"; "—" when unknown or <= 0. */
 export function formatElapsed(ms: number | undefined): string {
-	if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
+	if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return "—";
 	const total = Math.floor(ms / 1000);
 	const h = Math.floor(total / 3600);
 	const m = Math.floor((total % 3600) / 60);
 	const s = total % 60;
 	if (h > 0) return tNow("subagents.elapsedHoursMinutesSeconds", { h, m, s });
 	if (m > 0) return tNow("subagents.elapsedMinutesSeconds", { m, s });
-	return tNow("subagents.elapsedSeconds", { s });
+	return tNow("subagents.elapsedSeconds", { s: Math.max(1, s) });
 }
 
 /** Elapsed ms: finished rows use their recorded duration, running rows tick from the start time. */
@@ -226,10 +239,10 @@ export function elapsedMs(
 ): number | undefined {
 	if (state === "waiting") return undefined;
 	const recorded = row?.durationMs ?? info.progress?.durationMs;
-	if (state !== "running") return recorded;
+	if (state !== "running") return recorded && recorded > 0 ? recorded : undefined;
 	const start = row?.startedAt ? Date.parse(row.startedAt) : Number.NaN;
 	if (Number.isFinite(start)) return Math.max(0, now - start);
-	return recorded;
+	return recorded && recorded > 0 ? recorded : undefined;
 }
 
 const firstLine = (t: string | undefined): string | undefined =>

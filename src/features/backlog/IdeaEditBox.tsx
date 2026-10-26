@@ -1,6 +1,8 @@
 import { useRef } from "react";
 import { useT } from "../../stores/language";
+import { isEscapeClaimed } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
+import { LIGHTBOX_SELECTOR, MODAL_SELECTOR } from "../../components/FloatingLayer";
 import type { BacklogKind } from "../../lib/contracts";
 import { useBacklog } from "./backlogStore";
 import { IdeaEditor, type IdeaEditorHandle } from "./IdeaEditor";
@@ -12,6 +14,21 @@ import { KIND_META, KINDS } from "./ideaStyles";
 /** Edit buffer → editable doc (buffers saved before inline tokens carry raw `[图片: path]` tags). */
 export function bufferDoc(buf: { text: string; images?: string[] }): TokenDoc {
 	return buf.images ? ensureTokens({ text: buf.text, images: buf.images }) : storedToDoc(buf.text);
+}
+
+function hasOpenOverlay(root: HTMLElement | null): boolean {
+	if (document.querySelector(LIGHTBOX_SELECTOR)) return true;
+	if (document.querySelector(MODAL_SELECTOR)) return true;
+	if (root) {
+		const parentLayer = root.closest("[data-layer]");
+		for (const layer of document.querySelectorAll("[data-layer]")) {
+			if (layer === parentLayer || parentLayer?.contains(layer)) continue;
+			if (!parentLayer || (parentLayer.compareDocumentPosition(layer) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 /** In-place editor for one idea: auto-growing, Enter saves, Esc cancels, paste/drop adds image tokens. */
@@ -36,6 +53,7 @@ export function IdeaEditBox({
 	const { t } = useT();
 	const buf = useBacklog((s) => s.editBuffer);
 	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
+	const boxRef = useRef<HTMLDivElement>(null);
 	const ref = useRef<IdeaEditorHandle>(null);
 	const attach = useImageAttach((paths) => {
 		const b = useBacklog.getState().editBuffer;
@@ -46,7 +64,7 @@ export function IdeaEditBox({
 	});
 	if (!buf || buf.id !== id) return null;
 	return (
-		<div className="space-y-1.5" data-owns-escape>
+		<div ref={boxRef} className="space-y-1.5" data-owns-escape>
 			<div {...attach.dropProps} className={`rounded-xl ${attach.dragging ? "outline-dashed outline-1 outline-[var(--accent)]" : ""}`}>
 				<IdeaEditor
 					ref={ref}
@@ -59,6 +77,8 @@ export function IdeaEditBox({
 					onPaste={attach.onPaste}
 					onKeyDown={(e) => {
 						if (e.key === "Escape") {
+							if (isEscapeClaimed(e.nativeEvent) || isEscapeClaimed(e as unknown as Event)) return;
+							if (hasOpenOverlay(boxRef.current)) return;
 							onCancel();
 							return;
 						}
@@ -66,9 +86,19 @@ export function IdeaEditBox({
 						e.preventDefault();
 						if (!isComposing(e)) onSave();
 					}}
-					onBlur={() => {
+					onBlur={(e) => {
 						// Window lost focus (app switch / reload): keep the buffer.
-						if (document.hasFocus()) onCancel();
+						if (!document.hasFocus()) return;
+						// If an overlay/lightbox/modal or nested picker is open, keep the buffer.
+						if (hasOpenOverlay(boxRef.current)) return;
+						// Focus moving to a child of the editor or an opened floating layer: keep the buffer.
+						if (
+							e.relatedTarget instanceof Element &&
+							(boxRef.current?.contains(e.relatedTarget) || e.relatedTarget.closest("[data-layer]"))
+						) {
+							return;
+						}
+						onCancel();
 					}}
 					minHeight={52}
 					maxHeight={240}

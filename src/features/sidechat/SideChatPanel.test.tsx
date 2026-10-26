@@ -73,7 +73,7 @@ const seedAnnotation = (parentId: string, text = "引用的文本") => {
 	});
 };
 
-const input = () => screen.getByPlaceholderText(/输入侧聊消息/);
+const input = () => screen.getByPlaceholderText(/输入辅助对话消息/);
 
 const typeAndSend = (text: string) => {
 	fireEvent.change(input(), { target: { value: text } });

@@ -31,13 +31,25 @@ describe("mergeDiskAndLive", () => {
 		expect(rows["0-Explore"].durationMs).toBe(5000);
 	});
 
-	it("live status wins over disk-inferred status", () => {
+	it("terminal status cannot be revived by stale live status", () => {
 		const { rows } = mergeDiskAndLive([disk({ status: "completed" })], {
 			"0-Explore": { status: "running", label: "x", agent: "explore" },
 		});
-		expect(rows["0-Explore"].status).toBe("running");
+		expect(rows["0-Explore"].status).toBe("completed");
 		expect(rows["0-Explore"].agent).toBe("explore");
 		expect(rows["0-Explore"].filePath).toBe("/s/p/parent/0-Explore.jsonl");
+	});
+
+	it("live running status wins over disk pending status", () => {
+		const { rows } = mergeDiskAndLive([disk({ status: "pending" })], {
+			"0-Explore": { status: "running", label: "x", agent: "explore" },
+		});
+		expect(rows["0-Explore"].status).toBe("running");
+	});
+
+	it("hides unknown / zero cost", () => {
+		const { rows } = mergeDiskAndLive([disk({ cost: 0 })], {});
+		expect(rows["0-Explore"].cost).toBeUndefined();
 	});
 
 	it("adds queued agents of a running task call and counts them", () => {

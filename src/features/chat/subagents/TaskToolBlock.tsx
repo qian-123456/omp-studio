@@ -21,6 +21,7 @@ import {
 	formatDurationCompact,
 	formatShortModel,
 } from "../turnGrouping";
+import { formatClockTime } from "./subagentTree";
 
 export function isTaskTool(name: string): boolean {
 	return name === "task" || name === "agent";
@@ -80,13 +81,17 @@ function metaParts(row: AgentRow, t: ReturnType<typeof useT>["t"]): string[] {
 	const model = formatShortModel(row.model);
 	if (model) parts.push(model);
 	if (row.thinkingLevel) parts.push(row.thinkingLevel);
-	if (row.toolCount) parts.push(t("subagents.toolCountShort", { count: row.toolCount }));
-	if (row.tokens) parts.push(formatTokensShort(row.tokens));
-	if (row.durationMs && row.status !== "pending") {
+	if (row.toolCount && row.toolCount > 0) parts.push(t("subagents.toolCountShort", { count: row.toolCount }));
+	if (row.tokens && row.tokens > 0) parts.push(formatTokensShort(row.tokens));
+	if (row.durationMs && row.durationMs > 0 && row.status !== "pending") {
 		parts.push(formatDurationCompact(row.durationMs));
 	}
-	if (typeof row.cost === "number" && Number.isFinite(row.cost)) {
+	if (typeof row.cost === "number" && Number.isFinite(row.cost) && row.cost > 0) {
 		parts.push(`$${row.cost.toFixed(2)}`);
+	}
+	if (row.status === "completed" || row.status === "failed" || row.status === "aborted") {
+		const clock = formatClockTime(row.endedAt);
+		if (clock) parts.push(clock);
 	}
 	return parts;
 }
@@ -157,9 +162,11 @@ function AgentRowView({
 					showBadge ? `⟦${row.agent}⟧` : "",
 					row.line ?? "",
 					meta.join(" · "),
+					row.startedAt ? `${t("subagents.statStartedAt")}: ${formatClockTime(row.startedAt)}` : "",
+					row.endedAt ? `${t("subagents.statCompletedAt")}: ${formatClockTime(row.endedAt)}` : "",
 				]
 					.filter(Boolean)
-					.join(" ")}
+					.join(" · ")}
 				className="group/row flex w-full min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-left hover:bg-[var(--ghost-hover)]"
 			>
 				<Icon
@@ -207,6 +214,8 @@ export function TaskToolBlock({
 	status,
 	details,
 	resultText,
+	startedAt,
+	endedAt,
 	expanded,
 }: TaskToolBlockProps) {
 	const { t } = useT();
@@ -266,8 +275,10 @@ export function TaskToolBlock({
 				toolCallId,
 				callStatus: status,
 				resultText,
+				startedAt: startedAt ?? undefined,
+				endedAt: endedAt ?? undefined,
 			}),
-		[args, taskDetails, fileList, liveSubagents, toolCallId, status, resultText],
+		[args, taskDetails, fileList, liveSubagents, toolCallId, status, resultText, startedAt, endedAt],
 	);
 
 	const counts = countStatuses(rows.map((r) => r.status));

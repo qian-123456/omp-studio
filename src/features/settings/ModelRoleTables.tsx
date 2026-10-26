@@ -431,7 +431,7 @@ function Summary({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext }) {
 	} else if (e.model) {
 		final = (
 			<>
-				{row.thinking ? splitRoleValue(e.model).selector : e.model}
+				{splitRoleValue(e.model).selector}
 				{e.via && <small className="ml-1.5 text-[var(--text-dim)]">{e.via}</small>}
 			</>
 		);

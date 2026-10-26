@@ -15,8 +15,8 @@ export const THINKING_LEVELS = [
 	"xhigh",
 	"max",
 	"auto",
+	"inherit",
 ] as const;
-
 const LEVEL_LOOKUP: Record<string, true> = Object.fromEntries(
 	THINKING_LEVELS.map((l) => [l, true]),
 );

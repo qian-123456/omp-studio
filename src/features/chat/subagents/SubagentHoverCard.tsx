@@ -9,6 +9,7 @@ import {
 	type RowState,
 	activityText,
 	failureReason,
+	formatClockTime,
 	formatElapsed,
 	subagentTitle,
 } from "./subagentTree";
@@ -65,11 +66,21 @@ export function SubagentHoverCard({
 		.filter(Boolean)
 		.join(" · ");
 
+	const startClock = formatClockTime(row?.startedAt);
+	const endClock = formatClockTime(row?.endedAt);
+	const timeField =
+		state === "done" && endClock
+			? [t("subagents.fieldCompletedAt"), startClock ? `${startClock} - ${endClock}` : endClock]
+			: state === "running" && startClock
+				? [t("subagents.fieldStartedAt"), startClock]
+				: undefined;
+
 	const fields: [string, string | undefined, boolean?][] = [
 		[state === "running" ? t("subagents.fieldActive") : state === "failed" ? t("subagents.fieldReason") : "", state === "failed" ? why : activity.text, state === "failed"],
 		[t("subagents.fieldModel"), model ? [formatShortModel(model), thinking].filter(Boolean).join(" · ") : undefined],
 		[t("subagents.fieldProgress"), progress || undefined],
-		[t("subagents.fieldElapsed"), elapsed === undefined ? undefined : formatElapsed(elapsed)],
+		[t("subagents.fieldElapsed"), elapsed === undefined || elapsed <= 0 ? undefined : formatElapsed(elapsed)],
+		...(timeField ? [timeField as [string, string | undefined, boolean?]] : []),
 	];
 
 	return (

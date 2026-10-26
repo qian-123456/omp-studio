@@ -23,6 +23,7 @@ describe("parseSelection / composeSelection", () => {
 	it("splits known trailing levels only", () => {
 		expect(parseSelection("anthropic/opus:high")).toEqual({ selector: "anthropic/opus", level: "high" });
 		expect(parseSelection("smol:off")).toEqual({ selector: "smol", level: "off" });
+		expect(parseSelection("openai/gpt-5:inherit")).toEqual({ selector: "openai/gpt-5", level: "inherit" });
 		expect(parseSelection("host/m:8080")).toEqual({ selector: "host/m:8080", level: null });
 		expect(parseSelection(undefined)).toEqual({ selector: "", level: null });
 	});

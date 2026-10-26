@@ -126,7 +126,7 @@ export function parseTaskArgs(args: unknown): {
 	return { context, items: [] };
 }
 
-const normStatus = (s: unknown): SubagentStatus | undefined => {
+export const normStatus = (s: unknown): SubagentStatus | undefined => {
 	switch (s) {
 		case "pending":
 		case "running":
@@ -149,7 +149,7 @@ const firstLine = (t?: string): string | undefined =>
 		.map((l) => l.trim())
 		.find(Boolean);
 
-const isTerminalStatus = (s: SubagentStatus | undefined): boolean =>
+export const isTerminalStatus = (s: SubagentStatus | undefined): boolean =>
 	s === "completed" || s === "failed" || s === "aborted";
 
 /** Terminal results are final: a later non-terminal source cannot revive them. */
@@ -175,8 +175,10 @@ function applyProgress(row: AgentRow, p: AgentProgress | SingleResult) {
 	row.tokens ??= asNum(p.tokens);
 	row.contextTokens ??= asNum(p.contextTokens);
 	row.contextWindow ??= asNum(p.contextWindow);
-	row.cost ??= asNum(p.cost);
-	row.durationMs ??= asNum(p.durationMs);
+	const cost = asNum(p.cost);
+	if (cost !== undefined && cost > 0) row.cost = cost;
+	const dur = asNum(p.durationMs);
+	if (dur !== undefined && dur > 0) row.durationMs = dur;
 	row.currentTool = asStr(p.currentTool);
 	row.currentToolDetail =
 		asStr(p.currentToolIntent) ??
@@ -201,17 +203,17 @@ function applySummary(row: AgentRow, s: SubagentSummary) {
 	row.model ??= s.model ?? undefined;
 	row.thinkingLevel ??= s.thinkingLevel ?? undefined;
 	row.line ??= firstLine(s.prompt ?? undefined);
-	row.toolCount ??= s.toolCallCount;
-	row.requests ??= s.requestCount;
-	row.tokens ??= s.tokens || undefined;
-	row.cost ??= asNum(s.cost);
-	row.startedAt = s.startedAt ?? undefined;
-	row.endedAt = s.endedAt ?? undefined;
+	if (s.toolCallCount) row.toolCount = s.toolCallCount;
+	if (s.requestCount) row.requests = s.requestCount;
+	if (s.tokens) row.tokens = s.tokens;
+	if (typeof s.cost === "number" && s.cost > 0) row.cost = s.cost;
+	if (s.startedAt) row.startedAt = s.startedAt;
+	if (s.endedAt) row.endedAt = s.endedAt;
 	row.outputPath ??= s.outputPath ?? undefined;
 	row.filePath ??= s.filePath;
-	if (s.startedAt && s.endedAt && row.durationMs === undefined) {
+	if (s.startedAt && s.endedAt) {
 		const ms = Date.parse(s.endedAt) - Date.parse(s.startedAt);
-		if (Number.isFinite(ms) && ms >= 0) row.durationMs = ms;
+		if (Number.isFinite(ms) && ms > 0) row.durationMs = ms;
 	}
 }
 
@@ -233,15 +235,18 @@ function promptMatches(row: AgentRow, prompt: string | null): boolean {
 }
 
 function applyLive(row: AgentRow, s: SubagentInfo) {
-	setStatus(row, normStatus(s.status));
+	if (!isTerminalStatus(row.status)) {
+		setStatus(row, normStatus(s.status));
+	}
 	row.agent ??= s.agent;
 	row.agentSource ??= s.agentSource;
 	row.assignment ??= s.assignment;
 	row.task ??= s.task;
 	row.line ??= s.description ?? firstLine(s.task);
 	if (s.progress) applyProgress(row, s.progress);
-	// Live status (e.g. still running) wins over a file-inferred status.
-	setStatus(row, normStatus(s.status));
+	if (!isTerminalStatus(row.status)) {
+		setStatus(row, normStatus(s.status));
+	}
 	row.filePath ??= s.sessionFile;
 }
 
@@ -264,6 +269,8 @@ export function mergeAgents(input: {
 	callStatus?: "running" | "done" | "error" | "called";
 	/** Tool result text, used as the failure reason of settled rows. */
 	resultText?: string;
+	startedAt?: number;
+	endedAt?: number;
 }): { context?: string; rows: AgentRow[] } {
 	const { context, items } = parseTaskArgs(input.args);
 	const rows = new Map<string, AgentRow>();
@@ -344,6 +351,20 @@ export function mergeAgents(input: {
 		const r = get(id, s.index);
 		applyLive(r, s);
 		if (!isTerminalStatus(normStatus(s.status))) confirmedLive.add(r.id);
+	}
+	if (input.callStatus === "done") {
+		const finishedIso = input.endedAt ? new Date(input.endedAt).toISOString() : undefined;
+		const startIso = input.startedAt ? new Date(input.startedAt).toISOString() : undefined;
+		for (const r of rows.values()) {
+			if (isTerminalStatus(r.status)) {
+				if (!r.endedAt && finishedIso) r.endedAt = finishedIso;
+				if (!r.startedAt && startIso) r.startedAt = startIso;
+				if (r.startedAt && r.endedAt && (!r.durationMs || r.durationMs <= 0)) {
+					const ms = Date.parse(r.endedAt) - Date.parse(r.startedAt);
+					if (Number.isFinite(ms) && ms > 0) r.durationMs = ms;
+				}
+			}
+		}
 	}
 	if (failedCall) {
 		const why = asStr(input.resultText);

@@ -28,6 +28,8 @@ export default defineMessages({
 		undo: "撤销",
 		keyboardNavTip: "↑↓ 选择 · ←→ 切换分组 · ↵ 确认",
 		selectModel: "选择模型",
+		contextTooSmallChip: "超出窗口",
+		contextTooSmallHint: "当前上下文 {current} 已超出该模型窗口 {window}",
 	},
 	"en-US": {
 		roleSmol: "Fast model (smol)",
@@ -56,5 +58,7 @@ export default defineMessages({
 		undo: "Undo",
 		keyboardNavTip: "↑↓ select · ←→ switch group · ↵ confirm",
 		selectModel: "Select model",
+		contextTooSmallChip: "Over limit",
+		contextTooSmallHint: "Current context {current} exceeds model window {window}",
 	},
 });

@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Archive, Loader2, Search } from "lucide-react";
+import { Archive, Filter, Loader2, Search } from "lucide-react";
 import { absoluteTime, relativeTime } from "../../../lib/format";
 import type { SessionMeta, SpaceMode } from "../../../lib/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,15 +23,20 @@ const BUCKET_LABEL_KEYS: Record<string, string> = {
 	earlier: "time.earlier",
 };
 import {
+	DEFAULT_SEARCH_FILTERS,
 	RECENT_LIMIT,
 	bucketRecent,
+	countActiveFilters,
 	limitBuckets,
+	matchesSearchFilters,
 	mergeResults,
 	metadataMatches,
 	searchableSessions,
 	type RecentBucket,
+	type SearchFilters,
 	type SearchRow,
 } from "./searchModel";
+import { SessionSearchFiltersPopover } from "./SessionSearchFiltersPopover";
 import { useSearchDialog } from "./searchStore";
 import { useContentSearch, useSearchIndexStatus } from "./useContentSearch";
 
@@ -50,28 +55,33 @@ function SearchDialogBody() {
 	const activeMode = useSidebarStore((s) => s.activeMode);
 
 	const [query, setQuery] = useState("");
-	const [includeArchived, setIncludeArchived] = useState(true);
+	const [filters, setFilters] = useState<SearchFilters>(DEFAULT_SEARCH_FILTERS);
+	const [filterOpen, setFilterOpen] = useState(false);
 	const [active, setActive] = useState(0);
+	const filterBtnRef = useRef<HTMLButtonElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 
 	const q = query.trim();
 	const content = useContentSearch(query);
 	const indexStatus = useSearchIndexStatus(true);
-
+	const activeFilterCount = countActiveFilters(filters);
 	// ⌘F (or the 🔍 button) while open re-focuses and selects the input.
 	useEffect(() => {
 		inputRef.current?.focus();
 		inputRef.current?.select();
 	}, [focusSeq]);
 
+	const workspacesById = useMemo(() => new Map(workspaces.map((w) => [w.id, w])), [workspaces]);
+
 	const listable = useMemo(() => {
 		const lives = useLive.getState().sessions;
-		return searchableSessions(
-			Object.values(sessions).filter((s) => includeArchived || !s.archived),
+		const base = searchableSessions(
+			Object.values(sessions),
 			(s) => isBlankDraft(s, lives[s.id]),
 		);
-	}, [sessions, includeArchived]);
+		return base.filter((s) => matchesSearchFilters(s, filters, workspacesById));
+	}, [sessions, filters, workspacesById]);
 	const listableById = useMemo(() => new Map(listable.map((s) => [s.id, s])), [listable]);
 
 	const recent = useMemo(
@@ -100,10 +110,10 @@ function SearchDialogBody() {
 
 	const nav = q ? rows : recentRows;
 
-	// A new query starts from the top; streamed-in results keep the highlight index.
+	// A new query or filter change starts from the top; streamed-in results keep the highlight index.
 	useEffect(() => {
 		setActive(0);
-	}, [q]);
+	}, [q, filters]);
 	const activeIdx = nav.length === 0 ? -1 : Math.min(active, nav.length - 1);
 
 	useEffect(() => {
@@ -136,7 +146,9 @@ function SearchDialogBody() {
 		}
 	};
 
-	const showEmpty = q.length > 0 && !content.loading && !content.error && rows.length === 0;
+	const showEmpty =
+		(q.length > 0 && !content.loading && !content.error && rows.length === 0) ||
+		(!q && recent.length === 0);
 
 	return (
 		<Modal
@@ -169,17 +181,36 @@ function SearchDialogBody() {
 					/>
 				)}
 				<button
+					ref={filterBtnRef}
 					type="button"
-					aria-pressed={includeArchived}
-					onClick={() => setIncludeArchived((v) => !v)}
-					title={includeArchived ? t("sessions.clickToExcludeArchived") : t("sessions.clickToIncludeArchived")}
+					aria-expanded={filterOpen}
+					aria-label={t("sessions.searchFilters")}
+					title={t("sessions.searchFilters")}
+					onClick={() => setFilterOpen((v) => !v)}
 					className={clsx(
 						"flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[12px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-						includeArchived ? "text-neutral-300" : "text-neutral-500",
+						activeFilterCount > 0 ? "text-[var(--text)] bg-[var(--bg-active-fill)]" : "text-neutral-400",
+					)}
+				>
+					<Filter size={13} strokeWidth={1.6} className="shrink-0" />
+					{activeFilterCount > 0 && (
+						<span className="flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[9px] font-semibold leading-none text-white">
+							{activeFilterCount}
+						</span>
+					)}
+				</button>
+				<button
+					type="button"
+					aria-pressed={filters.includeArchived}
+					onClick={() => setFilters((f) => ({ ...f, includeArchived: !f.includeArchived }))}
+					title={filters.includeArchived ? t("sessions.clickToExcludeArchived") : t("sessions.clickToIncludeArchived")}
+					className={clsx(
+						"flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[12px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+						filters.includeArchived ? "text-neutral-300" : "text-neutral-500",
 					)}
 				>
 					<Archive size={13} strokeWidth={1.6} className="shrink-0" />
-					{includeArchived ? t("sessions.includedArchived") : t("sessions.excludedArchived")}
+					{filters.includeArchived ? t("sessions.includedArchived") : t("sessions.excludedArchived")}
 				</button>
 			</div>
 
@@ -233,9 +264,20 @@ function SearchDialogBody() {
 						</OptionButton>
 					))}
 				{showEmpty && (
-					<div className="px-3 py-10 text-center text-[13px] text-neutral-500">{t("sessions.noMatchingSessions")}</div>
+					<div className="px-3 py-10 text-center text-[13px] text-neutral-500">
+						{activeFilterCount > 0 ? t("sessions.noMatchingFilteredSessions") : t("sessions.noMatchingSessions")}
+					</div>
 				)}
 			</div>
+			<SessionSearchFiltersPopover
+				anchor={filterOpen ? filterBtnRef.current : null}
+				open={filterOpen}
+				onClose={() => setFilterOpen(false)}
+				ignoreRefs={[filterBtnRef]}
+				filters={filters}
+				onFiltersChange={setFilters}
+				workspaces={workspaces}
+			/>
 		</Modal>
 	);
 }

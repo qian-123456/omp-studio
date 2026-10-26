@@ -12,7 +12,7 @@ import type { SubagentSummary } from "../../../lib/contracts";
 import { type AgentMessage, type LiveTool, type SubagentInfo, useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
 import { type DiskSubscription, DISK_POLL_MS, subscribeDiskSubagents } from "./diskPoller";
-import { type AgentRow, asTaskDetails, mergeAgents } from "./merge";
+import { type AgentRow, asTaskDetails, isTerminalStatus, mergeAgents } from "./merge";
 
 export { DISK_POLL_MS };
 
@@ -52,10 +52,10 @@ export function mergeDiskAndLive(
 			agent: s.agent ?? undefined,
 			model: s.model ?? undefined,
 			thinkingLevel: s.thinkingLevel ?? undefined,
-			toolCount: s.toolCallCount,
-			requests: s.requestCount,
+			toolCount: s.toolCallCount || undefined,
+			requests: s.requestCount || undefined,
 			tokens: s.tokens || undefined,
-			cost: s.cost || undefined,
+			cost: s.cost && s.cost > 0 ? s.cost : undefined,
 			startedAt: s.startedAt ?? undefined,
 			endedAt: s.endedAt ?? undefined,
 			outputPath: s.outputPath ?? undefined,
@@ -63,20 +63,44 @@ export function mergeDiskAndLive(
 		};
 		if (s.startedAt && s.endedAt) {
 			const ms = Date.parse(s.endedAt) - Date.parse(s.startedAt);
-			if (Number.isFinite(ms) && ms >= 0) rows[s.id].durationMs = ms;
+			if (Number.isFinite(ms) && ms > 0) rows[s.id].durationMs = ms;
 		}
 	});
 	Object.entries(live).forEach(([id, info]) => {
-		subagents[id] = { ...subagents[id], ...info, agent: info.agent ?? subagents[id]?.agent };
+		const diskStatus = subagents[id]?.status;
+		const isDiskTerminal = isTerminalStatus(diskStatus);
+		// Terminal row statuses cannot be revived by stale non-terminal data.
+		const nextStatus = isDiskTerminal && !isTerminalStatus(info.status)
+			? diskStatus!
+			: info.status;
+		subagents[id] = {
+			...subagents[id],
+			...info,
+			status: nextStatus,
+			agent: info.agent ?? subagents[id]?.agent,
+		};
+		const prevRow = rows[id];
+		const p = info.progress;
 		rows[id] = {
-			...(rows[id] ?? { id, index: info.index ?? Object.keys(rows).length }),
-			status: info.status,
-			agent: info.agent ?? rows[id]?.agent,
-			agentSource: info.agentSource ?? rows[id]?.agentSource,
-			assignment: info.assignment ?? rows[id]?.assignment,
-			task: info.task ?? rows[id]?.task,
-			line: info.description ?? rows[id]?.line ?? info.label,
-			filePath: rows[id]?.filePath ?? info.sessionFile,
+			...(prevRow ?? { id, index: info.index ?? Object.keys(rows).length }),
+			status: nextStatus,
+			agent: info.agent ?? prevRow?.agent ?? p?.agent,
+			agentSource: info.agentSource ?? prevRow?.agentSource ?? p?.agentSource,
+			assignment: info.assignment ?? prevRow?.assignment ?? p?.assignment,
+			task: info.task ?? prevRow?.task ?? p?.task,
+			line: info.description ?? prevRow?.line ?? info.label,
+			filePath: prevRow?.filePath ?? info.sessionFile,
+			model: prevRow?.model ?? p?.resolvedModelIdentity ?? p?.resolvedModel,
+			modelRole: prevRow?.modelRole ?? p?.modelRole,
+			thinkingLevel: prevRow?.thinkingLevel ?? p?.resolvedThinkingLevel,
+			toolCount: prevRow?.toolCount ?? (p?.toolCount ? p.toolCount : undefined),
+			requests: prevRow?.requests ?? (p?.requests ? p.requests : undefined),
+			tokens: prevRow?.tokens ?? (p?.tokens ? p.tokens : undefined),
+			cost: prevRow?.cost ?? (p?.cost && p.cost > 0 ? p.cost : undefined),
+			durationMs: prevRow?.durationMs ?? (p?.durationMs && p.durationMs > 0 ? p.durationMs : undefined),
+			currentTool: nextStatus === "running" ? p?.currentTool : undefined,
+			currentToolDetail: nextStatus === "running" ? (p?.currentToolIntent ?? p?.currentToolArgsKey) : undefined,
+			recentTools: p?.recentTools,
 		};
 	});
 	// Queued agents exist only in the dispatching task call's args/progress

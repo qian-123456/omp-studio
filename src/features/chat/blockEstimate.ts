@@ -8,7 +8,7 @@
  * column at 15px text; they only need to be roughly right.
  */
 import type { TranscriptItem } from "../../lib/contracts";
-import { type DisplayBlock, type HistoryRow, splitInterimProse } from "./turnGrouping";
+import { type DisplayBlock, type HistoryRow, splitInterimProseBySteer } from "./turnGrouping";
 
 const PROTOCOL_ROW = 36;
 export const ROW_PADDING = 8;
@@ -107,12 +107,12 @@ export function estimateBlockHeight(block: DisplayBlock | HistoryRow | undefined
 	const part = "turnId" in block ? block : null;
 	let h = ROW_PADDING;
 	if (block.userItem) h += estimateUserBubbleHeight(block.userItem.text ?? "");
-	const { folded, prose } = splitInterimProse(block.intermediateSteps);
-	// Steers render as their own bubbles, not inside the fold.
-	if (folded.some((step) => step.kind !== "steer")) h += DISCLOSURE_ROW;
-	for (const step of prose) {
-		// Long interim prose is clamped (ClampedProse) to ~320px plus its pill.
-		if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX);
+	for (const seg of splitInterimProseBySteer(block.intermediateSteps)) {
+		if (seg.type === "steer") continue;
+		if (seg.folded.length > 0) h += DISCLOSURE_ROW;
+		for (const step of seg.prose) {
+			if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX);
+		}
 	}
 	for (const step of block.intermediateSteps) if (step.kind === "steer") h += STEER_ROW;
 	if (block.answerItem) {

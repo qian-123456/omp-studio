@@ -28,7 +28,7 @@ describe("markerSources", () => {
 			["sidechat", 1],
 		]);
 		expect(sources[0].title).toBe("批注 1：first quote");
-		expect(sources[2].title).toBe("侧聊批注 1：side quote");
+		expect(sources[2].title).toBe("辅助对话批注 1：side quote");
 	});
 
 	it("renumbers each list after a move between them", () => {

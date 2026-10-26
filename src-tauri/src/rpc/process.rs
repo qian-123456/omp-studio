@@ -54,6 +54,10 @@ impl PendingMap {
         false
     }
 
+    pub fn remove(&self, id: &str) {
+        self.map.lock().remove(id);
+    }
+
     /// Fail every outstanding request (process exit / stdin closed).
     pub fn fail_all(&self, msg: &str) {
         let pending = std::mem::take(&mut *self.map.lock());
@@ -572,9 +576,60 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
 
 /// Send one command, correlating the response by generated id.
 /// `success:false` → `Err(error)`.
-pub async fn send_command(handle: &Arc<SessionHandle>, command: Value) -> Result<Value, String> {
-    let _dispatch = handle.dispatch_lock.lock().await;
-    send_command_locked(handle, command).await
+///
+/// Holds `dispatch_lock` only while checking process liveness, inserting the
+/// pending correlation id, and enqueuing onto stdin. Releasing the lock before
+/// awaiting the response allows concurrent host commands (such as an abort or
+/// model switch) to be dispatched while a long command (e.g. `compact`) runs.
+pub async fn send_command(
+    handle: &Arc<SessionHandle>,
+    mut command: Value,
+) -> Result<Value, String> {
+    if !command.is_object() {
+        return Err("command must be a JSON object".into());
+    }
+    let (id, rx, timeout) = {
+        let _dispatch = handle.dispatch_lock.lock().await;
+        if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
+            return Err("session process is not running".into());
+        }
+        let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
+        command["id"] = json!(id);
+        let rx = handle.pending.insert(id.clone());
+        handle
+            .stdin_tx
+            .send(command.to_string())
+            .map_err(|_| "session stdin closed".to_string())?;
+        if !matches!(
+            command.get("type").and_then(Value::as_str),
+            Some("get_state" | "get_subagents")
+        ) {
+            handle.touch();
+        }
+        let timeout = match command.get("type").and_then(Value::as_str) {
+            Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
+            _ => CMD_TIMEOUT,
+        };
+        (id, rx, timeout)
+    };
+
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(resp)) => {
+            if resp.get("success").and_then(Value::as_bool) == Some(false) {
+                let err = resp
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("command failed");
+                return Err(err.to_string());
+            }
+            Ok(resp)
+        }
+        Ok(Err(_)) => Err("response channel dropped".into()),
+        Err(_) => {
+            handle.pending.remove(&id);
+            Err("command timed out".into())
+        }
+    }
 }
 
 /// Dispatch while the caller owns `dispatch_lock`. Only the idle suspender may
@@ -627,7 +682,10 @@ pub(crate) async fn send_command_locked(
             Ok(resp)
         }
         Ok(Err(_)) => Err("response channel dropped".into()),
-        Err(_) => Err("command timed out".into()),
+        Err(_) => {
+            handle.pending.remove(&id);
+            Err("command timed out".into())
+        }
     }
 }
 

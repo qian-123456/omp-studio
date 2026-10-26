@@ -270,7 +270,7 @@ export interface FloatingLayerProps {
 	children: ReactNode;
 }
 
-const LIGHTBOX_SELECTOR = '[data-layer="lightbox"]';
+export const LIGHTBOX_SELECTOR = '[data-layer="lightbox"]';
 
 /** True when `target` is a text field / contenteditable inside `root`. */
 function isEditableWithin(target: EventTarget | null, root: HTMLElement | null): boolean {
@@ -289,6 +289,17 @@ export const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
 function modalAbove(self: HTMLElement | null): boolean {
 	if (!self) return false;
 	for (const m of document.querySelectorAll(MODAL_SELECTOR)) {
+		if (m === self || self.contains(m) || m.contains(self)) continue;
+		if (self.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
+	}
+	return false;
+}
+
+/** True when a modal or floating layer mounted after `self` (so stacked above it, not `self` or nested with it) is open. */
+function layerAbove(self: HTMLElement | null): boolean {
+	if (!self) return false;
+	if (modalAbove(self)) return true;
+	for (const m of document.querySelectorAll("[data-layer]")) {
 		if (m === self || self.contains(m) || m.contains(self)) continue;
 		if (self.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
 	}
@@ -363,15 +374,20 @@ export function FloatingLayer({
 			if (e.key === "Escape") {
 				// Esc that cancels an IME candidate belongs to the IME, not to the layer.
 				if (isComposing({ nativeEvent: e, key: e.key })) return;
-				// An editor inside the layer owns Esc (cancels its own edit) when opted in.
-				// Any element marked data-owns-escape (e.g. an in-place idea editor) handles Esc itself.
-				if (e.target instanceof Element && e.target.closest("[data-owns-escape]")) return;
-				if (deferEscapeToEditors && isEditableWithin(e.target, ref.current)) return;
 				// Escape closes the topmost lightbox first; it handles the key itself.
 				if (document.querySelector(LIGHTBOX_SELECTOR)) return;
-				// A modal stacked above this layer owns Escape (its own cancel handler must receive it).
-				if (modalAbove(ref.current)) return;
+				// A modal or floating layer stacked above this layer owns Escape (its own cancel handler must receive it).
+				if (layerAbove(ref.current)) return;
+				// An editor inside THIS layer owns Esc (cancels its own edit) when opted in.
+				// Any element marked data-owns-escape inside this layer handles Esc itself.
+				if (
+					e.target instanceof Element &&
+					ref.current?.contains(e.target.closest("[data-owns-escape]"))
+				)
+					return;
+				if (deferEscapeToEditors && isEditableWithin(e.target, ref.current)) return;
 				e.stopPropagation();
+				e.stopImmediatePropagation?.();
 				claimEscape(e);
 				onDismiss();
 			}

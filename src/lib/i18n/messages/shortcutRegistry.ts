@@ -15,7 +15,7 @@ export default defineMessages({
 		"search.sessions.label": "搜索会话",
 		"search.sessions.desc": "跨会话搜索标题和消息内容",
 		"nav.back.label": "后退",
-		"nav.back.desc": "离开全屏页面；在侧聊里回到父会话",
+		"nav.back.desc": "离开全屏页面；在辅助对话里回到父会话",
 		"nav.forward.label": "前进",
 		"nav.forward.desc": "回到刚用「后退」离开的位置",
 		"view.inbox.label": "收件箱",

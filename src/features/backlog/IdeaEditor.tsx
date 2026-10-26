@@ -4,6 +4,7 @@ import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { exceedsLines, useLineClampOverflow } from "../../lib/useLineClamp";
 import { getImageTokenPalette } from "../chat/imageTokens";
 import { splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
+import { claimEscape } from "../../lib/escapeClaim";
 import { useT, tNow } from "../../stores/language";
 export interface IdeaEditorHandle {
 	/** Current caret offset in the text (end of text when unfocused). */
@@ -31,7 +32,7 @@ export const IdeaEditor = forwardRef<
 		maxHeight: number;
 		onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 		onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-		onBlur?: () => void;
+		onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
 		onFocus?: () => void;
 		/** Applied to both layers so glyph metrics and wrapping stay identical. */
 		boxClass?: string;
@@ -95,7 +96,16 @@ export const IdeaEditor = forwardRef<
 				placeholder={placeholder}
 				onChange={(e) => onChange({ text: e.target.value, images: doc.images })}
 				onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-				onKeyDown={onKeyDown}
+				onKeyDown={(e) => {
+					if (e.key === "Escape" && preview !== null) {
+						e.stopPropagation();
+						claimEscape(e);
+						setPreview(null);
+						taRef.current?.focus();
+						return;
+					}
+					onKeyDown?.(e);
+				}}
 				onPaste={onPaste}
 				onBlur={onBlur}
 				onFocus={onFocus}
@@ -128,7 +138,14 @@ export const IdeaEditor = forwardRef<
 				</div>
 			</div>
 			{preview !== null && (
-				<ImagePreviewModal images={previewImages(doc.images)} initialIndex={preview} onClose={() => setPreview(null)} />
+				<ImagePreviewModal
+					images={previewImages(doc.images)}
+					initialIndex={preview}
+					onClose={() => {
+						setPreview(null);
+						taRef.current?.focus();
+					}}
+				/>
 			)}
 		</div>
 	);

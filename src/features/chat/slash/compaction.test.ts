@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { useLive } from "../../../stores/live";
 import {
+	cancelCompaction,
+	deferred,
 	isCompacting,
 	isNothingToCompact,
 	runCompaction,
@@ -92,5 +94,49 @@ describe("compaction", () => {
 			tokens: () => reads.shift() ?? null,
 		});
 		expect(rows("s5")[0]).toMatchObject({ status: "done", tokensBefore: 200_000, tokensAfter: 40_000 });
+	});
+
+	it("can be cancelled from UI via cancelCompaction and resets state", async () => {
+		const sent: string[] = [];
+		const gate = deferred<void>();
+		const rpcSend = vi.fn(async (c: Record<string, unknown>) => {
+			sent.push(String(c.type));
+			if (c.type === "compact") await gate.promise;
+			return {};
+		});
+		const deps = { sessionId: "s6", rpcSend, errorText: String };
+		const task = runCompaction(deps);
+		await Promise.resolve();
+		expect(isCompacting("s6")).toBe(true);
+
+		await cancelCompaction("s6", { rpcSend });
+		gate.resolve();
+		const result = await task;
+		expect(result).toBe("failed");
+		expect(isCompacting("s6")).toBe(false);
+		expect(sent).toContain("abort");
+		expect(rows("s6")[0]).toMatchObject({ status: "error", detail: "上下文压缩已取消" });
+	});
+
+	it("times out after timeoutMs and resets state on timeout", async () => {
+		vi.useFakeTimers();
+		try {
+			const rpcSend = vi.fn(async (c: Record<string, unknown>) => {
+				if (c.type === "compact") {
+					await deferred<void>().promise;
+				}
+				return {};
+			});
+			const deps = { sessionId: "s7", rpcSend, errorText: String, timeoutMs: 50 };
+			const task = runCompaction(deps);
+			expect(isCompacting("s7")).toBe(true);
+			await vi.advanceTimersByTimeAsync(60);
+			const result = await task;
+			expect(result).toBe("failed");
+			expect(isCompacting("s7")).toBe(false);
+			expect(rows("s7")[0]).toMatchObject({ status: "error", detail: "上下文压缩超时" });
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { hasLiveUserActivity } from "../../stores/live";
-import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
+import { ArchiveRestore, ChevronRight, Loader2, X } from "lucide-react";
+import { compactTokens } from "./contextOverflow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
@@ -45,18 +46,6 @@ function loadComposition(sessionId: string, cwd: string): Promise<PromptComposit
 	return p;
 }
 
-/** Formats tokens to match Claude App's concise style (e.g. "2k", "12.7k", "200k", "1.0M"). */
-function compactTokens(n: number): string {
-	if (n >= 1_000_000) {
-		const v = (n / 1_000_000).toFixed(1);
-		return v.endsWith(".0") ? `${Math.round(n / 1_000_000)}M` : `${v}M`;
-	}
-	if (n >= 1000) {
-		const v = (n / 1000).toFixed(1);
-		return v.endsWith(".0") ? `${Math.round(n / 1000)}k` : `${v}k`;
-	}
-	return String(n);
-}
 
 
 /** Donut chart: used categories as colored arcs over a free-space track, usage % in the hole. */
@@ -222,6 +211,7 @@ interface ContextRingProps {
 	totalTokensStr?: string | null;
 	onCompact?: () => Promise<void>;
 	/** Disables the compact button (e.g. while a turn is streaming). */
+	onCancelCompact?: () => Promise<void>;
 	compactDisabled?: boolean;
 	/** A compaction is running for this session (shared state, survives popover close). */
 	compacting?: boolean;
@@ -240,6 +230,7 @@ export function ContextRing({
 	onCompact,
 	compactDisabled,
 	compacting = false,
+	onCancelCompact,
 	open: openProp,
 	onOpenChange,
 	className,
@@ -404,7 +395,17 @@ export function ContextRing({
 								{compactTokens(rawTokens)} / {compactTokens(rawWindow)}
 							</span>
 						)}
-						{onCompact && (
+						{compacting && onCancelCompact ? (
+							<button
+								type="button"
+								onClick={() => void onCancelCompact()}
+								title={t("chat.context.cancelCompaction")}
+								className="ml-auto flex items-center gap-1 whitespace-nowrap rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-[12px] leading-[15px] text-rose-500 transition-colors hover:bg-rose-500/20"
+							>
+								<X size={11} />
+								<span>{t("chat.context.cancelCompaction")}</span>
+							</button>
+						) : onCompact ? (
 							<button
 								type="button"
 								disabled={compacting || compactDisabled}
@@ -415,7 +416,7 @@ export function ContextRing({
 								{compacting ? <Loader2 size={11} className="animate-spin" /> : <ArchiveRestore size={11} />}
 								<span>{compacting ? t("chat.context.compacting") : t("chat.context.compactAction")}</span>
 							</button>
-						)}
+						) : null}
 					</div>
 
 					{/* Donut + legend: chat, the system-prompt group (expands into its parts), free space. */}

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Z_LAYER } from "../../../components/FloatingLayer";
 import { ModelSelect } from "../../../components/ModelSelect";
+import { parseSelection } from "../../../components/modelSelectLogic";
 import type { ModelTemplate, ModelTemplateInput } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { claimEscape } from "../../../lib/escapeClaim";
@@ -288,7 +289,7 @@ export function TemplateEditor({
 								</div>
 								<ModelSelect
 									models={models}
-									label={set ? (value as string) : declared ? t("modelTemplates.unconfigured") : t("modelTemplates.keepCurrent")}
+									label={set ? parseSelection(value as string).selector : declared ? t("modelTemplates.unconfigured") : t("modelTemplates.keepCurrent")}
 									currentValue={set ? (value as string) : declared ? UNSET : ABSENT}
 									buttonClass={set ? MODEL_PICKER_BUTTON_CLASS : UNSET_BUTTON_CLASS}
 									closeOnSelect

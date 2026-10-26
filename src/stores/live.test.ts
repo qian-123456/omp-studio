@@ -999,3 +999,65 @@ describe("live reducer — echo reconcile, stop and skill prompts", () => {
 		expect(queuedEchoIds(live()).has(id)).toBe(false);
 	});
 });
+
+describe("live reducer — retry event sequence", () => {
+	it("tracks failed request and retry notices across auto-retry cycle", () => {
+		frame({ type: "turn_start" });
+		frame({
+			type: "message_update",
+			message: {
+				role: "assistant",
+				id: "msg-err",
+				content: [{ type: "thinking", text: "connecting..." }],
+			},
+		});
+		frame({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				id: "msg-err",
+				stopReason: "error",
+				errorMessage: "ECONNRESET",
+				content: [{ type: "thinking", text: "connecting..." }],
+			},
+		});
+		expect(live().liveRequests).toHaveLength(1);
+		expect(live().liveRequests[0].stat.error).toBe("ECONNRESET");
+		expect(live().liveRequests[0].parts).toHaveLength(1);
+		expect(live().liveRequests[0].parts[0].kind).toBe("thinking");
+
+		frame({
+			type: "auto_retry_start",
+			attempt: 1,
+			maxAttempts: 3,
+			delayMs: 1000,
+			errorMessage: "ECONNRESET",
+		});
+		expect(live().retryNotices).toHaveLength(1);
+		expect(live().retryNotices?.[0].text).toContain("自动重试");
+
+		frame({
+			type: "auto_retry_end",
+			attempt: 1,
+			success: true,
+		});
+		expect(live().retryNotices).toHaveLength(2);
+
+		frame({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				id: "msg-ok",
+				stopReason: "stop",
+				content: [{ type: "text", text: "success" }],
+			},
+		});
+		expect(live().liveRequests).toHaveLength(2);
+		expect(live().liveRequests[1].stat.error).toBeNull();
+
+		// On turn end, retry notices archive into retryHistory
+		frame({ type: "agent_end", isTerminal: true });
+		expect(live().retryNotices).toEqual([]);
+		expect(live().retryHistory).toHaveLength(1);
+	});
+});

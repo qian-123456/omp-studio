@@ -141,3 +141,73 @@ export function mergeResults(
 	const when = (s: SessionMeta) => Date.parse(s.updatedAt || s.createdAt) || 0;
 	return rows.sort((x, y) => when(y.session) - when(x.session));
 }
+
+export type SearchScopeFilter = "all" | "project" | "universal";
+export type SearchTimeFilter = "all" | "today" | "7days" | "30days";
+
+export interface SearchFilters {
+	scope: SearchScopeFilter;
+	projectId: string;
+	timeRange: SearchTimeFilter;
+	includeArchived: boolean;
+}
+
+export const DEFAULT_SEARCH_FILTERS: SearchFilters = {
+	scope: "all",
+	projectId: "all",
+	timeRange: "all",
+	includeArchived: true,
+};
+
+export function countActiveFilters(filters: SearchFilters): number {
+	let count = 0;
+	if (filters.scope !== "all") count++;
+	if (filters.projectId !== "all") count++;
+	if (filters.timeRange !== "all") count++;
+	if (!filters.includeArchived) count++;
+	return count;
+}
+
+export function matchesSearchFilters(
+	session: SessionMeta,
+	filters: SearchFilters,
+	workspacesById: ReadonlyMap<string, Workspace>,
+	now: number = Date.now(),
+): boolean {
+	if (!filters.includeArchived && session.archived) {
+		return false;
+	}
+
+	const ws = session.workspaceId ? workspacesById.get(session.workspaceId) : undefined;
+	const isGlobal = !session.workspaceId || ws?.kind === "global";
+
+	if (filters.scope === "project" && isGlobal) {
+		return false;
+	}
+	if (filters.scope === "universal" && !isGlobal) {
+		return false;
+	}
+
+	if (filters.projectId !== "all") {
+		if (session.workspaceId !== filters.projectId) {
+			return false;
+		}
+	}
+
+	if (filters.timeRange !== "all") {
+		const time = Date.parse(session.updatedAt || session.createdAt) || 0;
+		const nowDate = new Date(now);
+		const startOfToday = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+		if (filters.timeRange === "today") {
+			if (time < startOfToday) return false;
+		} else if (filters.timeRange === "7days") {
+			const start7Days = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - 6).getTime();
+			if (time < start7Days) return false;
+		} else if (filters.timeRange === "30days") {
+			const start30Days = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - 29).getTime();
+			if (time < start30Days) return false;
+		}
+	}
+
+	return true;
+}

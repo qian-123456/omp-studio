@@ -8,6 +8,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SearchIndexStatus, SessionSearchHit } from "../../../lib/contracts";
 
+globalThis.ResizeObserver ??= class {
+	observe() {}
+	unobserve() {}
+	disconnect() {}
+};
+
 const h = vi.hoisted(() => ({
 	searchSessions: vi.fn(),
 	searchIndexStatus: vi.fn(),
@@ -300,5 +306,56 @@ describe("包含已归档", () => {
 		expect(screen.queryByText("归档的登录笔记")).toBeNull();
 		type("登录");
 		expect(screen.queryByText("归档的登录笔记")).toBeNull();
+	});
+});
+
+describe("filter funnel popover", () => {
+	it("renders the funnel button and opens the popover with filter options", () => {
+		mount();
+		const funnel = screen.getByRole("button", { name: "筛选" });
+		expect(funnel).toBeTruthy();
+		expect(funnel.getAttribute("aria-expanded")).toBe("false");
+
+		// Clicking funnel opens popover
+		fireEvent.click(funnel);
+		expect(funnel.getAttribute("aria-expanded")).toBe("true");
+		expect(screen.getByText("筛选会话")).toBeTruthy();
+		expect(screen.getByText("范围")).toBeTruthy();
+		expect(screen.getByText("项目")).toBeTruthy();
+		expect(screen.getByText("时间范围")).toBeTruthy();
+	});
+
+	it("filters the recent list and text search when a filter is applied, showing badge and clear button", () => {
+		mount();
+		const funnel = screen.getByRole("button", { name: "筛选" });
+
+		// Open popover
+		fireEvent.click(funnel);
+
+		// Filter by today
+		const todayBtn = screen.getByRole("button", { name: "今天" });
+		fireEvent.click(todayBtn);
+
+		// Active filter badge shows 1
+		expect(within(funnel).getByText("1")).toBeTruthy();
+
+		// Clear button should be visible in popover
+		const clearBtn = screen.getByRole("button", { name: "清除筛选" });
+		expect(clearBtn).toBeTruthy();
+
+		// Only today's session is in recents
+		expect(screen.getByText("今日修复登录")).toBeTruthy();
+		expect(screen.queryByText("整理周报")).toBeNull();
+		expect(screen.queryByText("旧项目复盘")).toBeNull();
+
+		// Typing search query also obeys the filter
+		type("登录");
+		expect(screen.getByText("今日修复登录")).toBeTruthy();
+		expect(screen.queryByText("归档的登录笔记")).toBeNull();
+
+		// Clearing filters restores all results and clears badge
+		fireEvent.click(clearBtn);
+		expect(within(funnel).queryByText("1")).toBeNull();
+		expect(screen.getByText("归档的登录笔记")).toBeTruthy();
 	});
 });

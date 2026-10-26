@@ -129,7 +129,7 @@ export default defineMessages({
 			targetMain: "主对话",
 			targetMainTitle: "批注进入主会话输入框",
 			targetSideChat: "辅助对话",
-			sideChatMaxDepth: "已达侧聊嵌套上限（{depth} 层）",
+			sideChatMaxDepth: "已达辅助对话嵌套上限（{depth} 层）",
 			targetSideChatTitle: "批注暂存到右侧辅助对话输入框",
 			confirmAnnotationAria: "确认批注",
 			confirmAnnotationTitle: "确认批注 (Enter)",

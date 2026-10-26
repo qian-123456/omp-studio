@@ -179,7 +179,9 @@ import { detectFirstWordSpace, detectSpaceToken, splitFirstWord } from "./slash/
 import { SlashMenu } from "./slash/SlashMenu";
 import { expandImagesForSend, expandImageTokens } from "./imageTokens";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
-import { runCompaction, useCompaction } from "./slash/compaction";
+import { cancelCompaction, runCompaction, useCompaction } from "./slash/compaction";
+import { isContextOverflow } from "./contextOverflow";
+import { ContextOverflowBanner } from "./ContextOverflowBanner";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { canStartOnType, useStartOnType } from "./useStartOnType";
@@ -867,6 +869,10 @@ export function Composer({
 		typeof contextUsageObj?.percent === "number"
 			? contextUsageObj.percent
 			: undefined;
+	const currentTokens =
+		(typeof liveUsage?.tokens === "number" ? liveUsage.tokens : snapshot?.contextTokens) ?? null;
+	const isOverflow = isContextOverflow({ contextTokens: currentTokens, contextWindow });
+	const [overflowHighlighted, setOverflowHighlighted] = useState(false);
 	const thinkingLevels = useMemo(
 		() =>
 			resolveThinkingLevels(
@@ -913,7 +919,11 @@ export function Composer({
 		thinkingLevel: currentThinking,
 		extra: (planMode ? 24 : 0) + (held.length > 0 && !streaming ? 64 : 0),
 	});
-	const compacting = useCompaction((s) => s.active[sessionId] === true);
+	const isManualCompacting = useCompaction((s) => s.active[sessionId] === true);
+	const isAutoCompacting =
+		live?.state?.isCompacting === true ||
+		(live?.flowNotices?.some((n) => n.kind === "compaction" && n.status === "running") ?? false);
+	const compacting = isManualCompacting || isAutoCompacting;
 	const compactContext = async () => {
 		await runCompaction({
 			sessionId,
@@ -923,6 +933,37 @@ export function Composer({
 			},
 			errorText: (err) => (isResumeCancelled(err) ? null : errMsg(err)),
 		});
+	};
+	const handleCompactWithModel = async (candidate: ModelOption, switchBack: boolean) => {
+		const originalKey = current.value;
+		const candidateKey = toModelKey(candidate.provider, candidate.id);
+		try {
+			if (!live?.alive) await ensureLive(sessionId);
+			const setPayload = buildSetModelPayload(candidateKey, models);
+			if (setPayload) {
+				await rpcSend(sessionId, setPayload);
+				await rpcSend(sessionId, { type: "get_state" });
+			}
+			await compactContext();
+			if (switchBack && originalKey) {
+				const revertPayload = buildSetModelPayload(originalKey, models);
+				if (revertPayload) {
+					await rpcSend(sessionId, revertPayload);
+					await rpcSend(sessionId, { type: "get_state" });
+				}
+				toast.success(
+					t("chat.overflow.switchedAndCompacted", {
+						model: currentModelOption?.name || originalKey,
+					}),
+				);
+			} else {
+				toast.success(t("chat.overflow.compacted"));
+			}
+		} catch (err) {
+			if (!isResumeCancelled(err)) {
+				toast.error(t("chat.context.compactionFailed", { error: errMsg(err) }));
+			}
+		}
 	};
 	const loadModels = async () => {
 		// Catalog (`omp models --json`) first; get_available_models is only a
@@ -1148,6 +1189,12 @@ export function Composer({
 		// A local draft hands its composer state to the real session before the echo.
 		let inputOwner = sessionId;
 		if (!hasPayload || busy) return;
+		if (isOverflow) {
+			toast.error(t("chat.overflow.blockedSendNotice"));
+			setOverflowHighlighted(true);
+			setTimeout(() => setOverflowHighlighted(false), 2000);
+			return;
+		}
 		// Chip + args serialize to the exact `/name args` the user would have
 		// typed — history, masking and dispatch all run on that form.
 		const trimmedRaw = serializeChip(chip, raw).trim();
@@ -2204,6 +2251,37 @@ export function Composer({
 					/>
 					</Suspense>
 				)}
+				{compacting && (
+					<div className="flex items-center justify-between gap-2 border-b border-[var(--line)] bg-[var(--bg-card)] px-3.5 py-1.5 text-xs text-[var(--text-60)]">
+						<div className="flex items-center gap-2">
+							<Loader2 size={13} className="animate-spin text-amber-500" />
+							<span>{t("chat.context.compactingBanner")}</span>
+						</div>
+						<button
+							type="button"
+							onClick={() => void cancelCompaction(sessionId)}
+							className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-rose-500 transition-colors hover:bg-rose-500/10"
+						>
+							<X size={12} />
+							<span>{t("chat.context.cancelCompaction")}</span>
+						</button>
+					</div>
+				)}
+				{isOverflow && !compacting && typeof currentTokens === "number" && typeof contextWindow === "number" && (
+					<ContextOverflowBanner
+						sessionId={sessionId}
+						currentTokens={currentTokens}
+						contextWindow={contextWindow}
+						currentModelOption={currentModelOption}
+						currentModelKey={current.value ?? ""}
+						models={models}
+						items={live?.items}
+						compacting={compacting}
+						highlighted={overflowHighlighted}
+						onCompactWithModel={handleCompactWithModel}
+						onCompactCurrent={compactContext}
+					/>
+				)}
 				{/* Textarea container with mirrored syntax-highlighting backdrop */}
 				<div className="relative w-full">
 					<ComposerSecretOverlay
@@ -2522,7 +2600,12 @@ export function Composer({
 									<ModelMenuContent
 										models={models}
 										currentValue={current.value}
+										contextTokens={currentTokens}
 										onSelect={async (key) => {
+											if (compacting) {
+												toast.error(t("chat.context.cannotSwitchModelWhileCompacting"));
+												return;
+											}
 											const payload = buildSetModelPayload(key, models);
 											if (isLocalDraft) {
 												// No process yet: stage the choice; it is applied before the first send.
@@ -2599,6 +2682,7 @@ export function Composer({
 							usageObj={contextUsageObj}
 							totalTokensStr={totalTokensStr}
 							onCompact={compactContext}
+							onCancelCompact={() => cancelCompaction(sessionId)}
 							compactDisabled={streaming || readonly}
 							compacting={compacting}
 							open={contextOpen}

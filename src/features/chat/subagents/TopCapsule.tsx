@@ -205,14 +205,14 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 									{role}
 								</span>
 							)}
-							{st && st.total > 0 && (
+							{st && st.direct > 0 && (
 								<button
 									type="button"
 									aria-expanded={!isCollapsed}
 									aria-label={t("subagents.toggleSubtreeAria", {
 										action: isCollapsed ? t("subagents.expand") : t("subagents.collapse"),
 										title,
-										count: st.total,
+										count: st.direct,
 									})}
 									title={isCollapsed ? t("subagents.expandSubtreeTitle") : t("subagents.collapseSubtreeTitle")}
 									onClick={(e) => {
@@ -223,8 +223,7 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 									className="flex h-[18px] shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-[10.5px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 								>
 									{isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-									{/* Collapsed: the whole subtree size. Expanded: direct children only — deeper rows carry their own chip. */}
-									<span>{isCollapsed ? t("subagents.totalSubtreeCount", { count: st.total }) : t("subagents.directChildrenCount", { count: n.children.length })}</span>
+									<span>{t("subagents.childSubagentsCount", { count: st.direct })}</span>
 								</button>
 							)}
 							{ctx.perRowModel && model && (

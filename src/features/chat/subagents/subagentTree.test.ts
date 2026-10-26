@@ -219,20 +219,26 @@ describe("subagentName", () => {
 	});
 });
 
-import { collapseTree, descendantStats } from "./subagentTree";
+import { collapseTree, descendantStats, formatClockTime, type TreeNode } from "./subagentTree";
 
 describe("collapseTree / descendantStats", () => {
-	const mk = (id: string, state: "running" | "done", children: any[] = []) => ({ id, state, children });
+	const mk = (id: string, state: "running" | "done", children: TreeNode[] = []): TreeNode => ({ id, state, children });
 	const forest = [mk("A", "running", [mk("B", "running", [mk("C", "done")])]), mk("D", "done")];
 	it("drops children of collapsed nodes only", () => {
-		const out = collapseTree(forest as any, new Set(["B"]));
+		const out = collapseTree(forest, new Set(["B"]));
 		expect(out[0].children[0].children).toEqual([]);
-		expect(collapseTree(forest as any, new Set())).toBe(forest);
+		expect(collapseTree(forest, new Set())).toBe(forest);
 	});
-	it("counts descendants at any depth", () => {
-		const s = descendantStats(forest as any);
-		expect(s.get("A")).toEqual({ total: 2 });
-		expect(s.get("B")).toEqual({ total: 1 });
-		expect(s.get("D")).toEqual({ total: 0 });
+	it("counts direct children and total descendants", () => {
+		const s = descendantStats(forest);
+		expect(s.get("A")).toEqual({ total: 2, direct: 1 });
+		expect(s.get("B")).toEqual({ total: 1, direct: 1 });
+		expect(s.get("D")).toEqual({ total: 0, direct: 0 });
+	});
+
+	it("formats clock time HH:mm:ss", () => {
+		const d = new Date(2026, 9, 26, 22, 16, 17);
+		expect(formatClockTime(d.getTime())).toBe("22:16:17");
+		expect(formatClockTime(undefined)).toBeUndefined();
 	});
 });

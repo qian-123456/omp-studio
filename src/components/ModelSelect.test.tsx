@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelOption } from "../lib/models";
 import { useModelCatalog } from "../stores/modelCatalog";
-import { ModelMenuContent } from "./ModelSelect";
+import { ModelMenuContent, ModelSelect } from "./ModelSelect";
 import { useModelSelectPrefs } from "./modelSelectPrefs";
 
 const model = (provider: string, id: string): ModelOption => ({
@@ -111,5 +111,32 @@ describe("ModelMenuContent recent", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "撤销" }));
 		expect(useModelSelectPrefs.getState().recent).toEqual(["openai/gpt-5", "anthropic/claude-opus"]);
+	});
+});
+
+describe("ModelSelect thinking pill and level separation", () => {
+	it("strips level suffix from the model button and displays level on thinking chip", () => {
+		const onSelect = vi.fn();
+		const models: ModelOption[] = [
+			{
+				provider: "tiancai-smart",
+				id: "gpt-6.1-sol",
+				name: "GPT 6.1 Sol",
+				thinking: ["low", "high", "xhigh"],
+				contextWindow: null,
+			},
+		];
+		render(
+			<ModelSelect
+				models={models}
+				label="tiancai-smart/gpt-6.1-sol:xhigh"
+				currentValue="tiancai-smart/gpt-6.1-sol:xhigh"
+				thinking
+				onSelect={onSelect}
+			/>,
+		);
+		expect(screen.getByRole("button", { name: "tiancai-smart/gpt-6.1-sol" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /:xhigh/ })).toBeNull();
+		expect(screen.getByText("xhigh")).toBeTruthy();
 	});
 });

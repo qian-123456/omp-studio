@@ -613,8 +613,10 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 			// calls (e.g. the `ask` call that hands the turn to the human).
 			const isIntermediate = hasSubsequentAssistantOrUser;
 
+			const hasThinking = Boolean(item.thinking && item.thinking.trim().length > 0);
+
 			// If it has thinking, extract thinking as a step
-			if (item.thinking && item.thinking.trim().length > 0) {
+			if (hasThinking && item.thinking) {
 				currentTurn.intermediateSteps.push({
 					id: `thinking-${item.id}`,
 					kind: "thinking",
@@ -648,14 +650,17 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 				}
 			} else if (isIntermediate && item.stopReason === "error") {
 				// Failed request (retried by omp): its text is the error message,
-				// not prose. Render only the failure line, in order.
-				currentTurn.intermediateSteps.push({
-					id: `failed-${item.id}`,
-					kind: "request-failed",
-					item,
-				});
+				// not prose. If it already has thinking or tool calls, its failure line is
+				// anchored under that step. Only emit a standalone failed step
+				// when the request produced no thinking and no tools.
+				if (!hasThinking) {
+					currentTurn.intermediateSteps.push({
+						id: `failed-${item.id}`,
+						kind: "request-failed",
+						item,
+					});
+				}
 			} else if (isIntermediate) {
-				// Intermediate assistant message with text (no tool calls, but followed by more assistant messages)
 				if (item.text && item.text.trim().length > 0) {
 					currentTurn.intermediateSteps.push({
 						id: `text-${item.id}`,
@@ -797,9 +802,10 @@ export type ActivityUnit<T extends { kind: string }> =
 
 /**
  * Folds consecutive tool steps of the same group kind (exploration /
- * commands / edits) into one summary row; reasoning inside a run is
- * absorbed. Two or more consecutive same-kind tools form a group — a lone
- * one stays a row. Works on TurnStep and on live pseudo-steps.
+ * commands / edits) into one summary row. Two or more consecutive
+ * same-kind tools form a group — a lone one stays a row.
+ * A group only merges CONSECUTIVE tool calls with no assistant text
+ * or thinking between them. Works on TurnStep and on live pseudo-steps.
  */
 export function groupActivityUnits<
 	T extends { kind: string; call?: { name: string }; running?: boolean },
@@ -834,39 +840,13 @@ export function groupActivityUnits<
 			pendingKind = group;
 			continue;
 		}
-		// Settled reasoning inside a run is absorbed into the group, but only
-		// when the run continues with the same kind afterwards. Running
-		// reasoning is never absorbed (it is the live row), and reasoning that
-		// leads into a different tool or text stays a visible row.
-		if (
-			step.kind === "thinking" &&
-			pending.length > 0 &&
-			!step.running &&
-			continuesRun(steps, i, pendingKind)
-		) {
-			continue;
-		}
+		// A group only merges CONSECUTIVE tool calls with no assistant text
+		// or thinking between them. Thinking and text break the run.
 		flush();
 		units.push({ kind: "step", step });
 	}
 	flush();
 	return units;
-}
-
-/** True when the first non-thinking step after `from` is a tool of `kind`. */
-function continuesRun<T extends { kind: string; call?: { name: string } }>(
-	steps: T[],
-	from: number,
-	kind: ActivityGroupKind | undefined,
-): boolean {
-	for (let j = from + 1; j < steps.length; j++) {
-		const next = steps[j];
-		if (next.kind === "thinking") continue;
-		return (
-			next.kind === "tool" && !!next.call && activityGroupKind(next.call.name) === kind
-		);
-	}
-	return false;
 }
 
 // ---- per-request stats line placement -----------------------------------
@@ -901,9 +881,14 @@ export function requestAnchors(
 			if (row.kind === "tool" && row.call && ids.has(row.call.id)) anchor = row.id;
 		}
 		if (!anchor && ids.size === 0) {
-			for (const row of rows) {
-				if (row.kind === "tool" || row.kind === "request-failed") continue;
-				if ((row.requestId ?? row.item?.id) === req.id) anchor = row.id;
+			const hasFailedRow = rows.some(
+				(r) => r.kind === "request-failed" && (r.requestId ?? r.item?.id) === req.id,
+			);
+			if (!hasFailedRow) {
+				for (const row of rows) {
+					if (row.kind === "tool" || row.kind === "request-failed") continue;
+					if ((row.requestId ?? row.item?.id) === req.id) anchor = row.id;
+				}
 			}
 		}
 		out.set(req.id, anchor);
@@ -977,11 +962,42 @@ export function turnRequestItems(
 
 
 /**
- * Splits a finished turn's steps into the part folded behind the 「已处理」
- * disclosure and the interim assistant prose that must stay visible. Prose
- * the assistant wrote between tool calls was readable while it streamed; it
- * must not vanish into the fold once the turn commits. Tool-result fallbacks
- * (`orphan-result-*`, not assistant prose) stay folded.
+ * Splits intermediate steps into chronological slices of folded activity
+ * followed by the interim assistant prose that was emitted after that
+ * activity. When new activity follows interim prose, a new slice starts,
+ * preserving chronological order so later tools never jump before earlier text.
+ */
+export function splitInterimProseSlices<
+	T extends { kind: string; item?: TranscriptItem },
+>(steps: T[]): Array<{ folded: T[]; prose: T[] }> {
+	const slices: Array<{ folded: T[]; prose: T[] }> = [];
+	let currentFolded: T[] = [];
+	let currentProse: T[] = [];
+
+	for (const step of steps) {
+		if (step.kind === "text" && (!step.item || step.item.kind === "assistant")) {
+			currentProse.push(step);
+		} else {
+			if (currentProse.length > 0) {
+				slices.push({ folded: currentFolded, prose: currentProse });
+				currentFolded = [];
+				currentProse = [];
+			}
+			currentFolded.push(step);
+		}
+	}
+
+	if (currentFolded.length > 0 || currentProse.length > 0) {
+		slices.push({ folded: currentFolded, prose: currentProse });
+	}
+
+	return slices;
+}
+
+/**
+ * Splits intermediate steps into folded steps (thinking + tools + notices)
+ * and interim assistant prose (plain text on the thread column).
+ * Standalone tool results (`orphan-result-*`, not assistant prose) stay folded.
  */
 export function splitInterimProse<
 	T extends { kind: string; item?: TranscriptItem },
@@ -989,7 +1005,7 @@ export function splitInterimProse<
 	const folded: T[] = [];
 	const prose: T[] = [];
 	for (const step of steps) {
-		if (step.kind === "text" && step.item?.kind === "assistant") prose.push(step);
+		if (step.kind === "text" && (!step.item || step.item.kind === "assistant")) prose.push(step);
 		else folded.push(step);
 	}
 	return { folded, prose };
@@ -1003,8 +1019,8 @@ export type SteerSegment<T> =
 
 /**
  * Like `splitInterimProse`, but per steer-delimited segment: each segment's
- * interim prose renders right after its own fold and before the steer that
- * followed it, so a steer never appears above the prose that prompted it.
+ * interim prose renders right after its own fold and before any tool calls
+ * or steer that followed it, so later tools never jump before earlier text.
  * Segments with neither folded steps nor prose are dropped.
  */
 export function splitInterimProseBySteer<
@@ -1016,8 +1032,12 @@ export function splitInterimProseBySteer<
 			out.push(seg);
 			continue;
 		}
-		const { folded, prose } = splitInterimProse(seg.steps);
-		if (folded.length > 0 || prose.length > 0) out.push({ type: "steps", folded, prose });
+		const slices = splitInterimProseSlices(seg.steps);
+		for (const slice of slices) {
+			if (slice.folded.length > 0 || slice.prose.length > 0) {
+				out.push({ type: "steps", folded: slice.folded, prose: slice.prose });
+			}
+		}
 	}
 	return out;
 }

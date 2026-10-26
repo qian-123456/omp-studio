@@ -50,14 +50,7 @@ import {
 	ensureDrawerEventBridge,
 	type DrawerTerminalEntry,
 } from "./drawerRegistry";
-import { bindXtermTheme } from "./terminalTheme";
-
-const SEARCH_DECORATIONS = {
-	matchBackground: "#3b4252",
-	activeMatchBackground: "#4f46e5",
-	matchOverviewRuler: "#434c5e",
-	activeMatchColorOverviewRuler: "#6366f1",
-};
+import { bindXtermTheme, currentXtermTheme, getSearchDecorations } from "./terminalTheme";
 
 /** Default cwd: selected session → global workspace dir → $HOME. */
 async function resolveCwd(): Promise<string> {
@@ -291,6 +284,7 @@ export function CommandTerminalPanel() {
 				existing.observer.disconnect();
 				existing.observer.observe(host);
 			}
+			existing.term.options.theme = currentXtermTheme();
 			// Refit after the tab becomes visible again and update PTY size
 			const raf = requestAnimationFrame(() => {
 				try {
@@ -332,7 +326,7 @@ export function CommandTerminalPanel() {
 			wholeWord: searchWholeWord,
 			regex: searchRegex,
 			incremental: true,
-			decorations: SEARCH_DECORATIONS,
+			decorations: getSearchDecorations(),
 		});
 	}, [activeEntry, searchQuery, searchCaseSensitive, searchWholeWord, searchRegex]);
 
@@ -342,7 +336,7 @@ export function CommandTerminalPanel() {
 			caseSensitive: searchCaseSensitive,
 			wholeWord: searchWholeWord,
 			regex: searchRegex,
-			decorations: SEARCH_DECORATIONS,
+			decorations: getSearchDecorations(),
 		});
 	}, [activeEntry, searchQuery, searchCaseSensitive, searchWholeWord, searchRegex]);
 
@@ -546,7 +540,7 @@ export function CommandTerminalPanel() {
 											wholeWord: searchWholeWord,
 											regex: searchRegex,
 											incremental: true,
-											decorations: SEARCH_DECORATIONS,
+											decorations: getSearchDecorations(),
 										});
 									} else {
 										activeEntry?.search.clearDecorations();

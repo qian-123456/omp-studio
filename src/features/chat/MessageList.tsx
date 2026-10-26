@@ -90,7 +90,6 @@ import {
 	liveAnswerCandidate,
 	noticeLabel,
 	noticeSummary,
-	splitAroundSteers,
 	splitInterimProseBySteer,
 	splitLiveTurn,
 	turnRequestItems,
@@ -1223,15 +1222,7 @@ const StreamingRow = React.memo(function StreamingRow({
 		// Per steer-delimited segment: fold, then that stretch's interim prose,
 		// then the steer (same order the committed turn renders).
 		const rest = visibleSteps.filter((s) => s !== answer);
-		const segments = splitAroundSteers(rest).map((seg) =>
-			seg.type === "steer"
-				? seg
-				: {
-						type: "steps" as const,
-						folded: seg.steps.filter((s) => s.kind !== "text"),
-						prose: seg.steps.filter((s) => s.kind === "text"),
-					},
-		);
+		const segments = splitInterimProseBySteer(rest);
 		const firstSteps = segments.findIndex((s) => s.type === "steps" && s.folded.length > 0);
 		segments.forEach((seg, si) => {
 			if (seg.type === "steer") {

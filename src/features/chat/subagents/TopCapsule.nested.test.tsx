@@ -43,14 +43,14 @@ describe("TopCapsule nested subagents", () => {
 		expect(screen.getAllByText(/2 运行中/).length).toBeGreaterThan(0);
 	});
 
-	it("chip shows direct children when expanded and the whole subtree when collapsed", () => {
+	it("chip shows direct children count consistently when expanded and collapsed", () => {
 		render(<TopCapsule />);
-		const open = screen.getByRole("button", { name: /收起 A 的 2 个下级子代理/ });
-		expect(open.textContent).toBe("1 个下级");
+		const open = screen.getByRole("button", { name: /收起 A 的 1 个子代理/ });
+		expect(open.textContent).toBe("1 个子代理");
 		fireEvent.click(open);
 		expect(rowIds()).toEqual(["A", "D"]);
-		const chip = screen.getByRole("button", { name: /展开 A 的 2 个下级子代理/ });
-		expect(chip.textContent).toBe("共 2 个子代理");
+		const chip = screen.getByRole("button", { name: /展开 A 的 1 个子代理/ });
+		expect(chip.textContent).toBe("1 个子代理");
 		fireEvent.click(chip);
 		expect(rowIds()).toEqual(["A", "A.B", "A.B.C", "D"]);
 	});

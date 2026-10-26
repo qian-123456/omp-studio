@@ -24,6 +24,7 @@ import {
 } from "./modelSelectLogic";
 import { useModelSelectPrefs } from "./modelSelectPrefs";
 import { useT } from "../stores/language";
+import { compactTokens } from "../features/chat/contextOverflow";
 export interface ModelExtraOption {
 	/** Value reported via onSelect; e.g. "" for a default row. */
 	value: string;
@@ -50,6 +51,8 @@ interface MenuProps {
 	roles?: Record<string, unknown>;
 	/** Close after any model or thinking pick and never hold a local (optimistic) selection. */
 	closeOnSelect?: boolean;
+	/** Current session tokens, used to mark models whose context window is too small. */
+	contextTokens?: number | null;
 }
 
 const EMPTY_ENTRIES: never[] = [];
@@ -115,6 +118,7 @@ export function ModelMenuContent({
 	allowCustom = false,
 	roles: rolesOverride,
 	closeOnSelect = false,
+	contextTokens,
 }: MenuProps) {
 	const { t } = useT();
 	const [q, setQ] = useState("");
@@ -315,6 +319,10 @@ export function ModelMenuContent({
 		if (e.kind === "model") {
 			const key = toModelKey(e.m.provider, e.m.id);
 			const isSelected = selectedKey === key;
+			const isTooSmall =
+				typeof contextTokens === "number" &&
+				typeof e.m.contextWindow === "number" &&
+				contextTokens > e.m.contextWindow;
 			return (
 				<div
 					key={e.id}
@@ -326,12 +334,32 @@ export function ModelMenuContent({
 				>
 					<button
 						type="button"
-						title={key}
+						title={
+							isTooSmall
+								? t("models.contextTooSmallHint", {
+										current: compactTokens(contextTokens),
+										window: compactTokens(e.m.contextWindow!),
+									})
+								: key
+						}
 						onClick={() => pickModel(key)}
 						className="flex min-w-0 flex-1 items-center justify-between px-2.5 py-1.5 text-left text-xs"
 					>
 						<div className="min-w-0 pr-2">
-							<div className="break-all font-medium">{e.m.id}</div>
+							<div className="flex items-center gap-1.5">
+								<span className="break-all font-medium">{e.m.id}</span>
+								{isTooSmall && (
+									<span
+										className="shrink-0 rounded px-1.5 py-0.2 text-[10px] font-normal border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+										title={t("models.contextTooSmallHint", {
+											current: compactTokens(contextTokens),
+											window: compactTokens(e.m.contextWindow!),
+										})}
+									>
+										{t("models.contextTooSmallChip")}
+									</span>
+								)}
+							</div>
 							{e.showProvider && (
 								<div className="break-all text-[10px] text-neutral-500">{e.m.provider}</div>
 							)}
@@ -588,6 +616,8 @@ export function ModelSelect({
 	} else if (labelLevel) {
 		const name = findCatalogModel(menu.models, current.selector)?.id ?? current.selector;
 		displayLabel = `${name} · ${labelLevel}`;
+	} else if (thinking) {
+		displayLabel = parseSelection(displayLabel).selector;
 	}
 	const levels = thinking
 		? thinkingLevelsFor(current.selector, menu.models, roles, current.level)
