@@ -81,6 +81,8 @@ export const isDeadStatus = (status: string | undefined, working: boolean): bool
 export interface ComposerHandle {
 	get(): string;
 	set(text: string, focus?: boolean): void;
+	focus?: () => void;
+	clear?: () => void;
 }
 
 export class ChatController {
@@ -536,7 +538,10 @@ export class ChatController {
 				this.scheduleFetch(300);
 			}
 			if (fork) this.set({ forkFrom: null });
-			if (r.sessionId && r.sessionId !== id) nav.push(paths.chat(r.sessionId));
+			if (r.sessionId && r.sessionId !== id) {
+				if (isDraftId(id)) nav.replace(paths.chat(r.sessionId));
+				else nav.push(paths.chat(r.sessionId));
+			}
 			else if (!r.output && !r.forwarded) toast(`/${name} 已执行`);
 			if (!this.disposed) void this.loadState();
 			useSessions.getState().refresh().catch(() => {});
@@ -568,6 +573,18 @@ export class ChatController {
 		} catch (e) {
 			toast(`恢复失败：${errorMessage(e)}`, { kind: "error" });
 		}
+	}
+
+	stageAnnotation(quote: string, comment?: string): void {
+		const formatted = comment?.trim() ? `> ${quote}\n\n${comment.trim()}` : `> ${quote}\n\n`;
+		const cur = this.composer?.get() ?? "";
+		const next = cur ? `${cur}\n\n${formatted}` : formatted;
+		this.composer?.set(next, true);
+		this.composer?.focus?.();
+	}
+
+	focusComposer(): void {
+		this.composer?.focus?.();
 	}
 
 	/* ------------------------------------------------------------ message actions */

@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { api } from "../api";
 import { events } from "../sse";
-import type { MobileSession, SpaceMode } from "../types";
-
+import { isDraftId, type MobileSession, type SpaceMode } from "../types";
 export interface CreateSessionInput {
 	cwd: string;
 	model?: { provider: string; modelId: string };
@@ -55,7 +54,11 @@ export const useSessions = create<SessionsState>((set, get) => ({
 		inflight = api<MobileSession[]>("GET", "/sessions")
 			.then((rows) => {
 				const prev = get().byId;
-				const list = (Array.isArray(rows) ? rows : []).map((r) => (prev[r.id] ? { ...prev[r.id], ...r } : r));
+				const drafts = Object.values(prev).filter((s) => isDraftId(s.id));
+				const list = [
+					...drafts,
+					...(Array.isArray(rows) ? rows : []).map((r) => (prev[r.id] ? { ...prev[r.id], ...r } : r)),
+				];
 				set({ list, byId: index(list), loaded: true, loading: false });
 				return list;
 			})
@@ -82,6 +85,20 @@ export const useSessions = create<SessionsState>((set, get) => ({
 		const res = await api<CreateResponse>("POST", "/left/sessions", body);
 		const id = res?.sessionId || res?.session?.id;
 		if (!id) throw new Error("创建会话失败：服务器未返回会话 id");
+		const draftSession: MobileSession = {
+			id,
+			label: "新会话",
+			title: "新会话",
+			status: "idle",
+			updatedAt: new Date().toISOString(),
+			cwd: res.cwd ?? cwd,
+			live: false,
+			mode: res.mode ?? mode ?? "code",
+		};
+		set((s) => ({
+			list: [draftSession, ...s.list.filter((x) => x.id !== id)],
+			byId: { ...s.byId, [id]: draftSession },
+		}));
 		// Refresh in the background: the row (draft or real) shows up in lists without blocking navigation.
 		void get().refresh().catch(() => {});
 		return { id, mode: res.mode ?? mode ?? "code", cwd: res.cwd ?? cwd };

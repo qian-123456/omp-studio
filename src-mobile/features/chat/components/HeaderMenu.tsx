@@ -1,4 +1,4 @@
-import { Folder, GitBranch, ListChecks, MessagesSquare, Server, Terminal } from "lucide-react";
+import { Folder, GitBranch, MessagesSquare, Server, Terminal } from "lucide-react";
 import type { ReactNode } from "react";
 import { nav, paths } from "../../../core/nav";
 import { BottomSheet } from "../../../ui";
@@ -15,8 +15,7 @@ const ENTRIES: Entry[] = [
 	{ label: "文件", hint: "浏览与查看项目文件", icon: <Folder size={20} />, to: paths.files },
 	{ label: "Git", hint: "状态、提交与差异", icon: <GitBranch size={20} />, to: paths.git },
 	{ label: "终端", hint: "在项目目录运行命令", icon: <Terminal size={20} />, to: paths.terminal },
-	{ label: "计划", hint: "查看当前计划与待办", icon: <ListChecks size={20} />, to: paths.plan },
-	{ label: "侧聊", hint: "不打断主会话的提问", icon: <MessagesSquare size={20} />, to: paths.sidechat },
+	{ label: "辅助对话", hint: "不打断主会话的提问", icon: <MessagesSquare size={20} />, to: paths.sidechat },
 	{ label: "服务", hint: "后台服务与任务", icon: <Server size={20} />, to: paths.services },
 ];
 

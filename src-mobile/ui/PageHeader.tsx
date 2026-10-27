@@ -33,6 +33,7 @@ export function PageHeader({
 	title,
 	subtitle,
 	onBack,
+	left,
 	right,
 	children,
 	className = "",
@@ -40,6 +41,7 @@ export function PageHeader({
 	title: ReactNode;
 	subtitle?: ReactNode;
 	onBack?: (() => void) | false;
+	left?: ReactNode;
 	right?: ReactNode;
 	children?: ReactNode;
 	className?: string;
@@ -51,7 +53,9 @@ export function PageHeader({
 			style={{ paddingTop: "var(--m-safe-top)" }}
 		>
 			<div className="flex h-13 items-center gap-1 px-1">
-				{back !== false ? (
+				{left != null ? (
+					left
+				) : back !== false ? (
 					<HeaderButton icon={<ChevronLeft size={24} />} label="返回" onClick={back} />
 				) : (
 					<div className="w-3 shrink-0" />

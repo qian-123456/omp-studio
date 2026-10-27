@@ -695,12 +695,8 @@ pub fn pending_diff(dir: &std::path::Path) -> Result<String, String> {
     result
 }
 
-#[tauri::command]
-pub async fn git_commit_suggest(
-    state: tauri::State<'_, AppState>,
-    cwd: String,
-) -> Result<String, String> {
-    let dir = PathBuf::from(&cwd);
+pub async fn git_commit_suggest_impl(state: &AppState, cwd: &str) -> Result<String, String> {
+    let dir = PathBuf::from(cwd);
     let (diff, recent) = blocking(move || {
         let diff = pending_diff(&dir)?;
         if diff.trim().is_empty() {
@@ -730,9 +726,16 @@ pub async fn git_commit_suggest(
     // independent of any other model setting.
     let model_to_use = "commit";
     let suggestion =
-        crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))
-            .await?;
+        crate::todos::omp::run_print(state, model_to_use, &prompt, Duration::from_secs(60)).await?;
     parse_commit_draft(&suggestion)
+}
+
+#[tauri::command]
+pub async fn git_commit_suggest(
+    state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<String, String> {
+    git_commit_suggest_impl(&state, &cwd).await
 }
 
 /// JSON Schema the model must answer with. `omp -p` cannot enforce a schema,

@@ -31,4 +31,9 @@ export const ROUTES: Record<Exclude<RouteName, "notFound">, Page> = {
 	settingsProviders: lazy(() => import("../features/settings").then((m) => ({ default: m.SettingsProvidersPage }))),
 	settingsFallbacks: lazy(() => import("../features/settings").then((m) => ({ default: m.SettingsFallbacksPage }))),
 	settingsContext: lazy(() => import("../features/settings").then((m) => ({ default: m.SettingsContextPage }))),
+	quota: lazy(() =>
+		import("../features/settings").then((m) => ({
+			default: "QuotaPage" in m && m.QuotaPage ? (m.QuotaPage as ComponentType<PageProps>) : () => null,
+		})),
+	),
 };

@@ -32,7 +32,7 @@ chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 dirs = "6"
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 qrcode = "0.14"
 local-ip-address = "0.6"
 parking_lot = "0.12"
@@ -45,7 +45,7 @@ getrandom = "0.3"
 trash = "5.2"
 futures-util = "0.3"
 aes-gcm = "0.10"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
 serde_yaml_ng = "0.10"
 yaml-edit = "=0.3.2"
 rcgen = "0.13"

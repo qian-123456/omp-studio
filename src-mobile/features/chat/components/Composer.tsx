@@ -1,6 +1,24 @@
-import { ArrowUp, Camera, FileText, GitBranch, Image as ImageIcon, Paperclip, PenLine, Plus, Square, Target, X, Compass } from "lucide-react";
+import {
+	ArrowUp,
+	Compass,
+	FileText,
+	Folder,
+	FolderOpen,
+	GitBranch,
+	Lightbulb,
+	Mic,
+	Monitor,
+	Paperclip,
+	PenLine,
+	Plus,
+	Square,
+	Target,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
+import { baseName } from "../../../core/lib/format";
+import { useSession } from "../../../core/stores/sessions";
 import { usePref } from "../../../core/stores/prefs";
 import { BottomSheet, Chip, Spinner, toast } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
@@ -8,15 +26,18 @@ import { contextTone, formatContextPercent, resolveContextPercent } from "../lib
 import { BEHAVIOR_HINT, BEHAVIOR_LABEL, type StreamBehavior } from "../lib/prompt";
 import { commandAction, commandInput, detectSlashQuery, type SlashCmd } from "../lib/slash";
 import { saveUnsent, UNSENT_DEBOUNCE_MS } from "../lib/unsent";
-import { shortModel } from "../lib/models";
 import { ContextSheet } from "./ContextSheet";
 import { GoalSheet, goalLabel } from "./GoalSheet";
 import { ModelSheet } from "./ModelSheet";
+import { PathSheet } from "./PathSheet";
+import { RemoteFilePickerSheet } from "./RemoteFilePickerSheet";
 import { SketchPad } from "./SketchPad";
 import { SlashPopup, SlashSheet } from "./SlashSheet";
 import { ThinkingSheet } from "./ThinkingSheet";
+import { useVoiceInput } from "./useVoiceInput";
+import { WorkspacePickerSheet } from "./WorkspacePickerSheet";
 
-type Sheet = "plus" | "slash" | "model" | "think" | "goal" | "context" | null;
+type Sheet = "plus" | "slash" | "model" | "think" | "goal" | "context" | "path" | "finder" | "workspace" | null;
 
 const SUPPORTS_FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
 const MAX_INPUT_PX = 140;
@@ -24,6 +45,7 @@ const iconBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-ful
 
 export function Composer({ sessionId }: { sessionId: string }) {
 	const { controller } = useChatUi();
+	const session = useSession(sessionId);
 	const working = useChat((s) => s.working);
 	const atts = useChat((s) => s.atts);
 	const cstate = useChat((s) => s.cstate);
@@ -37,11 +59,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	const ta = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
 	const raf = useRef(0);
-	const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const saveTimer = useRef<number | undefined>(undefined);
 	const sizing = useRef({ len: 0, lines: 1, h: 0 });
 	const fileAny = useRef<HTMLInputElement>(null);
-	const fileImg = useRef<HTMLInputElement>(null);
-	const fileCam = useRef<HTMLInputElement>(null);
 
 	/** One frame-coalesced pass: autosize (JS fallback only), slash detection, hasText. Never runs mid-composition. */
 	const flush = useCallback(() => {
@@ -71,8 +91,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	}, [flush]);
 
 	const persist = useCallback(() => {
-		if (saveTimer.current !== null) clearTimeout(saveTimer.current);
-		saveTimer.current = setTimeout(() => saveUnsent(sessionId, ta.current?.value ?? ""), UNSENT_DEBOUNCE_MS);
+		clearTimeout(saveTimer.current);
+		saveTimer.current = window.setTimeout(() => saveUnsent(sessionId, ta.current?.value ?? ""), UNSENT_DEBOUNCE_MS);
 	}, [sessionId]);
 
 	const onInput = () => {
@@ -99,13 +119,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
 				persist();
 				flush();
 			},
+			focus: () => ta.current?.focus(),
+			clear: () => {
+				if (ta.current) {
+					ta.current.value = "";
+					persist();
+					flush();
+				}
+			},
 		};
 		flush();
 		return () => {
 			controller.lastText = el.value;
 			controller.composer = null;
 			cancelAnimationFrame(raf.current);
-			if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+			clearTimeout(saveTimer.current);
 			saveUnsent(sessionId, el.value);
 		};
 	}, [controller, sessionId, flush, persist]);
@@ -116,6 +144,19 @@ export function Composer({ sessionId }: { sessionId: string }) {
 		window.addEventListener("pagehide", onHide);
 		return () => window.removeEventListener("pagehide", onHide);
 	}, [sessionId]);
+
+	// Voice input hook: inserts transcribed text into composer (editable, does not auto-send)
+	const { recording, transcribing, toggleRecording } = useVoiceInput({
+		onTranscribed: (text) => {
+			if (!ta.current) return;
+			const cur = ta.current.value;
+			const next = cur ? (cur.endsWith("\n") || cur.endsWith(" ") ? `${cur}${text}` : `${cur} ${text}`) : text;
+			ta.current.value = next;
+			flush();
+			persist();
+			ta.current.focus();
+		},
+	});
 
 	const hasContent = hasText || atts.length > 0;
 	const submit = () => {
@@ -137,51 +178,70 @@ export function Composer({ sessionId }: { sessionId: string }) {
 		try {
 			const r = await api<{ on: boolean }>("POST", `/sessions/${sessionId}/plan-mode`, {});
 			controller.patchState({ planMode: r.on });
-			toast(r.on ? "规划模式已开启" : "规划模式已关闭");
+			toast(r.on ? "规划模式已启用" : "规划模式已关闭");
 		} catch (e) {
 			toast(`切换失败：${errorMessage(e)}`, { kind: "error" });
 		}
 	};
-
+	const cwd = session?.cwd ?? null;
 	const pct = cstate ? resolveContextPercent(cstate) : null;
 	const pctText = formatContextPercent(pct);
 	const tone = contextTone(pct);
-	const model = shortModel(cstate?.model ?? "");
 	const goal = cstate?.goal && cstate.goal.objective ? cstate.goal : null;
 
-	const sheetBtn = "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-m-md border border-m-border bg-m-surface text-m-sm active:bg-m-surface-hover";
+	const sheetBtn =
+		"flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-m-md border border-m-border bg-m-surface text-m-sm active:bg-m-surface-hover";
 
 	return (
 		<div className="relative shrink-0 border-t border-m-border bg-m-bg px-3 pt-2" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}>
 			{slashQuery !== null && sheet === null && <SlashPopup sessionId={sessionId} query={slashQuery} onPick={pickCommand} />}
 
-			{cstate && (
-				<div className="-mx-3 mb-2 flex gap-2 overflow-x-auto px-3 pb-0.5">
-					{model && (
-						<Chip onClick={() => setSheet("model")} className="h-8">
-							{model} ▾
-						</Chip>
-					)}
-					{(model || cstate.thinkingLevel) && (
-						<Chip onClick={() => setSheet("think")} className="h-8">
-							思考 {cstate.thinkingLevel || "auto"} ▾
-						</Chip>
-					)}
-					{cstate.planMode && (
-						<Chip tone="accent" onClick={() => void togglePlan()} className="h-8">
-							规划模式 ●
-						</Chip>
-					)}
-					{goal && (
-						<Chip tone="accent" onClick={() => setSheet("goal")} className="h-8">
-							目标 · {goalLabel(goal)}：{goal.objective}
-						</Chip>
-					)}
-					{pctText && (
-						<Chip tone={tone === "neutral" ? "neutral" : tone} onClick={() => setSheet("context")} className="h-8">
-							上下文 {pctText}
-						</Chip>
-					)}
+			{/* Status bar above composer: Current directory (left, tap opens path sheet), Context usage % (right, tap opens ContextSheet) */}
+			<div className="mb-2 flex items-center justify-between gap-2 px-1 text-m-xs">
+				<button
+					type="button"
+					aria-label="当前工作目录"
+					onClick={() => setSheet("path")}
+					className="flex min-h-8 max-w-[55%] items-center gap-1.5 truncate rounded-m-pill px-2 py-0.5 text-m-text-2 active:bg-m-surface-hover"
+				>
+					<Folder size={14} className="shrink-0 text-m-text-3" />
+					<span className="truncate">{cwd ? baseName(cwd) : "未设置目录"}</span>
+				</button>
+
+				<button
+					type="button"
+					aria-label="上下文用量"
+					onClick={() => setSheet("context")}
+					className="flex min-h-8 items-center gap-1 rounded-m-pill px-2 py-0.5 font-medium active:bg-m-surface-hover"
+				>
+					<span className={tone === "danger" ? "text-m-danger" : tone === "warn" ? "text-m-warn" : "text-m-text-2"}>
+						上下文 {pctText ?? "0%"}
+					</span>
+				</button>
+			</div>
+
+			{/* Plan mode active indicator */}
+			{cstate?.planMode && (
+				<div className="mb-2 flex items-center justify-between rounded-m-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-m-xs text-amber-500">
+					<span className="flex items-center gap-1.5 font-medium">
+						<Compass size={14} />
+						规划模式已启用
+					</span>
+					<button
+						type="button"
+						onClick={() => void togglePlan()}
+						className="text-m-xs text-amber-500 underline active:opacity-70"
+					>
+						关闭
+					</button>
+				</div>
+			)}
+
+			{goal && (
+				<div className="mb-2">
+					<Chip tone="accent" onClick={() => setSheet("goal")} className="h-8">
+						目标 · {goalLabel(goal)}：{goal.objective}
+					</Chip>
 				</div>
 			)}
 
@@ -193,7 +253,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
 						<div className="break-words text-m-xs text-m-text-2">{forkFrom.preview}</div>
 						<div className="text-m-xs text-m-text-3">输入分支后的第一条消息并发送</div>
 					</div>
-					<button type="button" aria-label="取消分支" onClick={() => controller.cancelFork()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-m-surface-hover">
+					<button
+						type="button"
+						aria-label="取消分支"
+						onClick={() => controller.cancelFork()}
+						className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-m-surface-hover"
+					>
 						<X size={16} />
 					</button>
 				</div>
@@ -202,8 +267,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
 			{atts.length > 0 && (
 				<div className="mb-2 flex gap-2 overflow-x-auto">
 					{atts.map((a) => (
-						<div key={a.id} className={`flex shrink-0 items-center gap-2 rounded-m-md border bg-m-surface py-1 pl-2 pr-1 ${a.status === "err" ? "border-m-danger" : "border-m-border"}`}>
-							{a.isImage && a.url ? <img src={a.url} alt="" className="h-9 w-9 rounded-m-sm object-cover" /> : <FileText size={20} className="text-m-text-3" />}
+						<div
+							key={a.id}
+							className={`flex shrink-0 items-center gap-2 rounded-m-md border bg-m-surface py-1 pl-2 pr-1 ${
+								a.status === "err" ? "border-m-danger" : "border-m-border"
+							}`}
+						>
+							{a.isImage && a.url ? (
+								<img src={a.url} alt="" className="h-9 w-9 rounded-m-sm object-cover" />
+							) : (
+								<FileText size={20} className="text-m-text-3" />
+							)}
 							<span className="max-w-40 break-all text-m-xs">{a.name}</span>
 							{a.status === "up" && (
 								<span className="flex items-center gap-1 whitespace-nowrap text-m-xs text-m-text-3">
@@ -212,7 +286,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
 								</span>
 							)}
 							{a.status === "err" && <span className="whitespace-nowrap text-m-xs text-m-danger">失败</span>}
-							<button type="button" aria-label="移除附件" onClick={() => controller.removeAtt(a.id)} className="flex h-9 w-9 items-center justify-center rounded-full active:bg-m-surface-hover">
+							<button
+								type="button"
+								aria-label="移除附件"
+								onClick={() => controller.removeAtt(a.id)}
+								className="flex h-9 w-9 items-center justify-center rounded-full active:bg-m-surface-hover"
+							>
 								<X size={16} />
 							</button>
 						</div>
@@ -229,7 +308,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
 								type="button"
 								aria-pressed={behavior === b}
 								onClick={() => setBehavior(b)}
-								className={`min-h-9 whitespace-nowrap rounded-m-pill px-4 text-m-sm font-medium ${behavior === b ? "bg-m-accent text-m-accent-text" : "text-m-text-2"}`}
+								className={`min-h-9 whitespace-nowrap rounded-m-pill px-4 text-m-sm font-medium ${
+									behavior === b ? "bg-m-accent text-m-accent-text" : "text-m-text-2"
+								}`}
 							>
 								{BEHAVIOR_LABEL[b]}
 							</button>
@@ -239,10 +320,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
 				</div>
 			)}
 
+			{/* Main input bar */}
 			<div className="flex items-end gap-1 rounded-[var(--m-composer-radius,24px)] border border-m-border bg-m-composer-bg px-1 py-1">
+				{/* Left: Plus (+) menu button */}
 				<button type="button" aria-label="添加" onClick={() => setSheet("plus")} className={`${iconBtn} text-m-text-2`}>
 					<Plus size={22} />
 				</button>
+
+				{/* Middle: Textarea */}
 				<textarea
 					ref={ta}
 					rows={1}
@@ -267,54 +352,114 @@ export function Composer({ sessionId }: { sessionId: string }) {
 					className="m-composer-input min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-2 leading-6 outline-none"
 					style={SUPPORTS_FIELD_SIZING ? undefined : { height: 40, maxHeight: MAX_INPUT_PX }}
 				/>
-				<button type="button" aria-label="命令列表" onClick={() => setSheet("slash")} className={`${iconBtn} font-m-mono text-m-lg font-semibold text-m-text-2`}>
-					/
-				</button>
-				{working && (
-					<button type="button" aria-label="停止" onClick={() => void controller.stop()} className={`${iconBtn} border border-m-border text-m-text`}>
-						<Square size={16} fill="currentColor" />
-					</button>
-				)}
+
+				{/* Right side: 2 round buttons: Voice input (microphone) + Send (turns to Stop while streaming) */}
 				<button
 					type="button"
-					aria-label="发送"
-					disabled={!hasContent}
-					onClick={submit}
-					className={`${iconBtn} ${hasContent ? "bg-m-accent text-m-accent-text" : "bg-m-surface-2 text-m-text-3"}`}
+					aria-label={recording ? "停止录音" : "语音输入"}
+					disabled={transcribing}
+					onClick={() => void toggleRecording()}
+					className={`${iconBtn} ${
+						recording
+							? "bg-m-danger text-white animate-pulse"
+							: transcribing
+								? "text-m-accent"
+								: "text-m-text-2 active:bg-m-surface-hover"
+					}`}
 				>
-					<ArrowUp size={20} />
+					{transcribing ? <Spinner size={18} /> : <Mic size={20} />}
 				</button>
+
+				{working ? (
+					<button
+						type="button"
+						aria-label="停止"
+						onClick={() => void controller.stop()}
+						className={`${iconBtn} border border-m-border text-m-text active:bg-m-surface-hover`}
+					>
+						<Square size={16} fill="currentColor" />
+					</button>
+				) : (
+					<button
+						type="button"
+						aria-label="发送"
+						disabled={!hasContent}
+						onClick={submit}
+						className={`${iconBtn} ${hasContent ? "bg-m-accent text-m-accent-text" : "bg-m-surface-2 text-m-text-3"}`}
+					>
+						<ArrowUp size={20} />
+					</button>
+				)}
 			</div>
 
 			<input ref={fileAny} type="file" multiple hidden onChange={(e) => pickFiles(e, controller, false)} />
-			<input ref={fileImg} type="file" accept="image/*" multiple hidden onChange={(e) => pickFiles(e, controller, true)} />
-			<input ref={fileCam} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pickFiles(e, controller, true)} />
 
+			{/* Plus (+) menu: Exact 6 desktop options: 文件, Finder 选中项, 在项目中工作, 目标, 规划模式, 草图 */}
 			<BottomSheet open={sheet === "plus"} onClose={() => setSheet(null)} title="添加">
 				<div className="grid grid-cols-3 gap-3 px-4 pb-4">
-					<button type="button" className={sheetBtn} onClick={() => { setSheet(null); fileAny.current?.click(); }}>
-						<Paperclip size={22} />
+					<button
+						type="button"
+						className={sheetBtn}
+						onClick={() => {
+							setSheet(null);
+							fileAny.current?.click();
+						}}
+					>
+						<Paperclip size={22} className="text-blue-500" />
 						文件
 					</button>
-					<button type="button" className={sheetBtn} onClick={() => { setSheet(null); fileImg.current?.click(); }}>
-						<ImageIcon size={22} />
-						相册
+					<button
+						type="button"
+						className={sheetBtn}
+						onClick={() => {
+							setSheet("finder");
+						}}
+					>
+						<Monitor size={22} className="text-teal-500" />
+						<span className="whitespace-nowrap">Finder 选中项</span>
 					</button>
-					<button type="button" className={sheetBtn} onClick={() => { setSheet(null); fileCam.current?.click(); }}>
-						<Camera size={22} />
-						拍照
+					<button
+						type="button"
+						className={sheetBtn}
+						onClick={() => {
+							setSheet("workspace");
+						}}
+					>
+						<FolderOpen size={22} className="text-purple-500" />
+						<span className="whitespace-nowrap">在项目中工作</span>
 					</button>
-					<button type="button" className={sheetBtn} onClick={() => { setSheet(null); setSketch(true); }}>
-						<PenLine size={22} />
-						草图
-					</button>
-					<button type="button" className={sheetBtn} onClick={() => setSheet("goal")}>
-						<Target size={22} />
+					<button
+						type="button"
+						className={sheetBtn}
+						onClick={() => {
+							setSheet("goal");
+						}}
+					>
+						<Target size={22} className="text-rose-500" />
 						<span className="whitespace-nowrap">目标{goal ? " ●" : ""}</span>
 					</button>
-					<button type="button" aria-pressed={!!cstate?.planMode} className={`${sheetBtn} ${cstate?.planMode ? "!border-m-accent" : ""}`} onClick={() => { setSheet(null); void togglePlan(); }}>
-						<Compass size={22} />
+					<button
+						type="button"
+						aria-pressed={!!cstate?.planMode}
+						className={`${sheetBtn} ${cstate?.planMode ? "!border-amber-500 text-amber-500" : ""}`}
+						onClick={() => {
+							setSheet(null);
+							void togglePlan();
+						}}
+					>
+						<Lightbulb size={22} className={cstate?.planMode ? "text-amber-500" : "text-amber-400"} />
 						<span className="whitespace-nowrap">规划模式{cstate?.planMode ? " 开" : ""}</span>
+					</button>
+					<button
+						type="button"
+						className={sheetBtn}
+						onClick={() => {
+							setSheet(null);
+							setSketch(true);
+						}}
+					>
+						<PenLine size={22} className="text-emerald-500" />
+						草图
 					</button>
 				</div>
 			</BottomSheet>
@@ -335,6 +480,35 @@ export function Composer({ sessionId }: { sessionId: string }) {
 			/>
 			<GoalSheet open={sheet === "goal"} onClose={() => setSheet(null)} sessionId={sessionId} goal={goal} onGoal={(g) => controller.patchState({ goal: g })} />
 			<ContextSheet open={sheet === "context"} onClose={() => setSheet(null)} cstate={cstate} compacting={compacting} controller={controller} />
+			<PathSheet
+				open={sheet === "path"}
+				onClose={() => setSheet(null)}
+				cwd={cwd}
+				sessionId={sessionId}
+				onSwitchProject={() => setSheet("workspace")}
+			/>
+			<RemoteFilePickerSheet
+				open={sheet === "finder"}
+				onClose={() => setSheet(null)}
+				sessionId={sessionId}
+				onSelectFile={(f) => {
+					// Stage file reference into composer or add file
+					const cur = ta.current?.value ?? "";
+					const ref = `[${f.name}](${f.path})`;
+					const next = cur ? `${cur} ${ref}` : ref;
+					if (ta.current) {
+						ta.current.value = next;
+						flush();
+						persist();
+					}
+				}}
+			/>
+			<WorkspacePickerSheet
+				open={sheet === "workspace"}
+				onClose={() => setSheet(null)}
+				sessionId={sessionId}
+				currentCwd={cwd}
+			/>
 			<SketchPad
 				open={sketch}
 				onClose={() => setSketch(false)}

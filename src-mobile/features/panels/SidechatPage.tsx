@@ -1,4 +1,4 @@
-import { ArrowUp, ExternalLink, MessageSquarePlus } from "lucide-react";
+import { ArrowUp, CornerDownLeft, ExternalLink, MessageSquarePlus, Sparkles } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { relTime, sessionName } from "../../core/lib/format";
@@ -9,9 +9,26 @@ import { events } from "../../core/sse";
 import { useSessions } from "../../core/stores/sessions";
 import { STATUS_LABEL } from "../../core/types";
 import type { Item, MobileSession, TranscriptPage } from "../../core/types";
-import { Chip, EmptyState, HeaderButton, Markdown, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
+import { BottomSheet, Chip, EmptyState, HeaderButton, Markdown, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
 import { ActionButton, LoadGate, Loading } from "./PanelState";
 import { useLayer, useLoad, useResync } from "./hooks";
+
+import { loadUnsent, saveUnsent } from "../chat/lib/unsent";
+
+export const HANDBACK_MARKER = "【回传整理】";
+export const HANDBACK_PROMPT = `${HANDBACK_MARKER}请把我们在这个辅助对话里讨论并确定下来的内容，整理成一份可以交给主会话的结论。
+
+要求：
+1. 提取所有已达成的共识、最终方案与关键决定；
+2. 保持简短精炼，分点说明，方便主会话快速了解上下文；
+3. 直接输出结论内容，不要添加额外的寒暄或多余包装。`;
+function findLastItemIndex<T>(arr: readonly T[], pred: (item: T) => boolean): number {
+	for (let i = arr.length - 1; i >= 0; i--) {
+		if (pred(arr[i])) return i;
+	}
+	return -1;
+}
+
 
 const q = encodeURIComponent;
 const FETCH_DEBOUNCE_MS = 400;
@@ -23,7 +40,7 @@ export function SidechatPage({ route }: PageProps) {
 	const closeThread = useCallback(() => setThread(null), []);
 	useLayer(thread !== null, closeThread);
 	return thread ? (
-		<ThreadView threadId={thread} onClose={closeThread} />
+		<ThreadView parentId={id} threadId={thread} onClose={closeThread} />
 	) : (
 		<ListView sessionId={id} onOpen={setThread} />
 	);
@@ -64,26 +81,26 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
-			<PageHeader title="旁聊" subtitle="不打断主会话的追问" />
+			<PageHeader title="辅助对话" subtitle="不打断主会话的追问" />
 			<PullToRefresh onRefresh={() => state.reload(true)}>
 				<div className="border-b border-m-border p-3">
 					<textarea
 						ref={taRef}
 						rows={3}
-						placeholder="向这个会话发起一个旁聊问题"
+						placeholder="向这个会话发起一个辅助对话问题"
 						className="w-full resize-none rounded-m-md border border-m-border bg-m-surface p-3 text-m-md text-m-text outline-none focus:border-m-accent"
 					/>
 					<div className="mt-2 flex justify-end">
 						<ActionButton tone="primary" disabled={creating} onClick={() => void create()}>
 							<MessageSquarePlus size={16} />
-							发起旁聊
+							发起辅助对话
 						</ActionButton>
 					</div>
 				</div>
 				<LoadGate state={state}>
 					{(rows) =>
 						rows.length === 0 ? (
-							<EmptyState title="还没有旁聊" />
+							<EmptyState title="还没有辅助对话" />
 						) : (
 							<ul className="m-0 list-none p-0">
 								{rows.map((s) => (
@@ -114,7 +131,7 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 
 /* ---------------------------------------------------------------- thread */
 
-function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => void }) {
+function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadId: string; onClose: () => void }) {
 	const session = useSessions((s) => s.byId[threadId]);
 	const [items, setItems] = useState<Item[]>([]);
 	const [pending, setPending] = useState<string[]>([]);
@@ -126,6 +143,11 @@ function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => vo
 	const alive = useRef(true);
 	const scroller = useRef<HTMLDivElement>(null);
 	const stick = useRef(true);
+
+	const [handbackOpen, setHandbackOpen] = useState(false);
+	const [handbackDraft, setHandbackDraft] = useState("");
+	const [handbackPhase, setHandbackPhase] = useState<"idle" | "summarizing" | "ready" | "error">("idle");
+	const [handbackSending, setHandbackSending] = useState(false);
 
 	const fetchThread = useCallback(async () => {
 		if (inflight.current) {
@@ -157,6 +179,81 @@ function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => vo
 			}
 		}
 	}, [threadId]);
+	const triggerSummarize = async () => {
+		setHandbackPhase("summarizing");
+		try {
+			await api("POST", `/sessions/${q(threadId)}/prompt`, { text: HANDBACK_PROMPT });
+			window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+		} catch (e) {
+			setHandbackPhase("error");
+			toast(`整理失败：${errorMessage(e)}`, { kind: "error" });
+		}
+	};
+
+	useEffect(() => {
+		if (handbackPhase !== "summarizing") return;
+		const markerIdx = findLastItemIndex(items, (it) => it.role === "user" && (it.text?.includes(HANDBACK_MARKER) ?? false));
+		if (markerIdx >= 0) {
+			const assistantAfter = items.slice(markerIdx + 1).find((it) => it.role === "assistant" && it.text);
+			if (assistantAfter?.text) {
+				setHandbackDraft(assistantAfter.text);
+				if (session?.status !== "working") {
+					setHandbackPhase("ready");
+				}
+			}
+		}
+	}, [items, handbackPhase, session?.status]);
+
+	const openHandback = () => {
+		if (items.length === 0) {
+			toast("辅助对话暂无内容，请先提问", { kind: "error" });
+			return;
+		}
+		setHandbackOpen(true);
+		// If we haven't drafted yet, look for an existing marker response or prefill with the latest assistant message
+		const markerIdx = findLastItemIndex(items, (it) => it.role === "user" && (it.text?.includes(HANDBACK_MARKER) ?? false));
+		if (markerIdx >= 0) {
+			const assistantAfter = items.slice(markerIdx + 1).find((it) => it.role === "assistant" && it.text);
+			if (assistantAfter?.text) {
+				setHandbackDraft(assistantAfter.text);
+				setHandbackPhase("ready");
+				return;
+			}
+		}
+		const lastAssistant = [...items].reverse().find((it) => it.role === "assistant" && it.text)?.text ?? "";
+		if (lastAssistant && !handbackDraft) {
+			setHandbackDraft(lastAssistant);
+			setHandbackPhase("ready");
+		}
+	};
+
+	const insertIntoParent = () => {
+		const title = session ? sessionName(session) : "辅助对话";
+		const note = `[来自辅助对话：${title}]\n> ${handbackDraft.trim()}`;
+		const prev = loadUnsent(parentId);
+		const combined = prev ? `${prev}\n\n${note}` : note;
+		saveUnsent(parentId, combined);
+		setHandbackOpen(false);
+		toast("已放进主会话输入框", { kind: "success" });
+		nav.push(paths.chat(parentId));
+	};
+
+	const sendDirectToParent = async () => {
+		setHandbackSending(true);
+		try {
+			const title = session ? sessionName(session) : "辅助对话";
+			const note = `[来自辅助对话：${title}]\n\n${handbackDraft.trim()}`;
+			await api("POST", `/sessions/${q(parentId)}/prompt`, { text: note });
+			setHandbackOpen(false);
+			toast("已成功回传给父会话", { kind: "success" });
+			nav.push(paths.chat(parentId));
+		} catch (e) {
+			toast(`回传失败：${errorMessage(e)}`, { kind: "error" });
+		} finally {
+			setHandbackSending(false);
+		}
+	};
+
 
 	useEffect(() => {
 		alive.current = true;
@@ -198,17 +295,28 @@ function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => vo
 	const working = session?.status === "working";
 	const visible = items.length > MAX_ROWS ? items.slice(-MAX_ROWS) : items;
 	return (
-		<div className="flex h-full flex-col bg-m-bg">
+		<>
+			<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader
-				title={session ? sessionName(session) : "旁聊"}
+				title={session ? sessionName(session) : "辅助对话"}
 				subtitle={working ? "运行中" : undefined}
 				onBack={onClose}
 				right={
-					<HeaderButton
-						icon={<ExternalLink size={20} />}
-						label="打开完整会话"
-						onClick={() => nav.push(paths.chat(threadId))}
-					/>
+					<>
+						<button
+							type="button"
+							onClick={openHandback}
+							className="mr-1 flex min-h-9 items-center gap-1 whitespace-nowrap rounded-m-pill border border-m-border px-2.5 text-m-xs font-medium text-m-accent active:bg-m-surface-hover"
+						>
+							<CornerDownLeft size={14} />
+							回传
+						</button>
+						<HeaderButton
+							icon={<ExternalLink size={20} />}
+							label="打开完整会话"
+							onClick={() => nav.push(paths.chat(threadId))}
+						/>
+					</>
 				}
 			/>
 			<div
@@ -239,8 +347,64 @@ function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => vo
 					</div>
 				)}
 			</div>
-			<ThreadComposer onSend={send} />
-		</div>
+				<ThreadComposer onSend={send} />
+			</div>
+			<BottomSheet
+				open={handbackOpen}
+				onClose={() => setHandbackOpen(false)}
+				title="回传给父会话"
+				footer={
+					<div className="flex gap-2 p-3">
+						<ActionButton
+							className="flex-1"
+							disabled={!handbackDraft.trim() || handbackSending}
+							onClick={insertIntoParent}
+						>
+							放入输入框
+						</ActionButton>
+						<ActionButton
+							tone="primary"
+							className="flex-1"
+							disabled={!handbackDraft.trim() || handbackSending}
+							onClick={() => void sendDirectToParent()}
+						>
+							{handbackSending ? <Spinner size={14} /> : "直接发送"}
+						</ActionButton>
+					</div>
+				}
+			>
+				<div className="p-4">
+					<div className="mb-2 flex items-center justify-between">
+						<span className="text-m-sm text-m-text-2">结论摘要</span>
+						<button
+							type="button"
+							disabled={handbackPhase === "summarizing" || working}
+							onClick={() => void triggerSummarize()}
+							className="flex min-h-8 items-center gap-1.5 rounded-m-pill border border-m-border px-3 text-m-xs font-medium text-m-accent active:bg-m-surface-hover disabled:opacity-50"
+						>
+							{handbackPhase === "summarizing" ? <Spinner size={12} /> : <Sparkles size={14} />}
+							让 AI 整理结论
+						</button>
+					</div>
+					{handbackPhase === "summarizing" && (
+						<div className="mb-3 flex items-center gap-2 rounded-m-md bg-m-surface p-3 text-m-sm text-m-text-3">
+							<Spinner size={16} />
+							<span>辅助对话正在整理结论…</span>
+						</div>
+					)}
+					<textarea
+						value={handbackDraft}
+						onChange={(e) => setHandbackDraft(e.target.value)}
+						rows={6}
+						placeholder="编辑要回传给父会话的结论内容..."
+						className="w-full resize-none rounded-m-md border border-m-border bg-m-surface p-3 text-m-md text-m-text outline-none focus:border-m-accent"
+					/>
+					<p className="mt-2 text-m-xs text-m-text-3">
+						点击「放入输入框」将作为引用草稿放入主会话输入框；点击「直接发送」将作为新消息直接发送给主会话。
+					</p>
+				</div>
+			</BottomSheet>
+		</>
 	);
 }
 

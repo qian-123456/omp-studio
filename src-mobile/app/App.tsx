@@ -1,6 +1,7 @@
 import { Suspense, useEffect } from "react";
 import { ROUTES } from "./routes";
 import { ConnectionBanner } from "./ConnectionBanner";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { useTheme } from "./theme";
 import { installViewportTracking } from "./viewport";
 import { useRoute } from "../core/nav";
@@ -27,9 +28,11 @@ function RouteView() {
 	}
 	const Page = ROUTES[route.name];
 	return (
-		<Suspense fallback={<PageFallback />}>
-			<Page key={route.path} route={route} />
-		</Suspense>
+		<ErrorBoundary resetKey={route.path}>
+			<Suspense fallback={<PageFallback />}>
+				<Page key={route.path} route={route} />
+			</Suspense>
+		</ErrorBoundary>
 	);
 }
 

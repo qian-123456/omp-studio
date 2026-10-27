@@ -30,6 +30,7 @@ describe("parseRoute", () => {
 			["/settings/providers", "settingsProviders"],
 			["/settings/fallbacks", "settingsFallbacks"],
 			["/settings/context", "settingsContext"],
+			["/quota", "quota"],
 		];
 		for (const [path, name, params] of cases) {
 			const r = parseRoute(`#${path}`);

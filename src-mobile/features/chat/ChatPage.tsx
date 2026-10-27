@@ -1,12 +1,11 @@
-import { Menu, Plus } from "lucide-react";
+import { ChevronDown, Menu, MoreVertical, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { PageProps } from "../../core/nav";
 import { useSession } from "../../core/stores/sessions";
-import { PageHeader, Spinner, HeaderButton } from "../../ui";
-import { STATUS_LABEL, isDraftId } from "../../core/types";
-import { baseName, sessionName } from "../../core/lib/format";
+import { Spinner } from "../../ui";
+import { STATUS_LABEL } from "../../core/types";
+import { MenuSheet } from "../sessions/MenuSheet";
 import { NewSessionSheet } from "../sessions";
-import { SubagentCapsule } from "../subagents";
 import "./chat.css";
 import { ChatCtx, type ChatUi, type MessageTarget } from "./ChatContext";
 import { ChatController, isDeadStatus } from "./chatStore";
@@ -14,51 +13,83 @@ import { Composer } from "./components/Composer";
 import { HeaderMenu } from "./components/HeaderMenu";
 import { MessageActionsSheet } from "./components/MessageActions";
 import { MessageList } from "./components/MessageList";
+import { ModelThinkingSheet } from "./components/ModelThinkingSheet";
 import { PendingCards } from "./components/PendingCards";
 import { StatCard } from "./components/StatLine";
+import { shortModel } from "./lib/models";
 import type { RequestStat } from "./lib/requestStats";
-import { useChat } from "./ChatContext";
+import { useChat, useChatUi as useUi } from "./ChatContext";
 
-const DOT: Record<string, string> = {
-	working: "bg-m-success",
-	awaiting_approval: "bg-m-warn",
-	awaiting_answer: "bg-m-warn",
-	error: "bg-m-danger",
-	interrupted: "bg-m-danger",
-};
+function TopBar({
+	onOpenMenu,
+	onOpenPicker,
+	onNew,
+	onToolMenu,
+}: {
+	onOpenMenu: () => void;
+	onOpenPicker: () => void;
+	onNew: () => void;
+	onToolMenu: () => void;
+}) {
+	const cstate = useChat((s) => s.cstate);
+	const model = shortModel(cstate?.model ?? "") || "选择模型";
+	const thinking = cstate?.thinkingLevel || "auto";
 
-function Header({ sessionId, onNew, onMenu }: { sessionId: string; onNew: () => void; onMenu: () => void }) {
-	const session = useSession(sessionId);
-	const working = useChat((s) => s.working);
-	const status = working ? "working" : (session?.status ?? "idle");
-	const label = working ? "回复中" : (STATUS_LABEL[status] ?? status);
-	const title = sessionName(session) || (isDraftId(sessionId) ? "新会话" : "会话");
 	return (
-		<PageHeader
-			title={title}
-			subtitle={
-				<span className="flex items-center gap-1.5">
-					<span className={`inline-block h-2 w-2 shrink-0 rounded-full ${DOT[status] ?? "bg-m-text-3"}`} />
-					<span className="whitespace-nowrap">{label}</span>
-					{session?.cwd && <span className="min-w-0 truncate">· {baseName(session.cwd)}</span>}
-				</span>
-			}
-			right={
-				<>
+		<header
+			className="sticky top-0 z-20 shrink-0 border-b border-m-border bg-m-bg text-m-text"
+			style={{ paddingTop: "var(--m-safe-top)" }}
+		>
+			<div className="flex h-13 items-center justify-between gap-1 px-2">
+				{/* Menu (left) */}
+				<button
+					type="button"
+					aria-label="菜单"
+					title="菜单"
+					onClick={onOpenMenu}
+					className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
+				>
+					<Menu size={22} />
+				</button>
+
+				{/* Current model + thinking level pill (middle-left, tap opens bottom sheet picker) */}
+				<button
+					type="button"
+					aria-label="选择模型和思考等级"
+					onClick={onOpenPicker}
+					className="flex min-h-9 max-w-[210px] shrink min-w-0 items-center gap-1.5 truncate rounded-m-pill border border-m-border bg-m-surface px-3 text-m-xs font-medium text-m-text active:bg-m-surface-hover"
+				>
+					<span className="truncate">{model}</span>
+					<span className="text-m-text-3">·</span>
+					<span className="shrink-0 text-m-text-2">思考 {thinking}</span>
+					<ChevronDown size={14} className="shrink-0 text-m-text-3" />
+				</button>
+
+				<div className="min-w-0 flex-1" />
+
+				{/* "新建对话" icon + Right tool menu (right) */}
+				<div className="flex shrink-0 items-center">
 					<button
 						type="button"
+						aria-label="新建对话"
+						title="新建对话"
 						onClick={onNew}
-						className="mr-1 flex min-h-9 items-center gap-1 whitespace-nowrap rounded-m-pill border border-m-border px-3 text-m-sm font-medium active:bg-m-surface-hover"
+						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
 					>
-						<Plus size={16} />
-						新建
+						<Plus size={22} />
 					</button>
-					<HeaderButton icon={<Menu size={22} />} label="菜单" onClick={onMenu} />
-				</>
-			}
-		>
-			<SubagentCapsule sessionId={sessionId} />
-		</PageHeader>
+					<button
+						type="button"
+						aria-label="工具菜单"
+						title="工具菜单"
+						onClick={onToolMenu}
+						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
+					>
+						<MoreVertical size={20} />
+					</button>
+				</div>
+			</div>
+		</header>
 	);
 }
 
@@ -70,7 +101,9 @@ function ResumeBar({ sessionId }: { sessionId: string }) {
 	if (!isDeadStatus(session?.status, working)) return null;
 	return (
 		<div className="flex shrink-0 items-center gap-3 border-t border-m-border bg-m-surface px-4 py-2">
-			<span className="min-w-0 flex-1 text-m-sm text-m-text-2">会话{STATUS_LABEL[session?.status ?? ""] ?? "已停止"}，发送消息或点击恢复</span>
+			<span className="min-w-0 flex-1 text-m-sm text-m-text-2">
+				会话{STATUS_LABEL[session?.status ?? ""] ?? "已停止"}，发送消息或点击恢复
+			</span>
 			<button
 				type="button"
 				disabled={busy}
@@ -86,14 +119,14 @@ function ResumeBar({ sessionId }: { sessionId: string }) {
 	);
 }
 
-import { useChatUi as useUi } from "./ChatContext";
-
 export function ChatPage({ route }: PageProps) {
 	const id = route.params.id;
 	const [controller, setController] = useState<ChatController | null>(null);
 	const [target, setTarget] = useState<MessageTarget | null>(null);
 	const [stat, setStat] = useState<RequestStat | null>(null);
-	const [menu, setMenu] = useState(false);
+	const [toolMenu, setToolMenu] = useState(false);
+	const [menuSheet, setMenuSheet] = useState(false);
+	const [pickerOpen, setPickerOpen] = useState(false);
 	const [newOpen, setNewOpen] = useState(false);
 	const session = useSession(id);
 
@@ -119,10 +152,16 @@ export function ChatPage({ route }: PageProps) {
 			</div>
 		);
 	}
+
 	return (
 		<ChatCtx.Provider value={ui}>
 			<div className="flex min-h-0 flex-1 flex-col bg-m-bg">
-				<Header sessionId={id} onNew={() => setNewOpen(true)} onMenu={() => setMenu(true)} />
+				<TopBar
+					onOpenMenu={() => setMenuSheet(true)}
+					onOpenPicker={() => setPickerOpen(true)}
+					onNew={() => setNewOpen(true)}
+					onToolMenu={() => setToolMenu(true)}
+				/>
 				<MessageList sessionId={id} />
 				<PendingCards />
 				<ResumeBar sessionId={id} />
@@ -130,8 +169,16 @@ export function ChatPage({ route }: PageProps) {
 			</div>
 			<MessageActionsSheet target={target} onClose={() => setTarget(null)} controller={controller} />
 			<StatCard stat={stat} onClose={() => setStat(null)} />
-			<HeaderMenu open={menu} onClose={() => setMenu(false)} sessionId={id} />
+			<HeaderMenu open={toolMenu} onClose={() => setToolMenu(false)} sessionId={id} />
+			<MenuSheet open={menuSheet} onClose={() => setMenuSheet(false)} onNewSession={() => setNewOpen(true)} />
 			<NewSessionSheet open={newOpen} onClose={() => setNewOpen(false)} defaultCwd={session?.cwd} />
+			<ModelThinkingSheet
+				open={pickerOpen}
+				onClose={() => setPickerOpen(false)}
+				sessionId={id}
+				currentLevel={controller.state.cstate?.thinkingLevel ?? null}
+				onFacts={(f) => controller.patchState({ model: f.model, thinkingLevel: f.thinkingLevel })}
+			/>
 		</ChatCtx.Provider>
 	);
 }

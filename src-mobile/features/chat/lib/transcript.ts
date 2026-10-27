@@ -52,7 +52,8 @@ function markUnresolved(items: Item[], raw: readonly TranscriptItem[]): void {
 	}
 }
 
-export function mergePage(prev: TranscriptState, page: TranscriptPage): MergeResult {
+export function mergePage(prev: TranscriptState, page?: TranscriptPage | null): MergeResult {
+	if (!page) return { state: prev, newCount: 0 };
 	const base = page.reset ? EMPTY_TRANSCRIPT : prev;
 	let items = base.items;
 	const stats = { ...base.stats };

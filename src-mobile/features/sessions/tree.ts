@@ -599,36 +599,42 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 		rows.push({ t: "ubar", key: "__unassigned|bar", depth: 1, scope: UNASSIGNED_SCOPE, total: all.length });
 	};
 
-	if (d.pinned.length) {
-		if (header("__pinned", true, { level: "sec", depth: 0, icon: "pin", title: "置顶", count: d.pinned.length, status: d.pinned }))
-			flatList("__pinned", d.pinned, 1);
+	const pinned = d.pinned ?? [];
+	const workspaceGroups = d.workspaceGroups ?? [];
+	const unassignedGroups = d.unassignedGroups ?? [];
+	const deletedSessions = d.deletedSessions ?? [];
+	const archived = d.archived ?? [];
+
+	if (pinned.length) {
+		if (header("__pinned", true, { level: "sec", depth: 0, icon: "pin", title: "置顶", count: pinned.length, status: pinned }))
+			flatList("__pinned", pinned, 1);
 	}
 	if (d.globalGroup) groupRows(d.globalGroup, "g");
-	for (const g of d.workspaceGroups) groupRows(g, "w");
-	if (d.unassignedGroups.length) unassignedBucket();
-	if (d.deletedSessions.length) {
-		scopes.__deleted = d.deletedSessions;
+	for (const g of workspaceGroups) groupRows(g, "w");
+	if (unassignedGroups.length) unassignedBucket();
+	if (deletedSessions.length) {
+		scopes.__deleted = deletedSessions;
 		const open = header("__deleted", false, {
 			level: "sec",
 			depth: 0,
 			icon: "deleted",
 			title: "已清理工作树",
-			count: d.deletedSessions.length,
-			status: d.deletedSessions,
+			count: deletedSessions.length,
+			status: deletedSessions,
 			actions: [{ kind: "archive", label: "一键归档全部已清理工作树的会话", scope: "__deleted", title: "已清理工作树" }],
 			dim: true,
 		});
-		if (open) cappedList("__deleted", d.deletedSessions, RECENT_LIMIT, 1);
+		if (open) cappedList("__deleted", deletedSessions, RECENT_LIMIT, 1);
 	}
-	if (d.archived.length) {
+	if (archived.length) {
 		const open = header("archived", false, {
 			level: "sec",
 			depth: 0,
 			icon: "archive",
 			title: "已归档",
-			count: d.archived.length,
+			count: archived.length,
 		});
-		if (open) cappedList("archived", d.archived, NO_WT_LIMIT, 1);
+		if (open) cappedList("archived", archived, NO_WT_LIMIT, 1);
 	}
 	return { rows, scopes };
 }

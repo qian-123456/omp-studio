@@ -1056,3 +1056,46 @@ async fn push_endpoints_subscribe_test_unsubscribe() {
     assert_eq!(s, StatusCode::OK);
     assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["removed"], 0);
 }
+
+#[tokio::test]
+async fn presence_and_quota_and_voice_endpoints() {
+    let h = harness();
+    // Unauthorized
+    let (s, _, _) = call(&h, get("/api/quota", None)).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _, _) = call(&h, post("/api/presence", "", json!({}))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _, _) = call(&h, post("/api/voice/transcribe", "", json!({}))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    let cookie = pair(&h).await;
+
+    // 1. Quota endpoint
+    let (s, _, body) = call(&h, get("/api/quota", Some(&cookie))).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert!(v.get("providers").is_some());
+    assert!(v.get("updatedAt").is_some());
+
+    // 2. Presence endpoint
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/presence",
+            &cookie,
+            json!({ "sessionId": "s-test", "visible": true }),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["ok"], true);
+
+    // 3. Voice transcription endpoint with empty audio
+    let (s, _, body) = call(&h, post("/api/voice/transcribe", &cookie, json!({}))).await;
+    // Axum json extractor on empty body or voice validation returns structured error or bad request
+    assert!(
+        s == StatusCode::BAD_REQUEST || s == StatusCode::UNPROCESSABLE_ENTITY,
+        "{s}: {body}"
+    );
+}

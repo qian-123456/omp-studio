@@ -34,6 +34,12 @@ export default defineConfig({
 			},
 			output: {
 				entryFileNames: (chunk) => (chunk.name === "sw" ? "sw.js" : "assets/[name]-[hash].js"),
+				chunkFileNames: "assets/[name]-[hash].js",
+				manualChunks(id) {
+					if (id.includes("node_modules/mermaid")) {
+						return "mermaid";
+					}
+				},
 			},
 		},
 	},

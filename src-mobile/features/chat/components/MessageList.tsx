@@ -3,6 +3,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { PullToRefresh } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
 import type { Block, Turn } from "../lib/turns";
+import { SubagentCapsule } from "../../subagents";
+import { SelectionToolbar } from "./SelectionToolbar";
 import { PendingBubble, TurnView } from "./TurnView";
 
 /** Turns rendered initially / per 「更早」 press; the rest stay in memory only. */
@@ -108,6 +110,12 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 
 	return (
 		<div className="relative flex min-h-0 flex-1 flex-col">
+			<div className="pointer-events-none absolute right-3 top-2 z-10">
+				<div className="pointer-events-auto">
+					<SubagentCapsule sessionId={sessionId} />
+				</div>
+			</div>
+			<SelectionToolbar containerRef={contentRef} sessionId={sessionId} />
 			<PullToRefresh ref={scrollRef} onRefresh={() => controller.refresh()}>
 				<div ref={contentRef} className="py-2">
 					{hidden > 0 && (

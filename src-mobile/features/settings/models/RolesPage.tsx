@@ -16,7 +16,7 @@ import {
 	type RolesResponse,
 } from "./logic";
 import { Badge, Btn, ConfirmDiffSheet, SectionTitle, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
-
+import { BatchReplaceSheet } from "./BatchReplaceSheet";
 interface Draft {
 	roleId: string;
 	label: string;
@@ -43,7 +43,7 @@ export function SettingsRolesPage({ route }: PageProps) {
 	const [edit, setEdit] = useState<Edit | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
-
+	const [batchReplaceOpen, setBatchReplaceOpen] = useState(false);
 	const current = (roleId: string): { raw: string | undefined; isProject: boolean } => {
 		if (cwd && roleId in pRoles) return { raw: pRoles[roleId], isProject: true };
 		return { raw: gRoles[roleId], isProject: false };
@@ -135,7 +135,10 @@ export function SettingsRolesPage({ route }: PageProps) {
 			error={error}
 			onRetry={reload}
 		>
-			<SectionTitle title={cwd ? `项目配置（${baseName(cwd)}）` : "全局配置"} hint={cwd ? "项目优先" : "所有项目生效"} />
+			<div className="flex items-center justify-between px-4 py-2">
+				<SectionTitle title={cwd ? `项目配置（${baseName(cwd)}）` : "全局配置"} hint={cwd ? "项目优先" : "所有项目生效"} />
+				<Btn onClick={() => setBatchReplaceOpen(true)}>批量替换</Btn>
+			</div>
 			{ROLE_KEYS.map((rk) => {
 				const { raw, isProject } = current(rk.id);
 				const v = parseRoleValue(raw, models);
@@ -211,6 +214,14 @@ export function SettingsRolesPage({ route }: PageProps) {
 				onCancel={closeEdit}
 				onBack={edit?.kind === "confirm" ? () => setEdit({ kind: "pick", draft: edit.draft }) : undefined}
 				onConfirm={save}
+			/>
+			<BatchReplaceSheet
+				open={batchReplaceOpen}
+				onClose={() => setBatchReplaceOpen(false)}
+				cwd={cwd}
+				roles={cwd ? { ...gRoles, ...pRoles } : gRoles}
+				models={models}
+				onSuccess={reload}
 			/>
 		</SettingsPageFrame>
 	);

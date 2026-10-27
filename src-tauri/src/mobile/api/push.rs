@@ -31,6 +31,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/push/subscribe", post(subscribe::<B>))
         .route("/push/unsubscribe", post(unsubscribe::<B>))
         .route("/push/test", post(test::<B>))
+        .route("/presence", post(presence::<B>))
 }
 
 async fn public_key<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {
@@ -102,4 +103,24 @@ async fn test<B: Backend>(
     Ok(Json(json!({
         "ok": true, "sent": s.sent, "removed": s.removed, "failed": s.failed,
     })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PresenceInput {
+    #[serde(alias = "session_id")]
+    session_id: Option<String>,
+    #[serde(alias = "foreground", default)]
+    visible: Option<bool>,
+}
+
+async fn presence<B: Backend>(
+    Extension(auth::Token(token)): Extension<auth::Token>,
+    Json(input): Json<PresenceInput>,
+) -> ApiResult<Value> {
+    let token_hash = auth::hash_token(&token);
+    let visible = input.visible.unwrap_or(true);
+    let session = input.session_id.filter(|s| !s.trim().is_empty());
+    push::update_presence(&token_hash, session, visible);
+    Ok(Json(json!({ "ok": true })))
 }

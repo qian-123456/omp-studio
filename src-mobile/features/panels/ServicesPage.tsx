@@ -30,7 +30,7 @@ export function ServicesPage(_props: PageProps) {
 	const stop = async (s: Service) => {
 		const ok = await confirm({
 			title: "停止服务",
-			message: `停止 ${s.name}（PID ${s.pid}，端口 ${s.port}）？`,
+			message: `确定停止服务 ${s.name}（PID ${s.pid}，端口 :${s.port}）？`,
 			confirmText: "停止",
 			danger: true,
 		});
@@ -68,26 +68,24 @@ export function ServicesPage(_props: PageProps) {
 							<ul className="m-0 list-none space-y-3 p-3">
 								{rows.map((s) => {
 									const sess = s.sessionId ? byId[s.sessionId] : undefined;
-									const meta = [
-										`PID ${s.pid}`,
-										s.memoryKb ? `${(s.memoryKb / 1024).toFixed(0)} MB` : null,
-										sess ? sessionName(sess) : null,
-										s.cwd,
-									]
-										.filter(Boolean)
-										.join(" · ");
+									const sessLabel = sess ? sessionName(sess) : s.sessionId ? `会话 ${s.sessionId}` : "无所属会话";
 									return (
 										<li key={s.pid} className="rounded-m-lg border border-m-border bg-m-surface p-3">
 											<div className="flex flex-wrap items-center gap-2">
 												<Chip tone="accent">:{s.port}</Chip>
+												<Chip>PID {s.pid}</Chip>
 												<span className="min-w-0 break-all text-m-md font-medium text-m-text">{s.name}</span>
-												{s.startedByApp && <Chip>应用启动</Chip>}
+												{s.startedByApp && <Chip tone="neutral">应用启动</Chip>}
 											</div>
 											<div className="mt-2 break-all font-m-mono text-m-xs text-m-text-2">{s.command}</div>
-											<div className="mt-1 break-all text-m-xs text-m-text-3">{meta}</div>
+											<div className="mt-2 space-y-0.5 text-m-xs text-m-text-3">
+												{s.cwd && <div className="break-all">目录：{s.cwd}</div>}
+												<div>所属：{sessLabel}</div>
+												{s.memoryKb && <div>内存：{(s.memoryKb / 1024).toFixed(0)} MB</div>}
+											</div>
 											<div className="mt-2 flex justify-end">
 												<ActionButton tone="danger" disabled={stopping === s.pid} onClick={() => void stop(s)}>
-													停止
+													停止服务
 												</ActionButton>
 											</div>
 										</li>

@@ -168,6 +168,14 @@ export function SubagentDetailPage({ route }: PageProps) {
 				) : (
 					<div className="px-3 pb-8 pt-3">
 						{error && <div className="mb-3 rounded-m-md bg-m-surface px-3 py-2 text-m-xs text-m-danger">刷新失败：{error}</div>}
+						{bucket === "failed" && (
+							<div className="mb-4 rounded-m-md border border-m-danger/30 bg-m-danger/10 p-3 text-m-sm text-m-danger">
+								<div className="flex items-center gap-1.5 font-medium">
+									<AlertCircle size={16} />
+									<span>执行异常：{statusText(summary!.status)}</span>
+								</div>
+							</div>
+						)}
 						<div className="mb-4 flex flex-wrap items-center gap-2">
 							<Chip tone={BUCKET_TONE[bucket]} icon={bucket === "running" ? <Spinner size={10} /> : undefined}>
 								{statusText(summary!.status)}
@@ -188,7 +196,7 @@ export function SubagentDetailPage({ route }: PageProps) {
 								<PromptBlock text={info.prompt} />
 							</Section>
 						)}
-						<Section title="对话记录">
+						<Section title="执行过程（工具与思考）">
 							{messages.length === 0 ? (
 								<div className="rounded-m-md bg-m-surface px-3 py-6 text-center text-m-sm text-m-text-3">
 									{running ? "子代理刚启动，还没有输出" : "没有对话记录"}

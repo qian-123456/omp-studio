@@ -368,6 +368,15 @@ pub fn list_subscriptions(conn: &Connection, device: Option<&str>) -> Vec<Subscr
 static SSE_CLIENTS: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DevicePresence {
+    pub current_session: Option<String>,
+    pub visible: bool,
+}
+
+static PRESENCE: LazyLock<Mutex<HashMap<String, DevicePresence>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Marks a device as having a live `/api/events` stream while it is alive.
 pub struct SseGuard(String);
 
@@ -394,6 +403,41 @@ pub fn has_sse_client(token_hash: &str) -> bool {
     SSE_CLIENTS.lock().contains_key(token_hash)
 }
 
+/// Update device foreground visibility and currently viewed session.
+pub fn update_presence(token_hash: &str, current_session: Option<String>, visible: bool) {
+    PRESENCE.lock().insert(
+        token_hash.to_string(),
+        DevicePresence {
+            current_session,
+            visible,
+        },
+    );
+}
+
+/// Clear presence for a device.
+#[allow(dead_code)]
+pub fn clear_presence(token_hash: &str) {
+    PRESENCE.lock().remove(token_hash);
+}
+
+/// Read current presence state for a device.
+#[allow(dead_code)]
+pub fn get_presence(token_hash: &str) -> Option<DevicePresence> {
+    PRESENCE.lock().get(token_hash).cloned()
+}
+
+/// Whether a device is currently connected via SSE AND actively in the foreground
+/// viewing that specific session. If so, web push is suppressed.
+pub fn is_viewing_session(token_hash: &str, session_id: &str) -> bool {
+    if !has_sse_client(token_hash) {
+        return false;
+    }
+    let map = PRESENCE.lock();
+    let Some(presence) = map.get(token_hash) else {
+        return false;
+    };
+    presence.visible && presence.current_session.as_deref() == Some(session_id)
+}
 // ------------------------------------------------------------- delivery
 
 /// One ready-to-send HTTP request to a push service.
@@ -477,8 +521,12 @@ where
     let now = chrono::Utc::now().timestamp();
     let mut out = Summary::default();
     for sub in subs {
-        if skip_live_devices && has_sse_client(&sub.token_hash) {
-            continue;
+        if skip_live_devices {
+            if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str) {
+                if is_viewing_session(&sub.token_hash, session_id) {
+                    continue;
+                }
+            }
         }
         let status = match build_request(&vapid, &sub, body.as_bytes(), now, "high") {
             Ok(req) => send(req).await,
@@ -857,6 +905,7 @@ mod tests {
         }
         let db = Mutex::new(conn);
         let _guard = SseGuard::new("live".into());
+        update_presence("live", Some("s1".into()), true);
 
         let seen = Mutex::new(Vec::<(String, usize, String)>::new());
         let send = |req: PushHttp| {
@@ -872,7 +921,14 @@ mod tests {
             };
             async move { Ok::<u16, String>(status) }
         };
-        let sum = notify(&db, None, true, &json!({"title": "t"}), send).await;
+        let sum = notify(
+            &db,
+            None,
+            true,
+            &json!({"title": "t", "sessionId": "s1"}),
+            send,
+        )
+        .await;
         assert_eq!(
             sum,
             Summary {
@@ -885,7 +941,7 @@ mod tests {
         assert_eq!(
             seen.len(),
             2,
-            "the device with an open SSE stream is skipped"
+            "the device actively viewing session s1 in foreground is skipped"
         );
         assert!(seen
             .iter()
@@ -920,5 +976,98 @@ mod tests {
         assert!(has_sse_client("sse-dev"));
         drop(g2);
         assert!(!has_sse_client("sse-dev"));
+    }
+    #[test]
+    fn presence_viewing_session_conditions() {
+        clear_presence("dev1");
+        assert!(
+            !is_viewing_session("dev1", "s1"),
+            "no SSE stream, cannot view"
+        );
+
+        let _guard = SseGuard::new("dev1".into());
+        assert!(
+            !is_viewing_session("dev1", "s1"),
+            "no presence recorded yet"
+        );
+
+        // Background tab
+        update_presence("dev1", Some("s1".into()), false);
+        assert!(
+            !is_viewing_session("dev1", "s1"),
+            "background tab should not suppress push"
+        );
+
+        // Viewing another session
+        update_presence("dev1", Some("s2".into()), true);
+        assert!(
+            !is_viewing_session("dev1", "s1"),
+            "viewing another session should not suppress push"
+        );
+        assert!(
+            is_viewing_session("dev1", "s2"),
+            "viewing s2 in foreground suppresses s2 push"
+        );
+
+        // Home / null session
+        update_presence("dev1", None, true);
+        assert!(
+            !is_viewing_session("dev1", "s1"),
+            "home screen should not suppress session push"
+        );
+
+        // Foreground viewing s1
+        update_presence("dev1", Some("s1".into()), true);
+        assert!(is_viewing_session("dev1", "s1"));
+
+        clear_presence("dev1");
+        assert!(!is_viewing_session("dev1", "s1"));
+    }
+
+    #[tokio::test]
+    async fn notify_sends_to_background_or_different_session() {
+        let conn = push_db();
+        pair_device(&conn, "bg-dev");
+        pair_device(&conn, "diff-dev");
+        let (p, a) = good_keys();
+        let s1 = validate_subscription("https://fcm.googleapis.com/fcm/send/bg", &p, &a, "bg-dev")
+            .unwrap();
+        save_subscription(&conn, &s1, "t1").unwrap();
+        let s2 = validate_subscription(
+            "https://fcm.googleapis.com/fcm/send/diff",
+            &p,
+            &a,
+            "diff-dev",
+        )
+        .unwrap();
+        save_subscription(&conn, &s2, "t2").unwrap();
+
+        let _g1 = SseGuard::new("bg-dev".into());
+        let _g2 = SseGuard::new("diff-dev".into());
+
+        // bg-dev is viewing s1 but in background tab
+        update_presence("bg-dev", Some("s1".into()), false);
+        // diff-dev is in foreground but viewing s2
+        update_presence("diff-dev", Some("s2".into()), true);
+
+        let db = Mutex::new(conn);
+        let seen = Mutex::new(Vec::<String>::new());
+        let send = |req: PushHttp| {
+            seen.lock().push(req.endpoint);
+            async move { Ok::<u16, String>(201) }
+        };
+
+        let sum = notify(
+            &db,
+            None,
+            true,
+            &json!({"title": "s1 update", "sessionId": "s1"}),
+            send,
+        )
+        .await;
+        assert_eq!(
+            sum.sent, 2,
+            "both devices receive push because neither is in foreground viewing s1"
+        );
     }
 }

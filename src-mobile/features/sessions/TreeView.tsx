@@ -77,14 +77,14 @@ function Bubbles({ c }: { c: StatusCounts }) {
 const actBtn =
 	"flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill border border-m-border bg-m-surface text-m-text-2 active:bg-m-surface-hover";
 
-function runAction(a: HeaderAction): void {
+function runActionDefault(a: HeaderAction): void {
 	if (a.kind === "plus") void newSessionIn(a.cwd);
 	else if (a.kind === "archive") void batchArchive(a.title, useTree.getState().scopes[a.scope] ?? []);
 	else void addWorkspace(a.cwd, a.label);
 }
 
 const HeaderView = memo(
-	function HeaderView({ row }: { row: HeaderRow }) {
+	function HeaderView({ row, onAction }: { row: HeaderRow; onAction?: (a: HeaderAction) => void }) {
 		const sec = row.level === "sec";
 		return (
 			<div
@@ -125,7 +125,7 @@ const HeaderView = memo(
 							key={a.kind}
 							type="button"
 							aria-label={a.kind === "plus" ? `在 ${a.label} 新建会话` : a.kind === "addws" ? `将 ${a.cwd} 添加为工作区` : a.label}
-							onClick={() => runAction(a)}
+							onClick={() => (onAction ? onAction(a) : runActionDefault(a))}
 							className={actBtn}
 						>
 							{a.kind === "plus" ? <Plus size={18} /> : a.kind === "archive" ? <Archive size={18} /> : <FolderPlus size={18} />}
@@ -135,7 +135,7 @@ const HeaderView = memo(
 			</div>
 		);
 	},
-	(a, b) => rowEqual(a.row, b.row),
+	(a, b) => rowEqual(a.row, b.row) && a.onAction === b.onAction,
 );
 
 const textBtn =
@@ -207,12 +207,14 @@ export function TreeView({
 	searching = false,
 	filterIds = null,
 	onMore,
+	onOpen,
 	curId,
 	emptyText,
 }: {
 	searching?: boolean;
 	filterIds?: ReadonlySet<string> | null;
 	onMore: (s: TreeSession) => void;
+	onOpen?: (s: TreeSession) => void;
 	curId?: string | null;
 	emptyText?: string;
 }) {
@@ -221,7 +223,8 @@ export function TreeView({
 	const open = useTree((s) => s.open);
 	const expanded = useTree((s) => s.expanded);
 	const [assigning, setAssigning] = useState<TreeSession[] | null>(null);
-
+	const [plusTarget, setPlusTarget] = useState<{ cwd: string; label: string } | null>(null);
+	const [wtChoices, setWtChoices] = useState<DirEntry[] | null>(null);
 	const flat = useMemo(() => {
 		if (!data) return null;
 		if (searching && !filterIds) return null;
@@ -250,9 +253,21 @@ export function TreeView({
 			{flat.rows.map((r) => {
 				switch (r.t) {
 					case "h":
-						return <HeaderView key={r.key} row={r} />;
+						return (
+							<HeaderView
+								key={r.key}
+								row={r}
+								onAction={(a) => {
+									if (a.kind === "plus") {
+										setPlusTarget({ cwd: a.cwd, label: a.label });
+									} else {
+										runActionDefault(a);
+									}
+								}}
+							/>
+						);
 					case "s":
-						return <SessionRow key={r.key} s={r.s} depth={r.depth} current={r.current} onMore={onMore} />;
+						return <SessionRow key={r.key} s={r.s} depth={r.depth} current={r.current} onMore={onMore} onOpen={onOpen} />;
 					case "more":
 						return <MoreView key={r.key} row={r} />;
 					case "gap":
@@ -298,6 +313,73 @@ export function TreeView({
 				}
 			})}
 			<AssignSheet sessions={assigning} onClose={() => setAssigning(null)} />
+			<ActionSheet
+				open={plusTarget !== null}
+				title={plusTarget ? `在「${plusTarget.label}」新建会话` : "新建会话"}
+				onClose={() => setPlusTarget(null)}
+				items={
+					plusTarget
+						? [
+								{
+									key: "current",
+									label: (
+										<span className="flex items-center gap-2">
+											<Folder size={18} />
+											在当前目录创建
+										</span>
+									),
+									run: () => void newSessionIn(plusTarget.cwd),
+								},
+								{
+									key: "worktree",
+									label: (
+										<span className="flex items-center gap-2">
+											<GitFork size={18} />
+											在独立工作树创建
+										</span>
+									),
+									run: async () => {
+										const target = plusTarget;
+										try {
+											const res = await api<{ dirs: DirEntry[] }>("GET", "/left/dirs");
+											const all = res.dirs ?? [];
+											const matching = all.filter((d) => d.kind === "worktree" && d.path.startsWith(target.cwd));
+											if (matching.length === 1) {
+												void newSessionIn(matching[0].path);
+											} else if (matching.length > 1) {
+												setWtChoices(matching);
+											} else {
+												toast("该工作区暂无已检出的独立工作树，已在当前目录创建", { kind: "info" });
+												void newSessionIn(target.cwd);
+											}
+										} catch (e) {
+											toast(`创建失败：${errorMessage(e)}`, { kind: "error" });
+										}
+									},
+								},
+							]
+						: []
+				}
+			/>
+			<ActionSheet
+				open={wtChoices !== null}
+				title="选择工作树"
+				onClose={() => setWtChoices(null)}
+				items={
+					wtChoices
+						? wtChoices.map((w) => ({
+								key: w.path,
+								label: (
+									<span className="flex items-center gap-2">
+										<GitBranch size={18} />
+										{w.label || w.path}
+									</span>
+								),
+								run: () => void newSessionIn(w.path),
+							}))
+						: []
+				}
+			/>
 		</div>
 	);
 }

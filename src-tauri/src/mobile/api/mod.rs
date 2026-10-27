@@ -17,7 +17,8 @@ pub mod left;
 pub mod media;
 pub mod misc;
 pub mod push;
-
+pub mod quota;
+pub mod voice;
 pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
     Router::new()
         .merge(chat::routes::<B>())
@@ -27,4 +28,6 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .merge(ideas::routes::<B>())
         .merge(push::routes::<B>())
         .merge(media::routes::<B>())
+        .merge(quota::routes::<B>())
+        .merge(voice::routes::<B>())
 }

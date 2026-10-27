@@ -62,6 +62,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/sessions/{id}/git/stage", post(git_stage::<B>))
         .route("/sessions/{id}/git/unstage", post(git_unstage::<B>))
         .route("/sessions/{id}/git/commit", post(git_commit::<B>))
+        .route("/sessions/{id}/git/suggest", post(git_suggest::<B>))
 }
 
 fn err(code: StatusCode, msg: impl Into<String>) -> ApiError {
@@ -511,6 +512,22 @@ async fn git_commit<B: Backend>(
 ) -> Result<Json<Value>, ApiError> {
     let sc = scope(&ctx, &id).await?;
     blocking(move || commit_impl(&sc.cwd, &body.message).map(|o| Json(json!({"output": o})))).await
+}
+
+async fn git_suggest<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let sc = scope(&ctx, &id).await?;
+    let app_state = ctx
+        .backend
+        .app_state()
+        .ok_or_else(|| err(StatusCode::NOT_IMPLEMENTED, "State unavailable"))?;
+    let msg =
+        crate::git::commands::git_commit_suggest_impl(app_state, sc.cwd.to_str().unwrap_or(""))
+            .await
+            .map_err(|e| err(StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({ "suggestion": msg })))
 }
 
 #[cfg(test)]

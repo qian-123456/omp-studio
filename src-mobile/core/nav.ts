@@ -34,6 +34,7 @@ export type RouteName =
 	| "settingsProviders"
 	| "settingsFallbacks"
 	| "settingsContext"
+	| "quota"
 	| "notFound";
 
 export interface Route {
@@ -74,6 +75,7 @@ const PATTERNS: ReadonlyArray<readonly [RouteName, string]> = [
 	["settingsProviders", "/settings/providers"],
 	["settingsFallbacks", "/settings/fallbacks"],
 	["settingsContext", "/settings/context"],
+	["quota", "/quota"],
 ];
 
 const COMPILED = PATTERNS.map(([name, pattern]) => ({ name, segs: pattern.split("/").filter(Boolean) }));
@@ -138,6 +140,7 @@ export const paths = {
 	settingsProviders: () => "/settings/providers",
 	settingsFallbacks: () => "/settings/fallbacks",
 	settingsContext: () => "/settings/context",
+	quota: () => "/quota",
 } as const;
 
 /* ------------------------------------------------------------------ state */

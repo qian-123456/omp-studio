@@ -1,9 +1,9 @@
-import { GitBranch } from "lucide-react";
+import { GitBranch, Sparkles } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { relTime } from "../../core/lib/format";
 import type { PageProps } from "../../core/nav";
-import { BottomSheet, Chip, DiffView, EmptyState, PageHeader, PullToRefresh, toast } from "../../ui";
+import { BottomSheet, Chip, DiffView, EmptyState, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
 import { ActionButton, ErrorState, LoadGate, Loading } from "./PanelState";
 import { useLayer, useLoad } from "./hooks";
 import { groupGitStatus, splitPath, statusTone } from "./pure";
@@ -33,6 +33,11 @@ type Tab = "status" | "branches" | "log";
 type DiffTarget = { title: string; query: string };
 
 const q = encodeURIComponent;
+export async function gitCommitSuggest(base: string): Promise<string> {
+	const res = await api<{ suggestion?: string }>("POST", `${base}/suggest`);
+	return res?.suggestion ?? "";
+}
+
 const TABS: readonly [Tab, string][] = [
 	["status", "变更"],
 	["branches", "分支"],
@@ -88,7 +93,25 @@ function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => 
 	const state = useLoad((signal) => api<GitStatus>("GET", `${base}/status`, undefined, { signal }), [base]);
 	const [busy, setBusy] = useState(false);
 	const [sheet, setSheet] = useState(false);
+	const [suggesting, setSuggesting] = useState(false);
 	const msgRef = useRef<HTMLTextAreaElement>(null);
+
+	const handleSuggest = async () => {
+		if (suggesting || busy) return;
+		setSuggesting(true);
+		try {
+			const text = await gitCommitSuggest(base);
+			if (text) {
+				if (msgRef.current) msgRef.current.value = text;
+			} else {
+				toast("未能生成提交建议", { kind: "error" });
+			}
+		} catch (e) {
+			toast(`建议失败：${errorMessage(e)}`, { kind: "error" });
+		} finally {
+			setSuggesting(false);
+		}
+	};
 	const groups = useMemo(() => groupGitStatus(state.data?.files ?? []), [state.data]);
 
 	const act = async (fn: () => Promise<unknown>): Promise<boolean> => {
@@ -161,23 +184,35 @@ function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => 
 			<BottomSheet
 				open={sheet}
 				onClose={closeSheet}
-				title="提交"
+				title="提交变更"
 				footer={
 					<div className="flex gap-2 p-3">
 						<ActionButton className="flex-1" onClick={closeSheet}>
 							取消
 						</ActionButton>
-						<ActionButton tone="primary" className="flex-1" disabled={busy} onClick={() => void commit()}>
+						<ActionButton tone="primary" className="flex-1" disabled={busy || suggesting} onClick={() => void commit()}>
 							确认提交（{groups.staged.length}）
 						</ActionButton>
 					</div>
 				}
 			>
 				<div className="p-4">
+					<div className="mb-2 flex items-center justify-between">
+						<span className="text-m-sm text-m-text-2">提交说明</span>
+						<button
+							type="button"
+							disabled={busy || suggesting}
+							onClick={() => void handleSuggest()}
+							className="flex min-h-8 items-center gap-1.5 rounded-m-pill border border-m-border px-3 text-m-xs font-medium text-m-accent active:bg-m-surface-hover disabled:opacity-50"
+						>
+							{suggesting ? <Spinner size={12} /> : <Sparkles size={14} />}
+							AI 建议
+						</button>
+					</div>
 					<textarea
 						ref={msgRef}
 						rows={4}
-						placeholder="提交信息"
+						placeholder="输入提交信息，或点击右上角 AI 建议"
 						autoCapitalize="off"
 						className="w-full resize-none rounded-m-md border border-m-border bg-m-surface p-3 text-m-md text-m-text outline-none focus:border-m-accent"
 					/>

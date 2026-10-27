@@ -1,8 +1,8 @@
-import { ChevronRight, Ellipsis } from "lucide-react";
+import { Check, ChevronRight, Copy, Download, Edit3, Ellipsis, Lightbulb } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "../../../core/api";
 import type { ImageRef, Item, ToolItem } from "../../../core/types";
-import { Markdown, openImage, Spinner } from "../../../ui";
+import { Markdown, openImage, Spinner, toast } from "../../../ui";
 import { useChat, useChatUi, type ChatUi } from "../ChatContext";
 import { usePrefs } from "../../../core/stores/prefs";
 import { foldLabel, type Step, type Turn } from "../lib/turns";
@@ -126,9 +126,10 @@ export function mergeLive(turn: Turn, live: Item | null): LiveParts {
 }
 
 export const TurnView = memo(function TurnView({ turn, isLast, sessionId }: { turn: Turn; isLast: boolean; sessionId: string }) {
-	const { openActions, openStat } = useChatUi();
+	const { openActions, openStat, controller } = useChatUi();
 	const live = useChat((s) => (isLast ? s.live : null));
 	const working = useChat((s) => (isLast ? s.working : false));
+	const cstate = useChat((s) => s.cstate);
 	const foldPref = usePrefs((s) => s.extra.foldOpen === true);
 	const running = isLast && working;
 	const parts = useMemo(() => mergeLive(turn, live), [turn, live]);
@@ -148,6 +149,46 @@ export const TurnView = memo(function TurnView({ turn, isLast, sessionId }: { tu
 	});
 	const visibleSteps = steps.filter((s) => s.kind !== "stat");
 	const nothingYet = running && !steps.length && !answerText && !parts.liveThinking;
+	const showPlanCard = isLast && answerText && cstate?.planMode;
+
+	const executePlan = async () => {
+		try {
+			await controller.patchState({ planMode: false });
+			await controller.send("计划已确认。请按照上面的计划开始执行。", "followUp");
+			toast("已确认并开始执行计划", { kind: "success" });
+		} catch {
+			toast("执行计划失败", { kind: "error" });
+		}
+	};
+
+	const editPlan = () => {
+		controller.focusComposer();
+	};
+
+	const copyPlan = async () => {
+		try {
+			await navigator.clipboard.writeText(answerText);
+			toast("计划已复制到剪贴板", { kind: "success" });
+		} catch {
+			toast("复制失败", { kind: "error" });
+		}
+	};
+
+	const downloadPlan = () => {
+		try {
+			const blob = new Blob([answerText], { type: "text/markdown;charset=utf-8" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = `plan-${sessionId.slice(0, 8)}.md`;
+			a.click();
+			URL.revokeObjectURL(url);
+			toast("计划已下载", { kind: "success" });
+		} catch {
+			toast("下载失败", { kind: "error" });
+		}
+	};
+
 	return (
 		<div>
 			{turn.user && <UserBubble item={turn.user} sessionId={sessionId} />}
@@ -189,6 +230,56 @@ export const TurnView = memo(function TurnView({ turn, isLast, sessionId }: { tu
 							<i />
 							<i />
 							<i />
+						</div>
+					)}
+					{showPlanCard && (
+						<div className="mt-3 rounded-m-md border border-amber-500/30 bg-amber-500/5 p-3">
+							<div className="mb-2 flex items-center justify-between">
+								<span className="flex items-center gap-1.5 text-m-xs font-semibold text-amber-500">
+									<Lightbulb size={14} />
+									规划模式 · 生成的计划
+								</span>
+								<div className="flex items-center gap-1">
+									<button
+										type="button"
+										aria-label="复制计划"
+										onClick={() => void copyPlan()}
+										className="flex h-8 items-center gap-1 rounded-m-pill border border-m-border bg-m-surface px-2.5 text-m-xs text-m-text-2 active:bg-m-surface-hover"
+									>
+										<Copy size={12} />
+										复制
+									</button>
+									<button
+										type="button"
+										aria-label="下载计划"
+										onClick={downloadPlan}
+										className="flex h-8 items-center gap-1 rounded-m-pill border border-m-border bg-m-surface px-2.5 text-m-xs text-m-text-2 active:bg-m-surface-hover"
+									>
+										<Download size={12} />
+										下载
+									</button>
+								</div>
+							</div>
+							<div className="flex items-center gap-2 pt-1">
+								<button
+									type="button"
+									disabled={running}
+									onClick={() => void executePlan()}
+									className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-m-pill bg-m-accent px-4 text-m-sm font-medium text-m-accent-text active:opacity-80 disabled:opacity-50"
+								>
+									<Check size={16} />
+									执行计划
+								</button>
+								<button
+									type="button"
+									disabled={running}
+									onClick={editPlan}
+									className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-m-pill border border-m-border bg-m-surface px-4 text-m-sm font-medium text-m-text active:bg-m-surface-hover disabled:opacity-50"
+								>
+									<Edit3 size={16} />
+									修改计划
+								</button>
+							</div>
 						</div>
 					)}
 					{answerText && !running && (

@@ -1,4 +1,4 @@
-import { RefreshCw, SquarePlus } from "lucide-react";
+import { RefreshCw, SquarePlus, SquareX } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, apiUrl, errorMessage } from "../../core/api";
 import type { PageProps } from "../../core/nav";
@@ -153,6 +153,13 @@ export function TerminalPage({ route }: PageProps) {
 		await open();
 	}, [closeTerm, open]);
 
+	const handleClose = useCallback(async () => {
+		await closeTerm();
+		setPhase("exited");
+		setDetail("终端已关闭");
+		toast("已关闭终端");
+	}, [closeTerm]);
+
 	const reconnect = useCallback(async () => {
 		const t = term.current;
 		if (!termId.current || exited.current || !t) return openNew();
@@ -273,6 +280,9 @@ export function TerminalPage({ route }: PageProps) {
 							<HeaderButton icon={<RefreshCw size={20} />} label="重连" onClick={() => void reconnect()} />
 						)}
 						<HeaderButton icon={<SquarePlus size={20} />} label="新终端" onClick={() => void openNew()} />
+						{phase !== "exited" && (
+							<HeaderButton icon={<SquareX size={20} />} label="关闭终端" onClick={() => void handleClose()} />
+						)}
 					</>
 				}
 			/>
