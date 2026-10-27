@@ -719,6 +719,15 @@ function requestId(req: unknown): string {
 	return str(asFrame(req).id);
 }
 
+/** The store watched this turn from its own start frame and the turn has
+ * ended: later activity frames are out-of-order replays of the settled turn,
+ * so they must not reopen its live rows (the wake-up / next user turn would
+ * replay them). Turns this app attached to mid-flight (start missed, so
+ * `turnStartedAt` is null) keep the old lenient behavior — nothing marks
+ * their end as settled. */
+const turnSettled = (live: SessionLive): boolean =>
+	!live.streaming && live.turnStartedAt != null;
+
 function reduce(
 	live: SessionLive,
 	frame: Frame,
@@ -739,6 +748,7 @@ function reduce(
 			// role "user") must not occupy streamingMessage — it would render as
 			// an assistant bubble and then vanish on message_end.
 			if (msg.role && msg.role !== "assistant") return live;
+			if (turnSettled(live)) return live;
 			const ts =
 				typeof frame.timestamp === "number"
 					? frame.timestamp
@@ -792,6 +802,7 @@ function reduce(
 						}
 					: live;
 			}
+			if (turnSettled(live)) return live;
 			// Skip ends for messages we never tracked (e.g. user echoes).
 			if (!live.streamingMessage && !isAssistant) return live;
 			const thinkingEndedAt =
@@ -836,6 +847,7 @@ function reduce(
 		case "tool_execution_start": {
 			const id = str(frame.toolCallId);
 			if (!id) return live;
+			if (turnSettled(live)) return live;
 			const startTs =
 				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
 			return {
@@ -1263,16 +1275,32 @@ function reduce(
 			const data = asFrame(frame.data);
 			if (frame.success !== true) return live;
 			switch (frame.command) {
-				case "get_state":
-					return {
-						...live,
-						state: data,
-						streaming: data.isStreaming === true,
-						ompQueue:
-							data.queuedMessages !== undefined
-								? ompQueueFrom(data.queuedMessages)
-								: live.ompQueue,
-					};
+				case "get_state": {
+					const ompQueue =
+						data.queuedMessages !== undefined
+							? ompQueueFrom(data.queuedMessages)
+							: live.ompQueue;
+					if (data.isStreaming !== true) {
+						// Reattached after the turn's agent_end was missed (e.g. a
+						// disconnect): omp is idle, so drop the stale live rows the
+						// way the end does — the wake-up / next user turn must not
+						// replay them.
+						return {
+							...live,
+							state: data,
+							streaming: false,
+							streamingMessage: null,
+							tools: {},
+							liveRequests: [],
+							...archiveRetry(
+								live,
+								typeof frame.timestamp === "number" ? frame.timestamp : Date.now(),
+							),
+							ompQueue,
+						};
+					}
+					return { ...live, state: data, streaming: true, ompQueue };
+				}
 				case "get_available_commands":
 					return {
 						...live,

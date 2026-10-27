@@ -66,6 +66,54 @@ describe("live reducer — streaming lifecycle", () => {
 		expect(live().subagents.a1.status).toBe("running");
 	});
 
+	it("reattach sync with isStreaming=false clears the missed turn's live rows; the next start replays nothing", () => {
+		frame({ type: "agent_start" });
+		frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} });
+		frame({
+			type: "message_update",
+			message: { role: "assistant", content: [{ type: "text", text: "partial" }] },
+		});
+		// The agent_end is missed (disconnect): the reattach learns omp is idle.
+		frame({ type: "response", command: "get_state", success: true, data: { isStreaming: false } });
+		expect(live().streaming).toBe(false);
+		expect(live().streamingMessage).toBeNull();
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+		// The next user turn must not wake up under the stale rows.
+		frame({ type: "agent_start" });
+		expect(live().streaming).toBe(true);
+		expect(live().streamingMessage).toBeNull();
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+	});
+
+	it("late activity frames after the awaitingAsyncWork end open no new live rows", () => {
+		frame({ type: "agent_start" });
+		frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} });
+		// omp ends every tool call before the idle agent_end.
+		frame({ type: "tool_execution_end", toolCallId: "c1", result: {} });
+		frame({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true });
+		// Out-of-order frames from the settled turn arrive while idle.
+		frame({
+			type: "message_update",
+			message: { role: "assistant", content: [{ type: "text", text: "late" }] },
+		});
+		frame({ type: "tool_execution_start", toolCallId: "c2", toolName: "grep", args: {} });
+		frame({
+			type: "message_end",
+			message: { role: "assistant", content: [{ type: "text", text: "late" }], responseId: "r9", usage: null },
+		});
+		expect(live().streaming).toBe(false);
+		expect(live().streamingMessage).toBeNull();
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+		// The wake-up shows none of them.
+		frame({ type: "agent_start" });
+		expect(live().streaming).toBe(true);
+		expect(live().tools).toEqual({});
+		expect(live().liveRequests).toEqual([]);
+	});
+
 	it("turnStartedAt: one clock per turn, kept across requests and the turn's end", () => {
 		vi.useFakeTimers();
 		try {
