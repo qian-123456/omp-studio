@@ -1,0 +1,51 @@
+@import "./themes/chatgpt.css";
+@import "./themes/gemini.css";
+
+/*
+ * Semantic token contract of the phone app. Components use ONLY these names (no raw hex);
+ * the skins in themes/*.css override them on html[data-skin][data-scheme]. The values below are
+ * neutral fallbacks so a missing/late theme still renders legibly. Extra tokens a skin defines
+ * (--m-link, --m-border-strong, --m-accent-soft, ...) are optional: always reference them with a
+ * fallback, e.g. var(--m-link, var(--m-accent)).
+ */
+:root {
+	--m-bg: #ffffff;
+	--m-bg-elev: #ffffff;
+	--m-surface: #f4f4f5;
+	--m-surface-2: #e9e9eb;
+	--m-surface-hover: #ececee;
+	--m-border: #e2e2e5;
+	--m-text: #111113;
+	--m-text-2: #4a4a50;
+	--m-text-3: #6e6e75;
+	--m-accent: #111113;
+	--m-accent-text: #ffffff;
+	--m-danger: #c62828;
+	--m-warn: #a15c00;
+	--m-success: #1b7f3b;
+	--m-bubble-user-bg: #f4f4f5;
+	--m-bubble-user-text: #111113;
+	--m-composer-bg: #f4f4f5;
+	--m-code-bg: #f4f4f5;
+	--m-diff-add: rgb(27 127 59 / 0.16);
+	--m-diff-del: rgb(198 40 40 / 0.16);
+	--m-scrim: rgb(0 0 0 / 0.4);
+	--m-r-sm: 8px;
+	--m-r-md: 12px;
+	--m-r-lg: 20px;
+	--m-r-pill: 999px;
+	--m-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	--m-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", monospace;
+	--m-fs-xs: 12px;
+	--m-fs-sm: 14px;
+	--m-fs-md: 16px;
+	--m-fs-lg: 18px;
+	--m-fs-title: 22px;
+	--m-shadow-pop: 0 8px 28px rgb(0 0 0 / 0.18);
+	--m-ease: cubic-bezier(0.32, 0.72, 0, 1);
+	--m-safe-top: env(safe-area-inset-top, 0px);
+	--m-safe-bottom: env(safe-area-inset-bottom, 0px);
+	/* Written by app/viewport.ts (only on viewport resize/scroll): visual viewport height / top offset / keyboard inset. */
+	--m-vh: 100dvh;
+	--m-kb: 0px;
+}

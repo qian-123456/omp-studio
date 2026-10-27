@@ -8,10 +8,9 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, LazyLock};
 
-use serde_json::Value;
-
 use crate::contracts::{LiveSessionInfo, SessionMeta, SessionStatus, SpaceMode, StartOpts};
-use crate::mobile::server::ApiError;
+use crate::mobile::backend::Backend;
+use crate::mobile::server::{ApiError, Ctx};
 use crate::state::AppState;
 
 const DRAFT_PREFIX: &str = "mobile-draft-";
@@ -77,6 +76,16 @@ pub async fn discard(id: &str) -> bool {
         }
     }
     true
+}
+
+/// Session metadata for a real session or, failing that, a live draft.
+/// Every route that takes a session id resolves it through here so a draft
+/// is never reported as 「会话不存在」.
+pub async fn find_session<B: Backend>(backend: &B, id: &str) -> Option<SessionMeta> {
+    match backend.session(id).await {
+        Some(m) => Some(m),
+        None => meta(id).await,
+    }
 }
 
 pub fn is_draft(id: &str) -> bool {
@@ -165,7 +174,7 @@ pub async fn create(
     }
 }
 
-async fn spawn(state: &AppState, entry: &Entry) -> Result<LiveSessionInfo, String> {
+async fn spawn<B: Backend>(ctx: &Ctx<B>, entry: &Entry) -> Result<LiveSessionInfo, String> {
     let (opts, start) = {
         let d = entry.lock();
         (
@@ -183,7 +192,7 @@ async fn spawn(state: &AppState, entry: &Entry) -> Result<LiveSessionInfo, Strin
     if let Some(info) = slot.as_ref() {
         return Ok(info.clone());
     }
-    let info = crate::rpc::start(state, &opts).await?;
+    let info = ctx.backend.start_process(&opts).await?;
     let guard = crate::rpc::retain_session_activity(&info.session_id, GUARD_OWNER);
     entry.lock().activity = Some(guard);
     *slot = Some(info.clone());
@@ -193,7 +202,7 @@ async fn spawn(state: &AppState, entry: &Entry) -> Result<LiveSessionInfo, Strin
 /// Update editing state without ever failing a local-only UI transition.
 /// Nonblank drafts retain their prewarm while inactive. A blank inactive one
 /// is stopped conservatively, but its draft id and settings remain.
-pub async fn set_active(state: &AppState, id: &str, active: bool, meaningful: bool) {
+pub async fn set_active<B: Backend>(ctx: Arc<Ctx<B>>, id: &str, active: bool, meaningful: bool) {
     let Some(entry) = entry(id) else { return };
     let (dirty, sending) = {
         let mut d = entry.lock();
@@ -205,9 +214,8 @@ pub async fn set_active(state: &AppState, id: &str, active: bool, meaningful: bo
     }
     if active && dirty {
         // Prewarm off the request path; `spawn` is single-flight with send.
-        let state = state.clone();
         tokio::spawn(async move {
-            let _ = spawn(&state, &entry).await;
+            let _ = spawn(&ctx, &entry).await;
         });
     } else if !dirty {
         let start = entry.lock().start.clone();
@@ -232,7 +240,7 @@ pub async fn selection(id: &str) -> Option<Selection> {
     Some(entry(id)?.lock().selection.clone())
 }
 
-pub async fn default_model(state: &AppState, id: &str) -> Option<String> {
+pub async fn default_model(state: Option<&AppState>, id: &str) -> Option<String> {
     let cwd = entry(id)?.lock().cwd.clone();
     if let Ok(s) = crate::settings_model_roles::omp_model_roles_read(Some(cwd), None).await {
         if let Some(project) = s.project {
@@ -253,7 +261,7 @@ pub async fn default_model(state: &AppState, id: &str) -> Option<String> {
             return Some(m.clone());
         }
     }
-    state
+    state?
         .settings
         .read()
         .new_session_model
@@ -299,20 +307,21 @@ fn claim(id: &str) -> Result<Option<Entry>, ApiError> {
 /// Await the one start shared by prewarm/send, apply the newest settings, then
 /// run `send`. Draft state is removed only after the command succeeds; on
 /// failure the draft (and its text on the client) is kept for a retry.
-pub async fn handoff<F, Fut>(
-    state: &AppState,
+pub async fn handoff<B, F, Fut, T>(
+    ctx: &Ctx<B>,
     id: &str,
     send: F,
-) -> Result<Option<(String, Value)>, ApiError>
+) -> Result<Option<(String, T)>, ApiError>
 where
+    B: Backend,
     F: FnOnce(String, Selection) -> Fut,
-    Fut: Future<Output = Result<Value, ApiError>>,
+    Fut: Future<Output = Result<T, ApiError>>,
 {
     let Some(entry) = claim(id)? else {
         return Ok(None);
     };
     let outcome = async {
-        let info = spawn(state, &entry)
+        let info = spawn(ctx, &entry)
             .await
             .map_err(|e| ApiError(axum::http::StatusCode::BAD_GATEWAY, e))?;
         let real = info.session_id.clone();
@@ -340,20 +349,21 @@ where
 mod tests {
     use super::*;
 
-    fn reset() {
-        registry().lock().drafts.clear();
-    }
-
-    // The registry is process-global, so every behavior is exercised from a
-    // single test to avoid cross-test interference.
+    // The registry is process-global and other tests create drafts too, so
+    // this test uses its own cwd namespace and removes only its own drafts.
     #[tokio::test]
     async fn registry_reuse_selection_and_single_send() {
-        reset();
-        let a = create("/tmp/a".into(), SpaceMode::Code, None, None).await;
-        let b = create("/tmp/a".into(), SpaceMode::Code, None, None).await;
-        let c = create("/tmp/b".into(), SpaceMode::Code, None, None).await;
-        let d = create("/tmp/a".into(), SpaceMode::Work, None, None).await;
-        let g = create("/tmp/a".into(), SpaceMode::Code, Some("g".into()), None).await;
+        let a = create("/tmp/draft-unit-a".into(), SpaceMode::Code, None, None).await;
+        let b = create("/tmp/draft-unit-a".into(), SpaceMode::Code, None, None).await;
+        let c = create("/tmp/draft-unit-b".into(), SpaceMode::Code, None, None).await;
+        let d = create("/tmp/draft-unit-a".into(), SpaceMode::Work, None, None).await;
+        let g = create(
+            "/tmp/draft-unit-a".into(),
+            SpaceMode::Code,
+            Some("g".into()),
+            None,
+        )
+        .await;
         assert_eq!(a.session_id, b.session_id);
         assert_ne!(a.session_id, c.session_id);
         assert_ne!(a.session_id, d.session_id);
@@ -374,13 +384,21 @@ mod tests {
         assert!(!meta.live);
 
         // An edited draft is not reused for a new blank one.
-        let e = create("/tmp/a".into(), SpaceMode::Code, None, None).await;
+        let e = create("/tmp/draft-unit-a".into(), SpaceMode::Code, None, None).await;
         assert_ne!(a.session_id, e.session_id);
 
         // Only one send may own a draft at a time.
         assert!(claim(&a.session_id).unwrap().is_some());
         assert!(claim(&a.session_id).is_err());
         assert!(claim("mobile-draft-missing").unwrap().is_none());
-        reset();
+        for id in [
+            &a.session_id,
+            &c.session_id,
+            &d.session_id,
+            &g.session_id,
+            &e.session_id,
+        ] {
+            discard(id).await;
+        }
     }
 }

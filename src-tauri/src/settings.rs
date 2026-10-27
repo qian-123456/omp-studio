@@ -54,6 +54,17 @@ pub async fn set_mobile_ipv6_enabled(state: &AppState, enabled: bool) -> Result<
     Ok(())
 }
 
+/// Atomically updates only `default_approval_mode` (validated by [`validate`]).
+pub async fn set_default_approval_mode(state: &AppState, mode: &str) -> Result<(), String> {
+    let _guard = SAVE_LOCK.lock().await;
+
+    let mut settings = state.settings.read().clone();
+    settings.default_approval_mode = mode.to_string();
+    apply_locked(state, settings)?;
+
+    Ok(())
+}
+
 /// Validates, persists, and updates memory while the caller holds `SAVE_LOCK`.
 /// Avoids holding parking_lot synchronization guards across asynchronous await points.
 fn apply_locked(state: &AppState, settings: Settings) -> Result<Settings, String> {

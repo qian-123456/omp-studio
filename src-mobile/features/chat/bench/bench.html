@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="chatgpt" data-scheme="light">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<title>Chat bench</title>
+	</head>
+	<body>
+		<div style="display: flex; gap: 8px; padding: 8px">
+			<button id="idle">空闲输入</button>
+			<button id="stream">流式中输入</button>
+			<button id="ime">流式 + 拼音</button>
+		</div>
+		<pre id="out" style="margin: 0 8px; font-size: 12px"></pre>
+		<div id="stage" style="height: 70vh; display: flex; flex-direction: column"></div>
+		<script type="module" src="./main.tsx"></script>
+	</body>
+</html>

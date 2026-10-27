@@ -109,7 +109,9 @@ pub fn is_valid(conn: &Connection, token: &str) -> bool {
 }
 
 pub fn revoke_all(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("DELETE FROM mobile_devices; DELETE FROM pairing_codes;")
+    conn.execute_batch(
+        "DELETE FROM mobile_devices; DELETE FROM pairing_codes; DELETE FROM push_subscriptions;",
+    )
 }
 
 /// Extract the device token from `Cookie` or `Authorization: Bearer` headers.
@@ -137,7 +139,10 @@ pub fn test_db() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
         "CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
-         CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);",
+         CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);
+         CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+           token_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+         CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
     )
     .unwrap();
     conn

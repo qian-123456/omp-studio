@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="chatgpt" data-scheme="light">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+		/>
+		<meta name="theme-color" content="#ffffff" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="color-scheme" content="light dark" />
+		<title>omp-workspace</title>
+		<script>
+			// Apply the saved skin/scheme before first paint (no flash). Mirrors app/theme.ts.
+			(function () {
+				try {
+					var p = (JSON.parse(localStorage.getItem("ompm.prefs") || "null") || {}).state || {};
+					var skin = p.skin === "gemini" ? "gemini" : "chatgpt";
+					var pref = p.scheme === "light" || p.scheme === "dark" ? p.scheme : "system";
+					var dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+					var el = document.documentElement;
+					el.dataset.skin = skin;
+					el.dataset.scheme = dark ? "dark" : "light";
+				} catch (e) {}
+			})();
+		</script>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script type="module" src="./main.tsx"></script>
+	</body>
+</html>

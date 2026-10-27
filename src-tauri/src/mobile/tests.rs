@@ -20,6 +20,10 @@ struct Mock {
     calls: Mutex<Vec<String>>,
     bus: broadcast::Sender<AppEvent>,
     file: String,
+    /// Extra pending dialogs of session "a", removed once answered.
+    extra_pending: Mutex<Vec<Value>>,
+    /// HTTP status the fake push service answers with.
+    push_status: Mutex<u16>,
 }
 
 impl Backend for Mock {
@@ -58,14 +62,26 @@ impl Backend for Mock {
         Ok(())
     }
     async fn pending_ui(&self, id: &str) -> Vec<PendingUiRequest> {
-        vec![PendingUiRequest {
+        let mut out = vec![PendingUiRequest {
             session_id: id.into(),
             request: json!({"id": "r1", "method": "input"}),
             received_at: "x".into(),
-        }]
+        }];
+        if id == "a" {
+            out.extend(self.extra_pending.lock().iter().map(|r| PendingUiRequest {
+                session_id: id.into(),
+                request: r.clone(),
+                received_at: "x".into(),
+            }));
+        }
+        out
     }
     async fn ui_respond(&self, id: &str, response: Value) -> Result<(), String> {
         self.calls.lock().push(format!("respond {id} {response}"));
+        let rid = response["id"].as_str().unwrap_or_default().to_string();
+        self.extra_pending
+            .lock()
+            .retain(|r| r["id"].as_str() != Some(rid.as_str()));
         Ok(())
     }
     async fn send_prompt(&self, id: &str, text: &str) -> Result<(), String> {
@@ -74,6 +90,36 @@ impl Backend for Mock {
     }
     async fn resume(&self, _id: &str) -> Result<Value, String> {
         Err("not implemented".into())
+    }
+    async fn start_process(
+        &self,
+        opts: &crate::contracts::StartOpts,
+    ) -> Result<crate::contracts::LiveSessionInfo, String> {
+        self.calls.lock().push(format!("start {}", opts.cwd));
+        Ok(crate::contracts::LiveSessionInfo {
+            session_id: "mock-real-1".into(),
+            cwd: opts.cwd.clone(),
+            ..Default::default()
+        })
+    }
+    async fn deliver_prompt(
+        &self,
+        id: &str,
+        d: super::backend::PromptDelivery,
+    ) -> Result<bool, String> {
+        let model = d
+            .selection
+            .model
+            .map(|(p, m)| format!(" {p}/{m}"))
+            .unwrap_or_default();
+        self.calls
+            .lock()
+            .push(format!("deliver {id} {}{model}", d.message));
+        Ok(false)
+    }
+    async fn push_http(&self, req: super::push::PushHttp) -> Result<u16, String> {
+        self.calls.lock().push(format!("push {}", req.endpoint));
+        Ok(*self.push_status.lock())
     }
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.bus.subscribe()
@@ -102,6 +148,8 @@ fn harness() -> Harness {
             calls: Mutex::new(Vec::new()),
             bus,
             file: file.to_string_lossy().to_string(),
+            extra_pending: Mutex::new(Vec::new()),
+            push_status: Mutex::new(201),
         },
         db: Arc::new(parking_lot::Mutex::new(auth::test_db())),
         shutdown: rx,
@@ -160,8 +208,9 @@ async fn pair(h: &Harness) -> String {
 #[tokio::test]
 async fn index_is_public_and_api_requires_auth() {
     let h = harness();
+    // Public either way; 503 hint page when the frontend bundle is not built.
     let (s, _, body) = call(&h, get("/", None)).await;
-    assert_eq!(s, StatusCode::OK);
+    assert!(s == StatusCode::OK || s == StatusCode::SERVICE_UNAVAILABLE);
     assert!(body.contains("<html"));
     let (s, _, _) = call(&h, get("/api/sessions", None)).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
@@ -357,7 +406,11 @@ async fn curl_end_to_end() {
     ])
     .await;
     let summary = String::from_utf8_lossy(&out.stdout).to_string();
-    assert_eq!(summary, format!("200 {base}/"), "followed redirect to /");
+    // 503 hint page when the frontend bundle is not built.
+    assert!(
+        summary == format!("200 {base}/") || summary == format!("503 {base}/"),
+        "followed redirect to /: {summary}"
+    );
 
     let out = curl(vec![
         "-b".into(),
@@ -748,4 +801,258 @@ async fn test_tls_pairing_sets_secure_cookie() {
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
     assert!(cookie.contains("; Secure"));
+}
+
+/// Every route that takes a session id must treat a live draft as a real,
+/// empty session (never 「会话不存在」), including after the first prompt.
+#[tokio::test]
+async fn draft_ids_are_accepted_by_every_session_route() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    let cwd = std::env::temp_dir().join(format!("ompws-draft-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&cwd).unwrap();
+    let info = super::api::draft::create(
+        cwd.to_string_lossy().to_string(),
+        crate::contracts::SpaceMode::Code,
+        None,
+        None,
+    )
+    .await;
+    let id = info.session_id;
+    assert!(id.starts_with("mobile-draft-"));
+
+    let (s, _, body) = call(
+        &h,
+        get(&format!("/api/sessions/{id}/transcript"), Some(&cookie)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "transcript: {body}");
+    let page: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(page["items"], json!([]));
+
+    let (s, _, body) = call(
+        &h,
+        get(&format!("/api/sessions/{id}/pending-ui"), Some(&cookie)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "pending-ui: {body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), json!([]));
+
+    let (s, _, body) = call(
+        &h,
+        get(&format!("/api/sessions/{id}/composer-state"), Some(&cookie)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "composer-state: {body}");
+    let st: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(st["live"], false);
+    assert_eq!(st["contextTokens"], Value::Null);
+
+    let (s, _, body) = call(
+        &h,
+        get(&format!("/api/sessions/{id}/slash-commands"), Some(&cookie)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "slash-commands: {body}");
+    assert!(serde_json::from_str::<Value>(&body)
+        .unwrap()
+        .as_array()
+        .is_some_and(|a| !a.is_empty()));
+
+    for path in ["plan", "subagents", "last"] {
+        let (s, _, body) = call(
+            &h,
+            get(&format!("/api/sessions/{id}/{path}"), Some(&cookie)),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{path}: {body}");
+    }
+    let (s, _, body) = call(&h, get(&format!("/api/sessions/{id}/files"), Some(&cookie))).await;
+    assert_eq!(s, StatusCode::OK, "files: {body}");
+
+    // First prompt hands the draft off to the real session id.
+    let (s, _, body) = call(
+        &h,
+        post(
+            &format!("/api/sessions/{id}/prompt-ex"),
+            &cookie,
+            json!({"text": "hello", "images": []}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "prompt-ex: {body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["sessionId"], "mock-real-1");
+    assert!(!super::api::draft::is_draft(&id), "draft consumed");
+    assert!(h
+        .ctx
+        .backend
+        .calls
+        .lock()
+        .iter()
+        .any(|c| c == "deliver mock-real-1 hello"));
+    let _ = std::fs::remove_dir_all(&cwd);
+}
+
+#[tokio::test]
+async fn batch_approve_answers_only_tool_approvals() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    *h.ctx.backend.extra_pending.lock() = vec![
+        json!({"id": "t1", "method": "select", "title": "Allow tool: bash\nCommand: ls", "options": ["Approve Once", "Approve", "Deny"]}),
+        json!({"id": "t2", "method": "confirm", "title": "Proceed?"}),
+        json!({"id": "q1", "method": "select", "title": "Pick a color", "options": ["Red", "Blue"]}),
+        json!({"id": "t3", "method": "select", "title": "Allow tool: rm", "options": ["Yes", "No"]}),
+    ];
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action": "approve"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    // t1 + t2 handled; r1 (input), q1 (question), t3 (no exact labels) skipped.
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v, json!({"handled": 2, "skipped": 3}));
+    let calls = h.ctx.backend.calls.lock().clone();
+    assert_eq!(calls.len(), 2);
+    assert!(
+        calls[0].contains("\"value\":\"Approve Once\"") && calls[0].contains("\"confirmed\":true")
+    );
+    assert!(calls[1].contains("\"id\":\"t2\"") && calls[1].contains("\"confirmed\":true"));
+
+    // Deny uses the exact Deny label and confirmed:false.
+    *h.ctx.backend.extra_pending.lock() = vec![
+        json!({"id": "t4", "method": "select", "title": "Allow tool: bash", "options": ["Approve", "Deny"]}),
+    ];
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action": "deny"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"handled": 1, "skipped": 1})
+    );
+    let last = h.ctx.backend.calls.lock().last().cloned().unwrap();
+    assert!(last.contains("\"value\":\"Deny\"") && last.contains("\"cancelled\":true"));
+
+    let (s, _, _) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action": "nuke"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (s, _, _) = call(
+        &h,
+        post(
+            "/api/sessions/z/ui-respond-all",
+            &cookie,
+            json!({"action": "approve"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "archived");
+    let (s, _, _) = call(
+        &h,
+        post(
+            "/api/sessions/nope/ui-respond-all",
+            &cookie,
+            json!({"action": "approve"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn push_endpoints_subscribe_test_unsubscribe() {
+    use base64::Engine as _;
+    let h = harness();
+    let (s, _, _) = call(&h, get("/api/push/public-key", None)).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let cookie = pair(&h).await;
+
+    let (s, _, body) = call(&h, get("/api/push/public-key", Some(&cookie))).await;
+    assert_eq!(s, StatusCode::OK);
+    let key = serde_json::from_str::<Value>(&body).unwrap()["publicKey"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&key)
+        .unwrap();
+    assert_eq!((raw.len(), raw[0]), (65, 4));
+    let (_, _, again) = call(&h, get("/api/push/public-key", Some(&cookie))).await;
+    assert!(again.contains(&key), "stable across calls");
+
+    // Test before subscribing: nothing to send to.
+    let (s, _, _) = call(&h, post("/api/push/test", &cookie, json!({}))).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+
+    let ua = ring::agreement::EphemeralPrivateKey::generate(
+        &ring::agreement::ECDH_P256,
+        &ring::rand::SystemRandom::new(),
+    )
+    .unwrap();
+    let enc = |b: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
+    let sub = json!({
+        "endpoint": "https://fcm.googleapis.com/fcm/send/abc",
+        "keys": {"p256dh": enc(ua.compute_public_key().unwrap().as_ref()), "auth": enc(&[3u8; 16])},
+    });
+    let (s, _, _) = call(&h, post("/api/push/subscribe", &cookie, sub.clone())).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, _, _) = call(
+        &h,
+        post(
+            "/api/push/subscribe",
+            &cookie,
+            json!({"endpoint": "https://127.0.0.1/x", "keys": sub["keys"]}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    let (s, _, body) = call(&h, post("/api/push/test", &cookie, json!({}))).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        (v["sent"].as_u64(), v["removed"].as_u64()),
+        (Some(1), Some(0))
+    );
+    assert!(h
+        .ctx
+        .backend
+        .calls
+        .lock()
+        .iter()
+        .any(|c| c == "push https://fcm.googleapis.com/fcm/send/abc"));
+
+    // 410 Gone deletes the subscription.
+    *h.ctx.backend.push_status.lock() = 410;
+    let (_, _, body) = call(&h, post("/api/push/test", &cookie, json!({}))).await;
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["removed"], 1);
+    let (s, _, _) = call(&h, post("/api/push/test", &cookie, json!({}))).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+
+    // Unsubscribe is idempotent.
+    call(&h, post("/api/push/subscribe", &cookie, sub.clone())).await;
+    let un = json!({"endpoint": "https://fcm.googleapis.com/fcm/send/abc"});
+    let (_, _, body) = call(&h, post("/api/push/unsubscribe", &cookie, un.clone())).await;
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["removed"], 1);
+    let (s, _, body) = call(&h, post("/api/push/unsubscribe", &cookie, un)).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["removed"], 0);
 }

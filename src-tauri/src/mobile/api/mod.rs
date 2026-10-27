@@ -14,7 +14,9 @@ pub mod draft;
 pub mod files;
 pub mod ideas;
 pub mod left;
+pub mod media;
 pub mod misc;
+pub mod push;
 
 pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
     Router::new()
@@ -23,4 +25,6 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .merge(files::routes::<B>())
         .merge(misc::routes::<B>())
         .merge(ideas::routes::<B>())
+        .merge(push::routes::<B>())
+        .merge(media::routes::<B>())
 }

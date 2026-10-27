@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
 	test: {
-		include: ["src/**/*.test.{ts,tsx}"],
+		include: ["src/**/*.test.{ts,tsx}", "src-mobile/**/*.test.{ts,tsx}"],
 		setupFiles: ["src/test/setupLocale.ts"],
 	},
 	// Tauri expects a fixed dev port and fails if it is taken.

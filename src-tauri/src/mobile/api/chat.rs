@@ -72,7 +72,7 @@ use serde_json::{json, Value};
 use tauri::Manager as _;
 
 use crate::contracts::SessionMeta;
-use crate::mobile::backend::Backend;
+use crate::mobile::backend::{Backend, PromptDelivery};
 use crate::mobile::server::{ApiError, Ctx};
 use crate::state::{AppEvent, AppState};
 
@@ -101,6 +101,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
             post(prompt_ex::<B>).route_layer(DefaultBodyLimit::max(MAX_PROMPT_BODY)),
         )
         .route("/sessions/{id}/abort", post(abort::<B>))
+        .route("/sessions/{id}/ui-respond-all", post(ui_respond_all::<B>))
         .route("/sessions/{id}/slash-commands", get(slash_commands::<B>))
         .route("/sessions/{id}/slash", post(slash::<B>))
         .route("/sessions/{id}/composer-state", get(composer_state::<B>))
@@ -154,11 +155,9 @@ fn app<B: Backend>(ctx: &Ctx<B>) -> Result<&AppState, ApiError> {
 /// Validate the id and load a non-archived session.
 async fn load_session<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<SessionMeta, ApiError> {
     check_id(id)?;
-    let meta = match ctx.backend.session(id).await {
-        Some(meta) => Some(meta),
-        None => super::draft::meta(id).await,
-    }
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
+    let meta = super::draft::find_session(&ctx.backend, id)
+        .await
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
     if meta.archived {
         return Err(bad_request("已归档的会话不可操作"));
     }
@@ -212,35 +211,51 @@ async fn live_state(id: &str) -> Option<Value> {
 }
 
 /// Send a prompt (optionally with images) the way desktop `sendPrompt` does.
-async fn send_prompt_ex(
-    state: &AppState,
+/// A draft id starts its process first and hands off to the real session; the
+/// real id is returned in that case.
+pub(crate) async fn send_prompt_ex<B: Backend>(
+    ctx: &Ctx<B>,
     id: &str,
     message: &str,
     images: Vec<Value>,
     behavior: Option<&str>,
-) -> Result<bool, ApiError> {
-    if super::draft::is_draft(id) {
-        let owned_state = state.clone();
-        let message = message.to_string();
-        let behavior = behavior.map(str::to_string);
-        let Some((_real, result)) = super::draft::handoff(state, id, move |real, selection| {
-            let state = owned_state.clone();
-            let message = message.clone();
-            let behavior = behavior.clone();
-            async move {
-                apply_selection(&state, &real, selection).await?;
-                let streaming =
-                    send_prompt_live(&state, &real, &message, images, behavior.as_deref()).await?;
-                Ok(json!({"streaming": streaming}))
-            }
-        })
-        .await?
-        else {
-            return Err(err(StatusCode::NOT_FOUND, "会话不存在"));
-        };
-        return Ok(result["streaming"].as_bool().unwrap_or(false));
+) -> Result<(Option<String>, bool), ApiError> {
+    let delivery = |selection| PromptDelivery {
+        message: message.to_string(),
+        images: images.clone(),
+        behavior: behavior.map(str::to_string),
+        selection,
+    };
+    let handed = super::draft::handoff(ctx, id, |real, selection| {
+        let d = delivery(selection);
+        async move {
+            ctx.backend
+                .deliver_prompt(&real, d)
+                .await
+                .map_err(bad_gateway)
+        }
+    })
+    .await?;
+    if let Some((real, streaming)) = handed {
+        return Ok((Some(real), streaming));
     }
-    send_prompt_live(state, id, message, images, behavior).await
+    let streaming = ctx
+        .backend
+        .deliver_prompt(id, delivery(super::draft::Selection::default()))
+        .await
+        .map_err(bad_gateway)?;
+    Ok((None, streaming))
+}
+
+/// Production delivery: apply the draft selection to the fresh process, then
+/// prompt it.
+pub(crate) async fn deliver_prompt(
+    state: &AppState,
+    id: &str,
+    d: PromptDelivery,
+) -> Result<bool, ApiError> {
+    apply_selection(state, id, d.selection).await?;
+    send_prompt_live(state, id, &d.message, d.images, d.behavior.as_deref()).await
 }
 
 async fn apply_selection(
@@ -464,7 +479,6 @@ async fn prompt_ex<B: Backend>(
     Json(body): Json<PromptExBody>,
 ) -> ApiResult<Value> {
     load_session(&ctx, &id).await?;
-    let state = app(&ctx)?;
     let text = body.text.trim();
     if text.is_empty() && body.images.is_empty() {
         return Err(bad_request("内容为空"));
@@ -482,23 +496,19 @@ async fn prompt_ex<B: Backend>(
         text
     };
     let message = apply_plan_prefix(text, is_plan_on(&id));
-    let behavior = body.streaming_behavior.as_deref();
-    if let Some((_real_id, result)) = super::draft::handoff(state, &id, |real, selection| {
-        let state = state.clone();
-        let message = message.clone();
-        let images = images.clone();
-        async move {
-            apply_selection(&state, &real, selection).await?;
-            let streaming = send_prompt_ex(&state, &real, &message, images, behavior).await?;
-            Ok(json!({"ok": true, "streaming": streaming, "sessionId": real}))
-        }
-    })
-    .await?
-    {
-        return Ok(Json(result));
+    let (real, streaming) = send_prompt_ex(
+        &ctx,
+        &id,
+        &message,
+        images,
+        body.streaming_behavior.as_deref(),
+    )
+    .await?;
+    let mut out = json!({"ok": true, "streaming": streaming});
+    if let Some(real) = real {
+        out["sessionId"] = json!(real);
     }
-    let streaming = send_prompt_ex(state, &id, &message, images, behavior).await?;
-    Ok(Json(json!({"ok": true, "streaming": streaming})))
+    Ok(Json(out))
 }
 
 async fn abort<B: Backend>(
@@ -514,6 +524,94 @@ async fn abort<B: Backend>(
         .await
         .map_err(bad_gateway)?;
     Ok(Json(json!({"ok": true})))
+}
+
+// ------------------------------------------------------- batch approval
+
+#[derive(Deserialize)]
+struct UiRespondAllBody {
+    action: String,
+}
+
+/// Option label of an `extension_ui_request` select (plain string or object).
+fn option_label(o: &Value) -> Option<&str> {
+    o.as_str()
+        .or_else(|| o.get("label").and_then(Value::as_str))
+        .or_else(|| o.get("value").and_then(Value::as_str))
+}
+
+/// The response that approves (`approve = true`) or denies one pending UI
+/// request, or `None` when it is not a tool approval / confirm dialog and
+/// must be left for the user. Mirrors the desktop `PendingUiCard`: a select is
+/// an approval only with omp's exact once/Deny labels; a confirm answers
+/// `confirmed`.
+fn batch_response(request: &Value, approve: bool) -> Option<Value> {
+    let id = request.get("id").and_then(Value::as_str)?;
+    let method = request.get("method").and_then(Value::as_str)?;
+    match method {
+        "confirm" => Some(json!({"id": id, "confirmed": approve})),
+        "select" => {
+            let title = request.get("title").and_then(Value::as_str).unwrap_or("");
+            let lower = title.to_lowercase();
+            if !(lower.contains("allow")
+                || lower.contains("approve")
+                || title.contains("权限")
+                || title.contains("允许"))
+            {
+                return None;
+            }
+            let labels: Vec<&str> = request
+                .get("options")
+                .or_else(|| request.get("choices"))
+                .and_then(Value::as_array)?
+                .iter()
+                .filter_map(option_label)
+                .collect();
+            let once = labels
+                .iter()
+                .find(|l| **l == "Approve Once")
+                .or_else(|| labels.iter().find(|l| **l == "Approve"))?;
+            let deny = labels.iter().find(|l| **l == "Deny")?;
+            Some(if approve {
+                json!({"id": id, "value": once, "confirmed": true})
+            } else {
+                json!({"id": id, "value": deny, "confirmed": false, "cancelled": true})
+            })
+        }
+        _ => None,
+    }
+}
+
+/// `POST /sessions/{id}/ui-respond-all {action:"approve"|"deny"}` →
+/// `{handled, skipped}`. Ask-user questions (input/editor/other selects) are
+/// never answered; they count as skipped.
+async fn ui_respond_all<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<UiRespondAllBody>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let approve = match body.action.as_str() {
+        "approve" => true,
+        "deny" => false,
+        _ => return Err(bad_request("action 必须是 approve 或 deny")),
+    };
+    if super::draft::is_draft(&id) {
+        return Ok(Json(json!({"handled": 0, "skipped": 0})));
+    }
+    let (mut handled, mut skipped) = (0u32, 0u32);
+    for p in ctx.backend.pending_ui(&id).await {
+        let Some(mut response) = batch_response(&p.request, approve) else {
+            skipped += 1;
+            continue;
+        };
+        response["type"] = json!("extension_ui_response");
+        match ctx.backend.ui_respond(&id, response).await {
+            Ok(()) => handled += 1,
+            Err(_) => skipped += 1,
+        }
+    }
+    Ok(Json(json!({"handled": handled, "skipped": skipped})))
 }
 
 // ------------------------------------------------------- slash commands
@@ -878,10 +976,13 @@ async fn slash_commands<B: Backend>(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SlashBody {
     name: String,
     #[serde(default)]
     args: String,
+    /// `fork` only: cut the copy right after this transcript item id.
+    entry_id: Option<String>,
 }
 
 fn goal_of(state: &Value) -> Option<(String, String)> {
@@ -1072,11 +1173,29 @@ async fn slash<B: Backend>(
     let forward = |text: String| {
         let text = text.trim().to_string();
         let id = fwd_id.clone();
+        let ctx = &ctx;
         async move {
-            send_prompt_ex(state, &id, &text, Vec::new(), None).await?;
-            Ok::<_, ApiError>(Json(json!({"ok": true, "forwarded": true})))
+            let (real, _) = send_prompt_ex(ctx, &id, &text, Vec::new(), None).await?;
+            let mut out = json!({"ok": true, "forwarded": true});
+            if let Some(real) = real {
+                out["sessionId"] = json!(real);
+            }
+            Ok::<_, ApiError>(Json(out))
         }
     };
+    // A draft has no omp process yet: commands that act on one cannot run.
+    let is_draft = super::draft::is_draft(&id);
+    if is_draft
+        && matches!(
+            name.as_str(),
+            "fork" | "btw" | "rename" | "compact" | "handoff" | "goal" | "fast" | "slow"
+        )
+    {
+        return Err(err(
+            StatusCode::CONFLICT,
+            "新会话还没有内容，请先发送第一条消息",
+        ));
+    }
 
     match name.as_str() {
         "new" => {
@@ -1093,14 +1212,17 @@ async fn slash<B: Backend>(
             ok(json!({"sessionId": info.session_id}))
         }
         "fork" => {
-            if args.is_empty() {
+            let entry_id = body.entry_id.as_deref().filter(|e| !e.is_empty());
+            if args.is_empty() && entry_id.is_none() {
                 return Err(bad_request("用法: /fork <消息>（分支后发送的第一条消息）"));
             }
             let st = state.app.state::<AppState>();
-            let info = crate::rpc::fork::create(&st, &id, None, None)
+            let info = crate::rpc::fork::create(&st, &id, entry_id.map(str::to_string), None)
                 .await
                 .map_err(bad_gateway)?;
-            send_prompt_ex(state, &info.session_id, args, Vec::new(), None).await?;
+            if !args.is_empty() {
+                send_prompt_ex(&ctx, &info.session_id, args, Vec::new(), None).await?;
+            }
             ok(json!({"sessionId": info.session_id}))
         }
         "btw" => {
@@ -1153,7 +1275,7 @@ async fn slash<B: Backend>(
         // Desktop only continues when the last assistant message was aborted;
         // the transcript check is left to omp (a stray "Continue" is harmless).
         "resume" => {
-            send_prompt_ex(state, &id, "Continue", Vec::new(), None).await?;
+            send_prompt_ex(&ctx, &id, "Continue", Vec::new(), None).await?;
             ok(json!({}))
         }
         "plan" => {
@@ -1189,6 +1311,15 @@ async fn slash<B: Backend>(
             if args.is_empty() {
                 return Err(bad_request("用法: /model <provider/模型 id>"));
             }
+            if is_draft {
+                let (p, m) = split_model(args);
+                if p.is_empty() || m.is_empty() {
+                    return Err(bad_request("新会话请使用 provider/模型 id"));
+                }
+                super::draft::set_model(&id, p.clone(), m.clone()).await;
+                super::draft::set_active(ctx.clone(), &id, true, true).await;
+                return ok(json!({"output": format!("已切换模型：{p}/{m}")}));
+            }
             live(state, &id).await?;
             let (provider, model_id) = resolve_model(state, &id, args).await?;
             rpc_cmd(
@@ -1209,6 +1340,11 @@ async fn slash<B: Backend>(
                     .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
             {
                 return Err(bad_request("用法: /thinking <等级>"));
+            }
+            if is_draft {
+                super::draft::set_thinking(&id, level.clone()).await;
+                super::draft::set_active(ctx.clone(), &id, true, true).await;
+                return ok(json!({"output": format!("思考等级：{level}")}));
             }
             live(state, &id).await?;
             rpc_cmd(
@@ -1276,9 +1412,45 @@ async fn draft_activity<B: Backend>(
 ) -> ApiResult<Value> {
     check_id(&id)?;
     if super::draft::is_draft(&id) {
-        super::draft::set_active(app(&ctx)?, &id, body.active, body.meaningful).await;
+        super::draft::set_active(ctx.clone(), &id, body.active, body.meaningful).await;
     }
     Ok(Json(json!({"ok": true})))
+}
+
+/// Context-window usage shown by the phone's usage chip; all `None` when unknown.
+#[derive(Default, Debug, PartialEq)]
+struct ContextUsage {
+    tokens: Option<u64>,
+    window: Option<u64>,
+    percent: Option<f64>,
+}
+
+/// Derive usage from omp `get_state` (`contextUsage.tokens`, window from
+/// `contextUsage.contextWindow` or the model's `contextWindow`), the same
+/// fields the desktop composer's context ring reads. A session without a live
+/// process falls back to the transcript snapshot's token count (no window).
+fn context_usage(state: Option<&Value>, snapshot_tokens: Option<u64>) -> ContextUsage {
+    let live = state
+        .and_then(|s| s.get("contextUsage"))
+        .filter(|u| u.is_object());
+    let tokens = live
+        .and_then(|u| u.get("tokens"))
+        .and_then(Value::as_u64)
+        .or(snapshot_tokens);
+    let window = live
+        .and_then(|u| u.get("contextWindow"))
+        .or_else(|| state.and_then(|s| s.pointer("/model/contextWindow")))
+        .and_then(Value::as_u64)
+        .filter(|w| *w > 0);
+    let percent = match (tokens, window) {
+        (Some(t), Some(w)) => Some(t as f64 / w as f64 * 100.0),
+        _ => live.and_then(|u| u.get("percent")).and_then(Value::as_f64),
+    };
+    ContextUsage {
+        tokens,
+        window,
+        percent,
+    }
 }
 
 async fn composer_state<B: Backend>(
@@ -1288,7 +1460,9 @@ async fn composer_state<B: Backend>(
     let meta = load_session(&ctx, &id).await?;
     let selection = super::draft::selection(&id).await;
     let draft_model = match &selection {
-        Some(s) if s.model.is_none() => super::draft::default_model(app(&ctx)?, &id).await,
+        Some(s) if s.model.is_none() => {
+            super::draft::default_model(ctx.backend.app_state(), &id).await
+        }
         _ => None,
     };
     let draft_thinking = selection
@@ -1299,6 +1473,7 @@ async fn composer_state<B: Backend>(
         .as_ref()
         .and_then(|s| s.model.as_ref())
         .map(|(p, m)| format!("{p}/{m}"));
+    let is_draft = selection.is_some();
     let st = live_state(&id).await;
     let streaming = crate::rpc::get_handle(&id)
         .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
@@ -1311,9 +1486,26 @@ async fn composer_state<B: Backend>(
         })
         .or(meta.model.clone())
         .or(draft_model);
+    let snapshot_tokens = match (&st, ctx.backend.app_state()) {
+        (None, Some(state)) if !is_draft => {
+            crate::catalog::commands::session_snapshot(state.app.state::<AppState>(), id.clone())
+                .await
+                .ok()
+                .and_then(|s| s.context_tokens)
+        }
+        _ => None,
+    };
+    let usage = if is_draft {
+        ContextUsage::default()
+    } else {
+        context_usage(st.as_ref(), snapshot_tokens)
+    };
     Ok(Json(json!({
         "live": st.is_some(),
         "streaming": streaming,
+        "contextTokens": usage.tokens,
+        "contextWindow": usage.window,
+        "contextPercent": usage.percent,
         "model": model,
         "thinkingLevel": draft_thinking.or_else(|| st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned()),
         "planMode": is_plan_on(&id),
@@ -1366,7 +1558,7 @@ async fn model_facts(state: &AppState, meta: &SessionMeta, id: &str) -> Value {
         st.as_ref().and_then(|s| s.get("model"))
     };
     let draft_model = if is_draft && selected_model.is_none() && model_v.is_none() {
-        super::draft::default_model(state, id).await
+        super::draft::default_model(Some(state), id).await
     } else {
         None
     };
@@ -1437,7 +1629,7 @@ async fn model_set<B: Backend>(
         return Err(bad_request("模型参数无效"));
     }
     if super::draft::set_model(&id, provider.to_string(), model_id.to_string()).await {
-        super::draft::set_active(state, &id, true, true).await;
+        super::draft::set_active(ctx.clone(), &id, true, true).await;
         let mut out = model_facts(state, &meta, &id).await;
         out["ok"] = json!(true);
         return Ok(Json(out));
@@ -1477,7 +1669,7 @@ async fn thinking_set<B: Backend>(
         return Err(bad_request("思考等级无效"));
     }
     if super::draft::set_thinking(&id, level.clone()).await {
-        super::draft::set_active(state, &id, true, true).await;
+        super::draft::set_active(ctx.clone(), &id, true, true).await;
         let mut out = model_facts(state, &meta, &id).await;
         out["ok"] = json!(true);
         return Ok(Json(out));
@@ -1554,6 +1746,29 @@ async fn plan_set<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_usage_from_live_state_and_snapshot() {
+        let live = json!({"contextUsage": {"tokens": 50000}, "model": {"contextWindow": 200000}});
+        let u = context_usage(Some(&live), None);
+        assert_eq!((u.tokens, u.window), (Some(50000), Some(200000)));
+        assert!((u.percent.unwrap() - 25.0).abs() < 1e-9);
+
+        // contextUsage.contextWindow beats the model's; reported percent is
+        // used when no window is known.
+        let w = json!({"contextUsage": {"tokens": 10, "contextWindow": 100}, "model": {"contextWindow": 999}});
+        assert_eq!(context_usage(Some(&w), None).window, Some(100));
+        let p = json!({"contextUsage": {"tokens": 10, "percent": 7.5}});
+        assert_eq!(context_usage(Some(&p), None).percent, Some(7.5));
+
+        // No process: snapshot tokens only; nothing at all stays null.
+        let snap = context_usage(None, Some(1234));
+        assert_eq!(
+            (snap.tokens, snap.window, snap.percent),
+            (Some(1234), None, None)
+        );
+        assert_eq!(context_usage(None, None), ContextUsage::default());
+    }
 
     #[test]
     fn sanitizer_strips_paths_and_dots() {

@@ -22,8 +22,8 @@
 //!   relative to the repo top (as git prints it).
 //! - `GET /sessions/{id}/git/branches` → `BranchInfo[]` (read-only listing).
 //! - `GET /sessions/{id}/git/log?limit=` → `GitCommit[]` (limit 1..=200, default 50).
-//! - `GET /sessions/{id}/git/diff?path=&staged=` → `{diff}`. `staged=true` is
-//!   `git diff --cached`; otherwise working tree vs HEAD incl. untracked.
+//! - `GET /sessions/{id}/git/diff?path=&staged=&commit=<sha>` → `{diff}` (`commit`: hex sha 4-40
+//!   chars → that commit's patch). `staged=true` is `git diff --cached`; otherwise working tree vs HEAD incl. untracked.
 //! - `POST /sessions/{id}/git/stage` `{paths: string[]}` → `{ok: true}`.
 //! - `POST /sessions/{id}/git/unstage` `{paths: string[]}` → `{ok: true}`.
 //! - `POST /sessions/{id}/git/commit` `{message}` → `{output}`; commits what is
@@ -114,9 +114,7 @@ struct Scope {
 }
 
 async fn scope<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<Scope, ApiError> {
-    let meta = ctx
-        .backend
-        .session(id)
+    let meta = super::draft::find_session(&ctx.backend, id)
         .await
         .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
     let mut raw = vec![meta.cwd.clone()];
@@ -408,6 +406,12 @@ struct DiffQuery {
     path: Option<String>,
     #[serde(default)]
     staged: bool,
+    /// Diff of one commit (hex sha, 4-40 chars) instead of the working tree.
+    commit: Option<String>,
+}
+
+fn valid_sha(s: &str) -> bool {
+    (4..=40).contains(&s.len()) && s.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
 }
 
 #[derive(Deserialize)]
@@ -459,7 +463,15 @@ async fn git_diff<B: Backend>(
     let sc = scope(&ctx, &id).await?;
     blocking(move || {
         let path = q.path.as_deref().filter(|p| !p.is_empty());
-        let diff = if q.staged {
+        let diff = if let Some(sha) = q.commit.as_deref().filter(|c| !c.is_empty()) {
+            if !valid_sha(sha) {
+                return Err(err(StatusCode::BAD_REQUEST, "非法提交哈希"));
+            }
+            if let Some(p) = path {
+                git_pathspec(p)?;
+            }
+            history::diff(&sc.cwd, path, Some(sha)).map_err(|e| err(StatusCode::BAD_REQUEST, e))?
+        } else if q.staged {
             staged_diff(&sc.cwd, path)?
         } else {
             if let Some(p) = path {
@@ -504,6 +516,15 @@ async fn git_commit<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commit_sha_validation() {
+        assert!(valid_sha("abcd"));
+        assert!(valid_sha(&"a1".repeat(20)));
+        for bad in ["abc", "ABCD", "abcg", "--output=x", "", &"a".repeat(41)] {
+            assert!(!valid_sha(bad), "{bad}");
+        }
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let n = std::time::SystemTime::now()

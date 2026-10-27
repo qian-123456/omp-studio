@@ -3,7 +3,7 @@ name = "omp-workspace"
 version = "0.1.1"
 description = "Desktop workbench for OMP agent sessions"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80"
 license = "MIT"
 
 [lib]
@@ -65,6 +65,11 @@ hyper-util = { version = "0.1", default-features = false, features = [
 tower = { version = "0.5", default-features = false, features = ["util"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Mobile web bundle (src-tauri/mobile-dist): embedded in release, read from disk in debug.
+rust-embed = { version = "=8.13.0", default-features = false }
+# Web push (RFC 8030/8291/8292) is hand-rolled on ring + aes-gcm; ring is already
+# in the tree through rustls, pinned to the same version here.
+ring = "=0.17.14"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "=3.6.0"

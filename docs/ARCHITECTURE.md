@@ -55,7 +55,7 @@ src-tauri/src/
   model_templates/  role templates + quota-triggered switching, per scope (global or one project): store, guarded batch apply, live-session fan-out, rule polling (§7 D) [D]
   privacy/          privacy placeholders: store, classify, file writers, commands       [P]
   visualize.rs      bundled visualize plugin install + spawn `--plugin-dir` wiring      [B]
-src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
+src-tauri/mobile-dist/       built React mobile bundle (gitignored, rust-embed)         [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
 extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints extension (§8.1) [C]
@@ -511,6 +511,7 @@ CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL
 CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
+CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, token_hash TEXT NOT NULL, created_at TEXT NOT NULL); -- v21
 CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);
   -- v3: scheduled tasks (schedules and schedule_runs tables)
 CREATE TABLE schedules(
@@ -1249,7 +1250,24 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   API: `GET /api/sessions` (id,label,title,status,pending,updatedAt,cwd), `GET /api/todos`, `POST /api/todos/:id/act {action}`,
   `GET /api/sessions/:id/pending-ui`, `POST /api/sessions/:id/ui-respond {response}`, `POST /api/sessions/:id/prompt {text}`,
   `POST /api/sessions/:id/resume`, `GET /api/sessions/:id/last` (last assistant text), `GET /api/events` (SSE: todos changed, session status changed).
-  Serves `src-tauri/mobile/index.html` at `/`. No full message stream, no annotations, no code editing.
+  Static serving (`mobile/assets.rs`): the React bundle in `src-tauri/mobile-dist/` (vite base `/static/`) is embedded with rust-embed
+  (`build.rs` creates the dir so a fresh checkout compiles; without a bundle `/` answers 503 with a hint). `/` = `index.html` (no-store),
+  `/static/assets/*` immutable 1-year, other `/static/*` no-cache, `/sw.js` no-store + `Service-Worker-Allowed: /`; traversal rejected.
+  Additional routes (all behind the device auth):
+  - Draft sessions (`api/draft.rs`) are accepted by every session-id route via `find_session` (backend, else draft registry): reads return neutral data
+    (`[]`/null), actions needing a process return 409, and the first prompt starts the real process and returns `{ok, sessionId}`.
+  - `POST /left/sessions {cwd, model?:{provider,modelId}, thinking?}` creates a draft with the selection applied; handoff keeps it.
+  - `GET /sessions/:id/composer-state` includes `contextTokens/contextWindow/contextPercent` (null for drafts / unknown).
+  - `POST /sessions/:id/ui-respond-all {action: approve|deny}` → `{handled, skipped}`: answers only tool-approval selects/confirms.
+  - `GET /left/settings/desktop` → `{defaultApprovalMode, capsuleVisible}`; `POST /left/settings/approval-mode {mode: always-ask|write|yolo}`.
+  - `GET /sessions/:id/git/diff?path=&staged=&commit=<hex sha>`; `POST /sessions/:id/slash {name:"fork", args?, entryId?}` → `{sessionId}`.
+  - Images: `GET /sessions/:id/image?path=` (attachment/upload/blob dirs) and `GET /ideas/image?path=` (png/jpeg/gif/webp, ≤20MiB, magic-byte checked);
+    `GET /left/skills/content?path=` → `{text}` (catalog skill paths only, ≤256KiB).
+  - Web push (`mobile/push.rs`, `api/push.rs`; hand-rolled VAPID ES256 + RFC 8291 aes128gcm on `ring`, no openssl): `GET /push/public-key` → `{publicKey}`,
+    `POST /push/subscribe {endpoint, keys:{p256dh, auth}}`, `POST /push/unsubscribe {endpoint}`, `POST /push/test`. Subscriptions live in
+    `push_subscriptions` (migration v21, keyed by endpoint, bound to the device `token_hash`; removed with the device and on 404/410). Endpoint hosts are
+    allow-listed (FCM, Mozilla autopush, Apple, WNS). Devices with an open `/api/events` stream are not pushed. VAPID key in settings row `mobile_vapid_pkcs8`.
+  - The heatmap diagnose route was removed. No full message stream, no annotations, no code editing.
 - Mobile page: mobile-first vanilla JS; tabs 待办 / 会话; approve/deny buttons, answer box for questions, reply box for sessions awaiting answer,
   一键恢复 for interrupted, status dots; SSE auto-refresh; in-page Notification API + vibration when a new todo arrives (when permitted).
   Everything interpolated into markup goes through `M.util.esc` — text and attribute values alike (`data-*`, `src`, `value`, `class`);

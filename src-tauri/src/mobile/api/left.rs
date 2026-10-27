@@ -54,6 +54,8 @@
 //! - `GET /left/skills?cwd=` → `{skills: (SkillItem + {enabled, disabledReason: null|{kind,..}})[],
 //!   extensions: ExtensionItem[], skillsEnabled, configError: string|null}`; `cwd` (optional,
 //!   must be in `/left/dirs`) adds that project's skills.
+//! - `GET /left/skills/content?path=<SkillItem.path>&cwd=` → `{text}` (SKILL.md, ≤256KiB; 404 unless
+//!   `path` is a catalog skill's path; pass the same `cwd` as the list for project skills).
 //! - `POST /left/skills/toggle` `{name, enabled, cwd?}` → `{ok: true}` (404 unknown skill;
 //!   writes `disabledExtensions` `skill:<name>` like desktop; effective for new sessions).
 //! - `POST /left/extensions/toggle` `{path, enabled, cwd?}` → `{ok: true}` (404 unknown extension).
@@ -67,6 +69,10 @@
 //!   ask.notify, bash.autoBackground.enabled, tools.maxTimeout, compaction.enabled,
 //!   compaction.autoContinue, retry.enabled, retry.maxRetries, retry.maxDelayMs,
 //!   retry.waitForUsageReset); `ompError` is set (and `omp` empty) when omp config is unreadable.
+//!   Also `defaultApprovalMode` (`always-ask|write|yolo`) and `capsuleVisible` (desktop settings).
+//! - `GET /left/settings/desktop` → `{defaultApprovalMode, capsuleVisible}`.
+//! - `POST /left/settings/approval-mode` `{mode: "always-ask"|"write"|"yolo"}` → `{ok,
+//!   defaultApprovalMode, capsuleVisible}`; anything else → 400. Applies to sessions started later.
 //! - `POST /left/settings/set` `{key, value}` → `{ok, key, value}` (value = fresh value). Strict
 //!   allowlist + type/enum/range validation; anything else → 400. Writes via `omp config set`
 //!   (global config), behind the normal mobile auth. Mobile service enable/disable stays
@@ -128,10 +134,13 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/left/schedules/{id}/run", post(schedules_run::<B>))
         .route("/left/schedules/{id}/runs", get(schedules_runs::<B>))
         .route("/left/skills", get(skills_list::<B>))
+        .route("/left/skills/content", get(skill_content::<B>))
         .route("/left/skills/toggle", post(skill_toggle::<B>))
         .route("/left/extensions/toggle", post(extension_toggle::<B>))
         .route("/left/settings", get(settings_summary::<B>))
         .route("/left/settings/set", post(setting_set::<B>))
+        .route("/left/settings/desktop", get(desktop_settings::<B>))
+        .route("/left/settings/approval-mode", post(approval_mode_set::<B>))
         .route("/left/roles", get(roles_get::<B>))
         .route("/left/roles/set", post(roles_set::<B>))
         .route("/left/providers", get(providers_get::<B>))
@@ -855,8 +864,18 @@ async fn list_dirs<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Valu
 // ---------- session actions ----------
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NewSessionBody {
     cwd: String,
+    model: Option<NewSessionModel>,
+    thinking: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NewSessionModel {
+    provider: String,
+    model_id: String,
 }
 
 async fn discard_draft<B: Backend>(
@@ -867,6 +886,40 @@ async fn discard_draft<B: Backend>(
         return Err(not_found("草稿不存在"));
     }
     Ok(Json(json!({"ok": true})))
+}
+
+type NewSelection = (Option<(String, String)>, Option<String>);
+
+/// Validate the optional model / thinking choice of `POST /left/sessions`.
+fn parse_new_selection(body: &NewSessionBody) -> Result<NewSelection, ApiError> {
+    let model = match &body.model {
+        Some(m) => {
+            let (p, id) = (m.provider.trim(), m.model_id.trim());
+            if p.is_empty() || id.is_empty() || p.len() > 200 || id.len() > 400 {
+                return Err(bad_request("模型参数无效"));
+            }
+            Some((p.to_string(), id.to_string()))
+        }
+        None => None,
+    };
+    let thinking = match body
+        .thinking
+        .as_deref()
+        .map(|t| t.trim().to_ascii_lowercase())
+    {
+        Some(t) if !t.is_empty() => {
+            if t.len() > 32
+                || !t
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(bad_request("思考等级无效"));
+            }
+            Some(t)
+        }
+        _ => None,
+    };
+    Ok((model, thinking))
 }
 
 async fn new_session<B: Backend>(
@@ -882,7 +935,14 @@ async fn new_session<B: Backend>(
     } else {
         entry.mode
     };
+    let (model, thinking) = parse_new_selection(&body)?;
     let info = super::draft::create(cwd, mode, None, Some(entry.workspace_id.clone())).await;
+    if let Some((provider, model_id)) = model {
+        super::draft::set_model(&info.session_id, provider, model_id).await;
+    }
+    if let Some(level) = thinking {
+        super::draft::set_thinking(&info.session_id, level).await;
+    }
     Ok(Json(serde_json::to_value(info).map_err(internal)?))
 }
 
@@ -926,6 +986,12 @@ async fn patch_session<B: Backend>(
     Json(body): Json<PatchSessionBody>,
 ) -> ApiResult<SessionMeta> {
     let st = app(&ctx)?;
+    if super::draft::is_draft(&id) {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "新会话还没有内容，请先发送第一条消息".into(),
+        ));
+    }
     let Some(current) = ctx.backend.session(&id).await else {
         return Err(not_found("会话不存在"));
     };
@@ -1022,6 +1088,10 @@ async fn inbox_seen<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     let st = app(&ctx)?;
+    if super::draft::is_draft(&id) {
+        // Nothing to mark: a draft has no transcript yet.
+        return Ok(ok_json());
+    }
     if ctx.backend.session(&id).await.is_none() {
         return Err(not_found("会话不存在"));
     }
@@ -1507,6 +1577,42 @@ async fn catalog_for<B: Backend>(
         .map_err(bad_gateway)
 }
 
+#[derive(Deserialize)]
+struct SkillContentQuery {
+    path: String,
+    cwd: Option<String>,
+}
+
+/// Largest SKILL.md returned to the phone.
+const MAX_SKILL_BYTES: u64 = 256 * 1024;
+
+/// `GET /left/skills/content?path=<SkillItem.path>&cwd=` → `{text}`. `path` must equal the
+/// path of a skill in the catalog (project skills need the same `cwd` as `/left/skills`).
+async fn skill_content<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Query(q): Query<SkillContentQuery>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let catalog = catalog_for(&ctx, st, q.cwd.as_deref()).await?;
+    let skill = catalog
+        .skills
+        .iter()
+        .find(|s| s.path == q.path)
+        .ok_or_else(|| not_found("技能不存在"))?;
+    let path = PathBuf::from(&skill.path);
+    let text = tokio::task::spawn_blocking(move || {
+        let len = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if len > MAX_SKILL_BYTES {
+            return Err("技能文件超过 256KB".to_string());
+        }
+        std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| internal(e.to_string()))?
+    .map_err(bad_request)?;
+    Ok(Json(json!({ "text": text })))
+}
+
 async fn skills_list<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Query(q): Query<CwdQuery>,
@@ -1633,9 +1739,56 @@ async fn settings_summary<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResu
         },
         "defaultModel": model,
         "defaultModelSource": source,
+        "defaultApprovalMode": st.settings.read().default_approval_mode,
+        "capsuleVisible": st.settings.read().capsule_visible,
         "omp": omp,
         "ompError": omp_error,
     })))
+}
+
+/// Approval modes the phone may select for new omp processes (`--approval-mode`).
+const APPROVAL_MODES: &[&str] = &["always-ask", "write", "yolo"];
+
+fn check_approval_mode(mode: &str) -> Result<(), String> {
+    if APPROVAL_MODES.contains(&mode) {
+        Ok(())
+    } else {
+        Err(format!("审批模式必须是：{}", APPROVAL_MODES.join(" / ")))
+    }
+}
+
+fn desktop_settings_json(st: &AppState) -> Value {
+    let s = st.settings.read();
+    json!({
+        "defaultApprovalMode": s.default_approval_mode,
+        "capsuleVisible": s.capsule_visible,
+    })
+}
+
+/// `GET /left/settings/desktop` → `{defaultApprovalMode, capsuleVisible}`.
+async fn desktop_settings<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {
+    Ok(Json(desktop_settings_json(app(&ctx)?)))
+}
+
+#[derive(Deserialize)]
+struct ApprovalModeBody {
+    mode: String,
+}
+
+/// `POST /left/settings/approval-mode {mode}` → `{ok, defaultApprovalMode, capsuleVisible}`.
+/// Only the desktop `defaultApprovalMode` changes; running sessions keep theirs.
+async fn approval_mode_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<ApprovalModeBody>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    check_approval_mode(&body.mode).map_err(bad_request)?;
+    crate::settings::set_default_approval_mode(st, &body.mode)
+        .await
+        .map_err(bad_request)?;
+    let mut out = desktop_settings_json(st);
+    out["ok"] = json!(true);
+    Ok(Json(out))
 }
 
 /// Value shape of one phone-editable OMP key.
@@ -1944,6 +2097,61 @@ async fn context_windows_set<B: Backend>(
 mod tests {
     use super::*;
     use crate::contracts::GitBadge;
+
+    #[tokio::test]
+    async fn new_session_selection_lands_on_the_draft() {
+        let body: NewSessionBody = serde_json::from_value(json!({
+            "cwd": "/x",
+            "model": {"provider": "anthropic", "modelId": "opus"},
+            "thinking": " High "
+        }))
+        .unwrap();
+        let (model, thinking) = parse_new_selection(&body).unwrap();
+        assert_eq!(model, Some(("anthropic".into(), "opus".into())));
+        assert_eq!(thinking.as_deref(), Some("high"));
+
+        let info = super::super::draft::create(
+            "/tmp/left-selection-test".into(),
+            SpaceMode::Code,
+            None,
+            None,
+        )
+        .await;
+        let (p, m) = model.unwrap();
+        super::super::draft::set_model(&info.session_id, p, m).await;
+        super::super::draft::set_thinking(&info.session_id, thinking.unwrap()).await;
+        let sel = super::super::draft::selection(&info.session_id)
+            .await
+            .unwrap();
+        assert_eq!(sel.model, Some(("anthropic".into(), "opus".into())));
+        assert_eq!(sel.thinking.as_deref(), Some("high"));
+        super::super::draft::discard(&info.session_id).await;
+
+        for bad in [
+            json!({"cwd": "/x", "model": {"provider": "", "modelId": "m"}}),
+            json!({"cwd": "/x", "thinking": "a b"}),
+        ] {
+            let body: NewSessionBody = serde_json::from_value(bad).unwrap();
+            assert!(parse_new_selection(&body).is_err());
+        }
+        let none: NewSessionBody = serde_json::from_value(json!({"cwd": "/x"})).unwrap();
+        assert_eq!(parse_new_selection(&none).unwrap(), (None, None));
+    }
+
+    #[test]
+    fn approval_mode_allowlist_matches_settings_validation() {
+        for mode in APPROVAL_MODES {
+            let s = crate::contracts::Settings {
+                default_approval_mode: (*mode).to_string(),
+                ..Default::default()
+            };
+            assert!(crate::settings::validate(&s).is_ok(), "{mode}");
+        }
+        for bad in ["", "ask", "YOLO", "yolo ", "always_ask", "never"] {
+            assert!(check_approval_mode(bad).is_err(), "{bad}");
+        }
+        assert!(check_approval_mode("yolo").is_ok());
+    }
 
     #[test]
     fn mobile_setting_allowlist_rejects_unknown_keys() {

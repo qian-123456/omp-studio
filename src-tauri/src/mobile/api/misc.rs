@@ -1,5 +1,5 @@
 //! Mobile API: right-panel pages other than explorer/git — side chat, todos,
-//! plan, heatmap, services, terminal. Reuses the desktop module logic
+//! plan, subagents, services, terminal. Reuses the desktop module logic
 //! (`rpc::sidechat`, `todos`, `services`, `terminal::pty`, `rpc::subagents`).
 //!
 //! ## Routes
@@ -18,10 +18,9 @@
 //! - `GET /sessions/{id}/plan` → `{text: string|null, streaming: boolean}`.
 //!   Plan-mode on/off is client state (not exposed by the backend).
 //!
-//! Heatmap:
+//! Subagents (draft ids answer `[]` / 404 agent):
 //! - `GET  /sessions/{id}/subagents` → `SubagentSummary[]` (empty if no file).
 //! - `GET  /sessions/{id}/subagents/{agentId}?fromByte=` → `SubagentTranscript`.
-//! - `POST /heatmap/diagnose` `{prompt, model?}` → `{text}` (AI doctor).
 //!
 //! Services (the desktop panel only lists/stops; there is no start or log
 //! capture backend, so none is exposed):
@@ -81,7 +80,6 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
             "/sessions/{id}/subagents/{agent}",
             get(subagent_transcript::<B>),
         )
-        .route("/heatmap/diagnose", post(heatmap_diagnose::<B>))
         .route("/services", get(services_list))
         .route("/services/{pid}/stop", post(services_stop))
         .route("/terminal", post(term_open::<B>))
@@ -163,6 +161,12 @@ async fn sidechat_create<B: Backend>(
     if body.question.trim().is_empty() {
         return Err(bad("问题不能为空"));
     }
+    if super::draft::is_draft(&id) {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "新会话还没有内容，请先发送第一条消息".into(),
+        ));
+    }
     if ctx.backend.session(&id).await.is_none() {
         return Err(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()));
     }
@@ -206,6 +210,9 @@ async fn plan<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     valid_id(&id)?;
+    if super::draft::is_draft(&id) {
+        return Ok(Json(json!({ "text": null, "streaming": false })));
+    }
     let Some(file) = crate::catalog::file_of(&id) else {
         return Err(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()));
     };
@@ -226,12 +233,11 @@ async fn plan<B: Backend>(
     Ok(Json(json!({ "text": text, "streaming": streaming })))
 }
 
-// ---- heatmap ----
+// ---- subagents ----
 
 async fn session_file<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<String, ApiError> {
     valid_id(id)?;
-    ctx.backend
-        .session(id)
+    super::draft::find_session(&ctx.backend, id)
         .await
         .map(|m| m.file)
         .ok_or(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))
@@ -242,6 +248,9 @@ async fn subagents<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     let file = session_file(&ctx, &id).await?;
+    if super::draft::is_draft(&id) {
+        return Ok(Json(json!([])));
+    }
     to_json(crate::rpc::subagents::list(&file).map_err(gateway)?)
 }
 
@@ -257,38 +266,10 @@ async fn subagent_transcript<B: Backend>(
     Query(q): Query<FromByte>,
 ) -> ApiResult<Value> {
     let file = session_file(&ctx, &id).await?;
-    to_json(crate::rpc::subagents::transcript(&file, &agent, q.from_byte).map_err(gateway)?)
-}
-
-#[derive(Deserialize)]
-struct DiagnoseBody {
-    prompt: String,
-    model: Option<String>,
-}
-
-async fn heatmap_diagnose<B: Backend>(
-    State(ctx): State<Arc<Ctx<B>>>,
-    Json(body): Json<DiagnoseBody>,
-) -> ApiResult<Value> {
-    let state = app(&ctx)?;
-    let prompt = body.prompt.trim();
-    if prompt.is_empty() {
-        return Err(bad("诊断内容不能为空"));
+    if super::draft::is_draft(&id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "子代理不存在".into()));
     }
-    let model = {
-        let s = state.settings.read();
-        let picked = [body.model.as_deref().unwrap_or(""), s.doctor_model.as_str()]
-            .into_iter()
-            .map(str::trim)
-            .find(|m| !m.is_empty())
-            .unwrap_or("smol")
-            .to_string();
-        picked
-    };
-    let text = crate::todos::omp::run_print(state, &model, prompt, Duration::from_secs(120))
-        .await
-        .map_err(gateway)?;
-    Ok(Json(json!({ "text": text })))
+    to_json(crate::rpc::subagents::transcript(&file, &agent, q.from_byte).map_err(gateway)?)
 }
 
 // ---- services ----
@@ -440,9 +421,7 @@ async fn term_open<B: Backend>(
     Json(body): Json<TermOpenBody>,
 ) -> ApiResult<Value> {
     valid_id(&body.session_id)?;
-    let meta = ctx
-        .backend
-        .session(&body.session_id)
+    let meta = super::draft::find_session(&ctx.backend, &body.session_id)
         .await
         .ok_or(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
     let cwd = meta.cwd;

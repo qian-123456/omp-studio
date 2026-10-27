@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Tailwind utilities bound to the semantic tokens: bg-m-surface, text-m-text-2, rounded-m-md, text-m-sm ... */
+@theme inline {
+	--color-m-bg: var(--m-bg);
+	--color-m-bg-elev: var(--m-bg-elev);
+	--color-m-surface: var(--m-surface);
+	--color-m-surface-2: var(--m-surface-2);
+	--color-m-surface-hover: var(--m-surface-hover);
+	--color-m-border: var(--m-border);
+	--color-m-text: var(--m-text);
+	--color-m-text-2: var(--m-text-2);
+	--color-m-text-3: var(--m-text-3);
+	--color-m-accent: var(--m-accent);
+	--color-m-accent-text: var(--m-accent-text);
+	--color-m-danger: var(--m-danger);
+	--color-m-warn: var(--m-warn);
+	--color-m-success: var(--m-success);
+	--color-m-bubble-user-bg: var(--m-bubble-user-bg);
+	--color-m-bubble-user-text: var(--m-bubble-user-text);
+	--color-m-composer-bg: var(--m-composer-bg);
+	--color-m-code-bg: var(--m-code-bg);
+	--color-m-diff-add: var(--m-diff-add);
+	--color-m-diff-del: var(--m-diff-del);
+	--color-m-scrim: var(--m-scrim);
+	--radius-m-sm: var(--m-r-sm);
+	--radius-m-md: var(--m-r-md);
+	--radius-m-lg: var(--m-r-lg);
+	--radius-m-pill: var(--m-r-pill);
+	--text-m-xs: var(--m-fs-xs);
+	--text-m-sm: var(--m-fs-sm);
+	--text-m-md: var(--m-fs-md);
+	--text-m-lg: var(--m-fs-lg);
+	--text-m-title: var(--m-fs-title);
+	--font-m-sans: var(--m-font-sans);
+	--font-m-mono: var(--m-font-mono);
+	--shadow-m-pop: var(--m-shadow-pop);
+}
+
+/* Layer scale (Tailwind: z-(--z-sheet)). Never use raw z-index numbers in components. */
+:root {
+	--z-base: 0;
+	--z-header: 10;
+	--z-banner: 20;
+	--z-sheet: 50;
+	--z-modal: 60;
+	--z-toast: 70;
+	color-scheme: light dark;
+}
+html[data-scheme="light"] {
+	color-scheme: light;
+}
+html[data-scheme="dark"] {
+	color-scheme: dark;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+html {
+	background: var(--m-bg);
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	overflow: hidden;
+	overscroll-behavior: none;
+	background: var(--m-bg);
+	color: var(--m-text);
+	font-family: var(--m-font-sans);
+	font-size: var(--m-fs-md);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-webkit-tap-highlight-color: transparent;
+	-webkit-touch-callout: none;
+}
+
+/* Text stays selectable where it is content. */
+.m-selectable,
+.m-selectable * {
+	-webkit-user-select: text;
+	user-select: text;
+	-webkit-touch-callout: default;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+button {
+	cursor: pointer;
+	touch-action: manipulation;
+}
+/* iOS zooms into inputs below 16px. */
+input,
+textarea,
+select {
+	font-size: max(16px, 1em);
+}
+
+:focus-visible {
+	outline: 2px solid var(--m-accent);
+	outline-offset: 2px;
+}
+
+/* App frame: height follows the visual viewport (keyboard aware) without per-keystroke work. */
+.m-app {
+	display: flex;
+	flex-direction: column;
+	height: var(--m-vh, 100dvh);
+	min-height: 0;
+	overflow: hidden;
+	background: var(--m-bg);
+}
+.m-page {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* Spinner keyframes shared by ui/ primitives. */
+@keyframes m-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}

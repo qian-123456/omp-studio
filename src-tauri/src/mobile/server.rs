@@ -27,8 +27,6 @@ use super::backend::Backend;
 use crate::contracts::{PendingKind, SessionMeta, SessionStatus};
 use crate::state::AppEvent;
 
-pub const INDEX_HTML: &str = include_str!("../../mobile/index.html");
-
 pub struct Ctx<B> {
     pub backend: B,
     pub db: Arc<parking_lot::Mutex<rusqlite::Connection>>,
@@ -72,26 +70,21 @@ pub fn router<B: Backend>(ctx: Arc<Ctx<B>>) -> Router {
         .route("/", get(index))
         .route("/pair", get(pair::<B>))
         .route("/static/{*path}", get(static_asset))
+        .route("/sw.js", get(service_worker))
         .nest("/api", api)
         .with_state(ctx)
 }
 
 async fn static_asset(Path(path): Path<String>) -> Response {
-    match super::assets::find(&path) {
-        Some((ct, body)) => (
-            [
-                (header::CONTENT_TYPE, ct),
-                (header::CACHE_CONTROL, "no-store"),
-            ],
-            body,
-        )
-            .into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    super::assets::static_file(&path)
 }
 
-async fn index() -> impl IntoResponse {
-    ([(header::CACHE_CONTROL, "no-store")], Html(INDEX_HTML))
+async fn index() -> Response {
+    super::assets::index()
+}
+
+async fn service_worker() -> Response {
+    super::assets::service_worker()
 }
 
 /// (scheme, authority) of an absolute URL, cutting the authority at the first
@@ -195,6 +188,13 @@ pub(crate) fn verify_csrf(headers: &HeaderMap, is_tls: bool) -> Result<(), ApiEr
         }
     }
     Ok(())
+}
+
+/// Session lookup shared by every id route: real sessions and live drafts.
+async fn find_session<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<SessionMeta, ApiError> {
+    super::api::draft::find_session(&ctx.backend, id)
+        .await
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))
 }
 
 fn validate_id(id: &str) -> Result<(), ApiError> {
@@ -361,11 +361,10 @@ async fn pending_ui<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let _ = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let _ = find_session(&ctx, &id).await?;
+    if super::api::draft::is_draft(&id) {
+        return Ok(Json(json!([])));
+    }
     Ok(Json(json!(ctx.backend.pending_ui(&id).await)))
 }
 
@@ -380,11 +379,7 @@ async fn ui_respond<B: Backend>(
     Json(body): Json<RespondBody>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let meta = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let meta = find_session(&ctx, &id).await?;
     if meta.archived {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
@@ -402,7 +397,11 @@ async fn ui_respond<B: Backend>(
         Some(id_str) if !id_str.is_empty() => id_str.to_string(),
         _ => return Err(ApiError(StatusCode::BAD_REQUEST, "response.id 缺失".into())),
     };
-    let pending = ctx.backend.pending_ui(&id).await;
+    let pending = if super::api::draft::is_draft(&id) {
+        Vec::new()
+    } else {
+        ctx.backend.pending_ui(&id).await
+    };
     let exists = pending
         .iter()
         .any(|p| p.request.get("id").and_then(|v| v.as_str()) == Some(&resp_id));
@@ -432,11 +431,7 @@ async fn prompt<B: Backend>(
     Json(body): Json<PromptBody>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let meta = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let meta = find_session(&ctx, &id).await?;
     if meta.archived {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
@@ -446,6 +441,10 @@ async fn prompt<B: Backend>(
     let text = body.text.trim();
     if text.is_empty() {
         return Err(ApiError(StatusCode::BAD_REQUEST, "内容为空".into()));
+    }
+    if super::api::draft::is_draft(&id) {
+        let (real, _) = super::api::chat::send_prompt_ex(&ctx, &id, text, Vec::new(), None).await?;
+        return Ok(Json(json!({ "ok": true, "sessionId": real })));
     }
     ctx.backend
         .send_prompt(&id, text)
@@ -459,15 +458,17 @@ async fn resume<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let meta = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let meta = find_session(&ctx, &id).await?;
     if meta.archived {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "已归档的会话不可操作".into(),
+        ));
+    }
+    if super::api::draft::is_draft(&id) {
+        // Nothing to resume: the process starts with the first prompt.
+        return Ok(Json(
+            json!({ "sessionId": id, "cwd": meta.cwd, "draft": true }),
         ));
     }
     Ok(Json(ctx.backend.resume(&id).await.map_err(bad_gateway)?))
@@ -478,11 +479,10 @@ async fn last<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let meta = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let meta = find_session(&ctx, &id).await?;
+    if super::api::draft::is_draft(&id) {
+        return Ok(Json(json!({ "text": null })));
+    }
     let file = std::path::PathBuf::from(&meta.file);
     let text = tokio::task::spawn_blocking(move || super::last::last_assistant_text(&file))
         .await
@@ -517,11 +517,7 @@ async fn transcript<B: Backend>(
     Query(q): Query<TranscriptQuery>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    let meta = ctx
-        .backend
-        .session(&id)
-        .await
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let meta = find_session(&ctx, &id).await?;
     let file = std::path::PathBuf::from(&meta.file);
     let from = q.from.unwrap_or(0);
     let tail = q.tail;
@@ -605,6 +601,8 @@ async fn events<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     axum::extract::Extension(auth::Token(token)): axum::extract::Extension<auth::Token>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    // While this stream lives the device sees events live; no web push for it.
+    let sse_guard = super::push::SseGuard::new(auth::hash_token(&token));
     let hello = stream::once(async { Ok(Event::default().event("hello").data("{}")) });
     let rx = ctx.backend.subscribe();
     let sd = ctx.shutdown.clone();
@@ -649,7 +647,11 @@ async fn events<B: Backend>(
             }
         },
     );
-    Sse::new(hello.chain(updates)).keep_alive(KeepAlive::default())
+    let stream = hello.chain(updates).map(move |item| {
+        let _live = &sse_guard;
+        item
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 /// TLS handshake timeout for one accepted connection.

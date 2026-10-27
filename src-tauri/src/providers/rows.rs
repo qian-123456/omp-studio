@@ -287,6 +287,7 @@ mod tests {
         let own = key_ref::command_ref(Path::new("/d/bin/ompws-key"), "my id");
         let other_id = key_ref::command_ref(Path::new("/d/bin/ompws-key"), "someone");
         let other_shim = key_ref::command_ref(Path::new("/x/ompws-key"), "my id");
+        #[allow(clippy::type_complexity)]
         let cases: Vec<(Option<&str>, bool, Vec<&str>, bool, bool, ProviderKeyKind)> = vec![
             (Some(&own), false, vec![], true, false, Encrypted),
             (Some(&own), false, vec![], false, false, VaultMissing),
