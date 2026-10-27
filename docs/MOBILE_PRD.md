@@ -13,7 +13,36 @@
 
 ---
 
-## 2. 视觉基准
+## 2. 权威真机截图与逆向参考资料
+
+后续任何会话与 Agent **必须将以下本地文件与截图视为唯一真实现场源**，禁止凭空猜测或自造视觉皮肤：
+
+### 2.1 Gemini iOS 官方真机截图（视觉与排版唯一基准）
+- **首页布局**：`/Users/qianhairui/.omp-workspace/images/1793024036951.png`  
+  *关键元素*：纯黑背景、顶部双横线菜单按钮与模型选择胶囊（左）、新建图标与极光光环头像（右）、居中极光四角星芒与问候语、底部悬浮输入胶囊（加号、占位文字、麦克风与发送）。
+- **左侧全屏导航抽屉**：`/Users/qianhairui/.omp-workspace/images/1793024049723.png`  
+  *关键元素*：近全屏覆盖深色抽屉、顶部大标题“Gemini” + 搜索按钮 + 关闭按钮、主操作高亮胶囊“发起新对话”、分组会话列表、底部账户条与设置齿轮。
+- **设置弹层**：`/Users/qianhairui/.omp-workspace/images/1793024087803.png`  
+  *关键元素*：深色底部滑出面板（Modal Sheet）、顶部居中横条拖拽指示条 + 大标题“设置” + 顶部右侧关闭叉号、分组深灰大圆角卡片列表。
+
+### 2.2 本地逆向工程分析资料库
+- **根目录**：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins`
+- **Gemini 原型与视觉分析**：
+  - 视觉规范与参数：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/analysis/gemini/VISUAL.md`
+  - 交互算法与排版逻辑：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/analysis/gemini/ALGORITHM.md`
+  - 抓取源码与 CSS 变量：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/gemini/index.html`、`css/app.css`、`css/tokens.css`、`app.js`
+- **ChatGPT 移动端交互逻辑参考**：
+  - 视觉与交互规范：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/analysis/chatgpt/VISUAL.md`、`ALGORITHM.md`
+  - 官方 APK 资源提取表（含规划模式 Plan Mode、单选/多选题澄清、动作审批与用量限额的官方原文字符串）：  
+    `/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/.cache/probe/chatgpt-resources.txt`
+- **共享状态机与协议契约**：
+  - 移动端 REST 接口规范：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/analysis/shared/OMP-API.md`
+  - 状态流转机定义：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/analysis/shared/OMP-STATE-MACHINE.md`
+  - 客户端实现契约：`/Users/qianhairui/Documents/gemini-ios-reverse/mobile-skins/shared/CONTRACT.md`、`omp-client.js`
+
+---
+
+## 3. 视觉基准与排版原则
 
 - **视觉风格**：严格以 **Gemini iOS** 界面为基准（深色模式、大圆角卡片、流线胶囊控件）。
 - **排版原则**：
@@ -23,14 +52,14 @@
 
 ---
 
-## 3. 功能规划与需求清单
+## 4. 功能规划与需求清单
 
-### 3.1 首页 (Home)
+### 4.1 首页 (Home)
 - **中性问候**：居中展示“今天想做点什么？”，不显示任何用户名或头像昵称。
 - **结构精简**：移除“聊天／任务”切换标签。
 - **快速发起**：底部胶囊输入框直接键入内容发送，后台自动绑定默认目录并创建会话，平滑进入聊天页，无“会话不存在”中断。
 
-### 3.2 左侧导航全屏抽屉 (Left Drawer)
+### 4.2 左侧导航全屏抽屉 (Left Drawer)
 - **顶部固定项**：发起新对话、搜索会话、定时任务。
 - **视图切换**：
   - 空间切换器（代码、通用对话、学习等空间）。
@@ -43,7 +72,7 @@
   - 设置（直达系统设置）。
 - **剔除内容**：移除与产品无关的库、学生、自定义、视频、笔记本等条目。
 
-### 3.3 对话与输入区 (Chat & Composer)
+### 4.3 对话与输入区 (Chat & Composer)
 - **顶栏**：菜单按钮、当前「模型 · 思考强度」切换胶囊（点击呼出选择弹层）、新建对话、右侧工具菜单。
 - **状态栏（输入框上方）**：
   - 左侧：当前工作目录（点击弹出完整路径与切换面板）。
@@ -54,7 +83,7 @@
   - **语音输入（麦克风）**：按住/点击录音，调用语音识别模型接口转写文字，填入输入框供编辑，不自动发送。
   - **发送 / 停止**：空闲为发送，生成中自动变为停止按钮。
 
-### 3.4 代理工作流深度支持
+### 4.4 代理工作流深度支持
 - **子代理胶囊 (Subagents)**：
   - 挂载于消息区右上角，有子代理活动或记录时常驻显示进度与状态计数（运行/排队/完成/失败）。
   - 点击弹出嵌套树状概览抽屉（展示层级连线、模型、耗时）。
@@ -75,11 +104,11 @@
 - **工具审批 (Approvals)**：
   - 就地展示命令正文与参数，支持「单次允许」、「本会话记住」以及多工具批量审批。
 
-### 3.5 富媒体与可视化 (Visualize & Mermaid)
+### 4.5 富媒体与可视化 (Visualize & Mermaid)
 - **Mermaid 流程图**：流式生成未闭合时维持纯文本代码，闭合后懒加载渲染为隔离 SVG，支持全屏双指缩放（最高 6 倍）与平移。
 - **Visualize 沙箱小部件**：带安全 CSP 的独立 iframe 渲染交互式 HTML 片段，通过 postMessage 桥接主题变量与状态保存，支持全屏预览与移动端排版重叠自适应。
 
-### 3.6 右侧工具面板集合 (Right Tools)
+### 4.6 右侧工具面板集合 (Right Tools)
 仅保留 5 项移动端高频工具：
 1. **文件**：只读浏览工作区目录树，带面包屑导航与语法高亮预览。
 2. **Git**：查看改动差异、单文件与批量暂存、Commit 历史、AI 建议生成提交信息与本地提交（无破坏性放弃修改按钮）。
@@ -87,7 +116,7 @@
 4. **辅助对话**：开辟轻量独立旁聊，支持一键将讨论结论整理并回传给主会话。
 5. **服务**：监控本地 Dev Server 后台端口与 PID，支持确认后安全停止。
 
-### 3.7 全局设置与配额看板 (/settings & /quota)
+### 4.7 全局设置与配额看板 (/settings & /quota)
 - **设置分类**：采用 Gemini 深色圆角卡片，严格沿用电脑端 6 大分类原始名称：
   - 常规（通用、外观、通知、隐私；移除存储空间与快捷键；隐藏电脑独占项）。
   - 模型（模型与供应商、模型角色[保留批量替换]、思考与采样、辅助模型、备用模型与重试、上下文窗口、订阅与配额）。
@@ -101,7 +130,7 @@
 
 ---
 
-## 4. 性能与架构契约
+## 5. 性能与架构契约
 
 1. **输入框非受控隔离**：文本域不绑定 React 同步受控状态，输入法（IME）合成期间零状态发射、零强制布局重测，4 倍 CPU 降频下按键响应 $\le 0.5\text{ ms}$。
 2. **流式 60fps 帧率合批**：高频数据推送收敛至 `requestAnimationFrame` 统一调度刷新。
@@ -111,7 +140,7 @@
 
 ---
 
-## 5. 验收结果
+## 6. 验收基准与交付检查
 
 - **测试套件**：前端 295 个测试文件（2652 个测试用例）、移动端 52 个套件（378 个测试）、Rust 116 个移动端测试全量通过。
 - **真机检查**：标准 390×844 视口下完成首页、抽屉、对话、加号菜单、规划模式、问答表单、配额看板全链路自动化验证，无水平溢出，无“会话不存在”。
