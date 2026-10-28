@@ -137,7 +137,7 @@ export function ThinkingLevelPicker({
 					layer="popover"
 					ignoreRefs={[ref]}
 					onDismiss={() => onOpenChange(false)}
-					className="w-[300px] max-w-[calc(100vw-16px)] rounded-[22px] border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+					className="w-[280px] max-w-[calc(100vw-16px)] rounded-[20px] border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] shadow-[0_12px_36px_rgba(0,0,0,0.45)]"
 				>
 					<ThinkingLevelControl levels={levels} value={value} onSelect={onSelect} />
 				</FloatingLayer>
@@ -206,8 +206,8 @@ function ThinkingLevelControl({
 		itemRefs.current[(i + n) % n]?.focus();
 	};
 	return (
-		<div className="px-4 pb-4 pt-3">
-			<div className="flex justify-center">
+		<div className="p-4">
+			<div className="flex flex-col items-center text-center">
 				<button
 					ref={buttonRef}
 					type="button"
@@ -222,17 +222,22 @@ function ThinkingLevelControl({
 							setListOpen(true);
 						}
 					}}
-					className="flex min-h-8 items-center gap-1 whitespace-nowrap px-1.5 text-[17px] font-medium text-[var(--accent)] transition-colors hover:opacity-80 focus-visible:rounded focus-visible:outline-2 focus-visible:outline-[var(--accent)] pointer-coarse:min-h-11"
+					className={clsx(
+						"flex min-h-7 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[16px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] pointer-coarse:min-h-10",
+						shown === "max" ? "text-[#924ff7]" : "text-[var(--accent)] hover:opacity-85",
+					)}
 				>
 					<span>{statusName(shown)}</span>
-					<ChevronRight size={14} className="shrink-0" />
+					<ChevronRight size={12} className="shrink-0 opacity-70" />
 				</button>
+				{cur.desc && (
+					<div className="mt-1 max-w-full truncate text-center text-xs text-[var(--text-40,var(--text-dim))]">
+						{cur.desc}
+					</div>
+				)}
 			</div>
-			{cur.desc && (
-				<div className="mt-0.5 text-center text-sm text-[var(--text-40,var(--text-dim))]">{cur.desc}</div>
-			)}
 			{stops.length > 0 && (
-				<div className="mt-3">
+				<div className="mt-3.5">
 					<EffortSlider
 						count={stops.length}
 						value={stops.indexOf(shown)}

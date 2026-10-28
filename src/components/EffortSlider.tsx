@@ -13,8 +13,8 @@
 import clsx from "clsx";
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from "react";
 
-/** Half thumb width minus 1px: the thumb center's inset from each track end. */
-const THUMB_INSET = 17;
+/** Concentric inset matching track end radius (26px / 2 = 13px). */
+const THUMB_INSET = 13;
 /** Pointer travel (px) before a press counts as a drag. */
 const DRAG_SLOP = 4;
 /** Wheel delta (px) per stop, and the idle gap (ms) that resets accumulation. */
@@ -321,7 +321,7 @@ function particleSpot(rand: () => number) {
 	return {
 		durationScale: 0.8 + rand() * 1.2,
 		dx: Math.round((dx - 0.5) * 8),
-		y: Math.round(12 + (dy - 0.5) * 14),
+		y: Math.round(10 + (dy - 0.5) * 10),
 	};
 }
 
