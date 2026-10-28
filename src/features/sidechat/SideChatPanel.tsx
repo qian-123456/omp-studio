@@ -1,11 +1,11 @@
 /** [B] Right tab: side-chat forks of the selected session. */
 
 import clsx from "clsx";
-import { ArrowUp, ChevronDown, ImagePlus, Loader2, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowUp, ChevronDown, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
 import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
-import { type ClipboardEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, type DragEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { errMsg } from "../../lib/dialogs";
@@ -23,6 +23,10 @@ import { ensureSettings, useSettings } from "../settings/store";
 import { startNewSession } from "../sessions/newSession";
 import { SessionView } from "../chat/SessionView";
 import { AnnotationChip } from "../chat/AnnotationChip";
+import { AddMenuPopover } from "../chat/AddMenuPopover";
+const SketchPad = lazy(() =>
+	import("../chat/sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
+);
 import { AttachmentThumb } from "../chat/ImageChips";
 import { textAnnotationsOf } from "../chat/annotations";
 import { moveToMain } from "./annotationRoute";
@@ -155,6 +159,9 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const images = useComposer((s) => s.images[tabId] ?? EMPTY_IMAGES);
 	const [attachingImages, setAttachingImages] = useState(0);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
+	const [addMenuOpen, setAddMenuOpen] = useState(false);
+	const [sketchOpen, setSketchOpen] = useState(false);
+	const addBtnRef = useRef<HTMLButtonElement>(null);
 	const attachmentRef = useRef<HTMLDivElement | null>(null);
 	const selectionRef = useRef({ start: 0, end: 0 });
 	const nativeDropRef = useRef<(paths: string[]) => void>(() => {});
@@ -223,6 +230,21 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				}
 			} finally {
 				setAttachingImages((count) => Math.max(0, count - paths.length));
+			}
+		} catch (err) {
+			toast.error(t("sidechat.imageAttachFailed", { error: errMsg(err) }));
+		}
+	};
+	const insertSketch = async (dataUrl: string) => {
+		setSketchOpen(false);
+		if (textareaRef.current) rememberSelection(textareaRef.current);
+		try {
+			const blob = await (await fetch(dataUrl)).blob();
+			setAttachingImages((count) => count + 1);
+			try {
+				await addImageFile(new File([blob], `sketch-${Date.now()}.png`, { type: "image/png" }));
+			} finally {
+				setAttachingImages((count) => Math.max(0, count - 1));
 			}
 		} catch (err) {
 			toast.error(t("sidechat.imageAttachFailed", { error: errMsg(err) }));
@@ -490,7 +512,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				)}
 			</div>
 
-			<div className="shrink-0 border-t border-[var(--line)] px-3 pb-3 pt-2">
+			<div className="shrink-0 px-3 pb-3 pt-2">
 				{tooDeep ? (
 					<div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-center">
 						<div className="text-[12px] font-medium text-[var(--text)]">
@@ -578,15 +600,26 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 
 							<div className="flex min-w-0 items-end justify-between gap-2 px-2.5 pb-2 text-[12px]">
 								<button
+									ref={addBtnRef}
 									type="button"
 									disabled={busy || attachingImages > 0}
-									onClick={() => void pickImages()}
-									title={t("sidechat.addImage")}
-									aria-label={t("sidechat.addImage")}
+									onClick={() => setAddMenuOpen((v) => !v)}
+									title={t("chat.addMenu.add")}
+									aria-label={t("chat.addMenu.add")}
+									aria-expanded={addMenuOpen}
 									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
 								>
-									<ImagePlus size={15} />
+									<Plus size={15} />
 								</button>
+								{addMenuOpen && (
+									<AddMenuPopover
+										anchor={addBtnRef.current}
+										ignoreRef={addBtnRef}
+										onClose={() => setAddMenuOpen(false)}
+										onAddImages={() => void pickImages()}
+										onSketch={() => setSketchOpen(true)}
+									/>
+								)}
 								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5 select-none">
 									{/* Model Picker */}
 									<div className="relative max-w-full shrink-0" ref={modelMenuRef}>
@@ -667,6 +700,15 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								</button>
 							</div>
 						</div>
+						{sketchOpen && (
+							<Suspense fallback={null}>
+								<SketchPad
+									composerTop={attachmentRef.current?.getBoundingClientRect().top ?? null}
+									onCancel={() => setSketchOpen(false)}
+									onInsert={(d) => void insertSketch(d)}
+								/>
+							</Suspense>
+						)}
 					</>
 				)}
 			</div>

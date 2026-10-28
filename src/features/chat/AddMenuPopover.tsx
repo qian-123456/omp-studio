@@ -1,5 +1,5 @@
 /** Codex-style "+" Add menu in the Composer bottom toolbar. */
-import { Check, FolderOpen, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
+import { Check, FolderOpen, ImagePlus, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { useT } from "../../stores/language";
@@ -14,6 +14,7 @@ const tone = (hex: string) => `color-mix(in oklab, ${hex} 76%, var(--text))`;
 const TONE = {
 	files: tone("#3b82f6"),
 	finder: tone("#14b8a6"),
+	images: tone("#3b82f6"),
 	project: tone("#8b5cf6"),
 	goal: tone("#f43f5e"),
 	plan: tone("#f59e0b"),
@@ -53,13 +54,18 @@ function Item({
 	);
 }
 
+/**
+ * Each item renders only when its handler is passed, so a host shows just what
+ * it supports (the side chat offers images and sketch only).
+ */
 export function AddMenuPopover({
 	anchor,
 	ignoreRef,
-	planMode,
+	planMode = false,
 	onClose,
 	onAddFiles,
 	onAttachFinder,
+	onAddImages,
 	onPickProject,
 	onGoal,
 	onTogglePlan,
@@ -67,20 +73,23 @@ export function AddMenuPopover({
 }: {
 	anchor: HTMLElement | null;
 	ignoreRef: RefObject<HTMLElement | null>;
-	planMode: boolean;
+	planMode?: boolean;
 	onClose: () => void;
-	onAddFiles: () => void;
-	onAttachFinder: () => void;
-	onPickProject: () => void;
-	onGoal: () => void;
-	onTogglePlan: () => void;
-	onSketch: () => void;
+	onAddFiles?: () => void;
+	onAttachFinder?: () => void;
+	onAddImages?: () => void;
+	onPickProject?: () => void;
+	onGoal?: () => void;
+	onTogglePlan?: () => void;
+	onSketch?: () => void;
 }) {
 	const { t } = useT();
 	const run = (fn: () => void) => () => {
 		onClose();
 		fn();
 	};
+	const hasAttachGroup = Boolean(onAddFiles || onAttachFinder);
+	const hasModeGroup = Boolean(onPickProject || onGoal || onTogglePlan || onSketch);
 	return (
 		<FloatingLayer
 			anchor={anchor}
@@ -92,20 +101,23 @@ export function AddMenuPopover({
 			className="w-[280px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1"
 		>
 			<div className="px-2 pt-1 pb-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">{t("chat.addMenu.add")}</div>
-			<Item icon={<Paperclip size={14} />} color={TONE.files} title={t("chat.addMenu.files")} desc={t("chat.addMenu.filesDesc")} onClick={run(onAddFiles)} />
-			<Item icon={<Monitor size={14} />} color={TONE.finder} title={t("chat.addMenu.finder")} desc={t("chat.addMenu.finderDesc")} onClick={run(onAttachFinder)} />
-			<div className="my-1 border-t border-[var(--line,var(--border-divider))]" />
-			<Item icon={<FolderOpen size={14} />} color={TONE.project} title={t("chat.addMenu.workInProject")} desc={t("chat.addMenu.workInProjectDesc")} onClick={run(onPickProject)} />
-			<Item icon={<Target size={14} />} color={TONE.goal} title={t("chat.addMenu.goal")} desc={t("chat.addMenu.goalDesc")} onClick={run(onGoal)} />
-			<Item
-				icon={<Lightbulb size={14} />}
-				color={TONE.plan}
-				title={t("chat.addMenu.planMode")}
-				desc={planMode ? t("chat.addMenu.disablePlan") : t("chat.addMenu.enablePlan")}
-				active={planMode}
-				onClick={run(onTogglePlan)}
-			/>
-			<Item icon={<Signature size={14} />} color={TONE.sketch} title={t("chat.addMenu.sketch")} desc={t("chat.addMenu.sketchDesc")} onClick={run(onSketch)} />
+			{onAddFiles && <Item icon={<Paperclip size={14} />} color={TONE.files} title={t("chat.addMenu.files")} desc={t("chat.addMenu.filesDesc")} onClick={run(onAddFiles)} />}
+			{onAttachFinder && <Item icon={<Monitor size={14} />} color={TONE.finder} title={t("chat.addMenu.finder")} desc={t("chat.addMenu.finderDesc")} onClick={run(onAttachFinder)} />}
+			{onAddImages && <Item icon={<ImagePlus size={14} />} color={TONE.images} title={t("chat.addMenu.images")} desc={t("chat.addMenu.imagesDesc")} onClick={run(onAddImages)} />}
+			{hasAttachGroup && hasModeGroup && <div className="my-1 border-t border-[var(--line,var(--border-divider))]" />}
+			{onPickProject && <Item icon={<FolderOpen size={14} />} color={TONE.project} title={t("chat.addMenu.workInProject")} desc={t("chat.addMenu.workInProjectDesc")} onClick={run(onPickProject)} />}
+			{onGoal && <Item icon={<Target size={14} />} color={TONE.goal} title={t("chat.addMenu.goal")} desc={t("chat.addMenu.goalDesc")} onClick={run(onGoal)} />}
+			{onTogglePlan && (
+				<Item
+					icon={<Lightbulb size={14} />}
+					color={TONE.plan}
+					title={t("chat.addMenu.planMode")}
+					desc={planMode ? t("chat.addMenu.disablePlan") : t("chat.addMenu.enablePlan")}
+					active={planMode}
+					onClick={run(onTogglePlan)}
+				/>
+			)}
+			{onSketch && <Item icon={<Signature size={14} />} color={TONE.sketch} title={t("chat.addMenu.sketch")} desc={t("chat.addMenu.sketchDesc")} onClick={run(onSketch)} />}
 		</FloatingLayer>
 	);
 }

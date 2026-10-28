@@ -205,6 +205,8 @@ export default defineMessages({
 		"addMenu.disablePlan": "关闭规划模式",
 		"addMenu.sketch": "草图",
 		"addMenu.sketchDesc": "绘制草图",
+		"addMenu.images": "图片",
+		"addMenu.imagesDesc": "添加图片",
 
 		"message.resendFailed": "重新发送失败: {error}",
 		"message.resending": "发送中",
@@ -496,6 +498,8 @@ export default defineMessages({
 		"addMenu.disablePlan": "Turn off plan mode",
 		"addMenu.sketch": "Sketch",
 		"addMenu.sketchDesc": "Draw a sketch",
+		"addMenu.images": "Images",
+		"addMenu.imagesDesc": "Add images",
 
 		"message.resendFailed": "Resend failed: {error}",
 		"message.resending": "Sending",

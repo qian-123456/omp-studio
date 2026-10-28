@@ -150,6 +150,16 @@ describe("SideChatPanel blank new chat", () => {
 		expect(input()).toBeTruthy();
 	});
 
+	it("the + menu offers only what a side chat can send: images and sketch", () => {
+		render(<SideChatPanel />);
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
+		expect(screen.getByText("图片")).toBeTruthy();
+		expect(screen.getByText("草图")).toBeTruthy();
+		for (const unsupported of ["文件", "Finder 选中项", "在项目中工作", "目标", "规划模式"]) {
+			expect(screen.queryByText(unsupported)).toBeNull();
+		}
+	});
+
 	it("echoes first, then creates, binds the tab, and asks (nothing starts before send)", async () => {
 		seedAnnotation("p1", "hello quote");
 		let resolveCreate!: (v: { sessionId: string }) => void;
