@@ -22,6 +22,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, ModelRoleSnapshot, SessionSnapshot } from "../../lib/contracts";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
 import { PLAN_ROLE, effectiveRoles, planRoleScope, resolvePlanChoice, savedPlanValue } from "./plan/planModelChoice";
+import { clearPlanModelApplied, hasPlanModelApplied, markPlanModelApplied } from "./plan/planModelApplied";
 import { applyArgName, buildArgItems, type ArgCandidate } from "./slash/argComplete";
 import { findArgProvider } from "./slash/argProviders";
 import { AttachmentThumb, FileChip } from "./ImageChips";
@@ -1021,6 +1022,7 @@ export function Composer({
 			if (planVisit.current !== visit) return;
 			planApplyGen.current += 1;
 			planAppliedRef.current = true;
+			if (planMode) markPlanModelApplied(sessionId);
 			setPlanEditState({ sid: sessionId, value });
 			// Previewing only: the ordinary session/draft model stays untouched.
 			if (!planMode) return;
@@ -1033,7 +1035,12 @@ export function Composer({
 	useEffect(() => {
 		planVisit.current += 1;
 		planApplyGen.current += 1;
-		planAppliedRef.current = false;
+		// The plan role is shared by every session. A session that already took it during
+		// this plan visit must not take it again when it is merely re-selected or re-mounted
+		// after the role was edited from another session. The visit ends when the backend
+		// reports plan mode off.
+		if (!planMode) clearPlanModelApplied(sessionId);
+		planAppliedRef.current = planMode && hasPlanModelApplied(sessionId);
 		setPlanEditState(null);
 		// Leaving planning drops the role snapshot so the next preview never shows a stale one.
 		if (!planPreview) setPlanRolesState(null);
@@ -1044,6 +1051,7 @@ export function Composer({
 		if (!isLocalDraft && (!live?.alive || !live.state)) return;
 		const gen = planApplyGen.current;
 		planAppliedRef.current = true;
+		markPlanModelApplied(sessionId);
 		const key = planChoice.key;
 		const level = planChoice.level;
 		void (async () => {

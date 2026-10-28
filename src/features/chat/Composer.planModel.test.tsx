@@ -9,11 +9,16 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as IpcModule from "../../lib/ipc";
 import type * as EventsModule from "../../lib/events";
+import type * as DraftSessionModule from "../sessions/draftSession";
 import type { ModelRoleSnapshot } from "../../lib/contracts";
 import type { ModelOption } from "../../lib/models";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useComposer } from "../../stores/composer";
+import { useSessions } from "../../stores/sessions";
+import { usePendingSession } from "../sessions/pendingSession";
+import { loadChip, saveChip } from "./slash/chip";
 import { Composer } from "./Composer";
+import { clearAllPlanModelApplied } from "./plan/planModelApplied";
 
 const S1 = "plan-s1";
 const S2 = "plan-s2";
@@ -36,6 +41,7 @@ const h = vi.hoisted(() => ({
 	rpcSend: vi.fn(async (_id: string, _cmd: unknown) => ({}) as Record<string, unknown>),
 	rolesRead: vi.fn(async (..._a: unknown[]) => ({}) as unknown),
 	rolesSet: vi.fn(async (..._a: unknown[]) => ({}) as unknown),
+	materialize: vi.fn(async (_id: string) => "never"),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => {
@@ -60,6 +66,10 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		mcpConfigList: vi.fn(async () => ({ servers: [] })),
 		pluginsList: vi.fn(async () => ({ roots: [], plugins: [] })),
 	};
+});
+vi.mock("../sessions/draftSession", async (importOriginal) => {
+	const orig = await importOriginal<typeof DraftSessionModule>();
+	return { ...orig, materializeDraft: h.materialize, warmDraft: () => {}, prewarmDraft: async () => S1 };
 });
 vi.mock("@tauri-apps/api/webview", () => ({
 	getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
@@ -137,15 +147,19 @@ const deferred = <T,>() => {
 };
 
 beforeEach(() => {
+	clearAllPlanModelApplied();
 	localStorage.clear();
 	h.rpcSend.mockReset();
 	h.rpcSend.mockImplementation(async () => ({}));
 	h.rolesRead.mockReset();
 	h.rolesRead.mockImplementation(async () => snap());
+	h.materialize.mockClear();
 	h.rolesSet.mockReset();
 	h.rolesSet.mockImplementation(async (_cwd, _scope, _table, _name, value) => snap(String(value)));
 	useComposer.setState({ drafts: {}, annotations: {}, images: {}, files: {}, history: [] });
 	useLive.setState({ sessions: {} });
+	useSessions.setState({ sessions: {} } as never);
+	usePendingSession.setState({ drafts: {}, selectedId: null });
 });
 
 afterEach(() => {
@@ -240,6 +254,33 @@ describe("Composer plan model chip", () => {
 		expect(sent("set_model", S1)).toHaveLength(0);
 	});
 
+	it("re-selecting a session that already took the plan model does not apply a role edited elsewhere", async () => {
+		setSessions({
+			[S1]: live("model-a", { enabled: true, version: 0, planModel: "p/model-b:high" }),
+			[S2]: live("model-a", { enabled: true, version: 0, planModel: "p/model-b:high" }),
+		});
+		const view = render(<Composer sessionId={S1} />);
+		await flush();
+		expect(sent("set_model", S1)).toHaveLength(1);
+
+		// The shared plan role is edited from another session; S1 is not touched by it.
+		setSessions({
+			[S1]: live("model-b", { enabled: true, version: 0, planModel: "p/model-c:high" }),
+			[S2]: live("model-a", { enabled: true, version: 0, planModel: "p/model-c:high" }),
+		});
+		await flush();
+		view.rerender(<Composer sessionId={S2} />);
+		await flush();
+		h.rpcSend.mockClear();
+		view.rerender(<Composer sessionId={S1} />);
+		await flush();
+		view.unmount();
+		render(<Composer sessionId={S1} />);
+		await flush();
+
+		expect(sent("set_model", S1)).toHaveLength(0);
+	});
+
 	it("an in-flight auto-apply cannot touch a newly selected session", async () => {
 		const gate = deferred<Record<string, unknown>>();
 		h.rpcSend.mockImplementation(async (_id, cmd) =>
@@ -320,6 +361,182 @@ describe("Composer plan model chip", () => {
 		await flush();
 
 		expect(chipModel()).toBe("model-a");
+		expect(sent("set_model")).toHaveLength(0);
+	});
+});
+
+const DRAFT = "local-draft:plan-preview";
+const PLAN_CHIP = { name: "plan", title: "规划模式", argHint: "<任务>" };
+
+/** The toolbar thinking chip: the button whose whole text is a thinking level. */
+const thinkingText = () =>
+	Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+		.map((b) => b.textContent?.trim() ?? "")
+		.find((x) => /^(auto|off|minimal|low|medium|high|xhigh)$/.test(x));
+
+const textarea = (id: string) => {
+	const el = document.querySelector<HTMLTextAreaElement>(`textarea[data-composer="${id}"]`);
+	if (!el) throw new Error("composer textarea not rendered");
+	return el;
+};
+
+/** Preview never mutates a draft/session; read-only discovery RPCs (get_available_commands) are fine. */
+const MUTATING = ["prompt", "set_model", "set_thinking_level"];
+const expectNoMutation = () => {
+	const mutating = h.rpcSend.mock.calls.filter(([, c]) => MUTATING.includes((c as { type: string }).type));
+	expect(mutating).toEqual([]);
+};
+
+/** Project pins plan=b:high; the ordinary model is a. Writes mirror the saved scope. */
+const projectPinsPlan = () => {
+	h.rolesRead.mockImplementation(async () => snap(undefined, "p/model-b:high"));
+	h.rolesSet.mockImplementation(async (_cwd, scope, _table, _name, value) =>
+		scope === "project" ? snap(undefined, String(value)) : snap(String(value), "p/model-b:high"),
+	);
+};
+
+describe("Composer plan preview before the command is sent", () => {
+	beforeEach(() => {
+		projectPinsPlan();
+		usePendingSession.setState({
+			drafts: {
+				[DRAFT]: {
+					id: DRAFT, cwd: "/tmp/proj", mode: "code", groupId: null,
+					opts: { cwd: "/tmp/proj" } as never, model: "p/model-a", thinking: "low",
+					sessionId: null, startError: null,
+				},
+			},
+			selectedId: DRAFT,
+		});
+		setSessions({ [DRAFT]: { ...emptySessionLive(), alive: true, state: {} } });
+	});
+
+	it("shows the project plan model and thinking on a local draft with /plan selected, without sending", async () => {
+		render(<Composer sessionId={DRAFT} />);
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("low");
+
+		saveChip(DRAFT, PLAN_CHIP);
+		cleanup();
+		render(<Composer sessionId={DRAFT} />);
+		await flush();
+
+		expect(h.rolesRead).toHaveBeenCalledWith("/tmp/proj", expect.anything());
+		expect(chipModel()).toBe("model-b");
+		expect(thinkingText()).toBe("high");
+		expect(h.materialize).not.toHaveBeenCalled();
+		expectNoMutation();
+		expect(h.rolesSet).not.toHaveBeenCalled();
+		expect(useLive.getState().sessions[DRAFT]?.plan).toBeUndefined();
+		expect(usePendingSession.getState().drafts[DRAFT]).toMatchObject({ model: "p/model-a", thinking: "low", sessionId: null });
+	});
+
+	it("saves a picked model to the project role and previews it; the draft model stays untouched", async () => {
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+		await flush();
+		expect(chipModel()).toBe("model-b");
+
+		await pick("c");
+		expect(h.rolesSet).toHaveBeenLastCalledWith("/tmp/proj", "project", "modelRoles", "plan", "p/model-c:high", "p/model-a");
+		expect(chipModel()).toBe("model-c");
+		expect(thinkingText()).toBe("high");
+		expect(h.materialize).not.toHaveBeenCalled();
+		expectNoMutation();
+		expect(usePendingSession.getState().drafts[DRAFT]).toMatchObject({ model: "p/model-a", thinking: "low", sessionId: null });
+	});
+
+	it("saves a picked thinking level to the project role while previewing, leaving the draft untouched", async () => {
+		usePendingSession.getState().update(DRAFT, { thinking: "high" });
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+		await flush();
+		expect(thinkingText()).toBe("high");
+
+		const trigger = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+			(b) => b.textContent?.trim() === "high",
+		)!;
+		fireEvent.click(trigger);
+		const option = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+			(b) => b.querySelector(".font-medium")?.textContent === "low",
+		)!;
+		fireEvent.click(option);
+		await flush();
+
+		expect(h.rolesSet).toHaveBeenLastCalledWith("/tmp/proj", "project", "modelRoles", "plan", "p/model-b:low", "p/model-a");
+		expect(chipModel()).toBe("model-b");
+		expect(thinkingText()).toBe("low");
+		expect(h.materialize).not.toHaveBeenCalled();
+		expectNoMutation();
+		expect(usePendingSession.getState().drafts[DRAFT]).toMatchObject({ model: "p/model-a", thinking: "high", sessionId: null });
+
+		const ta = textarea(DRAFT);
+		ta.setSelectionRange(0, 0);
+		fireEvent.keyDown(ta, { key: "Backspace" });
+		await flush();
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("high");
+	});
+
+	it("restores the ordinary draft model and thinking when the /plan chip is removed", async () => {
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+		await flush();
+		await pick("c");
+		expect(chipModel()).toBe("model-c");
+
+		const ta = textarea(DRAFT);
+		ta.setSelectionRange(0, 0);
+		fireEvent.keyDown(ta, { key: "Backspace" });
+		await flush();
+
+		expect(loadChip(DRAFT)).toBeNull();
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("low");
+		expect(h.materialize).not.toHaveBeenCalled();
+		expectNoMutation();
+	});
+
+	it("ignores a role read that resolves after the chip was removed", async () => {
+		const pending = deferred<ModelRoleSnapshot>();
+		h.rolesRead.mockImplementationOnce(() => pending.promise);
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+
+		const ta = textarea(DRAFT);
+		ta.setSelectionRange(0, 0);
+		fireEvent.keyDown(ta, { key: "Backspace" });
+		pending.resolve(snap(undefined, "p/model-b:high"));
+		await flush();
+
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("low");
+	});
+
+	it("previews the plan role for a pending /plan on an existing session without applying it", async () => {
+		useSessions.setState({ sessions: { [S1]: { id: S1, cwd: "/work/real", model: "p/model-a" } } } as never);
+		setSessions({ [S1]: live("model-a") });
+		saveChip(S1, PLAN_CHIP);
+		render(<Composer sessionId={S1} />);
+		await flush();
+
+		expect(h.rolesRead).toHaveBeenCalledWith("/work/real", expect.anything());
+		expect(chipModel()).toBe("model-b");
+		expect(thinkingText()).toBe("high");
+		expect(sent("set_model")).toHaveLength(0);
+		expect(sent("set_thinking_level")).toHaveLength(0);
+
+		await pick("c");
+		expect(h.rolesSet).toHaveBeenLastCalledWith("/work/real", "project", "modelRoles", "plan", "p/model-c:high", "p/model-a");
+		expect(chipModel()).toBe("model-c");
+		expect(sent("set_model")).toHaveLength(0);
+
+		const ta = textarea(S1);
+		ta.setSelectionRange(0, 0);
+		fireEvent.keyDown(ta, { key: "Backspace" });
+		await flush();
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("low");
 		expect(sent("set_model")).toHaveLength(0);
 	});
 });
