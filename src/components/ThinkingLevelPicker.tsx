@@ -231,7 +231,10 @@ function ThinkingLevelControl({
 					<ChevronRight size={12} className="shrink-0 opacity-70" />
 				</button>
 				{cur.desc && (
-					<div className="mt-1 max-w-full truncate text-center text-xs text-[var(--text-40,var(--text-dim))]">
+					<div
+						title={cur.desc}
+						className="mt-1 max-w-full truncate text-center text-xs text-[var(--text-40,var(--text-dim))]"
+					>
 						{cur.desc}
 					</div>
 				)}
