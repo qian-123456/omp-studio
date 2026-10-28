@@ -68,7 +68,8 @@ export function buildSlashContext(
 
 /**
  * Run `/name args` input against the registry.
- * - "handled": the command ran (success or surfaced error) — caller clears.
+ * - "sent": the command forwarded a prompt to omp — the input was consumed.
+ * - "handled": a native command ran (nothing was sent to the thread).
  * - "keep": usage-hint abort or cancelled dialog — keep the draft.
  * - null: not a registry command — the caller sends it to omp as a prompt.
  */
@@ -76,14 +77,22 @@ export async function runSlashInput(
 	sessionId: string,
 	input: string,
 	deps: SlashDeps,
-): Promise<"handled" | "keep" | null> {
+): Promise<"sent" | "handled" | "keep" | null> {
 	const trimmed = input.trim();
 	const m = /^\/([^\s/]+)(?:\s+(.*))?$/s.exec(trimmed);
 	if (!m) return null;
 	const def = findSlashCommand(m[1]);
 	if (!def) return null;
 
-	const ctx = buildSlashContext(sessionId, trimmed, m[2] ?? "", deps);
+	const base = buildSlashContext(sessionId, trimmed, m[2] ?? "", deps);
+	let sent = false;
+	const ctx: SlashContext = {
+		...base,
+		sendPromptText: async (text) => {
+			await base.sendPromptText(text);
+			sent = true;
+		},
+	};
 	try {
 		await def.run(ctx);
 	} catch (err) {
@@ -94,5 +103,5 @@ export async function runSlashInput(
 		return "keep";
 	}
 	useComposer.getState().pushHistory(trimmed);
-	return "handled";
+	return sent ? "sent" : "handled";
 }

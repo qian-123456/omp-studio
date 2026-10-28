@@ -581,6 +581,10 @@ export function Composer({
 		[],
 	);
 	const planMode = useLive((s) => s.sessions[sessionId]?.plan?.enabled === true);
+	// A selected `/plan` chip is planning intent before anything is sent: it previews (and edits) the
+	// `plan` role without touching the backend or the ordinary model. `planMode` is the backend state.
+	const planPending = !readonly && chip?.name === "plan" && !chip.sub && chip.offset === undefined;
+	const planPreview = planMode || planPending;
 	// undefined = no status frame yet (never a plan revision).
 	const planVersion = useLive((s) => s.sessions[sessionId]?.plan?.version);
 	// Raw `plan` role spec from the status frame (null when the role is unset).
@@ -848,10 +852,10 @@ export function Composer({
 	// While planning, the chip shows the `plan` role's model even if the process still runs the previous one.
 	const planChoice = useMemo(
 		() =>
-			planMode
-				? resolvePlanChoice({ edit: planEdit, statusSpec: planStatusModel, roles: effectiveRoles(planRoles), models })
+			planPreview
+				? resolvePlanChoice({ edit: planEdit, statusSpec: planMode ? planStatusModel : undefined, roles: effectiveRoles(planRoles), models })
 				: null,
-		[planMode, planEdit, planStatusModel, planRoles, models],
+		[planPreview, planMode, planEdit, planStatusModel, planRoles, models],
 	);
 	const currentThinking = planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel ?? "auto";
 
@@ -872,7 +876,7 @@ export function Composer({
 	);
 	// Role layers feed `@role` resolution and the write scope; read while planning only.
 	useEffect(() => {
-		if (!planMode) return;
+		if (!planPreview) return;
 		let cancelled = false;
 		const write = planRolesWrite.current;
 		ompModelRolesRead(sessionMeta?.cwd ?? null, sessionCurrent.value || null)
@@ -881,7 +885,7 @@ export function Composer({
 		return () => {
 			cancelled = true;
 		};
-	}, [planMode, sessionId, sessionMeta?.cwd]);
+	}, [planPreview, sessionId, sessionMeta?.cwd]);
 
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
 	const currentModelOption = useMemo(
@@ -973,6 +977,8 @@ export function Composer({
 			planAppliedRef.current = true;
 			setPlanEditState({ sid: sessionId, value });
 		}
+		// Previewing only: the ordinary draft/session thinking stays untouched.
+		if (planPreview && !planMode) return;
 		if (isLocalDraft) {
 			setDraftThinking(sessionId, level);
 			return;
@@ -1007,7 +1013,7 @@ export function Composer({
 	};
 
 	const selectModel = async (key: string) => {
-		if (planMode && !readonly && buildSetModelPayload(key, models)) {
+		if (planPreview && !readonly && buildSetModelPayload(key, models)) {
 			// While planning the picker edits the `plan` role itself, keeping the shown level.
 			const value = savedPlanValue(key, currentThinking);
 			const visit = planVisit.current;
@@ -1016,6 +1022,8 @@ export function Composer({
 			planApplyGen.current += 1;
 			planAppliedRef.current = true;
 			setPlanEditState({ sid: sessionId, value });
+			// Previewing only: the ordinary session/draft model stays untouched.
+			if (!planMode) return;
 		}
 		await switchSessionModel(key, true);
 	};
@@ -1027,7 +1035,9 @@ export function Composer({
 		planApplyGen.current += 1;
 		planAppliedRef.current = false;
 		setPlanEditState(null);
-	}, [planMode, sessionId]);
+		// Leaving planning drops the role snapshot so the next preview never shows a stale one.
+		if (!planPreview) setPlanRolesState(null);
+	}, [planMode, planPreview, sessionId]);
 	useEffect(() => {
 		if (!planMode || !planChoice || planAppliedRef.current || readonly) return;
 		if (!buildSetModelPayload(planChoice.key, models)) return;
@@ -1424,10 +1434,13 @@ export function Composer({
 					clearFiles(target);
 				} else {
 					// A native command ran: nothing was sent, so attachments and
-					// quotes stay for the next real message.
+					// quotes stay for the next real message. A registry command
+					// that forwarded a prompt (/plan, /goal, …) already carried the
+					// image paths inline, so those images are consumed.
 					finishPrivacySend();
 					setChip(null);
 					clearDraft(target);
+					if (outcome === "sent") clearImages(target);
 				}
 			} catch (err) {
 				// Restore only while this composer still owns the input; a
