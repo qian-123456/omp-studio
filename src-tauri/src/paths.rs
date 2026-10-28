@@ -95,6 +95,11 @@ pub fn privacy_extension_path() -> PathBuf {
         .join("omp-workspace-privacy.ts")
 }
 
+/// `~/.omp-workspace/extension/omp-workspace-plan.ts`
+pub fn plan_extension_path() -> PathBuf {
+    data_dir().join("extension").join("omp-workspace-plan.ts")
+}
+
 /// `~/.omp-workspace/oneshot-sessions/`
 pub fn oneshot_dir() -> PathBuf {
     data_dir().join("oneshot-sessions")

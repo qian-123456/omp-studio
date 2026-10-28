@@ -12,8 +12,8 @@ interface TimeGroup {
 export function groupByTime(sessions: readonly TreeSession[]): TimeGroup[] {
 	const now = new Date();
 	const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-	const yesterdayStart = todayStart - 86400000;
-	const weekStart = todayStart - 6 * 86400000;
+	const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+	const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7).getTime();
 
 	const today: TreeSession[] = [];
 	const yesterday: TreeSession[] = [];
@@ -43,7 +43,7 @@ export function groupByTime(sessions: readonly TreeSession[]): TimeGroup[] {
 	const groups: TimeGroup[] = [];
 	if (today.length > 0) groups.push({ label: "今天", sessions: today });
 	if (yesterday.length > 0) groups.push({ label: "昨天", sessions: yesterday });
-	if (withinWeek.length > 0) groups.push({ label: "7 天内", sessions: withinWeek });
+	if (withinWeek.length > 0) groups.push({ label: "本周", sessions: withinWeek });
 	if (earlier.length > 0) groups.push({ label: "更早", sessions: earlier });
 	return groups;
 }
@@ -66,26 +66,20 @@ export function ChronologicalView({
 	}, [list, mode]);
 
 	if (groups.length === 0) {
-		return <div className="p-8 text-center text-m-sm text-m-text-3">暂无会话</div>;
+		return <div className="px-6 py-10 text-center text-m-sm text-m-text-3">这个空间还没有会话</div>;
 	}
 
 	return (
-		<div className="flex flex-col">
+		<div className="flex flex-col pb-2">
 			{groups.map((g) => (
-				<div key={g.label}>
-					<div className="sticky top-0 z-1 border-b border-m-border bg-m-bg-elev/95 px-4 py-1.5 text-m-xs font-semibold text-m-text-3 backdrop-blur-sm">
-						{g.label} ({g.sessions.length})
-					</div>
+				<section key={g.label} aria-label={g.label}>
+					<h3 className="sticky top-0 z-(--z-base) bg-m-bg px-5 pt-5 pb-1.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">
+						{g.label}
+					</h3>
 					{g.sessions.map((s) => (
-						<SessionRow
-							key={s.id}
-							s={s}
-							current={s.id === curId}
-							onMore={onMore}
-							onOpen={onOpen}
-						/>
+						<SessionRow key={s.id} s={s} current={s.id === curId} onMore={onMore} onOpen={onOpen} />
 					))}
-				</div>
+				</section>
 			))}
 		</div>
 	);

@@ -51,11 +51,13 @@ Each space keeps completely isolated projects and sessions. An active indicator 
 
 - **Standard Project Session**: Click **New Session** or press `⌘N`. If left blank without sending, the draft is automatically discarded.
 - **Parallel Worktree Session**: Click `+` on a project header and choose **Create in independent worktree**. Specify the base branch (e.g., `main`) and a folder name. A dedicated Git worktree is provisioned under `<project>/.worktrees/<name>`, allowing multiple agents to code in parallel without branch conflicts.
+- **Draft project and branch controls**: The project and Git branch are visible above a new draft's composer. Displaying them does not start a background session; switching or creating a branch prepares the session needed for that operation. A draft's group label is display-only.
 
 ## The Smart Composer
 
 ### Type-to-focus & IME Safety
 Start typing anywhere on your keyboard, and keystrokes automatically route directly to the composer without requiring a mouse click, provided no dialog or editor has focus. IME composition is strictly respected.
+With the default Enter-to-send setting, Enter used to confirm an IME candidate does not send the message. Press Enter again after confirmation to send.
 
 ### Concurrency and Dispatch Strategies
 When the agent is already running a turn, you can configure how new messages are dispatched (configured in **Settings ▸ Sessions ▸ Sending method**):
@@ -69,7 +71,7 @@ When the agent is already running a turn, you can configure how new messages are
 
 ### Composer Add Menu & Modes
 Click `+` in the composer:
-- **Plan Mode (`/plan`)**: Requires the agent to produce a structured roadmap before executing changes.
+- **Plan Mode (`/plan`)**: Requires the agent to produce a structured roadmap before executing changes. Enabling the mode does not open an empty panel; a newly completed plan opens the **Plan** panel for review and approval. Reopening a session with an existing plan does not force the panel open. The plan command chip clears after submission.
 - **Goal Mode (`/goal <desc>`)**: Keeps a persistent objective pinned above the composer throughout the session.
 - **Sketchpad**: Vector drawing board for quick UI wireframes or architecture diagrams.
 - **Attachments**: Drag and drop images, logs, or select Finder items.

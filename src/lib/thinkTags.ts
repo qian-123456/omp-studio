@@ -117,7 +117,7 @@ export function normalizeThinkContent(
 	content.forEach((part, i) => {
 		const p = part as Part | null;
 		let expanded: unknown[] | null = null;
-		if (p && p.type === "text" && typeof p.text === "string") {
+		if (p && p.type === "text" && p.narration !== true && typeof p.text === "string") {
 			// Only the newest part can still be mid-tag while streaming.
 			const split = splitThinkTags(p.text, {
 				streaming: opts.streaming && i === content.length - 1,

@@ -14,6 +14,7 @@ const FILES = new Set([
 	"/Users/me/.omp/agent/AGENTS.md",
 	"/repo/src/a.ts",
 	"/Users/me/CodingWiki/wiki/rules.md",
+	"/Users/me/CodingWiki/wiki/指南.md",
 	"/Users/me/projects/omp-workspace/AGENTS.md",
 	"/Users/me/Evil.app/Contents/MacOS/Evil",
 ]);
@@ -63,6 +64,21 @@ describe("Markdown file links", () => {
 		expect(useFilePreview.getState().tabs[0]?.mode).toBe("preview");
 		expect(useUi.getState().rightTab).toBe("files");
 		expect(useUi.getState().rightOpen).toBe(true);
+	});
+	it("opens a percent-encoded Chinese Markdown link as the real file path", async () => {
+		const { container } = render(
+			<Markdown text="[指南](/Users/me/CodingWiki/wiki/%E6%8C%87%E5%8D%97.md)" />,
+		);
+		const link = container.querySelector<HTMLAnchorElement>(
+			'a[href="/Users/me/CodingWiki/wiki/%E6%8C%87%E5%8D%97.md"]',
+		);
+		expect(link).not.toBeNull();
+		fireEvent.click(link!);
+		await waitFor(() => {
+			expect(useFilePreview.getState().tabs[0]?.path).toBe(
+				"/Users/me/CodingWiki/wiki/指南.md",
+			);
+		});
 	});
 
 	it("finds a relative path under home when the cwd has no such file", async () => {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-skin="chatgpt" data-scheme="light">
+<html lang="zh-CN" data-scheme="dark">
 	<head>
 		<meta charset="UTF-8" />
 		<meta
@@ -12,15 +12,13 @@
 		<meta name="color-scheme" content="light dark" />
 		<title>omp-workspace</title>
 		<script>
-			// Apply the saved skin/scheme before first paint (no flash). Mirrors app/theme.ts.
+			// Apply the saved scheme before first paint (no flash). Mirrors app/theme.ts.
 			(function () {
 				try {
 					var p = (JSON.parse(localStorage.getItem("ompm.prefs") || "null") || {}).state || {};
-					var skin = p.skin === "gemini" ? "gemini" : "chatgpt";
 					var pref = p.scheme === "light" || p.scheme === "dark" ? p.scheme : "system";
 					var dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
 					var el = document.documentElement;
-					el.dataset.skin = skin;
 					el.dataset.scheme = dark ? "dark" : "light";
 				} catch (e) {}
 			})();

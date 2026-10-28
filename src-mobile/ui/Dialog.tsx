@@ -24,18 +24,18 @@ export function Dialog({
 			<div
 				aria-hidden
 				onClick={onClose}
-				className={`absolute inset-0 bg-m-scrim transition-opacity duration-180 ease-(--m-ease) ${visible ? "opacity-100" : "opacity-0"}`}
+				className={`absolute inset-0 bg-m-scrim transition-opacity duration-180 ease-m ${visible ? "opacity-100" : "opacity-0"}`}
 			/>
 			<div
 				role="dialog"
 				aria-modal="true"
-				className={`relative flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-m-lg bg-m-bg-elev text-m-text shadow-m-pop transition duration-180 ease-(--m-ease) ${visible ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
+				className={`relative flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-m-xl bg-m-bg-elev text-m-text shadow-m-pop transition duration-180 ease-m ${visible ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
 			>
-				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-4">
-					{title != null && <div className="mb-2 text-m-lg font-semibold">{title}</div>}
-					<div className="text-m-md text-m-text-2">{children}</div>
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-6 pb-2">
+					{title != null && <div className="mb-2 text-m-lg font-medium break-words">{title}</div>}
+					<div className="m-selectable text-m-sm break-words text-m-text-2">{children}</div>
 				</div>
-				{actions != null && <div className="flex shrink-0 border-t border-m-border">{actions}</div>}
+				{actions != null && <div className="flex shrink-0 justify-end gap-2 px-5 pt-3 pb-5">{actions}</div>}
 			</div>
 		</div>,
 		document.body,
@@ -87,7 +87,7 @@ function settle(id: number, ok: boolean): void {
 	head.resolve(ok);
 }
 
-const BTN = "min-h-11 flex-1 whitespace-nowrap px-4 text-m-md font-medium active:bg-m-surface-hover";
+const BTN = "min-h-11 rounded-m-pill px-5 text-m-md font-medium whitespace-nowrap";
 
 export function DialogHost() {
 	const q = useSyncExternalStore(subscribe, getQueue, getQueue);
@@ -105,12 +105,12 @@ export function DialogHost() {
 			title={shown.title}
 			actions={
 				<>
-					<button type="button" className={`${BTN} text-m-text-2`} onClick={() => settle(shown.id, false)}>
+					<button type="button" className={`${BTN} text-m-accent active:bg-m-surface-hover`} onClick={() => settle(shown.id, false)}>
 						{shown.cancelText ?? "取消"}
 					</button>
 					<button
 						type="button"
-						className={`${BTN} border-l border-m-border ${shown.danger ? "text-m-danger" : "text-m-accent"}`}
+						className={`${BTN} active:opacity-85 ${shown.danger ? "bg-m-danger-bg text-m-danger" : "bg-m-text text-m-bg"}`}
 						onClick={() => settle(shown.id, true)}
 					>
 						{shown.confirmText ?? "确定"}

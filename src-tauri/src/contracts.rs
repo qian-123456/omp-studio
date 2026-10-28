@@ -276,6 +276,15 @@ pub struct ImageAttachment {
     pub height: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AssistantContentPart {
+    Text { text: String },
+    Thinking { text: String },
+    Narration { text: String },
+    Tool { id: String },
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptItem {
@@ -285,6 +294,9 @@ pub struct TranscriptItem {
     pub kind: TranscriptKind,
     pub text: Option<String>,
     pub thinking: Option<String>,
+    /// Assistant content blocks in source order; narration is explicitly marked by omp.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assistant_parts: Vec<AssistantContentPart>,
     pub tool_calls: Vec<ToolCall>,
     pub tool_result: Option<ToolResultInfo>,
     pub usage: Option<Usage>,

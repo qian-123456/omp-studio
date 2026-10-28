@@ -89,33 +89,25 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 		}
 	};
 
-	const tabClass = (active: boolean) =>
-		`min-h-11 px-2.5 py-1 text-m-xs font-medium rounded-m-sm transition-colors ${
-			active
-				? "bg-m-surface-2 text-m-text"
-				: "text-m-text-3 hover:text-m-text active:bg-m-surface-hover"
+	const tabBtn = "flex min-h-11 items-center px-0.5";
+	const tabPill = (active: boolean) =>
+		`flex h-8 items-center whitespace-nowrap rounded-m-pill px-3 text-m-xs transition-colors ${
+			active ? "bg-m-surface text-m-text" : "text-m-text-3 active:bg-m-surface-hover"
 		}`;
+	const circle = "flex h-8 w-8 items-center justify-center rounded-m-pill bg-m-surface text-m-text-2 active:bg-m-surface-2";
 
 	return (
-		<div className={`my-2 overflow-hidden rounded-m-md border border-m-border bg-m-code-bg ${className}`}>
-			<div className="flex min-h-11 items-center justify-between border-b border-m-border px-2">
-				<div className="flex items-center gap-1">
-					<span className="px-1.5 font-m-mono text-m-xs font-semibold text-m-text-3">mermaid</span>
+		<div className={`my-4 overflow-hidden rounded-m-md bg-m-code-bg ${className}`}>
+			<div className="flex items-center justify-between pr-1 pl-4">
+				<div className="flex items-center gap-2">
+					<span className="whitespace-nowrap font-m-mono text-m-xs text-m-text-3">mermaid</span>
 					{state.status !== "error" && (
-						<div className="flex items-center gap-0.5">
-							<button
-								type="button"
-								className={tabClass(!showSource)}
-								onClick={() => setShowSource(false)}
-							>
-								图表
+						<div className="flex items-center">
+							<button type="button" aria-pressed={!showSource} className={tabBtn} onClick={() => setShowSource(false)}>
+								<span className={tabPill(!showSource)}>图表</span>
 							</button>
-							<button
-								type="button"
-								className={tabClass(showSource)}
-								onClick={() => setShowSource(true)}
-							>
-								源码
+							<button type="button" aria-pressed={showSource} className={tabBtn} onClick={() => setShowSource(true)}>
+								<span className={tabPill(showSource)}>源码</span>
 							</button>
 						</div>
 					)}
@@ -127,9 +119,11 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 							onClick={onFullscreen}
 							aria-label="全屏缩放"
 							title="全屏缩放"
-							className="flex min-h-11 min-w-11 items-center justify-center text-m-text-2 active:bg-m-surface-hover"
+							className="flex min-h-11 min-w-11 items-center justify-center"
 						>
-							<Maximize2 size={15} />
+							<span className={circle}>
+								<Maximize2 size={15} strokeWidth={1.75} />
+							</span>
 						</button>
 					)}
 					<button
@@ -137,37 +131,37 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 						onClick={onCopy}
 						aria-label="复制代码"
 						title="复制源码"
-						className="flex min-h-11 min-w-11 items-center justify-center gap-1 text-m-xs text-m-text-2 active:bg-m-surface-hover"
+						className="flex min-h-11 min-w-11 items-center justify-center"
 					>
-						{copied ? <Check size={15} /> : <Copy size={15} />}
+						<span className={circle}>{copied ? <Check size={15} strokeWidth={2} /> : <Copy size={15} strokeWidth={1.75} />}</span>
 					</button>
 				</div>
 			</div>
 
 			{state.status === "error" && (
 				<div>
-					<div className="flex items-center justify-between gap-2 border-b border-m-border bg-m-danger/10 px-3 py-2 text-m-xs text-m-danger">
-						<span className="flex-1 break-words">图表渲染失败: {state.message}</span>
+					<div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-m-sm bg-m-danger-bg py-1 pr-1 pl-3 text-m-xs text-m-danger">
+						<span className="flex-1 break-words">图表渲染失败：{state.message}</span>
 						<button
 							type="button"
 							onClick={() => setRetrySeq((s) => s + 1)}
-							className="flex min-h-11 items-center gap-1 rounded-m-sm px-2 text-m-xs font-medium underline active:opacity-70"
+							className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-m-pill px-3 text-m-xs font-medium active:opacity-70"
 						>
 							<RefreshCw size={13} />
 							重试
 						</button>
 					</div>
-					<CodeBlock code={source} lang="mermaid" className="border-0 rounded-none bg-transparent" />
+					<CodeBlock code={source} lang="mermaid" className="rounded-none bg-transparent" />
 				</div>
 			)}
 
 			{state.status !== "error" && showSource && (
-				<CodeBlock code={source} lang="mermaid" className="border-0 rounded-none bg-transparent" />
+				<CodeBlock code={source} lang="mermaid" className="rounded-none bg-transparent" />
 			)}
 
 			{state.status === "ready" && !showSource && (
 				<div
-					className="cursor-zoom-in overflow-x-auto p-3"
+					className="cursor-zoom-in overflow-x-auto px-4 pt-1 pb-4"
 					onClick={onFullscreen}
 					title="点击全屏缩放"
 				>
@@ -182,8 +176,8 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 			)}
 
 			{state.status === "loading" && !showSource && (
-				<div className="px-3 py-6 text-center font-m-sans text-m-xs text-m-text-3">
-					正在渲染图表...
+				<div className="px-4 pt-2 pb-6 text-center font-m-sans text-m-xs text-m-text-3">
+					<span className="m-shimmer">正在渲染图表</span>
 				</div>
 			)}
 		</div>

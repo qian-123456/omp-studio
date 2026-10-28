@@ -7,26 +7,30 @@
  *   Bound tab, later messages: echo + `sendPrompt` (done by the thread view).
  */
 
+import type { ComposerImage } from "../../stores/composer";
 import { createSideChat, sideChatAsk } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
+import { expandImagesForSend } from "../chat/imageTokens";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { sideChatDefaultModelArg } from "./modelDefault";
 import { HANDBACK_ACTION_KEY, appendToDraft, handbackAnnotation } from "./handbackLogic";
 import { isSideChatBusy, startHandback, useHandback } from "./handbackRun";
+import { sideChatImageAttachments } from "./sideChatAttachments";
 import { openNewSideChat, useSideChatView } from "./viewStore";
 
 export interface FirstMessageInput {
 	parentId: string;
 	/** Blank tab the message is typed in. */
 	tabId: string;
-	/** Trimmed user text; may be empty when annotations are staged. */
+	/** Trimmed user text; may be empty when annotations or images are staged. */
 	text: string;
 	annotations?: readonly Annotation[];
+	images?: ComposerImage[];
 	/** `provider/id[:thinking]` model argument; `null` inherits the parent's. */
 	model?: string | null;
 }
@@ -35,11 +39,18 @@ export interface FirstMessageInput {
 export function firstMessageParts(
 	text: string,
 	annotations: readonly Annotation[] = [],
+	imageCount = 0,
 ): { question: string; selection: string | undefined } {
-	return {
-		question: text || QUOTE_ONLY_QUESTION,
-		selection: formatWithAnnotations("", [...annotations]) || undefined,
-	};
+	const selection = formatWithAnnotations("", [...annotations]) || undefined;
+	const hasQuestion = text.replace(/🖼️\s*#\d+/gu, "").trim().length > 0;
+	const question = hasQuestion
+		? text.trim()
+		: selection
+			? QUOTE_ONLY_QUESTION
+			: imageCount > 0
+				? tNow("sidechat.imageOnlyQuestion")
+				: QUOTE_ONLY_QUESTION;
+	return { question, selection };
 }
 
 /**
@@ -49,8 +60,22 @@ export function firstMessageParts(
  * tab bound to the new session.
  */
 export async function sendFirstMessage(input: FirstMessageInput): Promise<void> {
-	const { parentId, tabId, annotations } = input;
-	const { question, selection } = firstMessageParts(input.text, annotations);
+	const { parentId, tabId, annotations, images = [] } = input;
+	const imageAttachments = sideChatImageAttachments(images);
+	const { question, selection } = firstMessageParts(input.text, annotations, images.length);
+	const promptQuestion = expandImagesForSend(
+		question,
+		imageAttachments.flatMap((image) =>
+			typeof image.path === "string" && image.path
+				? [{
+						path: image.path,
+						...(typeof image.width === "number" ? { width: image.width } : {}),
+						...(typeof image.height === "number" ? { height: image.height } : {}),
+					}]
+				: [],
+		),
+		"suffix",
+	);
 	const view = useSideChatView.getState();
 	const shown = sideChatEchoText(question, selection);
 	view.setPending(tabId, shown);
@@ -59,7 +84,7 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 		const info = await createSideChat(parentId, input.model ?? undefined);
 		sessionId = info.sessionId;
 		// Echo first so the bubble is there the moment the thread view mounts.
-		useLive.getState().addUserEcho(sessionId, shown);
+		useLive.getState().addUserEcho(sessionId, shown, imageAttachments);
 		await useSessions.getState().load().catch(() => {});
 		view.bindTab(parentId, tabId, sessionId);
 		// The quotes were consumed into the first prompt.
@@ -70,9 +95,11 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 	}
 	view.setPending(tabId, null);
 	try {
-		await sideChatAsk(sessionId, question, selection);
+		await sideChatAsk(sessionId, promptQuestion, selection);
 	} catch (err) {
 		toast.error(tNow("sidechat.sendSideChatMessageFailed", { error: err instanceof Error ? err.message : String(err) }));
+	} finally {
+		if (images.length > 0) useComposer.getState().clearImages(tabId);
 	}
 }
 

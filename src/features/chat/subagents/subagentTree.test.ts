@@ -56,15 +56,16 @@ describe("buildSubagentTree", () => {
 		const roots = buildSubagentTree({
 			p: sub("running", {
 				index: 0,
-				progress: { inflightTaskDetails: { progress: [nested("c1"), nested("c2")] } } as never,
+				progress: { inflightTaskDetails: { progress: [nested("c1"), nested("c2"), nested("c3")] } } as never,
 			}),
 			c1: sub("running", { index: 1 }),
 			c2: sub("pending", { index: 2 }),
-			other: sub("completed", { index: 3 }),
+			c3: sub("running", { index: 3 }),
+			other: sub("completed", { index: 4 }),
 		});
 		expect(roots.map((n) => n.id)).toEqual(["p", "other"]);
-		expect(roots[0].children.map((n) => n.id)).toEqual(["c1", "c2"]);
-		expect(roots[0].children[1].state).toBe("waiting");
+		expect(roots[0].children.map((n) => n.id)).toEqual(["c3", "c1", "c2"]);
+		expect(roots[0].children[2].state).toBe("waiting");
 	});
 
 	it("ignores unknown children and breaks cycles", () => {
@@ -79,15 +80,15 @@ describe("buildSubagentTree", () => {
 	});
 });
 
-describe("running-first order", () => {
-	it("puts running first, stable within groups", () => {
+describe("newest-first order", () => {
+	it("keeps running rows first and orders newest before older rows within each group", () => {
 		const roots = buildSubagentTree({
 			a: sub("completed", { index: 0 }),
 			b: sub("running", { index: 1 }),
 			c: sub("failed", { index: 2 }),
 			d: sub("running", { index: 3 }),
 		});
-		expect(roots.map((n) => n.id)).toEqual(["b", "d", "a", "c"]);
+		expect(roots.map((n) => n.id)).toEqual(["d", "b", "c", "a"]);
 	});
 });
 

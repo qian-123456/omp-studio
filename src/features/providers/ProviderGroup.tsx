@@ -25,7 +25,7 @@ interface Props {
 	renderRow: (row: ProviderRow) => ReactNode;
 }
 
-/** Sidebar-style group: chevron header with a count chip, rows paged by "展开 N 条". */
+/** Sidebar-style group: chevron header with a count chip and a show-all action for long groups. */
 export function ProviderGroup({ id, rows, open, onToggle, limit, onSetLimit, pinnedId, showAll, renderRow }: Props) {
 	const { t } = useT();
 	const title: Record<ProviderGroupId, string> = {
@@ -67,11 +67,11 @@ export function ProviderGroup({ id, rows, open, onToggle, limit, onSetLimit, pin
 							{hidden > 0 && (
 								<button
 									type="button"
-									onClick={() => onSetLimit(limit + GROUP_PAGE_SIZE)}
+									onClick={() => onSetLimit(rows.length)}
 									className="flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 								>
 									<Plus size={11} className="shrink-0" />
-									<span>{t("providers.groupExpandCount", { count: Math.min(GROUP_PAGE_SIZE, hidden) })}</span>
+									<span>{t("providers.groupExpandAllCount", { count: hidden })}</span>
 								</button>
 							)}
 							{hidden > 0 && canCollapse && <span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>}

@@ -60,6 +60,7 @@ src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
 extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints extension (§8.1) [C]
 extension/omp-workspace-privacy.ts  privacy placeholder restore/mask extension         [P]
+extension/omp-workspace-plan.ts  plan mode extension (§8.3)
 src-tauri/resources/plugins/omp-workspace-visualize/  bundled omp plugin (visualize skill) [B]
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
@@ -143,6 +144,7 @@ Rules for parallel work:
 | `~/.omp-workspace/status/<sessionId>.json` | status files written by the extension (§8) |
 | `~/.omp-workspace/extension/omp-workspace-status.ts` | extension installed at startup from `include_str!` |
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
+| `~/.omp-workspace/extension/omp-workspace-plan.ts` | plan mode extension (§8.3), installed at startup by `rpc/plan_ext.rs`; always loaded via `-e` after the privacy extension |
 | `~/.omp-workspace/plugins/omp-workspace-visualize/` | bundled omp plugin (`plugin.json` + `skills/visualize/SKILL.md`) embedded via `include_str!` from `src-tauri/resources/plugins/`; installed at startup, spawned via `--plugin-dir` when `settings.visualize_enabled` (default true) |
 | `~/.omp-workspace/images/` | durable pasted/dropped images; legacy `<app-cache>/ompws-clip` stays readable; both GC'd by `storage_image_gc_auto` (30 days + unreferenced) |
 | `~/.omp-workspace/oneshot-sessions/` | cwd / `--session-dir` for one-shot `omp -p` runs (summaries, quick ask, diagnose) |
@@ -233,9 +235,12 @@ pub struct ImageAttachment {
   pub id: String, pub marker: Option<String>, pub path: Option<String>,
   pub mime_type: Option<String>, pub width: Option<u32>, pub height: Option<u32>,
 }
+// Ordered content for assistant messages with explicit narration; serde tag = kind (camelCase).
+pub enum AssistantContentPart { Text { text: String }, Thinking { text: String }, Narration { text: String }, Tool { id: String } }
 pub struct TranscriptItem {
   pub id: String, pub parent_id: Option<String>, pub ts: String, pub kind: TranscriptKind,
   pub text: Option<String>, pub thinking: Option<String>,
+  pub assistant_parts: Vec<AssistantContentPart>, // assistantParts on the wire; default empty/omitted; preserves narration/text/thinking/tool order
   pub tool_calls: Vec<ToolCall>, pub tool_result: Option<ToolResultInfo>,
   pub usage: Option<Usage>, pub model: Option<String>, pub stop_reason: Option<String>,
   pub hidden: bool,               // custom_message display:false, system reminders
@@ -792,6 +797,28 @@ and the OMP terminal. Mapping file: `$OMPWS_PRIVACY_FILE` (set by `privacy::spaw
 - Placeholders are immutable once generated: editing a label changes only `SecretEntry.label`; no alias is created (existing `secret_aliases`
   rows stay readable and are still restored by `tool_call`).
 
+### 8.3 Plan mode extension
+
+`extension/omp-workspace-plan.ts`, installed at startup by `src-tauri/src/rpc/plan_ext.rs` to `~/.omp-workspace/extension/omp-workspace-plan.ts`
+and passed via `-e` in `prompt_shape_args` right after the privacy extension (so app RPC spawns and `session_resume_command` share one prompt
+shape). It is inert outside `--mode rpc` and when the omp setting `plan.enabled` is false. Plan mode is real omp plan mode; the app keeps no
+toggle state and adds no prompt prefix (the old `[规划模式]` prefix is gone on desktop and mobile).
+A user stop (latest assistant message `stopReason: "aborted"` in `agent_end`) never triggers the "write the plan file" reminder, so one stop click ends the turn.
+The desktop composer shows the configured planning model as soon as plan mode is enabled; its model and thinking controls edit the `plan` role in its existing project scope or otherwise globally. Late asynchronous changes from another session or plan-mode visit never alter the current composer's model.
+- State contract: the extension publishes `extension_ui_request` frames `{method:"setStatus", statusKey:"ompws-plan", statusText:<JSON string>}`.
+  `statusText` fields: `v` (schema version), `enabled`, `phase` (`planning` | `review`), `planFile`, `planUrl`, `title`, `content`,
+  `prevContent`, `version`, `planModel`, `tiers[{role,spec}]`, `defaultRole`, `contextPercent`, `keepDisabled`. Desktop parses it into
+  `useLive().sessions[id].plan` (`PlanStatus`, `features/chat/plan/planStatus.ts`); the Rust `SessionHandle.plan_status` caches the last parsed
+  object (`rpc/process.rs::plan_status_from_frame`) and feeds mobile `composer-state.planMode` / `GET /sessions/{id}/plan-mode`.
+  Plan mode on/off = `plan.enabled === true`.
+- Commands (sent as ordinary prompts): `/plan` toggles plan mode; `/plan <task>` enters plan mode and sends the task. Mobile
+  `POST /sessions/{id}/plan-mode` sends `/plan` (skipped when `{on}` already matches) and returns the new `{on}`.
+- `/plan-action <sub>`: `status` (re-publish state), `exit` (leave plan mode), `save` (persist the plan file),
+  `approve <execute|compact|keep> [role]` (`execute` = the app opens a NEW session in the same cwd and sends `/plan-action run [@role] <planFile>`;
+  `compact` = compact context, then execute in the same session; `keep` = execute in the same session with history kept, refused above 95%
+  context (`keepDisabled`); the mobile 「执行计划」 button sends `/plan-action approve keep`), and `run [@role] <file>` (run the plan file,
+  optionally switching to the tier role's model).
+
 ## 9. Cross-module Rust API (stubbed at scaffold; signatures frozen)
 
 ```rust
@@ -1053,6 +1080,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   ✅ 验收 / ✅ 验收并归档 when pending Review, 恢复 for interrupted/suspended, 接管 for external, 聊天/终端 toggle). Message stream from
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
   transcript incrementally). Virtualized.
+  Explicit message navigation retains indexed-row scrolling and follow state. A mounted optimistic/queued message absent from the row index may use its DOM anchor; missing anchors remain pending for later renders, never fall back to the newest message.
 - Turn grouping (`turnGrouping.ts`): normalizes linear transcript items into `DisplayBlock[]` (`TurnBlock` vs `ProtocolBlock`).
   Each `TurnBlock` starts at a `user` item — or, for agent activity with no preceding visible user message, has `userItem = null`
   (render no user bubble) — aggregates intermediate `TurnStep`s (collapsible `thinking` blocks, `tool` calls paired with
@@ -1063,6 +1091,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   turn as a `notice` step. Labels come from `noticeLabel` (Chinese, never the raw kind). Durations: `formatDurationChinese`
   ("12 秒") and `formatDurationCompact` ("2分3秒"); model strings are cleaned via `formatShortModel`. `groupActivityUnits` folds
   consecutive read/search/list/find/grep/glob tools into one exploration unit ("已浏览 3 个文件、2 次搜索").
+  Structured assistant content preserves source order through text, private thinking, narration, and tool calls. Narration is explicit public prose (including narration-marked thinking), never inferred from model names or prose patterns; ordinary text retains existing think-tag normalization. Only final ordinary prose can become the answer; trailing terminal tool calls do not disqualify it. Legacy transcripts without ordered parts retain their existing fallback.
 - Visual language is Codex-like (tokens in `index.css`: `--text-60/40/30`, `--line`, `--ghost-hover`, `--chat-user-bg`,
   `.shimmer-text`, `.thread-fade-mask`): user = right bubble (max 70%, radius 22px); assistant = plain prose; activity =
   single muted rows with hover chevron; no gradients/glows/colored cards; color only on small status icons.
@@ -1121,9 +1150,10 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   localStorage per session); `interrupt` = `abortTurn`, then wait until `live.streaming` is false (≤15 s, `interruptAndWait` in `send.ts`), then send normally;
   on timeout the message goes to the held queue with an error toast. Alternate: steer↔queue, interrupt→queue. The round button shows Stop (`abort`) while
   streaming; when the composer has text or quotes, a send button sits beside it performing the default follow-up (引导当前回合 / 本回合结束后发送 / 打断并发送; its title names the ⌥ chord).
+  During manual or automatic compaction, real-session thinking-level changes are staged per session; only the latest selection is applied after compaction ends, with a second busy check after resume. Local drafts remain local.
   Codex-style popover list above the composer (text + image count, × remove; no reorder). When the turn ends and `settings.queueAutoSend`
-  is on (default; `undefined` = on) items auto-send one at a time (each send restarts streaming; next turn-end sends the next). With it off,
-  show the manual bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (↑↓).
+  is on (default; `undefined` = on), all ready items auto-send as one prompt in queue order. An ordinary typed send reserves those items and puts the typed prompt first, renumbering image markers across the combined message. In-flight individual sends are excluded; failed combined sends restore only the reserved items, once, at their original positions.
+  With auto-send off, show the manual bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (↑↓).
   External sessions: composer disabled with "只读观察 — 接管后可操作".
 - Pending dialogs: render approval card (Approve/Deny, show title body), select (options + optionDetails), confirm, input/editor
   (textarea) inline at the stream bottom; respond via `rpc_ui_respond`. Also load `rpc_pending_ui` on open.

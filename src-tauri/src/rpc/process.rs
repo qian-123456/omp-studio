@@ -96,6 +96,9 @@ pub struct SessionHandle {
     pub shutdown: watch::Sender<bool>,
     pub pending: PendingMap,
     pub pending_ui: parking_lot::Mutex<Vec<PendingUiRequest>>,
+    /// Last `ompws-plan` status published by the bundled plan extension
+    /// (parsed `statusText` JSON); `None` until the extension reports.
+    pub plan_status: parking_lot::Mutex<Option<Value>>,
     pub pending_frames: parking_lot::Mutex<Vec<Value>>,
     /// Flips to `true` when the stdout reader reached EOF. Pending requests are
     /// only failed after this, so a response printed just before exit still
@@ -137,6 +140,7 @@ impl SessionHandle {
             shutdown,
             pending: PendingMap::default(),
             pending_ui: parking_lot::Mutex::new(Vec::new()),
+            plan_status: parking_lot::Mutex::new(None),
             pending_frames: parking_lot::Mutex::new(Vec::new()),
             stdout_closed,
             streaming: AtomicBool::new(false),
@@ -233,6 +237,17 @@ pub(crate) fn stale_session_ids<'a>(
     ids
 }
 
+/// Parse an `ompws-plan` `setStatus` frame into its `statusText` JSON object.
+pub(crate) fn plan_status_from_frame(frame: &Value) -> Option<Value> {
+    if frame.get("statusKey").and_then(Value::as_str) != Some("ompws-plan") {
+        return None;
+    }
+    let text = frame.get("statusText").and_then(Value::as_str)?;
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .filter(Value::is_object)
+}
+
 /// Apply one inbound logical frame to handle state (no emission).
 /// Testable without a running process.
 pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
@@ -256,6 +271,10 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
                     request: frame.clone(),
                     received_at: chrono::Utc::now().to_rfc3339(),
                 });
+            } else if method == "setStatus" {
+                if let Some(plan) = plan_status_from_frame(frame) {
+                    *handle.plan_status.lock() = Some(plan);
+                }
             } else if method == "cancel" {
                 // Cancels a previously issued request: match targetId or id.
                 let target = frame
@@ -502,8 +521,8 @@ pub fn prompt_shape_args(
         args.push(append_prompt);
     }
     // Extension list and order are part of the prompt shape: the status extension
-    // reports progress (§8), checkpoints is opt-in (§8), privacy placeholders are
-    // always on for app sessions.
+    // reports progress (§8), checkpoints is opt-in (§8), privacy placeholders and
+    // plan mode (`/plan`, which omp only ships in its TUI) are always on.
     let status_ext = paths::extension_path();
     if status_ext.exists() {
         args.push("-e".to_string());
@@ -520,6 +539,11 @@ pub fn prompt_shape_args(
     if privacy_ext.exists() {
         args.push("-e".to_string());
         args.push(privacy_ext.to_string_lossy().into_owned());
+    }
+    let plan_ext = paths::plan_extension_path();
+    if plan_ext.exists() {
+        args.push("-e".to_string());
+        args.push(plan_ext.to_string_lossy().into_owned());
     }
     if let Some(dir) = viz_dir {
         args.push("--plugin-dir".to_string());
@@ -763,6 +787,7 @@ pub async fn spawn_with_sink(
         shutdown: shutdown_tx,
         pending: PendingMap::default(),
         pending_ui: parking_lot::Mutex::new(Vec::new()),
+        plan_status: parking_lot::Mutex::new(None),
         pending_frames: parking_lot::Mutex::new(Vec::new()),
         stdout_closed: stdout_closed_tx,
         streaming: AtomicBool::new(false),
@@ -1106,6 +1131,36 @@ mod tests {
             &json!({"id": "req_1", "type": "response", "success": true}),
         );
         assert!(rx.blocking_recv().is_ok());
+    }
+
+    #[test]
+    fn plan_status_frames_are_cached() {
+        let h = test_handle();
+        assert!(h.plan_status.lock().is_none());
+        // Other status keys and malformed text are ignored.
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"a","method":"setStatus","statusKey":"other","statusText":"{\"enabled\":true}"}),
+        );
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"b","method":"setStatus","statusKey":"ompws-plan","statusText":"nope"}),
+        );
+        assert!(h.plan_status.lock().is_none());
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"c","method":"setStatus","statusKey":"ompws-plan","statusText":"{\"v\":1,\"enabled\":true,\"phase\":\"planning\"}"}),
+        );
+        let cached = h.plan_status.lock().clone().unwrap();
+        assert_eq!(cached["enabled"], json!(true));
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"d","method":"setStatus","statusKey":"ompws-plan","statusText":"{\"v\":1,\"enabled\":false}"}),
+        );
+        assert_eq!(
+            h.plan_status.lock().clone().unwrap()["enabled"],
+            json!(false)
+        );
     }
 
     #[test]

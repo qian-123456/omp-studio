@@ -304,7 +304,7 @@ describe("startSessionInDir local drafts", () => {
 		vi.clearAllMocks();
 		useSessions.setState({ sessions: {}, workspaces: [ws] });
 		useLive.setState({ sessions: {} });
-		useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {}, planModes: {} });
+		useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {} });
 		usePendingSession.setState({ drafts: {}, selectedId: null });
 		useUi.setState({ selectedSessionId: null, centerView: "home" });
 	});

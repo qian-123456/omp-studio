@@ -49,8 +49,7 @@ function hasComposerContent(id: string): boolean {
 		(c.annotations[id]?.length ?? 0) ||
 		(c.images[id]?.length ?? 0) ||
 		(c.files[id]?.length ?? 0) ||
-		loadChip(id) ||
-		(c.planModes[id] ?? false),
+		loadChip(id),
 	);
 }
 

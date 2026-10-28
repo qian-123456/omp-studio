@@ -11,7 +11,14 @@ import { useUi } from "../../stores/ui";
 import { useT, tNow } from "../../stores/language";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
-import { projectDisplayName, projectRoot, sessionOptionLabel, splitByProject, splitSent } from "./ideasLogic";
+import {
+	dispatchGroups,
+	projectDisplayName,
+	projectRoot,
+	sessionOptionLabel,
+	splitByProject,
+	splitSent,
+} from "./ideasLogic";
 import { PILL_OUTLINE, PILL_PRIMARY } from "./ideaStyles";
 
 type Target = "existing" | "new";
@@ -43,8 +50,9 @@ export function DispatchDialog({
 	const [target, setTarget] = useState<Target>(activeId || sessionList.length > 0 ? "existing" : "new");
 	const [existingId, setExistingId] = useState(activeId ?? sessionList[0]?.id ?? "");
 	const [busy, setBusy] = useState(false);
-	const [errors, setErrors] = useState<Record<number, string>>({});
-	// Items already sent in this dialog: never sent again, whatever the target becomes.
+	const [errors, setErrors] = useState<Record<string, string>>({});
+	const [statusErrors, setStatusErrors] = useState<Record<string, string>>({});
+	// Items accepted by the target never go through the send path again in this dialog.
 	const [sentIds, setSentIds] = useState<ReadonlySet<string>>(new Set());
 
 	const { remaining, sent } = useMemo(() => splitSent(items, sentIds), [items, sentIds]);
@@ -54,6 +62,9 @@ export function DispatchDialog({
 	const groups = target === "existing" ? (remaining.length > 0 ? [remaining] : []) : projectGroups;
 	// Sessions already created for a group are reused on retry so a failed send does not leave strays.
 	const createdSession = useRef(new Map<string, string>());
+	// Failed status writes retain the original target and are retried without dispatching again.
+	const [pendingStatusUpdates, setPendingStatusUpdates] = useState<ReadonlyMap<string, string>>(new Map());
+	const firstSentSession = useRef<string | null>(null);
 
 	const sendGroup = async (group: BacklogItem[]): Promise<string> => {
 		const groupKey = group[0]?.id ?? "";
@@ -80,34 +91,34 @@ export function DispatchDialog({
 		}
 		const prompt = await backlogBuildPrompt(group.map((it) => it.id));
 		await dispatchPrompt(sessionId, prompt);
-		// Prompt is out: from here the group counts as dispatched even if a status write fails below.
-		for (const it of group) await backlogUpdate(it.id, { status: "dispatched", targetSessionId: sessionId });
 		return sessionId;
 	};
 
 	const run = async () => {
 		setBusy(true);
 		setErrors({});
-		const done = new Set(sentIds);
-		const nextErrors: Record<number, string> = {};
-		let firstSession: string | null = null;
-		for (const [index, group] of groups.entries()) {
-			try {
-				const sid = await sendGroup(group);
-				for (const it of group) done.add(it.id);
-				firstSession ??= sid;
-			} catch (err) {
-				nextErrors[index] = errMsg(err);
-			}
-		}
-		setSentIds(done);
-		setErrors(nextErrors);
+		setStatusErrors({});
+		const result = await dispatchGroups(
+			groups,
+			sentIds,
+			pendingStatusUpdates,
+			sendGroup,
+			async (id, sessionId) => {
+				await backlogUpdate(id, { status: "dispatched", targetSessionId: sessionId });
+			},
+			firstSentSession.current,
+		);
+		setPendingStatusUpdates(result.pendingStatusUpdates);
+		firstSentSession.current = result.firstSession;
+		setSentIds(result.sentIds);
+		setErrors(Object.fromEntries(Object.entries(result.sendErrors).map(([id, error]) => [id, errMsg(error)])));
+		setStatusErrors(Object.fromEntries(Object.entries(result.statusErrors).map(([id, error]) => [id, errMsg(error)])));
 		await useBacklog.getState().load().catch(() => {});
 		setBusy(false);
-		if (Object.keys(nextErrors).length === 0) {
+		if (Object.keys(result.sendErrors).length === 0 && Object.keys(result.statusErrors).length === 0) {
 			toast.success(t("backlog.dispatchedToAgent"));
 			onClose();
-			if (firstSession) selectSession(firstSession);
+			if (result.firstSession) selectSession(result.firstSession);
 		}
 	};
 
@@ -117,8 +128,9 @@ export function DispatchDialog({
 		createdSession.current.clear();
 	};
 
-	const hasErrors = Object.keys(errors).length > 0;
+	const hasErrors = Object.keys(errors).length > 0 || Object.keys(statusErrors).length > 0;
 	const existingSession = sessions[existingId];
+	const existingGroupError = errors[remaining[0]?.id ?? ""];
 	const choiceCls = (on: boolean) =>
 		`rounded-xl border p-2.5 text-center font-medium transition-colors ${
 			on
@@ -193,6 +205,14 @@ export function DispatchDialog({
 											<CheckCircle2 className="h-3 w-3" />
 											{t("backlog.alreadyDispatched")}
 										</span>
+										{g.map((it) => {
+											const error = statusErrors[it.id];
+											return error ? (
+												<div key={it.id} className="basis-full whitespace-pre-wrap break-words text-[var(--status-error)] select-text">
+													{it.text}: {error}
+												</div>
+											) : null;
+										})}
 									</li>
 								))}
 							</ul>
@@ -224,18 +244,18 @@ export function DispatchDialog({
 											<span className="min-w-0 break-words font-medium">{groupName(g)}</span>
 											<span className="text-[var(--text-dim)]">{t("backlog.itemsCount", { count: g.length })}</span>
 										</div>
-										{errors[index] && (
+										{errors[g[0]?.id ?? ""] && (
 											<div className="mt-1 whitespace-pre-wrap break-words text-[var(--status-error)] select-text">
-												{errors[index]}
+												{errors[g[0]?.id ?? ""]}
 											</div>
 										)}
 									</li>
 								))}
 							</ul>
 						)}
-						{target === "existing" && errors[0] && (
+						{target === "existing" && existingGroupError && (
 							<div className="whitespace-pre-wrap break-words rounded-xl border border-[color-mix(in_srgb,var(--status-error)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-error)_10%,transparent)] p-2 text-[var(--status-error)] select-text">
-								{errors[0]}
+								{existingGroupError}
 							</div>
 						)}
 						{sentGroups.length > 0 && (

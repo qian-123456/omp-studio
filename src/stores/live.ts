@@ -21,6 +21,7 @@ import {
 } from "./retryNotice";
 import { useComposer } from "./composer";
 import { useHeldQueue } from "../features/chat/heldQueue";
+import { PLAN_STATUS_KEY, type PlanStatus, parsePlanStatus } from "../features/chat/plan/planStatus";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
 import {
 	type PersistedRow,
@@ -132,6 +133,7 @@ export interface LiveRequest {
 export type LiveRequestPart =
 	| { kind: "thinking"; text: string; durationMs?: number }
 	| { kind: "text"; text: string }
+	| { kind: "narration"; text: string }
 	| { kind: "tool"; id: string };
 
 /**
@@ -230,6 +232,8 @@ export interface SessionLive {
 	flowNotices: FlowNotice[];
 	/** Messages omp itself holds back (steer / follow-up); texts only. */
 	ompQueue: OmpQueue;
+	/** Plan-mode state from the plan extension's setStatus frames; absent until one arrives. */
+	plan?: PlanStatus;
 }
 export const emptySessionLive = (): SessionLive => ({
 	streaming: false,
@@ -677,21 +681,26 @@ function liveRequestFromMessage(
 		} else if (o.type === "thinking" || o.type === "thought") {
 			const text = str(o.thinking ?? o.text);
 			if (!text) continue;
-			// The store tracks one thinking span per request: it belongs to
-			// the first thinking part.
-			parts.push({
-				kind: "thinking",
-				text,
-				durationMs: thinkingTimed ? undefined : thinkingMs,
-			});
-			thinkingTimed = true;
-		} else if (
-			o.type === "text" &&
-			typeof o.text === "string" &&
-			o.text.length > 0
-		) {
-			hasText = true;
-			if (o.text.trim()) parts.push({ kind: "text", text: o.text });
+			if (o.narration === true) {
+				if (text.trim()) parts.push({ kind: "narration", text });
+			} else {
+				// The store tracks one thinking span per request: it belongs to
+				// the first thinking part.
+				parts.push({
+					kind: "thinking",
+					text,
+					durationMs: thinkingTimed ? undefined : thinkingMs,
+				});
+				thinkingTimed = true;
+			}
+		} else if (o.type === "text" && typeof o.text === "string" && o.text.length > 0) {
+			if (o.narration !== true) hasText = true;
+			if (o.text.trim()) {
+				parts.push({
+					kind: o.narration === true ? "narration" : "text",
+					text: o.text,
+				});
+			}
 		}
 	}
 	// Prefer the provider's response id; fall back to the message id and
@@ -763,7 +772,7 @@ function reduce(
 			);
 			const hasThinking = content.some((p) => {
 				const o = asFrame(p);
-				return o.type === "thinking" || o.type === "thought";
+				return (o.type === "thinking" || o.type === "thought") && o.narration !== true;
 			});
 			const hasText = content.some((p) => {
 				const o = asFrame(p);
@@ -1003,6 +1012,10 @@ function reduce(
 						(r) => requestId(r.request) !== target,
 					),
 				};
+			}
+			if (method === "setStatus" && str(frame.statusKey) === PLAN_STATUS_KEY) {
+				const plan = parsePlanStatus(frame.statusText);
+				return plan ? { ...live, plan } : live;
 			}
 			if (!INTERACTIVE_METHODS.has(method)) return live;
 			return {

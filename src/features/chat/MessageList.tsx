@@ -9,6 +9,7 @@ import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
 	Check,
+	ChevronDown,
 	Copy,
 	Loader2,
 	Pencil,
@@ -173,7 +174,7 @@ const USER_ACTION_BTN =
  * --chat-user-bg). Long text collapses to a few lines behind 查看更多.
  * Image chips sit right-aligned above the bubble.
  */
-const UserRow = React.memo(function UserRow({
+export const UserRow = React.memo(function UserRow({
 	sessionId,
 	item,
 }: {
@@ -337,10 +338,19 @@ const UserRow = React.memo(function UserRow({
 					{collapsible && (
 						<button
 							type="button"
+							aria-expanded={expanded}
 							onClick={() => setExpanded((v) => !v)}
-							className="mt-1 rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-60)] transition-colors hover:text-[var(--text)] select-none focus-visible:outline-none focus-visible:underline"
 						>
-							{expanded ? t("common.collapse") : t("chat.message.viewMore")}
+							<span>{expanded ? t("common.collapse") : t("chat.message.viewMore")}</span>
+							<ChevronDown
+								size={12}
+								className={clsx(
+									"shrink-0 transition-transform duration-150",
+									expanded && "rotate-180",
+								)}
+								aria-hidden="true"
+							/>
 						</button>
 					)}
 				</div>
@@ -729,7 +739,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						    its own fold: it was readable while streaming and must not
 						    vanish into the fold, nor land after the steer it preceded. */}
 						{seg.prose.map((step) =>
-							step.kind === "text" ? (
+							step.kind === "text" || step.kind === "narration" ? (
 								<div
 									key={step.id}
 									id={`msg-${step.id}`}
@@ -997,10 +1007,10 @@ const StreamingRow = React.memo(function StreamingRow({
 						durationMs: part.durationMs,
 						requestId: req.id,
 					});
-				} else if (part.kind === "text") {
+				} else if (part.kind === "text" || part.kind === "narration") {
 					out.push({
-						id: `live-text-r${reqIdx}-${partIdx}`,
-						kind: "text",
+						id: `live-${part.kind}-r${reqIdx}-${partIdx}`,
+						kind: part.kind,
 						text: part.text,
 						requestId: req.id,
 					});
@@ -1014,8 +1024,8 @@ const StreamingRow = React.memo(function StreamingRow({
 		// still be running, and it is the final row of the block.
 		let lastThinkingIdx = -1;
 		content.forEach((part, i) => {
-			const t = asObj(part).type;
-			if (t === "thinking" || t === "thought") lastThinkingIdx = i;
+			const o = asObj(part);
+			if ((o.type === "thinking" || o.type === "thought") && o.narration !== true) lastThinkingIdx = i;
 		});
 		// Same ids the finished request will give these rows (`r<finished>-<n>`,
 		// n counting kept parts only) so message_end does not remount them.
@@ -1028,6 +1038,15 @@ const StreamingRow = React.memo(function StreamingRow({
 				const thinking = String(o.thinking ?? o.text ?? "");
 				if (!thinking) continue;
 				keptIdx += 1;
+				if (o.narration === true) {
+					out.push({
+						id: `live-narration-r${finished}-${keptIdx}`,
+						kind: "narration",
+						text: thinking,
+						streaming: partIdx === content.length,
+					});
+					continue;
+				}
 				const isLast = partIdx - 1 === lastThinkingIdx;
 				const running = isLast && !thinkingEndedAt;
 				out.push({
@@ -1051,8 +1070,8 @@ const StreamingRow = React.memo(function StreamingRow({
 				if (!txt.trim()) continue;
 				keptIdx += 1;
 				out.push({
-					id: `live-text-r${finished}-${keptIdx}`,
-					kind: "text",
+					id: `live-${o.narration === true ? "narration" : "text"}-r${finished}-${keptIdx}`,
+					kind: o.narration === true ? "narration" : "text",
 					text: txt,
 					// Only the part the model is writing right now is unfinished.
 					streaming: partIdx === content.length,
@@ -1211,7 +1230,7 @@ const StreamingRow = React.memo(function StreamingRow({
 			activity.some(
 			(s, i) =>
 				(s.kind === "thinking" && s.running) ||
-				(s.kind === "text" && s.streaming) ||
+				((s.kind === "text" || s.kind === "narration") && s.streaming) ||
 				(s.kind === "tool" &&
 					!s.result &&
 					(liveTools[s.call.id]?.status === "running" ||
@@ -1268,7 +1287,7 @@ const StreamingRow = React.memo(function StreamingRow({
 				}
 			}
 			for (const step of seg.prose) {
-				if (step.kind !== "text") continue;
+				if (step.kind !== "text" && step.kind !== "narration") continue;
 				nodes.push(
 					<div
 						key={step.id}
@@ -1876,7 +1895,6 @@ export function MessageList({
 	useEffect(() => {
 		if (!scrollRequest || scrollRequest.timestamp === lastHandledScrollReq.current)
 			return;
-		lastHandledScrollReq.current = scrollRequest.timestamp;
 
 		const targetId = scrollRequest.itemId;
 		const targetIndex = rows.findIndex((b) => {
@@ -1896,6 +1914,7 @@ export function MessageList({
 		});
 
 		if (targetIndex >= 0) {
+			lastHandledScrollReq.current = scrollRequest.timestamp;
 			// Jump wins over follow-bottom for the duration of the smooth scroll.
 			followRef.current = detach(followRef.current);
 			// Align the block's top: centering a turn taller than the viewport
@@ -1928,8 +1947,20 @@ export function MessageList({
 				jumpTimerRef.current = window.setTimeout(scrollToMessage, 120);
 			}
 			useLive.getState().clearScrollRequest(sessionId);
+		} else {
+			// Trace entries can point at an optimistic user echo, which is rendered
+			// below the virtualized rows and therefore has no row index.
+			const el =
+				document.getElementById(`msg-${targetId}`) ||
+				document.querySelector(`[data-tool-id="${targetId}"]`);
+			if (!el) return;
+			lastHandledScrollReq.current = scrollRequest.timestamp;
+			followRef.current = detach(followRef.current);
+			el.scrollIntoView({ behavior: "smooth", block: "center" });
+			flashHighlight(targetId, 3000);
+			useLive.getState().clearScrollRequest(sessionId);
 		}
-	}, [scrollRequest, rows, virtualizer, sessionId, flashHighlight]);
+	}, [scrollRequest, rows, pendingEchoes, ompQueue, isStreamingActive, virtualizer, sessionId, flashHighlight]);
 	useEffect(() => () => window.clearTimeout(jumpTimerRef.current), []);
 
 	// Consume cross-feature "jump to chat turn" requests (git timeline → chat)

@@ -110,3 +110,37 @@ describe("pending reveal target", () => {
 		expect(container.querySelector(".bg-\\[var\\(--ghost-hover\\)\\]")).toBeNull();
 	});
 });
+
+describe("trace target outside persisted rows", () => {
+	it("locates a mounted optimistic message without changing the request to the latest row", () => {
+		const echo = item({ id: "pending-target", kind: "user", text: "new draft sent" });
+		useLive.setState({ sessions: { s1: {
+			...emptySessionLive(), items: transcript(), pendingUserEchoes: [echo],
+			scrollRequest: { itemId: echo.id, timestamp: 1 },
+		} } });
+		const { container } = render(ui(false));
+		const target = container.querySelector(`#msg-${echo.id}`);
+		expect(target).not.toBeNull();
+		expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts).toContain(target);
+		expect(useLive.getState().sessions.s1.scrollRequest).toBeNull();
+	});
+
+	it("keeps a missing target pending and retries when its optimistic message mounts", () => {
+		useLive.setState({ sessions: { s1: {
+			...emptySessionLive(), items: transcript(),
+			scrollRequest: { itemId: "later-target", timestamp: 2 },
+		} } });
+		const { container } = render(ui(false));
+		expect(useLive.getState().sessions.s1.scrollRequest?.itemId).toBe("later-target");
+		act(() => {
+			useLive.setState((state) => ({ sessions: { ...state.sessions, s1: {
+				...state.sessions.s1,
+				pendingUserEchoes: [item({ id: "later-target", kind: "user", text: "arrived later" })],
+			} } }));
+		});
+		const target = container.querySelector("#msg-later-target");
+		expect(target).not.toBeNull();
+		expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts).toContain(target);
+		expect(useLive.getState().sessions.s1.scrollRequest).toBeNull();
+	});
+});

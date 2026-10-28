@@ -57,13 +57,13 @@ describe("NewSessionSheet", () => {
 		expect(apiMock).toHaveBeenCalledWith("GET", "/left/roles?cwd=%2Fp%2Fb");
 
 		fireEvent.click(opus);
-		fireEvent.click(await screen.findByRole("button", { name: "high" }));
+		fireEvent.click(await screen.findByRole("radio", { name: "高" }));
 
 		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
 		expect((await screen.findByRole("radio", { name: /beta/ })).getAttribute("aria-checked")).toBe("true");
 
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
-		expect((await screen.findByRole("button", { name: "high" })).getAttribute("aria-pressed")).toBe("true");
+		expect((await screen.findByRole("radio", { name: "高" })).getAttribute("aria-checked")).toBe("true");
 		// catalog is cached per directory: one fetch only
 		expect(apiMock.mock.calls.filter((c) => String(c[1]).startsWith("/left/roles"))).toHaveLength(1);
 
@@ -91,5 +91,38 @@ describe("NewSessionSheet", () => {
 			fireEvent.click(direct);
 		});
 		expect(createSession).toHaveBeenCalledWith({ cwd: "/p/a", mode: "code" });
+	});
+
+	it("clears prior directory choices until the reopened sheet has fresh directories", async () => {
+		const { rerender } = render(<NewSessionSheet open onClose={() => {}} defaultCwd="/p/a" />);
+		await waitFor(() => expect(screen.getByRole("radio", { name: /alpha/ }).getAttribute("aria-checked")).toBe("true"));
+		rerender(<NewSessionSheet open={false} onClose={() => {}} defaultCwd="/p/a" />);
+		let finish = (_value: { dirs: typeof DIRS }) => {};
+		apiMock.mockImplementation((_method: string, path: string) => path === "/left/dirs" ? new Promise<{ dirs: typeof DIRS }>((resolve) => { finish = resolve; }) : Promise.resolve({}));
+		rerender(<NewSessionSheet open onClose={() => {}} defaultCwd="/p/a" />);
+		expect(screen.queryByRole("radio", { name: /alpha/ })).toBeNull();
+		expect((screen.getByRole("button", { name: "直接创建" }) as HTMLButtonElement).disabled).toBe(true);
+		await act(async () => finish({ dirs: [DIRS[1]] }));
+		expect((await screen.findByRole("radio", { name: /beta/ })).getAttribute("aria-checked")).toBe("false");
+		expect((screen.getByRole("button", { name: "直接创建" }) as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it("ignores an older directory catalog response after switching projects", async () => {
+		let finishAlpha = (_value: { models: typeof MODELS }) => {};
+		apiMock.mockImplementation((_method: string, path: string) => {
+			if (path === "/left/dirs") return Promise.resolve({ dirs: DIRS });
+			if (path === "/left/roles?cwd=%2Fp%2Fa") return new Promise<{ models: typeof MODELS }>((resolve) => { finishAlpha = resolve; });
+			if (path === "/left/roles?cwd=%2Fp%2Fb") return Promise.resolve({ models: [MODELS[1]] });
+			return Promise.resolve({});
+		});
+		render(<NewSessionSheet open onClose={() => {}} defaultCwd="/p/a" />);
+		await waitFor(() => expect(screen.getByRole("radio", { name: /alpha/ }).getAttribute("aria-checked")).toBe("true"));
+		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		fireEvent.click(screen.getByRole("radio", { name: /beta/ }));
+		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		await screen.findByRole("option", { name: /Haiku/ });
+		await act(async () => finishAlpha({ models: MODELS }));
+		expect(screen.queryByRole("option", { name: /Opus/ })).toBeNull();
 	});
 });

@@ -7,6 +7,7 @@ export interface Stroke {
 }
 
 export const SKETCH_COLORS = ["#111111", "#e5372e", "#f59e0b", "#22a559", "#2f6fed", "#8b5cf6", "#ffffff"] as const;
+export const SKETCH_PAPER = SKETCH_COLORS[SKETCH_COLORS.length - 1];
 export const SKETCH_WIDTHS = [3, 6, 12] as const;
 export const COLOR_NAMES: Record<string, string> = {
 	"#111111": "黑色",

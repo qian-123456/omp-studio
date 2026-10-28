@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
-import { BottomSheet, confirm, toast } from "../../../ui";
+import { BottomSheet, Button, confirm, inputCls, toast } from "../../../ui";
 
 export interface Goal {
 	objective: string;
@@ -64,49 +64,39 @@ export function GoalSheet({
 		}
 	};
 
-	const btn = "min-h-11 whitespace-nowrap rounded-m-md px-4 text-m-sm font-medium disabled:opacity-50";
 	return (
 		<BottomSheet open={open} onClose={onClose} title="目标">
-			<div className="flex flex-col gap-3 p-4">
+			<div className="flex flex-col gap-4 px-5 pt-2 pb-5">
 				{g ? (
-					<div className="flex flex-col gap-1 rounded-m-md border border-m-border bg-m-surface p-3">
-						<div className="whitespace-pre-wrap break-words text-m-md font-semibold [overflow-wrap:anywhere]">{g.objective}</div>
-						<div className="whitespace-nowrap text-m-xs text-m-text-2">{goalLabel(g)}</div>
+					<div className="rounded-m-lg bg-m-card p-5 shadow-m-card">
+						<div className="text-m-xs whitespace-nowrap text-m-text-3">{goalLabel(g)}</div>
+						<div className="m-selectable mt-1 text-m-md font-medium break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{g.objective}</div>
 					</div>
 				) : (
-					<div className="text-m-sm text-m-text-2">还没有目标。设定后 agent 会持续朝它推进。</div>
+					<p className="px-1 text-m-sm text-m-text-2">还没有目标。设定后代理会持续朝它推进，直到完成。</p>
 				)}
 				<textarea
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					rows={3}
-					placeholder={g ? "输入新目标（会替换当前目标）" : "输入目标"}
-					className="w-full resize-none rounded-m-md border border-m-border bg-m-surface p-3 text-m-md text-m-text outline-none placeholder:text-m-text-3 focus:border-m-accent"
+					aria-label="目标内容"
+					placeholder={g ? "输入新目标（会替换当前目标）" : "想让它完成什么"}
+					className={`${inputCls} resize-none`}
 				/>
-				<div className="flex flex-wrap gap-2">
-					<button type="button" disabled={busy} onClick={() => void run("set")} className={`${btn} bg-m-accent text-m-accent-text`}>
-						{g ? "替换目标" : "设定目标"}
-					</button>
+				<div className="flex flex-wrap justify-end gap-2">
 					{g && (
 						<>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => void run(g.status === "paused" ? "resume" : "pause")}
-								className={`${btn} border border-m-border bg-m-surface text-m-text`}
-							>
-								{g.status === "paused" ? "恢复" : "暂停"}
-							</button>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => void run("drop")}
-								className={`${btn} border border-m-danger text-m-danger`}
-							>
+							<Button variant="danger" disabled={busy} onClick={() => void run("drop")}>
 								放弃
-							</button>
+							</Button>
+							<Button variant="tonal" disabled={busy} onClick={() => void run(g.status === "paused" ? "resume" : "pause")}>
+								{g.status === "paused" ? "恢复" : "暂停"}
+							</Button>
 						</>
 					)}
+					<Button variant="primary" busy={busy} disabled={!text.trim()} onClick={() => void run("set")}>
+						{g ? "替换目标" : "设定目标"}
+					</Button>
 				</div>
 			</div>
 		</BottomSheet>

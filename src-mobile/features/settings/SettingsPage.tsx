@@ -1,9 +1,10 @@
-import { ChevronRight } from "lucide-react";
+import { Check, FolderCog, Globe2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths } from "../../core/nav";
-import { EmptyState, PageHeader, PullToRefresh, Spinner } from "../../ui";
-import { SETTINGS_GROUPS, type SettingsItemDef, type SheetId } from "./settingsGroups";
+import { usePrefs } from "../../core/stores/prefs";
+import { BottomSheet, Button, EmptyState, IconButton, ListGroup, ListRow, MenuRow, PullToRefresh, Spinner, TopBar } from "../../ui";
+import { QUOTA_ITEM, SETTINGS_GROUPS, type SettingsItemDef, type SheetId } from "./settingsGroups";
 import {
 	AboutSheet,
 	AppearanceSheet,
@@ -26,8 +27,8 @@ import {
 	ToolsSheet,
 	WebSheet,
 } from "./sheets";
-import { isApprovalMode, type ApprovalMode, type OmpValue } from "./settingsMap";
-import type { MobileInfo } from "./sections";
+import type { MobileInfo } from "./sheets/ConnectionSheet";
+import { APPROVAL_MODES, isApprovalMode, SCHEMES, type ApprovalMode, type OmpValue } from "./settingsMap";
 
 interface SettingsData {
 	appVersion?: string | null;
@@ -44,18 +45,23 @@ interface DirEntry {
 	label?: string;
 }
 
-/** Project scope for the roles / fallbacks sub-pages */
+/** Project scope for the roles / fallbacks sub-pages; survives navigating back to settings. */
 let scopeCwd: string | null = null;
 
-export const withCwd = (path: string, cwd: string | null): string =>
-	cwd ? `${path}?cwd=${encodeURIComponent(cwd)}` : path;
+export const withCwd = (path: string, cwd: string | null): string => (cwd ? `${path}?cwd=${encodeURIComponent(cwd)}` : path);
+
+const dirName = (d: DirEntry): string => d.label || d.path.split("/").filter(Boolean).pop() || d.path;
+
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
 
 export function SettingsPage() {
 	const [data, setData] = useState<SettingsData | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [dirs, setDirs] = useState<DirEntry[]>([]);
 	const [cwd, setCwd] = useState<string | null>(scopeCwd);
+	const [scopeOpen, setScopeOpen] = useState(false);
 	const [activeSheet, setActiveSheet] = useState<SheetId | null>(null);
+	const scheme = usePrefs((s) => s.scheme);
 
 	const load = useCallback(async () => {
 		setError(null);
@@ -75,238 +81,152 @@ export function SettingsPage() {
 		void load();
 	}, [load]);
 
-	const mode: ApprovalMode | null = isApprovalMode(data?.defaultApprovalMode)
-		? data.defaultApprovalMode
-		: null;
+	const mode: ApprovalMode | null = isApprovalMode(data?.defaultApprovalMode) ? data.defaultApprovalMode : null;
+	const setOmp = useCallback((key: string, value: OmpValue) => setData((d) => (d ? { ...d, omp: { ...d.omp, [key]: value } } : d)), []);
+	const close = () => setActiveSheet(null);
+	const chooseScope = (next: string | null) => {
+		scopeCwd = next;
+		setCwd(next);
+		setScopeOpen(false);
+	};
+	const scopeDir = cwd ? dirs.find((d) => d.path === cwd) : undefined;
 
-	const handleItemClick = (item: SettingsItemDef) => {
-		if (item.navigateTo) {
-			switch (item.navigateTo) {
-				case "settingsProviders":
-					nav.push(paths.settingsProviders());
-					break;
-				case "settingsRoles":
-					nav.push(withCwd(paths.settingsRoles(), cwd));
-					break;
-				case "settingsFallbacks":
-					nav.push(withCwd(paths.settingsFallbacks(), cwd));
-					break;
-				case "settingsContext":
-					nav.push(paths.settingsContext());
-					break;
-				case "quota":
-					nav.push(paths.quota());
-					break;
-			}
-			return;
+	const open = (item: SettingsItemDef) => {
+		switch (item.navigateTo) {
+			case "settingsProviders":
+				return nav.push(paths.settingsProviders());
+			case "settingsRoles":
+				return nav.push(withCwd(paths.settingsRoles(), cwd));
+			case "settingsFallbacks":
+				return nav.push(withCwd(paths.settingsFallbacks(), cwd));
+			case "settingsContext":
+				return nav.push(paths.settingsContext());
+			case "quota":
+				return nav.push(paths.quota());
+			case undefined:
+				setActiveSheet(item.id as SheetId);
 		}
+	};
 
-		setActiveSheet(item.id as SheetId);
+	/** Short current value shown at the right of a row. */
+	const valueOf = (id: SettingsItemDef["id"]): string | undefined => {
+		if (id === "appearance") return SCHEMES.find((s) => s.value === scheme)?.label;
+		if (id === "general" && mode) return APPROVAL_MODES.find((m) => m.value === mode)?.label;
+		if (id === "connection" && data?.mobile) return data.mobile.running ? "已连接" : "未运行";
+		return undefined;
+	};
+
+	const row = (item: SettingsItemDef) => {
+		const Icon = item.icon;
+		const value = valueOf(item.id);
+		return (
+			<ListRow
+				key={item.id}
+				icon={<Icon {...ICON} />}
+				title={item.label}
+				right={value}
+				chevron
+				onClick={() => open(item)}
+			/>
+		);
 	};
 
 	return (
-		<div className="flex h-full min-h-0 flex-col bg-m-bg text-m-text">
-			<PageHeader title="设置" />
+		<div className="flex h-full min-h-0 flex-col bg-m-bg-elev text-m-text">
+			<TopBar right={<IconButton variant="filled" icon={<X size={20} />} label="关闭" onClick={() => nav.back()} />} />
 
-			<PullToRefresh onRefresh={load} className="min-h-0 flex-1 overflow-y-auto">
-				<div className="space-y-6 px-4 py-3 pb-[calc(var(--m-safe-bottom)+32px)]">
-					{/* Loading & Error */}
+			<PullToRefresh onRefresh={load} className="m-noscrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
+				<div className="flex flex-col gap-2 pb-[calc(var(--m-safe-bottom)+32px)]">
+					<h1 className="px-6 pt-1 pb-3 text-m-title font-medium">设置</h1>
+
+					<ListGroup>{row(QUOTA_ITEM)}</ListGroup>
+
 					{!data && !error && (
-						<div className="flex justify-center py-16">
+						<div className="flex justify-center py-6">
 							<Spinner />
 						</div>
 					)}
 					{error && !data && (
 						<EmptyState
-							title="加载失败"
+							title="设置没有加载出来"
 							hint={error}
 							action={
-								<button
-									type="button"
-									onClick={() => void load()}
-									className="min-h-11 rounded-m-md border border-m-border px-4 text-m-sm whitespace-nowrap"
-								>
+								<Button variant="tonal" onClick={() => void load()}>
 									重试
-								</button>
+								</Button>
 							}
 						/>
 					)}
 
-					{/* Project Scope Selector */}
-					<div className="rounded-2xl border border-m-border bg-m-bg-elev p-3">
-						<div className="flex items-center gap-3">
-							<span className="text-m-xs font-medium whitespace-nowrap text-m-text-3">配置目标</span>
-							<select
-								aria-label="配置目标"
-								value={cwd ?? ""}
-								onChange={(e) => {
-									scopeCwd = e.target.value || null;
-									setCwd(scopeCwd);
-								}}
-								className="min-h-11 min-w-0 flex-1 rounded-m-md border border-m-border bg-m-bg px-2.5 text-m-sm text-m-text"
-							>
-								<option value="">全局配置（对所有项目生效）</option>
-								{dirs.map((d) => (
-									<option key={d.path} value={d.path}>
-										项目：{d.label || d.path.split("/").pop()}
-									</option>
-								))}
-							</select>
-						</div>
-					</div>
-
-					{/* Grouped Card Lists */}
 					{SETTINGS_GROUPS.map((group) => (
-						<section key={group.id} className="space-y-2">
-							<h2 className="px-1 text-m-xs font-semibold tracking-wide text-m-text-3">
-								{group.title}
-							</h2>
-
-							<div className="overflow-hidden rounded-2xl border border-m-border bg-m-bg-elev shadow-m-card divide-y divide-m-border">
-								{group.items.map((item) => {
-									const Icon = item.icon;
-									return (
-										<button
-											key={item.id}
-											type="button"
-											onClick={() => handleItemClick(item)}
-											className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-m-surface-hover"
-										>
-											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-m-surface text-m-text-2">
-												<Icon size={18} />
-											</div>
-
-											<div className="min-w-0 flex-1">
-												<div className="flex items-center gap-2">
-													<span className="text-m-md font-medium text-m-text">
-														{item.label}
-													</span>
-													{item.badge && (
-														<span className="rounded-m-pill bg-m-surface-2 px-2 py-0.2 text-[10px] text-m-text-3">
-															{item.badge}
-														</span>
-													)}
-												</div>
-												<p className="truncate text-m-xs text-m-text-3">{item.desc}</p>
-											</div>
-
-											<ChevronRight size={18} className="text-m-text-3 shrink-0" />
-										</button>
-									);
-								})}
-							</div>
-						</section>
+						<ListGroup key={group.id} title={group.title}>
+							{group.id === "models" && dirs.length > 0 && (
+								<ListRow
+									icon={<FolderCog {...ICON} />}
+									title="配置范围"
+									subtitle="模型角色和备用模型保存到这里"
+									right={scopeDir ? dirName(scopeDir) : "全局"}
+									chevron
+									onClick={() => setScopeOpen(true)}
+								/>
+							)}
+							{group.items.map(row)}
+						</ListGroup>
 					))}
 				</div>
 			</PullToRefresh>
 
-			{/* Bottom Sheets */}
+			<BottomSheet open={scopeOpen} onClose={() => setScopeOpen(false)} title="配置范围" subtitle="选择模型角色和备用模型对谁生效">
+				<div className="pb-3">
+					<MenuRow
+						icon={<Globe2 {...ICON} />}
+						label="全局配置"
+						hint="对所有项目生效"
+						selected={cwd == null}
+						right={cwd == null ? <Check size={20} className="text-m-accent" /> : undefined}
+						onClick={() => chooseScope(null)}
+					/>
+					{dirs.map((d) => (
+						<MenuRow
+							key={d.path}
+							icon={<FolderCog {...ICON} />}
+							label={dirName(d)}
+							hint={<span className="break-all">{d.path}</span>}
+							selected={cwd === d.path}
+							right={cwd === d.path ? <Check size={20} className="text-m-accent" /> : undefined}
+							onClick={() => chooseScope(d.path)}
+						/>
+					))}
+				</div>
+			</BottomSheet>
+
 			<GeneralSheet
 				open={activeSheet === "general"}
-				onClose={() => setActiveSheet(null)}
+				onClose={close}
 				mode={mode}
 				defaultModel={data?.defaultModel}
 				defaultModelSource={data?.defaultModelSource}
 				onModeChange={(m) => setData((d) => (d ? { ...d, defaultApprovalMode: m } : d))}
 			/>
-
-			<AppearanceSheet
-				open={activeSheet === "appearance"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<NotifySheet
-				open={activeSheet === "notifications"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<PrivacySheet
-				open={activeSheet === "privacy"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<ThinkingSheet
-				open={activeSheet === "thinking"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<HelperModelsSheet
-				open={activeSheet === "helper-models"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<SessionsSheet
-				open={activeSheet === "sessions"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<InboxSheet
-				open={activeSheet === "inbox"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<DoctorSheet
-				open={activeSheet === "doctor"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<RulesFilesSheet
-				open={activeSheet === "agents-md"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<PromptCompositionSheet
-				open={activeSheet === "prompt-composition"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<ToolsSheet
-				open={activeSheet === "tools"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<SubagentsSheet
-				open={activeSheet === "subagents"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<MemorySheet
-				open={activeSheet === "memory"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<SkillsSheet
-				open={activeSheet === "skills"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<ConnectionSheet
-				open={activeSheet === "connection"}
-				onClose={() => setActiveSheet(null)}
-				mobile={data?.mobile}
-				appVersion={data?.appVersion}
-			/>
-
-			<McpSheet
-				open={activeSheet === "mcp"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<WebSheet
-				open={activeSheet === "web"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<GuideSheet
-				open={activeSheet === "guide"}
-				onClose={() => setActiveSheet(null)}
-			/>
-
-			<AboutSheet
-				open={activeSheet === "about"}
-				onClose={() => setActiveSheet(null)}
-				appVersion={data?.appVersion}
-			/>
+			<AppearanceSheet open={activeSheet === "appearance"} onClose={close} />
+			<NotifySheet open={activeSheet === "notifications"} onClose={close} />
+			<PrivacySheet open={activeSheet === "privacy"} onClose={close} />
+			<ThinkingSheet open={activeSheet === "thinking"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
+			<HelperModelsSheet open={activeSheet === "helper-models"} onClose={close} onOpenRoles={() => nav.push(withCwd(paths.settingsRoles(), cwd))} />
+			<SessionsSheet open={activeSheet === "sessions"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
+			<InboxSheet open={activeSheet === "inbox"} onClose={close} />
+			<DoctorSheet open={activeSheet === "doctor"} onClose={close} />
+			<RulesFilesSheet open={activeSheet === "agents-md"} onClose={close} />
+			<PromptCompositionSheet open={activeSheet === "prompt-composition"} onClose={close} />
+			<ToolsSheet open={activeSheet === "tools"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
+			<SubagentsSheet open={activeSheet === "subagents"} onClose={close} />
+			<MemorySheet open={activeSheet === "memory"} onClose={close} />
+			<SkillsSheet open={activeSheet === "skills"} onClose={close} />
+			<ConnectionSheet open={activeSheet === "connection"} onClose={close} mobile={data?.mobile} appVersion={data?.appVersion} />
+			<McpSheet open={activeSheet === "mcp"} onClose={close} />
+			<WebSheet open={activeSheet === "web"} onClose={close} />
+			<GuideSheet open={activeSheet === "guide"} onClose={close} />
+			<AboutSheet open={activeSheet === "about"} onClose={close} appVersion={data?.appVersion} />
 		</div>
 	);
 }

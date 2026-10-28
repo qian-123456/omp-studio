@@ -9,6 +9,7 @@ import { toast } from "../lib/toast";
 import { tNow } from "./language";
 import {
 	canPreviewFile,
+	decodeFilePath,
 	resolveFilePath,
 	stripLineSuffix,
 	stripMentionPrefix,
@@ -107,11 +108,11 @@ async function locateFile(
 	raw: string,
 	opts: OpenFileLinkOptions,
 ): Promise<{ path: string; found: boolean }> {
-	const token = stripMentionPrefix(
+	const token = decodeFilePath(stripMentionPrefix(
 		stripLineSuffix(raw.trim())
 			.replace(/^file:\/\//i, "")
 			.replace(/[?#].*$/, ""),
-	);
+	));
 	if (token.startsWith("/")) return { path: token, found: true };
 
 	const candidates: string[] = [];

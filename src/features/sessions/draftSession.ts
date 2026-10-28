@@ -127,7 +127,6 @@ export function transferDraft(id: string, sessionId: string): void {
 	}
 	if (c.images[id]) c.setImages(sessionId, [...c.images[id]]);
 	if (c.files[id]) c.setFiles(sessionId, [...c.files[id]]);
-	if (c.planModes[id] !== undefined) c.setPlanMode(sessionId, c.planModes[id]);
 	saveChip(sessionId, loadChip(id));
 	saveChip(id, null);
 	c.pruneSessions([id]);

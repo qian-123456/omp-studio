@@ -69,7 +69,7 @@ export function ProviderPanel() {
 	}, [focusKey, focusRequest]);
 
 	const sorted = useMemo(
-		() => [...rows].sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id)),
+	() => [...rows].sort((a, b) => a.id.localeCompare(b.id)),
 		[rows],
 	);
 	const filtered = useMemo(() => {

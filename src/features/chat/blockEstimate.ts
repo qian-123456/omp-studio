@@ -83,7 +83,7 @@ export function estimateTextHeight(text: string | null | undefined): number {
 	return h;
 }
 
-/** UserRow clamps the bubble to this many lines (plus a 「查看更多」 pill). */
+/** UserRow clamps the bubble to this many lines (plus a 「查看更多」 inline disclosure). */
 const USER_CLAMP_LINES = 4;
 const USER_CLAMP_PILL = 24;
 /** Local-row cards (command output) are capped and scroll inside. */
@@ -111,7 +111,7 @@ export function estimateBlockHeight(block: DisplayBlock | HistoryRow | undefined
 		if (seg.type === "steer") continue;
 		if (seg.folded.length > 0) h += DISCLOSURE_ROW;
 		for (const step of seg.prose) {
-			if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX);
+			if (step.kind === "text" || step.kind === "narration") h += Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX);
 		}
 	}
 	for (const step of block.intermediateSteps) if (step.kind === "steer") h += STEER_ROW;

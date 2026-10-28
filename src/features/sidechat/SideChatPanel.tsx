@@ -1,16 +1,19 @@
 /** [B] Right tab: side-chat forks of the selected session. */
 
 import clsx from "clsx";
-import { ArrowUp, ChevronDown, Loader2, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowUp, ChevronDown, ImagePlus, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
 import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { errMsg } from "../../lib/dialogs";
+import { importImageFile, saveClipboardImage } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { type ModelOption, resolveCurrentModel, resolveThinkingLevels, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
-import { type Annotation, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { type Annotation, type ComposerImage, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -20,6 +23,7 @@ import { ensureSettings, useSettings } from "../settings/store";
 import { startNewSession } from "../sessions/newSession";
 import { SessionView } from "../chat/SessionView";
 import { AnnotationChip } from "../chat/AnnotationChip";
+import { AttachmentThumb } from "../chat/ImageChips";
 import { textAnnotationsOf } from "../chat/annotations";
 import { moveToMain } from "./annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "./depth";
@@ -33,7 +37,17 @@ import { visibleSideChatActions } from "./handbackLogic";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { isBlankTab, resolveActiveTab, useSideChatView } from "./viewStore";
 import { useT } from "../../stores/language";
+import {
+	imageFileToBase64,
+	isSideChatImagePath,
+	insertSideChatImageMarker,
+	removeSideChatImageToken,
+	sideChatPreviewText,
+} from "./sideChatAttachments";
 
+
+ 
+const EMPTY_IMAGES: ComposerImage[] = [];
 const NO_MODELS: ModelOption[] = [];
 const EMPTY_ANNS: Annotation[] = [];
 
@@ -138,6 +152,168 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const pendingQuestion = useSideChatView((s) => s.pending[tabId] ?? null);
 	const [error, setError] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const images = useComposer((s) => s.images[tabId] ?? EMPTY_IMAGES);
+	const [attachingImages, setAttachingImages] = useState(0);
+	const [isDraggingOver, setIsDraggingOver] = useState(false);
+	const attachmentRef = useRef<HTMLDivElement | null>(null);
+	const selectionRef = useRef({ start: 0, end: 0 });
+	const nativeDropRef = useRef<(paths: string[]) => void>(() => {});
+	const rememberSelection = (textarea: HTMLTextAreaElement) => {
+		selectionRef.current = { start: textarea.selectionStart, end: textarea.selectionEnd };
+	};
+	const registerImagePath = async (path: string, name?: string, importPath = true) => {
+		const storedPath = importPath ? await importImageFile(path).catch(() => path) : path;
+		const currentText = useComposer.getState().sideChatDrafts[tabId] ?? "";
+		const currentImages = useComposer.getState().images[tabId] ?? EMPTY_IMAGES;
+		useComposer.getState().addImage(tabId, storedPath, name);
+		const { text: nextText, cursor } = insertSideChatImageMarker(
+			currentText,
+			`🖼️#${currentImages.length + 1}`,
+			selectionRef.current.start,
+			selectionRef.current.end,
+		);
+		setSideChatDraft(tabId, nextText);
+		selectionRef.current = { start: cursor, end: cursor };
+		setTimeout(() => {
+			const textarea = textareaRef.current;
+			if (!textarea) return;
+			textarea.focus();
+			textarea.setSelectionRange(cursor, cursor);
+			textarea.style.height = "auto";
+			textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+		}, 0);
+	};
+	const addImageFile = async (file: File | Blob) => {
+		const path = await saveClipboardImage(await imageFileToBase64(file));
+		await registerImagePath(path, file instanceof File ? file.name : undefined, false);
+	};
+	const processImageFiles = async (files: readonly File[]) => {
+		setAttachingImages((count) => count + files.length);
+		try {
+			for (const file of files) {
+				if (file.type.startsWith("image/") || isSideChatImagePath(file.name)) {
+					await addImageFile(file);
+				}
+			}
+		} catch (err) {
+			toast.error(t("sidechat.imageAttachFailed", { error: errMsg(err) }));
+		} finally {
+			setAttachingImages((count) => Math.max(0, count - files.length));
+		}
+	};
+	const pickImages = async () => {
+		if (textareaRef.current) rememberSelection(textareaRef.current);
+		try {
+			const selected = await openDialog({
+				multiple: true,
+				directory: false,
+				title: t("sidechat.addImage"),
+				filters: [{
+					name: t("sidechat.imageFiles"),
+					extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "heic", "heif"],
+				}],
+			});
+			if (!selected) return;
+			const paths = typeof selected === "string" ? [selected] : selected;
+			setAttachingImages((count) => count + paths.length);
+			try {
+				for (const path of paths) {
+					if (!isSideChatImagePath(path)) continue;
+					await registerImagePath(path, path.split(/[\\/]/u).pop());
+				}
+			} finally {
+				setAttachingImages((count) => Math.max(0, count - paths.length));
+			}
+		} catch (err) {
+			toast.error(t("sidechat.imageAttachFailed", { error: errMsg(err) }));
+		}
+	};
+	const removeImage = (index: number) => {
+		const currentImages = useComposer.getState().images[tabId] ?? EMPTY_IMAGES;
+		const image = currentImages[index];
+		if (!image) return;
+		useComposer.getState().setImages(
+			tabId,
+			currentImages.filter((_, imageIndex) => imageIndex !== index),
+		);
+		setSideChatDraft(
+			tabId,
+			removeSideChatImageToken(question, index + 1),
+		);
+	};
+	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+		const files = Array.from(event.clipboardData.items)
+			.filter((item) => item.kind === "file")
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => !!file && (file.type.startsWith("image/") || isSideChatImagePath(file.name)));
+		if (!files.length) return;
+		event.preventDefault();
+		rememberSelection(event.currentTarget);
+		void processImageFiles(files);
+	};
+	const onDrop = (event: DragEvent<HTMLDivElement>) => {
+		if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+		event.preventDefault();
+		setIsDraggingOver(false);
+		if (textareaRef.current) rememberSelection(textareaRef.current);
+		void processImageFiles(Array.from(event.dataTransfer.files));
+	};
+	const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+		if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+		event.preventDefault();
+		setIsDraggingOver(true);
+	};
+	useEffect(() => {
+		nativeDropRef.current = (paths) => {
+			if (textareaRef.current) rememberSelection(textareaRef.current);
+			setAttachingImages((count) => count + paths.length);
+			void (async () => {
+				try {
+					for (const path of paths) {
+						if (isSideChatImagePath(path)) {
+							await registerImagePath(path, path.split(/[\\/]/u).pop());
+						}
+					}
+				} catch (err) {
+					toast.error(t("sidechat.imageAttachFailed", { error: errMsg(err) }));
+				} finally {
+					setAttachingImages((count) => Math.max(0, count - paths.length));
+				}
+			})();
+		};
+	});
+	useEffect(() => {
+		const hitTest = (position: { x: number; y: number }) => {
+			const target = attachmentRef.current;
+			if (!target) return false;
+			const scale = window.devicePixelRatio || 1;
+			const rect = target.getBoundingClientRect();
+			return position.x / scale >= rect.left && position.x / scale <= rect.right &&
+				position.y / scale >= rect.top && position.y / scale <= rect.bottom;
+		};
+		let unlisten: (() => void) | undefined;
+		let disposed = false;
+		getCurrentWebview().onDragDropEvent((event) => {
+			const payload = event.payload;
+			if (payload.type === "enter" || payload.type === "over") {
+				setIsDraggingOver(hitTest(payload.position));
+			} else if (payload.type === "drop") {
+				setIsDraggingOver(false);
+				if (hitTest(payload.position) && payload.paths.length > 0) {
+					nativeDropRef.current(payload.paths);
+				}
+			} else {
+				setIsDraggingOver(false);
+			}
+		}).then((stop) => {
+			if (disposed) stop();
+			else unlisten = stop;
+		}).catch((err) => console.warn("[sidechat] drag-drop listener failed", err));
+		return () => {
+			disposed = true;
+			unlisten?.();
+		};
+	}, []);
 	const catalog = useModelOptions();
 	const models = catalog ?? NO_MODELS;
 	const dedicatedSetting = useSettings((s) => s.settings?.sideChatModel);
@@ -246,7 +422,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 
 	const send = async () => {
 		const q = question.trim();
-		if (busy || (!q && stagedAnns.length === 0)) return;
+		if (busy || attachingImages > 0 || (!q && stagedAnns.length === 0 && images.length === 0)) return;
 		// omp `--model` accepts a `provider/id:thinking` suffix; the dedicated
 		// setting's stored level applies unless the thinking picker overrides it.
 		const modelArg = effective.selector
@@ -265,6 +441,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				text: q,
 				annotations: stagedAll,
 				model: modelArg,
+				images,
 			});
 		} catch (err) {
 			const msg = errMsg(err);
@@ -275,6 +452,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 			setBusy(false);
 		}
 	};
+	const canSend =
+		!busy &&
+		attachingImages === 0 &&
+		(question.trim().length > 0 || stagedAnns.length > 0 || images.length > 0);
 
 	return (
 		<div className="flex h-full flex-col">
@@ -282,8 +463,21 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				{pendingQuestion ? (
 					<div className="mb-2 ml-auto flex max-w-[85%] flex-col items-end gap-1">
 						<div className="whitespace-pre-wrap rounded-2xl bg-[var(--bg-hover)] px-3 py-2 text-[13px] text-[var(--text)]">
-							{pendingQuestion}
+							{sideChatPreviewText(pendingQuestion) || pendingQuestion}
 						</div>
+						{images.length > 0 && (
+							<div className="flex flex-wrap justify-end gap-1.5">
+								{images.map((image, index) => (
+									<AttachmentThumb
+									key={image.id || `${index + 1}-${image.path}`}
+									path={image.path}
+									index={index + 1}
+									showIndex
+									variant="bubble"
+								/>
+								))}
+							</div>
+						)}
 						<div className="flex items-center gap-1 text-[10px] text-[var(--text-40)]">
 							<Loader2 size={10} className="animate-spin" />
 							{t("sidechat.creatingSideChat")}
@@ -320,7 +514,32 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 							<div className="mb-2 text-[11px] text-[var(--status-error)]">{error}</div>
 						)}
 
-						<div className="relative rounded-[22px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] shadow-xs transition-colors focus-within:border-[var(--hairline-strong,var(--border))]">
+						<div
+							ref={attachmentRef}
+							onDragOver={onDragOver}
+							onDragLeave={() => setIsDraggingOver(false)}
+							onDrop={onDrop}
+							className={clsx(
+								"relative rounded-[22px] border bg-[var(--bg-panel)] shadow-xs transition-colors focus-within:border-[var(--hairline-strong,var(--border))]",
+								isDraggingOver
+									? "border-[var(--text-30,var(--border))]"
+									: "border-[var(--line,var(--border))]",
+							)}
+						>
+							{images.length > 0 && (
+								<div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-2.5">
+									{images.map((image, index) => (
+										<AttachmentThumb
+											key={image.id || `${index + 1}-${image.path}`}
+											path={image.path}
+											index={index + 1}
+											showIndex
+											variant="strip"
+											onRemove={() => removeImage(index)}
+										/>
+									))}
+								</div>
+							)}
 							{/* Staged annotations chip: hover to review/edit, move or delete. */}
 							{stagedAnns.length > 0 && (
 								<div className="px-3 pt-2.5">
@@ -339,9 +558,12 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								value={question}
 								onChange={(e) => {
 									setQuestion(e.target.value);
+									rememberSelection(e.currentTarget);
 									e.target.style.height = "auto";
 									e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
 								}}
+								onSelect={(e) => rememberSelection(e.currentTarget)}
+								onPaste={onPaste}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" && !e.shiftKey) {
 										if (isComposing(e)) return;
@@ -355,6 +577,16 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 							/>
 
 							<div className="flex min-w-0 items-end justify-between gap-2 px-2.5 pb-2 text-[12px]">
+								<button
+									type="button"
+									disabled={busy || attachingImages > 0}
+									onClick={() => void pickImages()}
+									title={t("sidechat.addImage")}
+									aria-label={t("sidechat.addImage")}
+									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
+								>
+									<ImagePlus size={15} />
+								</button>
 								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5 select-none">
 									{/* Model Picker */}
 									<div className="relative max-w-full shrink-0" ref={modelMenuRef}>
@@ -415,14 +647,14 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								{/* Send Button */}
 								<button
 									type="button"
-									disabled={busy || (!question.trim() && stagedAnns.length === 0)}
+									disabled={!canSend}
 									onClick={() => void send()}
 									title={busy ? t("sidechat.sending") : t("sidechat.sendEnter")}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 shrink-0",
-										busy
+										busy || attachingImages > 0
 												? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
-												: question.trim() || stagedAnns.length > 0
+												: canSend
 													? "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95 shadow-xs"
 													: "bg-[var(--bg-hover)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}

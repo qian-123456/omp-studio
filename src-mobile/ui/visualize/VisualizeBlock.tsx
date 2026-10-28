@@ -266,12 +266,12 @@ function VisualizeFrame({
 	return (
 		<div className={`relative w-full ${fill ? "h-full" : ""}`}>
 			{status === "error" && (
-				<div className="flex items-center justify-between gap-2 border-b border-m-border bg-m-danger/10 px-3 py-2 text-m-xs text-m-danger">
-					<span>可视化组件加载超时或失败</span>
+				<div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-m-sm bg-m-danger-bg py-1 pr-1 pl-3 text-m-xs text-m-danger">
+					<span className="flex-1">可视化组件加载超时或失败</span>
 					<button
 						type="button"
 						onClick={reload}
-						className="flex min-h-11 items-center gap-1 rounded-m-sm px-2 text-m-xs font-medium underline active:opacity-70"
+						className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-m-pill px-3 text-m-xs font-medium active:opacity-70"
 					>
 						<RefreshCw size={13} />
 						重试
@@ -279,8 +279,8 @@ function VisualizeFrame({
 				</div>
 			)}
 			{status === "loading" && (
-				<div className="absolute inset-0 flex items-center justify-center bg-m-code-bg/70 text-m-xs text-m-text-3">
-					正在加载可视化组件...
+				<div className="absolute inset-0 flex items-center justify-center bg-m-code-bg text-m-xs text-m-text-3">
+					<span className="m-shimmer">正在加载可视化组件</span>
 				</div>
 			)}
 			<iframe
@@ -328,35 +328,27 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 		}
 	};
 
-	const tabClass = (active: boolean) =>
-		`min-h-11 px-2.5 py-1 text-m-xs font-medium rounded-m-sm transition-colors ${
-			active
-				? "bg-m-surface-2 text-m-text"
-				: "text-m-text-3 hover:text-m-text active:bg-m-surface-hover"
+	const tabBtn = "flex min-h-11 items-center px-0.5";
+	const tabPill = (active: boolean) =>
+		`flex h-8 items-center whitespace-nowrap rounded-m-pill px-3 text-m-xs transition-colors ${
+			active ? "bg-m-surface text-m-text" : "text-m-text-3 active:bg-m-surface-hover"
 		}`;
+	const circle = "flex h-8 w-8 items-center justify-center rounded-m-pill bg-m-surface text-m-text-2 active:bg-m-surface-2";
 
 	return (
 		<>
-			<div className={`my-2 overflow-hidden rounded-m-md border border-m-border bg-m-code-bg ${className}`}>
-				<div className="flex min-h-11 items-center justify-between border-b border-m-border px-2">
-					<div className="flex items-center gap-1">
-						<span className="px-1.5 font-m-mono text-m-xs font-semibold text-m-text-3">
+			<div className={`my-4 overflow-hidden rounded-m-md bg-m-code-bg ${className}`}>
+				<div className="flex items-center justify-between pr-1 pl-4">
+					<div className="flex items-center gap-2">
+						<span className="whitespace-nowrap font-m-mono text-m-xs text-m-text-3">
 							{mode === "wide" ? "visualize wide" : "visualize"}
 						</span>
-						<div className="flex items-center gap-0.5">
-							<button
-								type="button"
-								className={tabClass(!showSource)}
-								onClick={() => setShowSource(false)}
-							>
-								预览
+						<div className="flex items-center">
+							<button type="button" aria-pressed={!showSource} className={tabBtn} onClick={() => setShowSource(false)}>
+								<span className={tabPill(!showSource)}>预览</span>
 							</button>
-							<button
-								type="button"
-								className={tabClass(showSource)}
-								onClick={() => setShowSource(true)}
-							>
-								源码
+							<button type="button" aria-pressed={showSource} className={tabBtn} onClick={() => setShowSource(true)}>
+								<span className={tabPill(showSource)}>源码</span>
 							</button>
 						</div>
 					</div>
@@ -367,9 +359,11 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 								onClick={() => setIsFullscreen(true)}
 								aria-label="全屏视图"
 								title="全屏视图"
-								className="flex min-h-11 min-w-11 items-center justify-center text-m-text-2 active:bg-m-surface-hover"
+								className="flex min-h-11 min-w-11 items-center justify-center"
 							>
-								<Maximize2 size={15} />
+								<span className={circle}>
+									<Maximize2 size={15} strokeWidth={1.75} />
+								</span>
 							</button>
 						)}
 						<button
@@ -377,15 +371,15 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 							onClick={onCopy}
 							aria-label="复制代码"
 							title="复制代码"
-							className="flex min-h-11 min-w-11 items-center justify-center gap-1 text-m-xs text-m-text-2 active:bg-m-surface-hover"
+							className="flex min-h-11 min-w-11 items-center justify-center"
 						>
-							{copied ? <Check size={15} /> : <Copy size={15} />}
+							<span className={circle}>{copied ? <Check size={15} strokeWidth={2} /> : <Copy size={15} strokeWidth={1.75} />}</span>
 						</button>
 					</div>
 				</div>
 
 				{showSource ? (
-					<CodeBlock code={html} lang="html" className="border-0 rounded-none bg-transparent" />
+					<CodeBlock code={html} lang="html" className="rounded-none bg-transparent" />
 				) : (
 					<VisualizeFrame
 						html={html}
@@ -398,16 +392,18 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 			{isFullscreen &&
 				typeof document !== "undefined" &&
 				createPortal(
-					<div className="fixed inset-0 z-50 flex flex-col bg-m-bg text-m-text">
-						<div className="flex min-h-12 items-center justify-between border-b border-m-border px-3 bg-m-surface">
-							<span className="font-m-sans text-m-sm font-semibold">可视化全屏视图</span>
+					<div className="fixed inset-0 z-(--z-modal) flex flex-col bg-m-bg pt-(--m-safe-top) pb-(--m-safe-bottom) text-m-text">
+						<div className="flex min-h-14 items-center justify-between gap-2 pr-2 pl-5">
+							<span className="whitespace-nowrap text-m-md font-semibold">可视化全屏视图</span>
 							<button
 								type="button"
 								onClick={() => setIsFullscreen(false)}
 								aria-label="关闭全屏"
-								className="flex min-h-11 min-w-11 items-center justify-center rounded-m-sm text-m-text active:bg-m-surface-hover"
+								className="flex min-h-11 min-w-11 items-center justify-center"
 							>
-								<X size={20} />
+								<span className="flex h-11 w-11 items-center justify-center rounded-m-pill bg-m-surface active:bg-m-surface-2">
+									<X size={20} strokeWidth={1.75} />
+								</span>
 							</button>
 						</div>
 						<div className="flex-1 w-full overflow-hidden bg-m-bg">

@@ -1,9 +1,8 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
-import { BottomSheet } from "../../../ui/BottomSheet";
+import { BottomSheet, Button, Chip, Field, ListGroup, ListRow, TextField, toast } from "../../../ui";
 import { filterModels, groupModels } from "../../../ui/ModelPicker";
-import { toast } from "../../../ui/Toast";
 import {
 	contextSetBody,
 	findOverride,
@@ -13,7 +12,7 @@ import {
 	type ContextOverride,
 	type RolesResponse,
 } from "./logic";
-import { Badge, Btn, ConfirmDiffSheet, SectionTitle, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
+import { ConfirmDiffSheet, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
 
 const PRESETS = [32_000, 64_000, 128_000, 200_000, 1_000_000, 2_000_000];
 const FALLBACK_WINDOW = 128_000;
@@ -109,50 +108,48 @@ export function SettingsContextPage() {
 			error={error}
 			onRetry={reload}
 		>
-			<div className="px-4 pt-3">
-				<label className="flex min-h-11 items-center gap-2 rounded-m-md border border-m-border bg-m-surface px-3">
-					<Search size={16} className="shrink-0 text-m-text-3" aria-hidden />
-					<input
-						type="search"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder="搜索模型或供应商"
-						aria-label="搜索模型"
-						className="min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none"
-					/>
-				</label>
+			<div className="relative px-4 pt-3">
+				<Search size={20} strokeWidth={1.75} className="pointer-events-none absolute top-[26px] left-8 text-m-text-3" aria-hidden />
+				<TextField
+					type="search"
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder="搜索模型或供应商"
+					aria-label="搜索模型"
+					className="rounded-m-pill pl-12"
+				/>
 			</div>
-			{data && groups.length === 0 && <div className="p-6 text-center text-m-sm text-m-text-3">没有匹配的模型</div>}
+			{data && groups.length === 0 && <div className="p-8 text-center text-m-sm text-m-text-3">没有匹配的模型</div>}
 			{groups.map((g) => (
-				<section key={g.provider}>
-					<SectionTitle title={g.provider} hint={`${g.models.length} 个模型`} />
+				<ListGroup key={g.provider} title={`${g.provider} · ${g.models.length} 个模型`}>
 					{g.models.map((m) => {
 						const eff = effective(m);
 						return (
-							<button
+							<ListRow
 								key={m.id}
-								type="button"
+								title={m.name || m.id}
+								subtitle={
+									m.name && m.name !== m.id ? <span className="break-all font-m-mono">{m.id}</span> : undefined
+								}
+								right={
+									<>
+										{eff.custom && <Chip tone="accent">已覆盖</Chip>}
+										<span className={eff.custom ? "text-m-text" : ""}>{formatTokens(eff.value)}</span>
+									</>
+								}
+								chevron
 								onClick={() => open(m)}
-								className="flex min-h-14 w-full items-center gap-3 border-b border-m-border px-4 py-2 text-left"
-							>
-								<span className="min-w-0 flex-1">
-									<span className="block break-words text-m-md text-m-text">{m.name || m.id}</span>
-									<span className="block break-all font-m-mono text-m-xs text-m-text-3">
-										{tokens(eff.value)}
-										{eff.custom ? "（自定义覆盖）" : "（默认）"}
-									</span>
-								</span>
-								<Badge tone={eff.custom ? "accent" : "neutral"}>{eff.custom ? "已覆盖" : "默认"}</Badge>
-							</button>
+							/>
 						);
 					})}
-				</section>
+				</ListGroup>
 			))}
 
 			<BottomSheet
 				open={edit?.step === "input"}
 				onClose={close}
-				title={edit ? `调整上下文窗口 · ${edit.model.name || edit.model.id}` : undefined}
+				title="调整上下文窗口"
+				subtitle={edit ? <span className="break-all">{`${edit.model.provider}/${edit.model.id}`}</span> : undefined}
 				footer={
 					<SheetFooter
 						onCancel={close}
@@ -163,43 +160,43 @@ export function SettingsContextPage() {
 				}
 			>
 				{edit && (
-					<div className="flex flex-col gap-3 px-4 pb-3">
-						<div className="flex flex-wrap gap-2">
-							{PRESETS.map((p) => (
-								<button
-									key={p}
-									type="button"
-									aria-pressed={!edit.reset && parsed?.ok === true && parsed.value === p}
-									onClick={() => setEdit({ ...edit, text: String(p), reset: false })}
-									className={`min-h-11 whitespace-nowrap rounded-m-pill border px-4 text-m-sm ${
-										!edit.reset && parsed?.ok === true && parsed.value === p
-											? "border-m-accent bg-m-accent text-m-accent-text"
-											: "border-m-border bg-m-surface text-m-text-2"
-									}`}
-								>
-									{formatTokens(p)}
-								</button>
-							))}
+					<div className="flex flex-col gap-5 px-5 pt-2 pb-3">
+						<div className="text-m-sm text-m-text-2">
+							当前 {tokens(effective(edit.model).value)}
+							{effective(edit.model).custom ? "（自定义覆盖）" : "（模型默认）"}
 						</div>
-						<label className="flex flex-col gap-1">
-							<span className="text-m-xs text-m-text-2">自定义大小（tokens，可写 128k、1m）</span>
-							<input
+						<div className="flex flex-wrap gap-2" role="group" aria-label="常用大小">
+							{PRESETS.map((p) => {
+								const on = !edit.reset && parsed?.ok === true && parsed.value === p;
+								return (
+									<button
+										key={p}
+										type="button"
+										aria-pressed={on}
+										onClick={() => setEdit({ ...edit, text: String(p), reset: false })}
+										className={`min-h-11 min-w-16 whitespace-nowrap rounded-m-pill px-4 text-m-sm font-medium ${
+											on ? "bg-m-text text-m-bg" : "bg-m-surface text-m-text-2 active:bg-m-surface-2"
+										}`}
+									>
+										{formatTokens(p)}
+									</button>
+								);
+							})}
+						</div>
+						<Field label="自定义大小（tokens，可写 128k、1m）" error={inputError ?? undefined}>
+							<TextField
 								value={edit.reset ? "" : edit.text}
 								disabled={edit.reset}
 								inputMode="decimal"
 								onChange={(e) => setEdit({ ...edit, text: e.target.value, reset: false })}
-								className="min-h-11 rounded-m-md border border-m-border bg-m-surface px-3 font-m-mono text-m-md text-m-text disabled:opacity-50"
+								className="font-m-mono"
 							/>
-							{inputError && <span className="select-text text-m-xs text-m-danger">{inputError}</span>}
-						</label>
+						</Field>
 						{findOverride(overrides, edit.model.provider, edit.model.id) && (
 							<div>
-								<Btn
-									kind="danger"
-									onClick={() => setEdit({ ...edit, reset: !edit.reset })}
-								>
+								<Button variant="danger" onClick={() => setEdit({ ...edit, reset: !edit.reset })}>
 									{edit.reset ? "取消重置" : "重置为模型默认值"}
-								</Btn>
+								</Button>
 							</div>
 						)}
 					</div>

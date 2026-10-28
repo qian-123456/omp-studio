@@ -21,9 +21,23 @@ export function useEscapeKey(onEscape: () => void, active = true): void {
 }
 
 let composingTarget: EventTarget | null = null;
+let commitEnter: Event | null = null;
 let lastCompositionEnd = 0;
 
 if (typeof document !== "undefined") {
+	// Runs before the shortcut dispatcher's window-capture listener (hooks.ts is imported first).
+	window.addEventListener(
+		"keydown",
+		(e) => {
+			if (e.key === "Enter" && !e.isComposing && Date.now() - lastCompositionEnd < 60) {
+				commitEnter = e;
+				lastCompositionEnd = 0;
+			} else {
+				commitEnter = null;
+			}
+		},
+		true,
+	);
 	document.addEventListener(
 		"compositionstart",
 		(e) => {
@@ -52,6 +66,11 @@ if (typeof document !== "undefined") {
 		"keydown",
 		(e) => {
 			if (composingTarget && !e.isComposing && e.keyCode !== 229) composingTarget = null;
+			// A non-Enter keydown after compositionend means the composition was committed
+			// by Space or a selection key, not Enter; reset so rapid follow-up Enter sends normally.
+			if (lastCompositionEnd && e.key !== "Enter" && !e.isComposing && e.keyCode !== 229) {
+				lastCompositionEnd = 0;
+			}
 		},
 		true,
 	);
@@ -62,15 +81,27 @@ if (typeof document !== "undefined") {
  * On macOS WKWebView, the Enter keydown committing an IME candidate can arrive
  * just after compositionend or with isComposing === false due to event dispatch ordering.
  */
-export function isComposing(e: { nativeEvent?: unknown; key?: string }): boolean {
-	if (Boolean((e.nativeEvent as { isComposing?: boolean } | undefined)?.isComposing)) return true;
+export function isComposing(e: { nativeEvent?: unknown; key?: string } | KeyboardEvent): boolean {
+	const r = e as { nativeEvent?: unknown; key?: string };
+	if (Boolean((r.nativeEvent as { isComposing?: boolean } | undefined)?.isComposing)) return true;
 	if (composingTarget) {
 		if ((composingTarget as Node).isConnected === false) composingTarget = null;
 		else return true;
 	}
-	// Enter that committed the last candidate can arrive just after compositionend
-	if (e.key === "Enter" && Date.now() - lastCompositionEnd < 60) return true;
+	// The Enter that committed the last candidate arrives just after compositionend. It is
+	// identified by native event identity (set once by the window capture listener), so every
+	// reader of that same event agrees without consuming state; the next Enter is a distinct event.
+	if (r.key === "Enter" && commitEnter) {
+		const native = r.nativeEvent ?? (typeof Event !== "undefined" && e instanceof Event ? e : undefined);
+		if (!native || native === commitEnter) return true;
+	}
 	return false;
+}
+
+/** Test hook: reset IME commit state. */
+export function resetLastCompositionEndForTest(): void {
+	lastCompositionEnd = 0;
+	commitEnter = null;
 }
 
 

@@ -53,7 +53,7 @@ function markUnresolved(items: Item[], raw: readonly TranscriptItem[]): void {
 }
 
 export function mergePage(prev: TranscriptState, page?: TranscriptPage | null): MergeResult {
-	if (!page) return { state: prev, newCount: 0 };
+	if (!page) return { state: prev, newUserTexts: [], changed: false };
 	const base = page.reset ? EMPTY_TRANSCRIPT : prev;
 	let items = base.items;
 	const stats = { ...base.stats };
@@ -105,8 +105,8 @@ export interface OptimisticMsg {
 }
 
 /**
- * Drop optimistic bubbles that the transcript now shows. The server may prepend the plan-mode prefix, so the
- * match also accepts a persisted text that ends with the optimistic one.
+ * Drop optimistic bubbles that the transcript now shows. The match also accepts a persisted text that
+ * ends with the optimistic one.
  */
 export function reconcileOptimistic(optimistic: readonly OptimisticMsg[], newUserTexts: readonly string[]): OptimisticMsg[] {
 	if (!newUserTexts.length || !optimistic.length) return optimistic as OptimisticMsg[];

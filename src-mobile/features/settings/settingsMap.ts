@@ -1,4 +1,4 @@
-import type { SchemePref, Skin } from "../../core/stores/prefs";
+import type { SchemePref } from "../../core/stores/prefs";
 
 /* ---------------------------------------------------------------- OMP config rows (allowlisted by the server) */
 
@@ -110,11 +110,6 @@ export function approvalEffect(mode: ApprovalMode): string {
 }
 
 /* ---------------------------------------------------------------- local display prefs <-> core prefs */
-
-export const SKINS: ReadonlyArray<{ value: Skin; label: string; hint: string }> = [
-	{ value: "chatgpt", label: "ChatGPT", hint: "简洁中性，灰白配色" },
-	{ value: "gemini", label: "Gemini", hint: "圆润明快，蓝紫配色" },
-];
 
 export const SCHEMES: ReadonlyArray<{ value: SchemePref; label: string }> = [
 	{ value: "system", label: "跟随系统" },

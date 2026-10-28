@@ -228,7 +228,6 @@ describe("pruneSessions", () => {
 			annotations: { gone: [], [sideChatAnnKey("gone")]: [], keep: [] },
 			images: { gone: [{ id: "i", path: "/p" }], keep: [] },
 			files: { gone: [], keep: [] },
-			planModes: { gone: true, keep: true },
 			focusNonce: { gone: 1, keep: 2 },
 		});
 		c().pruneSessions(["gone"]);
@@ -237,7 +236,6 @@ describe("pruneSessions", () => {
 		expect(Object.keys(c().annotations)).toEqual(["keep"]);
 		expect(Object.keys(c().images)).toEqual(["keep"]);
 		expect(Object.keys(c().files)).toEqual(["keep"]);
-		expect(c().planModes).toEqual({ keep: true });
 		expect(c().focusNonce).toEqual({ keep: 2 });
 	});
 });

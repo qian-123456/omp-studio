@@ -75,6 +75,30 @@ describe("held queue drain", () => {
 		await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
 		expect(heldQueueItems(SID)).toHaveLength(0);
 	});
+	it("sends every ready held item together when a turn ends", async () => {
+		setSession({ streaming: true, alive: true });
+		useHeldQueue.getState().push(SID, "[Image #1: /a.png] first", [
+			{ id: "a", path: "/a.png", marker: "[Image #1]" },
+		]);
+		useHeldQueue.getState().push(SID, "[Image #1: /b.png] second", [
+			{ id: "b", path: "/b.png", marker: "[Image #1]" },
+		]);
+
+		setSession({ streaming: false });
+
+		await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
+		expect(sendPrompt).toHaveBeenCalledWith(
+			SID,
+			"[Image #1: /a.png] first\n\n---\n\n[Image #2: /b.png] second",
+			{
+				images: [
+					{ id: "a", path: "/a.png", marker: "[Image #1]" },
+					{ id: "b", path: "/b.png", marker: "[Image #2]" },
+				],
+			},
+		);
+		expect(heldQueueItems(SID)).toEqual([]);
+	});
 
 	it("drains on mount when the session is idle with items", async () => {
 		mem.set(`ompws-held:${SID}`, persisted);

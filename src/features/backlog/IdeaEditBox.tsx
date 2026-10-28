@@ -70,6 +70,7 @@ export function IdeaEditBox({
 					ref={ref}
 					doc={bufferDoc(buf)}
 					autoFocus
+					rows={3}
 					onChange={(d) => {
 						const r = reconcileDoc(d);
 						setEditBuffer({ id, text: r.text, images: r.images });
@@ -100,12 +101,20 @@ export function IdeaEditBox({
 						}
 						onCancel();
 					}}
-					minHeight={52}
-					maxHeight={240}
+					minHeight={74}
+					maxHeight={74}
 					boxClass="rounded-xl border-[var(--accent)]"
 				/>
 				<div className="mt-1 flex items-center justify-between gap-2">
-					<div className="text-[10px] text-[var(--text-dim)]">{t("backlog.editBufferHint")}</div>
+					<div className="flex flex-col text-[10px] leading-tight text-[var(--text-dim)]">
+						{t("backlog.editBufferHint")
+							.split(/\s*[·•]\s*/)
+							.map((part, idx) => (
+								<span key={idx} className="whitespace-nowrap">
+									{part}
+								</span>
+							))}
+					</div>
 					<div className="flex shrink-0 items-center gap-1.5">
 					<EditProjectSelect value={project} onChange={onProjectChange} />
 					<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">

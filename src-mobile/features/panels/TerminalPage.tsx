@@ -1,8 +1,8 @@
-import { RefreshCw, SquarePlus, SquareX } from "lucide-react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, apiUrl, errorMessage } from "../../core/api";
 import type { PageProps } from "../../core/nav";
-import { HeaderButton, PageHeader, toast } from "../../ui";
+import { IconButton, PageHeader, confirm, toast } from "../../ui";
 import {
 	InputQueue,
 	TERMINAL_KEYS,
@@ -31,6 +31,17 @@ function cssVar(name: string, fallback: string): string {
 	return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
+/**
+ * The terminal is dark in both schemes: in light mode the inverse text/page tokens give a dark
+ * canvas with light text, in dark mode the code tokens do.
+ */
+function terminalColors(): { background: string; foreground: string; cursor: string } {
+	const light = document.documentElement.dataset.scheme === "light";
+	const background = cssVar(light ? "--m-text" : "--m-code-bg", "black");
+	const foreground = cssVar(light ? "--m-bg" : "--m-code-text", "white");
+	return { background, foreground, cursor: foreground };
+}
+
 export function TerminalPage({ route }: PageProps) {
 	const sessionId = route.params.id;
 	const host = useRef<HTMLDivElement>(null);
@@ -48,6 +59,7 @@ export function TerminalPage({ route }: PageProps) {
 	const [ctrl, setCtrlState] = useState(false);
 	const [phase, setPhase] = useState<Phase>("connecting");
 	const [detail, setDetail] = useState("");
+	const [bg, setBg] = useState<string | null>(null);
 
 	const setCtrl = (v: boolean) => {
 		ctrlRef.current = v;
@@ -154,6 +166,13 @@ export function TerminalPage({ route }: PageProps) {
 	}, [closeTerm, open]);
 
 	const handleClose = useCallback(async () => {
+		const ok = await confirm({
+			title: "关闭终端",
+			message: "正在运行的命令会被结束。",
+			confirmText: "关闭",
+			danger: true,
+		});
+		if (!ok) return;
 		await closeTerm();
 		setPhase("exited");
 		setDetail("终端已关闭");
@@ -191,11 +210,7 @@ export function TerminalPage({ route }: PageProps) {
 				cursorBlink: true,
 				scrollback: 3000,
 				allowProposedApi: false,
-				theme: {
-					background: cssVar("--m-code-bg", "#111111"),
-					foreground: cssVar("--m-text", "#eeeeee"),
-					cursor: cssVar("--m-accent", "#ffffff"),
-				},
+				theme: terminalColors(),
 			});
 			const f = new FitAddon();
 			t.loadAddon(f);
@@ -237,8 +252,16 @@ export function TerminalPage({ route }: PageProps) {
 				}
 			};
 			document.addEventListener("visibilitychange", onVisible);
+			const schemeObserver = new MutationObserver(() => {
+				const c = terminalColors();
+				t.options.theme = c;
+				setBg(c.background);
+			});
+			schemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] });
+			setBg(terminalColors().background);
 			cleanup = () => {
 				document.removeEventListener("visibilitychange", onVisible);
+				schemeObserver.disconnect();
 				ro.disconnect();
 				if (frame) cancelAnimationFrame(frame);
 				dataSub.dispose();
@@ -268,46 +291,52 @@ export function TerminalPage({ route }: PageProps) {
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader
 				title="终端"
-				subtitle={
-					<span className={bad ? "text-m-danger" : undefined}>
-						{PHASE_LABEL[phase]}
-						{detail ? `（${detail}）` : ""}
-					</span>
-				}
 				right={
 					<>
 						{(phase === "dropped" || phase === "reconnecting") && (
-							<HeaderButton icon={<RefreshCw size={20} />} label="重连" onClick={() => void reconnect()} />
+							<IconButton variant="filled" icon={<RefreshCw size={20} strokeWidth={1.75} />} label="重连" onClick={() => void reconnect()} />
 						)}
-						<HeaderButton icon={<SquarePlus size={20} />} label="新终端" onClick={() => void openNew()} />
-						{phase !== "exited" && (
-							<HeaderButton icon={<SquareX size={20} />} label="关闭终端" onClick={() => void handleClose()} />
+						<IconButton variant="filled" icon={<Plus size={22} strokeWidth={1.75} />} label="新终端" onClick={() => void openNew()} />
+						{phase !== "exited" && phase !== "error" && (
+							<IconButton variant="filled" icon={<X size={20} strokeWidth={1.75} />} label="关闭终端" onClick={() => void handleClose()} />
 						)}
 					</>
 				}
 			/>
+			<div className={`flex shrink-0 items-center gap-2 px-5 pt-1 pb-2 text-m-xs whitespace-nowrap ${bad ? "text-m-danger" : "text-m-text-3"}`}>
+				<span aria-hidden className={`h-2 w-2 shrink-0 rounded-m-pill ${phase === "connected" ? "bg-m-success" : bad ? "bg-m-danger" : "m-pulse bg-m-accent"}`} />
+				{PHASE_LABEL[phase]}
+			</div>
+			{detail && (
+				<p role={bad ? "status" : undefined} className={`m-selectable px-5 pt-1 pb-2 text-m-sm break-words ${bad ? "text-m-danger" : "text-m-text-3"}`}>
+					{detail}
+				</p>
+			)}
+			<div className="min-h-0 flex-1 px-3 pt-1 pb-1">
+				<div className="h-full overflow-hidden rounded-m-lg p-3" style={bg ? { background: bg } : undefined}>
+					<div ref={host} onClick={() => term.current?.focus()} className="h-full w-full overflow-hidden" />
+				</div>
+			</div>
 			<div
-				ref={host}
-				onClick={() => term.current?.focus()}
-				className="m-0 min-h-0 flex-1 overflow-hidden bg-m-code-bg p-1"
-			/>
-			<div
-				className="flex shrink-0 gap-2 overflow-x-auto border-t border-m-border bg-m-bg px-2 pt-2"
-				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}
+				className="m-noscrollbar flex shrink-0 items-center gap-2 overflow-x-auto px-3"
+				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 4px)" }}
 			>
-				<KeyButton active={ctrl} onPress={() => setCtrl(!ctrlRef.current)}>
-					Ctrl
-				</KeyButton>
 				{TERMINAL_KEYS.map((k) => (
-					<KeyButton key={k.id} onPress={() => sendKey(k.seq)}>
-						{k.label}
-					</KeyButton>
+					<span key={k.id} className="flex shrink-0 items-center gap-2">
+						<KeyButton onPress={() => sendKey(k.seq)}>{k.label}</KeyButton>
+						{k.id === "esc" && (
+							<KeyButton active={ctrl} onPress={() => setCtrl(!ctrlRef.current)}>
+								Ctrl
+							</KeyButton>
+						)}
+					</span>
 				))}
 			</div>
 		</div>
 	);
 }
 
+/** 36px tonal capsule with a 44px hit area. */
 function KeyButton({
 	children,
 	onPress,
@@ -324,11 +353,15 @@ function KeyButton({
 			// Keep the soft keyboard up: do not steal focus from xterm's textarea.
 			onPointerDown={(e) => e.preventDefault()}
 			onClick={onPress}
-			className={`min-h-11 min-w-11 shrink-0 whitespace-nowrap rounded-m-md border px-3 text-m-sm font-medium ${
-				active ? "border-m-accent bg-m-accent text-m-accent-text" : "border-m-border bg-m-surface text-m-text active:bg-m-surface-hover"
-			}`}
+			className="flex min-h-11 shrink-0 items-center"
 		>
-			{children}
+			<span
+				className={`flex h-9 min-w-12 items-center justify-center rounded-m-pill px-4 text-m-sm font-medium whitespace-nowrap ${
+					active ? "bg-m-accent text-m-accent-text" : "bg-m-surface text-m-text active:bg-m-surface-2"
+				}`}
+			>
+				{children}
+			</span>
 		</button>
 	);
 }

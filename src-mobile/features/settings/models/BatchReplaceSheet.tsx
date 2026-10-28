@@ -1,15 +1,16 @@
+import { Check } from "lucide-react";
 import { useState, useMemo } from "react";
-import { BottomSheet } from "../../../ui/BottomSheet";
+import { Chip, ListGroup, ListRow, toast } from "../../../ui";
 import { ModelPicker, type PickerModel } from "../../../ui/ModelPicker";
 import { api, errorMessage } from "../../../core/api";
-import { toast } from "../../../ui/Toast";
+import { GroupBlock, SettingsSheet } from "../rows";
 import {
 	parseRoleValue,
 	roleSetBody,
 	ROLE_KEYS,
 	type CatalogModel,
 } from "./logic";
-import { SheetFooter } from "./shared";
+import { ErrorBox, SheetFooter } from "./shared";
 
 export interface BatchReplaceSheetProps {
 	open: boolean;
@@ -27,14 +28,7 @@ export function BatchReplaceSheet({
 	roles,
 	models,
 	onSuccess,
-}: {
-	open: boolean;
-	onClose: () => void;
-	cwd: string | null;
-	roles: Record<string, string | undefined>;
-	models: CatalogModel[];
-	onSuccess: () => void;
-}) {
+}: BatchReplaceSheetProps) {
 	// Discover which models are currently used by roles
 	const usedModelKeys = useMemo(() => {
 		const keys = new Set<string>();
@@ -91,82 +85,69 @@ export function BatchReplaceSheet({
 	};
 
 	return (
-		<BottomSheet
+		<SettingsSheet
 			open={open}
 			onClose={onClose}
-			fullHeight
 			title="批量替换模型角色"
+			subtitle="把使用同一个模型的角色一次换成新模型"
 			footer={
 				<SheetFooter
 					onCancel={onClose}
 					onSave={() => void handleExecute()}
-					saveText={`确认替换 (${affectedRoles.length})`}
-					saveDisabled={busy || !targetModel || affectedRoles.length === 0}
+					saveText={`替换 ${affectedRoles.length} 个角色`}
+					busy={busy}
+					saveDisabled={!targetModel || affectedRoles.length === 0}
 				/>
 			}
 		>
-			<div className="space-y-4 px-4 pb-6">
-				{error && (
-					<p className="rounded-m-md bg-m-danger/10 p-3 text-m-xs text-m-danger">{error}</p>
-				)}
-
-				{/* Step 1: Source model selection */}
-				<div className="space-y-1.5">
-					<label className="text-m-xs font-medium text-m-text-3">1. 选择要被替换的原模型</label>
-					{usedModelKeys.length === 0 ? (
-						<p className="text-m-xs text-m-text-3">当前没有配置具体模型的角色</p>
-					) : (
-						<select
-							aria-label="选择要被替换的原模型"
-							value={sourceKey}
-							onChange={(e) => setSelectedSource(e.target.value)}
-							className="min-h-11 w-full rounded-m-md border border-m-border bg-m-surface px-3 text-m-sm text-m-text"
-						>
-							{usedModelKeys.map((k) => (
-								<option key={k} value={k}>
-									{k}
-								</option>
-							))}
-						</select>
-					)}
+			{error && (
+				<div className="px-4">
+					<ErrorBox title="批量替换失败" message={error} />
 				</div>
+			)}
 
-				{/* Affected roles preview */}
-				<div className="rounded-m-md border border-m-border bg-m-surface/40 p-3">
-					<div className="text-m-xs font-medium text-m-text-3">
-						将影响以下 {affectedRoles.length} 个角色：
-					</div>
-					<div className="mt-1.5 flex flex-wrap gap-1.5">
-						{affectedRoles.map((r) => (
-							<span
-								key={r.id}
-								className="rounded-m-sm bg-m-surface-2 px-2 py-0.5 text-m-xs text-m-text"
-							>
-								{r.label} ({r.id})
-							</span>
-						))}
-					</div>
-				</div>
-
-				{/* Step 2: Target model selection */}
-				<div className="space-y-1.5">
-					<label className="text-m-xs font-medium text-m-text-3">2. 选择替换后的新模型</label>
-					<div className="h-[280px] rounded-m-md border border-m-border bg-m-bg-elev p-2">
-						<ModelPicker
-							className="h-full"
-							models={models}
-							value={targetModel ? { provider: targetModel.provider, modelId: targetModel.id } : null}
-							onChange={(m) => {
-								setTargetModel(m);
-							}}
-							thinking={{
-								value: thinking,
-								onChange: setThinking,
-							}}
+			<ListGroup title="1. 选择要被替换的原模型">
+				{usedModelKeys.length === 0 ? (
+					<ListRow title="当前没有配置具体模型的角色" />
+				) : (
+					usedModelKeys.map((k) => (
+						<ListRow
+							key={k}
+							title={<span className="break-all font-m-mono text-m-sm">{k}</span>}
+							right={k === sourceKey ? <Check size={20} strokeWidth={2} className="text-m-accent" aria-label="已选" /> : undefined}
+							chevron={false}
+							onClick={() => setSelectedSource(k)}
 						/>
-					</div>
+					))
+				)}
+			</ListGroup>
+
+			<ListGroup title={`将影响以下 ${affectedRoles.length} 个角色`}>
+				<GroupBlock>
+					{affectedRoles.length === 0 ? (
+						<span className="text-m-sm text-m-text-3">没有受影响的角色</span>
+					) : (
+						<span className="flex flex-wrap gap-2">
+							{affectedRoles.map((r) => (
+								<Chip key={r.id}>{r.label}</Chip>
+							))}
+						</span>
+					)}
+				</GroupBlock>
+			</ListGroup>
+
+			<section className="px-4">
+				<h3 className="px-4 pt-5 pb-2 text-m-xs font-medium whitespace-nowrap text-m-text-3">2. 选择替换后的新模型</h3>
+				<div className="h-[min(420px,calc(var(--m-vh,100dvh)*0.55))]">
+					<ModelPicker
+						className="h-full"
+						models={models}
+						value={targetModel ? { provider: targetModel.provider, modelId: targetModel.id } : null}
+						onChange={setTargetModel}
+						thinking={{ value: thinking, onChange: setThinking }}
+					/>
 				</div>
-			</div>
-		</BottomSheet>
+			</section>
+		</SettingsSheet>
 	);
 }

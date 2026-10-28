@@ -356,7 +356,7 @@ export function SelectionToolbar({
 						onKeyDown={(e) => {
 							if (e.key !== "Enter") return;
 							// Same keys as the main Composer's "enter" mode: Enter sends,
-							// Shift+Enter (and IME composition) stay a newline.
+							// Shift+Enter stays a newline.
 							const decision = decideEnterKey(
 								{
 									key: e.key,
@@ -365,12 +365,15 @@ export function SelectionToolbar({
 									ctrlKey: e.ctrlKey,
 									altKey: e.altKey,
 									isComposing: isComposing(e),
+									repeat: e.repeat,
 								},
 								"enter",
 							);
 							if (decision === "send" || decision === "send-alternate") {
 								e.preventDefault();
 								submitQuote();
+							} else if (decision === "ignore" && !e.shiftKey) {
+								e.preventDefault();
 							}
 						}}
 						placeholder={t("chatView.selection.annotatePlaceholder")}

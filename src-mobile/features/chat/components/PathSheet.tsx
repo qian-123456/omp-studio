@@ -1,7 +1,8 @@
-import { Copy, Folder, FolderOpen } from "lucide-react";
+import { Copy, FolderInput, FolderOpen } from "lucide-react";
 import { nav, paths } from "../../../core/nav";
-import { BottomSheet, toast } from "../../../ui";
+import { BottomSheet, MenuRow, toast } from "../../../ui";
 
+/** Sheet behind the folder of the status row: full path, copy, browse, switch project. */
 export function PathSheet({
 	open,
 	onClose,
@@ -19,7 +20,7 @@ export function PathSheet({
 		if (!cwd) return;
 		try {
 			await navigator.clipboard.writeText(cwd);
-			toast("路径已复制到剪贴板", { kind: "success" });
+			toast("路径已复制", { kind: "success" });
 		} catch {
 			toast("复制失败", { kind: "error" });
 		}
@@ -27,55 +28,32 @@ export function PathSheet({
 
 	return (
 		<BottomSheet open={open} onClose={onClose} title="当前工作目录">
-			<div className="space-y-4 px-5 pb-6 pt-2">
-				<div className="rounded-m-md border border-m-border bg-m-surface p-3">
-					<div className="flex items-center gap-2 text-m-xs text-m-text-3 mb-1">
-						<Folder size={14} />
-						工作目录路径
-					</div>
-					<div className="break-all font-m-mono text-m-sm text-m-text select-all">
-						{cwd || "未设置工作目录"}
-					</div>
+			<div className="px-5 pt-2">
+				<div className="m-selectable rounded-m-lg bg-m-card px-5 py-4 font-m-mono text-m-sm break-all text-m-text shadow-m-card">
+					{cwd || "未设置工作目录"}
 				</div>
-
-				<div className="flex flex-col gap-2">
-					<button
-						type="button"
-						onClick={() => {
-							void copyPath();
-						}}
-						disabled={!cwd}
-						className="flex min-h-11 w-full items-center justify-center gap-2 rounded-m-pill border border-m-border bg-m-surface px-4 text-m-sm font-medium text-m-text active:bg-m-surface-hover disabled:opacity-40"
-					>
-						<Copy size={16} />
-						复制路径
-					</button>
-
-					<button
-						type="button"
+			</div>
+			<div className="pt-3 pb-3">
+				<MenuRow icon={<Copy size={22} strokeWidth={1.75} />} label="复制路径" disabled={!cwd} onClick={() => void copyPath()} />
+				<MenuRow
+					icon={<FolderOpen size={22} strokeWidth={1.75} />}
+					label="浏览文件"
+					onClick={() => {
+						onClose();
+						nav.push(paths.files(sessionId));
+					}}
+				/>
+				{onSwitchProject && (
+					<MenuRow
+						icon={<FolderInput size={22} strokeWidth={1.75} />}
+						label="切换项目目录"
+						hint="让这个会话改在另一个目录里工作"
 						onClick={() => {
 							onClose();
-							nav.push(paths.files(sessionId));
+							onSwitchProject();
 						}}
-						className="flex min-h-11 w-full items-center justify-center gap-2 rounded-m-pill border border-m-border bg-m-surface px-4 text-m-sm font-medium text-m-text active:bg-m-surface-hover"
-					>
-						<FolderOpen size={16} />
-						浏览目录文件
-					</button>
-
-					{onSwitchProject && (
-						<button
-							type="button"
-							onClick={() => {
-								onClose();
-								onSwitchProject();
-							}}
-							className="flex min-h-11 w-full items-center justify-center gap-2 rounded-m-pill bg-m-accent px-4 text-m-sm font-medium text-m-accent-text active:opacity-80"
-						>
-							在项目中工作（切换目录）
-						</button>
-					)}
-				</div>
+					/>
+				)}
 			</div>
 		</BottomSheet>
 	);

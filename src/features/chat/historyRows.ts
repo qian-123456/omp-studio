@@ -95,7 +95,7 @@ function turnPieces(turn: TurnBlock): Piece[] {
 			pieces.push({ kind: "fold", steps: seg.folded, height: DISCLOSURE_ROW });
 		}
 		for (const step of seg.prose) {
-			const h = step.kind === "text" ? Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX) : 0;
+			const h = step.kind === "text" || step.kind === "narration" ? Math.min(estimateTextHeight(step.text), INTERIM_PROSE_MAX) : 0;
 			pieces.push({ kind: "prose", step, height: h });
 		}
 	}

@@ -217,14 +217,25 @@ describe("status groups", () => {
 		expect(screen.queryByText("off")).toBeNull();
 	});
 
-	it("pages a long group 8 rows at a time", async () => {
+	it("renders provider models alphabetically without changing configured order", async () => {
+		const provider = row("p1", "plaintext", { models: ["zeta", { id: "beta" }, { id: "Alpha" }] });
+		await renderPanel([provider]);
+		fireEvent.click(screen.getByTitle("点击展开查看模型与详情"));
+
+		const modelIds = Array.from(document.querySelectorAll("#provider-row-p1 span.font-mono.font-medium"), (el) => el.textContent);
+		expect(modelIds).toEqual(["Alpha", "beta", "zeta"]);
+		expect(provider.models).toEqual(["zeta", { id: "beta" }, { id: "Alpha" }]);
+	});
+	it("shows all remaining rows with the exact count and can collapse", async () => {
 		const many = Array.from({ length: 11 }, (_, i) => row(`p${String(i).padStart(2, "0")}`, "plaintext"));
 		await renderPanel(many);
-		expect(screen.getByText("p07")).toBeTruthy();
-		expect(screen.queryByText("p08")).toBeNull();
-		fireEvent.click(screen.getByRole("button", { name: "展开 3 条" }));
+		expect(document.querySelectorAll('[data-field-id^="provider:"]')).toHaveLength(8);
+		expect(screen.getByRole("button", { name: "展开剩余全部 3 条" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "展开剩余全部 3 条" }));
+		expect(document.querySelectorAll('[data-field-id^="provider:"]')).toHaveLength(11);
 		expect(screen.getByText("p10")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		expect(document.querySelectorAll('[data-field-id^="provider:"]')).toHaveLength(8);
 		expect(screen.queryByText("p08")).toBeNull();
 	});
 

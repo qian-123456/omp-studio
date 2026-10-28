@@ -1,4 +1,3 @@
-import { ChevronDown, Menu, MoreVertical, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { PageProps } from "../../core/nav";
 import { useSession } from "../../core/stores/sessions";
@@ -11,86 +10,20 @@ import { ChatCtx, type ChatUi, type MessageTarget } from "./ChatContext";
 import { ChatController, isDeadStatus } from "./chatStore";
 import { Composer } from "./components/Composer";
 import { HeaderMenu } from "./components/HeaderMenu";
+import { ChatHeader } from "./components/ChatHeader";
+import { sessionModelSource } from "./components/useModelFacts";
+import { takeFirstSend } from "./lib/drafts";
 import { MessageActionsSheet } from "./components/MessageActions";
 import { MessageList } from "./components/MessageList";
 import { ModelThinkingSheet } from "./components/ModelThinkingSheet";
 import { PendingCards } from "./components/PendingCards";
 import { StatCard } from "./components/StatLine";
-import { shortModel } from "./lib/models";
 import type { RequestStat } from "./lib/requestStats";
 import { useChat, useChatUi as useUi } from "./ChatContext";
 
-function TopBar({
-	onOpenMenu,
-	onOpenPicker,
-	onNew,
-	onToolMenu,
-}: {
-	onOpenMenu: () => void;
-	onOpenPicker: () => void;
-	onNew: () => void;
-	onToolMenu: () => void;
-}) {
+function Header({ onOpenMenu, onOpenPicker, onNew, onToolMenu }: { onOpenMenu: () => void; onOpenPicker: () => void; onNew: () => void; onToolMenu: () => void }) {
 	const cstate = useChat((s) => s.cstate);
-	const model = shortModel(cstate?.model ?? "") || "选择模型";
-	const thinking = cstate?.thinkingLevel || "auto";
-
-	return (
-		<header
-			className="sticky top-0 z-20 shrink-0 border-b border-m-border bg-m-bg text-m-text"
-			style={{ paddingTop: "var(--m-safe-top)" }}
-		>
-			<div className="flex h-13 items-center justify-between gap-1 px-2">
-				{/* Menu (left) */}
-				<button
-					type="button"
-					aria-label="菜单"
-					title="菜单"
-					onClick={onOpenMenu}
-					className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
-				>
-					<Menu size={22} />
-				</button>
-
-				{/* Current model + thinking level pill (middle-left, tap opens bottom sheet picker) */}
-				<button
-					type="button"
-					aria-label="选择模型和思考等级"
-					onClick={onOpenPicker}
-					className="flex min-h-9 max-w-[210px] shrink min-w-0 items-center gap-1.5 truncate rounded-m-pill border border-m-border bg-m-surface px-3 text-m-xs font-medium text-m-text active:bg-m-surface-hover"
-				>
-					<span className="truncate">{model}</span>
-					<span className="text-m-text-3">·</span>
-					<span className="shrink-0 text-m-text-2">思考 {thinking}</span>
-					<ChevronDown size={14} className="shrink-0 text-m-text-3" />
-				</button>
-
-				<div className="min-w-0 flex-1" />
-
-				{/* "新建对话" icon + Right tool menu (right) */}
-				<div className="flex shrink-0 items-center">
-					<button
-						type="button"
-						aria-label="新建对话"
-						title="新建对话"
-						onClick={onNew}
-						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
-					>
-						<Plus size={22} />
-					</button>
-					<button
-						type="button"
-						aria-label="工具菜单"
-						title="工具菜单"
-						onClick={onToolMenu}
-						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover"
-					>
-						<MoreVertical size={20} />
-					</button>
-				</div>
-			</div>
-		</header>
-	);
+	return <ChatHeader model={cstate?.model} thinking={cstate?.thinkingLevel} onMenu={onOpenMenu} onModel={onOpenPicker} onNew={onNew} onTools={onToolMenu} />;
 }
 
 function ResumeBar({ sessionId }: { sessionId: string }) {
@@ -130,6 +63,13 @@ export function ChatPage({ route }: PageProps) {
 	const [newOpen, setNewOpen] = useState(false);
 	const session = useSession(id);
 
+	const modelSource = useMemo(() => sessionModelSource(id), [id]);
+
+	useEffect(() => {
+		if (!controller || controller.id !== id) return;
+		const first = takeFirstSend(id);
+		if (first !== null) void controller.send(first, "followUp");
+	}, [controller, id]);
 	useEffect(() => {
 		const c = new ChatController(id);
 		c.start();
@@ -145,7 +85,7 @@ export function ChatPage({ route }: PageProps) {
 		[controller],
 	);
 
-	if (!ui || !controller) {
+	if (!ui || !controller || controller.id !== id) {
 		return (
 			<div className="flex flex-1 items-center justify-center text-m-text-3">
 				<Spinner size={22} />
@@ -156,7 +96,7 @@ export function ChatPage({ route }: PageProps) {
 	return (
 		<ChatCtx.Provider value={ui}>
 			<div className="flex min-h-0 flex-1 flex-col bg-m-bg">
-				<TopBar
+				<Header
 					onOpenMenu={() => setMenuSheet(true)}
 					onOpenPicker={() => setPickerOpen(true)}
 					onNew={() => setNewOpen(true)}
@@ -175,9 +115,9 @@ export function ChatPage({ route }: PageProps) {
 			<ModelThinkingSheet
 				open={pickerOpen}
 				onClose={() => setPickerOpen(false)}
-				sessionId={id}
+				source={modelSource}
 				currentLevel={controller.state.cstate?.thinkingLevel ?? null}
-				onFacts={(f) => controller.patchState({ model: f.model, thinkingLevel: f.thinkingLevel })}
+				onFacts={(f) => controller.patchState({ ...(f.model ? { model: f.model } : {}), thinkingLevel: f.thinkingLevel })}
 			/>
 		</ChatCtx.Provider>
 	);

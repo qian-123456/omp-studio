@@ -9,6 +9,7 @@ mod forkcut;
 mod frame;
 #[cfg(test)]
 mod live_test;
+mod plan_ext;
 mod privacy_ext;
 mod process;
 pub(crate) mod sidechat;
@@ -70,6 +71,7 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
 /// repeats the complete check under the session's dispatch lock.
 pub fn init(state: AppState) {
     privacy_ext::install();
+    plan_ext::install();
     crate::visualize::install();
     autotitle::spawn(state.clone());
     let mut events = state.bus.subscribe();

@@ -16,7 +16,7 @@ import {
 	Tag,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { FloatingLayer, usableViewport } from "../../components/FloatingLayer";
@@ -26,6 +26,8 @@ import { addWorkspace, gitBadge, gitListBranchesDetailed, gitListWorktrees, gitR
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { draftMeta, isLocalDraftId, usePendingSession } from "../sessions/pendingSession";
+import { prewarmDraft } from "../sessions/draftSession";
 import { requestMoveToGroup } from "../sessions/sessionActions";
 import { useSessionGroups } from "../sessions/sessionGroups";
 import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
@@ -38,7 +40,7 @@ import { isComposing } from "../../lib/hooks";
 import { useT } from "../../stores/language";
 import { validateBranchName } from "./branchName";
 const PILL =
-	"flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] select-none";
+	"flex max-w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] select-none";
 const ROW =
 	"flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-[var(--text)] hover:bg-[var(--ghost-hover,var(--bg-hover))]";
 
@@ -180,12 +182,13 @@ export function WorkspacePickerPopover({
 	);
 }
 export function CreateBranchDialog({
-	sessionId,
+	resolveSession,
 	initialName,
 	onClose,
 	onCreated,
 }: {
-	sessionId: string;
+	/** Resolves the live omp session that runs the git command (a draft starts its own on demand). */
+	resolveSession: () => Promise<string>;
 	initialName?: string;
 	onClose: () => void;
 	onCreated: () => void;
@@ -210,7 +213,7 @@ export function CreateBranchDialog({
 		if (!isValid || busy) return;
 		setBusy(true);
 		try {
-			await runSessionBash(sessionId, `git checkout -b ${shellQuote(branchName.trim())}`);
+			await runSessionBash(await resolveSession(), `git checkout -b ${shellQuote(branchName.trim())}`);
 			toast.success(t("chat.pill.branchCreated", { name: branchName.trim() }));
 			onCreated();
 		} catch (err) {
@@ -344,7 +347,7 @@ export function CreateBranchDialog({
 function BranchPickerPopover({
 	anchor,
 	ignoreRef,
-	sessionId,
+	resolveSession,
 	cwd,
 	currentBranch,
 	onChanged,
@@ -352,7 +355,7 @@ function BranchPickerPopover({
 }: {
 	anchor: HTMLElement | null;
 	ignoreRef: RefObject<HTMLElement | null>;
-	sessionId: string;
+	resolveSession: () => Promise<string>;
 	cwd: string;
 	currentBranch: string;
 	onChanged: () => void;
@@ -394,7 +397,7 @@ function BranchPickerPopover({
 	const run = async (cmd: string, okMsg: string) => {
 		onClose();
 		try {
-			await runSessionBash(sessionId, cmd);
+			await runSessionBash(await resolveSession(), cmd);
 			toast.success(okMsg);
 			onChanged();
 		} catch (err) {
@@ -498,7 +501,7 @@ function BranchPickerPopover({
 			</div>
 			{showCreateDialog && (
 				<CreateBranchDialog
-					sessionId={sessionId}
+					resolveSession={resolveSession}
 					initialName={query.trim()}
 					onClose={() => setShowCreateDialog(false)}
 					onCreated={() => {
@@ -524,7 +527,19 @@ export function ContextPillBar({
 	workspaceBtnRef: RefObject<HTMLButtonElement | null>;
 }) {
 	const { t } = useT();
-	const meta = useSessions((s) => s.sessions[sessionId]);
+	const isDraft = isLocalDraftId(sessionId);
+	const realMeta = useSessions((s) => s.sessions[sessionId]);
+	const draft = usePendingSession((s) => (isDraft ? s.drafts[sessionId] : undefined));
+	// draftMeta stamps new Dates, so it must be memoised, never built in a selector.
+	const meta = useMemo(
+		() => (isDraft ? (draft ? draftMeta(draft) : undefined) : realMeta),
+		[isDraft, draft, realMeta],
+	);
+	// Display never spawns; only an actual git operation starts the draft's own retained process.
+	const resolveSession = useCallback(
+		() => (isDraft ? prewarmDraft(sessionId) : Promise.resolve(sessionId)),
+		[isDraft, sessionId],
+	);
 	const workspaces = useSessions((s) => s.workspaces);
 	const cwd = meta?.cwd ?? "";
 	// Resolve from the stored catalog facts (cwd / repoRoot / workspaceId) — a
@@ -553,11 +568,14 @@ export function ContextPillBar({
 		// Session metadata is the source of truth for display; do not probe Git
 		// merely to paint the composer for a stopped session. An explicit Git
 		// operation may refresh its result once.
-		if (branchRefreshSession.current !== sessionId || nonce === 0) {
+		if (!isDraft && (branchRefreshSession.current !== sessionId || nonce === 0)) {
 			branchRefreshSession.current = sessionId;
 			setBranch(meta?.git?.branch ?? null);
 			return;
 		}
+		branchRefreshSession.current = sessionId;
+		// A draft has no session metadata yet: read the branch straight from its cwd.
+		if (isDraft && nonce === 0) setBranch(undefined);
 		let cancelled = false;
 		gitBadge(cwd)
 			.then((b) => !cancelled && setBranch(b?.branch ?? null))
@@ -565,10 +583,10 @@ export function ContextPillBar({
 		return () => {
 			cancelled = true;
 		};
-	}, [cwd, meta?.git?.branch, nonce]);
+	}, [cwd, meta?.git?.branch, nonce, isDraft, sessionId]);
 
 	return (
-		<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
+		<div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
 			<button
 				ref={workspaceBtnRef}
 				type="button"
@@ -585,7 +603,13 @@ export function ContextPillBar({
 				<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 			</button>
 
-			{group && (
+			{group && isDraft && (
+				<span title={t("chat.pill.currentGroup", { name: group.name })} className={PILL}>
+					<Tag size={13} className="shrink-0 text-neutral-400" />
+					<span className="max-w-40 truncate">{group.name}</span>
+				</span>
+			)}
+			{group && !isDraft && (
 				<button
 					type="button"
 					onClick={() => requestMoveToGroup([sessionId])}
@@ -616,7 +640,7 @@ export function ContextPillBar({
 						<BranchPickerPopover
 							anchor={branchRef.current}
 							ignoreRef={branchRef}
-							sessionId={sessionId}
+							resolveSession={resolveSession}
 							cwd={cwd}
 							currentBranch={branch}
 							onChanged={() => setNonce((n) => n + 1)}

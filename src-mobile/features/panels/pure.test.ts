@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breadcrumbs, fenced, fmtSize, groupGitStatus, langFromPath, splitPath } from "./pure";
+import { breadcrumbs, fenced, fmtSize, langFromPath, splitPath, stageState } from "./pure";
 import type { GitFile } from "./pure";
 
 describe("breadcrumbs", () => {
@@ -47,20 +47,12 @@ describe("fenced", () => {
 	});
 });
 
-describe("groupGitStatus", () => {
-	const f = (path: string, status: string, staged: boolean, unstaged: boolean): GitFile => ({ path, status, staged, unstaged });
-	it("puts a file edited after staging into both groups and untracked only in untracked", () => {
-		const g = groupGitStatus([
-			f("a", "M", true, true),
-			f("b", "A", true, false),
-			f("c", "M", false, true),
-			f("d", "??", false, true),
-		]);
-		expect(g.staged.map((x) => x.path)).toEqual(["a", "b"]);
-		expect(g.unstaged.map((x) => x.path)).toEqual(["a", "c"]);
-		expect(g.untracked.map((x) => x.path)).toEqual(["d"]);
-	});
-	it("returns empty groups for a clean tree", () => {
-		expect(groupGitStatus([])).toEqual({ staged: [], unstaged: [], untracked: [] });
+describe("stageState", () => {
+	const f = (status: string, staged: boolean, unstaged: boolean): GitFile => ({ path: "x", status, staged, unstaged });
+	it("treats a file edited after staging as partial and untracked as unstaged", () => {
+		expect(stageState(f("M", true, true))).toBe("partial");
+		expect(stageState(f("A", true, false))).toBe("staged");
+		expect(stageState(f("M", false, true))).toBe("unstaged");
+		expect(stageState(f("??", false, true))).toBe("unstaged");
 	});
 });

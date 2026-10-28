@@ -1,17 +1,60 @@
-import { Puzzle, Search } from "lucide-react";
+import { CircleAlert, Puzzle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api, errorMessage } from "../../core/api";
-import { BottomSheet, Chip, EmptyState, Markdown, PageHeader, PullToRefresh, toast } from "../../ui";
-import { LoadState, Switch, useLoad } from "./controls";
+import { BottomSheet, Chip, EmptyState, ListGroup, ListRow, Markdown, PageHeader, PullToRefresh, Spinner, Switch, toast } from "../../ui";
+import { LoadState, useLoad } from "./controls";
 import { filterSkills, ISSUE_LABEL, reasonText, stripFrontmatter } from "./skills";
 import type { Skill, SkillsData } from "./skills";
 
-function SectionTitle({ title, count }: { title: string; count: number }) {
+/** List row with a tappable body and a trailing switch (a switch cannot live inside a row button). */
+function ToggleRow({
+	title,
+	subtitle,
+	checked,
+	label,
+	onToggle,
+	onOpen,
+	testId,
+}: {
+	title: ReactNode;
+	subtitle?: ReactNode;
+	checked: boolean;
+	label: string;
+	onToggle: () => void;
+	onOpen?: () => void;
+	testId?: string;
+}) {
+	const body = (
+		<>
+			<span className="block text-m-md break-words text-m-text">{title}</span>
+			{subtitle != null && <span className="mt-0.5 block text-m-xs break-words text-m-text-3">{subtitle}</span>}
+		</>
+	);
 	return (
-		<div className="flex items-center gap-2 px-4 pb-1 pt-4 text-m-sm font-medium text-m-text-2">
-			<span>{title}</span>
-			<span className="rounded-m-pill bg-m-surface px-2 text-m-xs text-m-text-3">{count}</span>
+		<div className="m-list-row flex w-full items-stretch pl-5" data-testid={testId}>
+			<div className="m-list-sep flex min-h-14 min-w-0 flex-1 items-center gap-2 pr-3">
+				{onOpen ? (
+					<button type="button" onClick={onOpen} className="min-w-0 flex-1 py-3 text-left active:opacity-60">
+						{body}
+					</button>
+				) : (
+					<div className="min-w-0 flex-1 py-3">{body}</div>
+				)}
+				<Switch checked={checked} label={label} onChange={onToggle} />
+			</div>
 		</div>
+	);
+}
+
+function SkillSubtitle({ s }: { s: Skill }) {
+	return (
+		<>
+			<span className="block text-m-text-3">{s.provider}</span>
+			{s.description && <span className="mt-0.5 line-clamp-2 text-m-sm text-m-text-2">{s.description}</span>}
+			{!s.enabled && s.disabledReason && <span className="mt-1 block text-m-warn">已停用：{reasonText(s.disabledReason)}</span>}
+			{s.issues.length > 0 && <span className="mt-1 block text-m-danger">问题：{s.issues.map((i) => ISSUE_LABEL[i] ?? i).join("、")}</span>}
+		</>
 	);
 }
 
@@ -30,36 +73,43 @@ function SkillDetail({ skill, onClose, onToggle }: { skill: Skill | null; onClos
 	}, [path]);
 	const loaded = content && content.path === path ? content : null;
 	return (
-		<BottomSheet open={!!skill} onClose={onClose} title={skill?.name} fullHeight>
+		<BottomSheet open={!!skill} onClose={onClose} title={skill?.name} subtitle={skill?.provider} fullHeight>
 			{skill && (
-				<div className="flex flex-col gap-4 p-4" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 16px)" }}>
-					<div className="flex items-center justify-between gap-3 rounded-m-lg border border-m-border bg-m-surface px-4">
-						<span className="text-m-md">启用</span>
-						<Switch checked={skill.enabled} label={`启用 ${skill.name}`} onChange={() => onToggle(skill)} />
-					</div>
-					<div className="flex flex-wrap gap-1.5">
+				<div className="flex flex-col gap-5 pb-8">
+					<ListGroup>
+						<ToggleRow title="启用" subtitle="对新会话生效" checked={skill.enabled} label={`启用 ${skill.name}`} onToggle={() => onToggle(skill)} />
+					</ListGroup>
+					<div className="flex flex-wrap gap-1.5 px-5">
 						<Chip tone="accent">{skill.provider}</Chip>
 						<Chip>{skill.source}</Chip>
 						{skill.copies > 1 && <Chip tone="warn">{skill.copies} 份同名</Chip>}
 						<Chip>{skill.promptChars} 字符常驻</Chip>
 					</div>
-					{!skill.enabled && skill.disabledReason && (
-						<div className="text-m-sm text-m-warn">已停用：{reasonText(skill.disabledReason)}</div>
-					)}
-					{skill.issues.length > 0 && (
-						<div className="text-m-sm text-m-danger">问题：{skill.issues.map((i) => ISSUE_LABEL[i] ?? i).join("、")}</div>
-					)}
-					<div className="break-all text-m-xs text-m-text-3">{skill.root} · {skill.path}</div>
-					{skill.description && <Markdown text={skill.description} />}
-					{loaded?.text != null ? (
-						<div className="border-t border-m-border pt-4">
-							<Markdown text={stripFrontmatter(loaded.text)} />
+					{(!skill.enabled && skill.disabledReason) || skill.issues.length > 0 ? (
+						<div className="flex flex-col gap-1 px-5 text-m-sm">
+							{!skill.enabled && skill.disabledReason && <p className="text-m-warn">已停用：{reasonText(skill.disabledReason)}</p>}
+							{skill.issues.length > 0 && <p className="text-m-danger">问题：{skill.issues.map((i) => ISSUE_LABEL[i] ?? i).join("、")}</p>}
 						</div>
-					) : loaded?.error ? (
-						<div className="text-m-xs text-m-text-3">{loaded.error}</div>
-					) : (
-						<div className="text-m-xs text-m-text-3">正在读取 SKILL.md</div>
+					) : null}
+					<p className="m-selectable px-5 text-m-xs break-all text-m-text-3">{skill.path}</p>
+					{skill.description && (
+						<div className="m-selectable px-5">
+							<Markdown text={skill.description} />
+						</div>
 					)}
+					<div className="mx-4 rounded-m-lg bg-m-card px-4 py-4 shadow-m-card">
+						{loaded?.text != null ? (
+							<div className="m-selectable">
+								<Markdown text={stripFrontmatter(loaded.text)} />
+							</div>
+						) : loaded?.error ? (
+							<p className="m-selectable text-m-sm break-words text-m-text-3">{loaded.error}</p>
+						) : (
+							<div className="flex items-center gap-2 text-m-sm text-m-text-3">
+								<Spinner size={16} /> 正在读取 SKILL.md
+							</div>
+						)}
+					</div>
 				</div>
 			)}
 		</BottomSheet>
@@ -77,7 +127,7 @@ export function SkillsPage() {
 		setData((d) => (d ? apply(d) : d));
 		try {
 			await api("POST", url, body);
-			toast("已更新（对新会话生效）", { kind: "success" });
+			toast("已更新，对新会话生效", { kind: "success" });
 		} catch (e) {
 			toast(`操作失败：${errorMessage(e)}`, { kind: "error" });
 		}
@@ -90,82 +140,95 @@ export function SkillsPage() {
 		}));
 
 	return (
-		<div className="flex h-full min-h-0 flex-col bg-m-bg text-m-text">
-			<PageHeader title="Skills" subtitle={data ? `${data.skills.length} 个 Skill · ${data.extensions.length} 个扩展` : undefined} />
+		<div className="flex h-full min-h-0 flex-col bg-m-bg-elev text-m-text">
+			<PageHeader
+				title="Skills"
+				subtitle={data ? `${data.skills.length} 个 Skill · ${data.extensions.length} 个扩展` : undefined}
+				className="bg-m-bg-elev!"
+			/>
 			<PullToRefresh onRefresh={reload}>
 				{data === null ? (
 					<LoadState loading={loading} error={error} onRetry={reload} />
 				) : (
-					<div style={{ paddingBottom: "calc(var(--m-safe-bottom) + 16px)" }}>
-						<div className="px-4 pt-3">
-							<label className="flex min-h-11 items-center gap-2 rounded-m-md border border-m-border bg-m-surface px-3">
-								<Search size={16} className="shrink-0 text-m-text-3" aria-hidden />
+					<div className="pt-1" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}>
+						<div className="px-4">
+							<label className="flex min-h-12 items-center gap-3 rounded-m-pill bg-m-card pr-1 pl-4 shadow-m-card focus-within:ring-2 focus-within:ring-m-accent">
+								<Search size={20} strokeWidth={1.75} className="shrink-0 text-m-text-3" aria-hidden />
 								<input
 									type="search"
 									value={query}
 									onChange={(e) => setQuery(e.target.value)}
 									placeholder="搜索 Skill"
 									aria-label="搜索 Skill"
-									className="min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none"
+									className="min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none placeholder:text-m-text-3 [&::-webkit-search-cancel-button]:hidden"
 								/>
+								{query && (
+									<button
+										type="button"
+										aria-label="清除搜索"
+										onClick={() => setQuery("")}
+										className="flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text-3 active:bg-m-surface-hover"
+									>
+										<X size={18} />
+									</button>
+								)}
 							</label>
 						</div>
-						{data.configError && <div className="px-4 pt-3 text-m-sm text-m-danger">配置读取异常：{data.configError}</div>}
-						{data.skillsEnabled === false && <div className="px-4 pt-3 text-m-sm text-m-warn">Skills 总开关已关闭</div>}
-						<SectionTitle title="Skills" count={shown.length} />
-						{shown.length === 0 ? (
-							<EmptyState icon={<Puzzle size={36} />} title={query ? "没有匹配的 Skill" : "没有 Skill"} />
-						) : (
-							<ul>
-								{shown.map((s) => (
-									<li key={`${s.name}:${s.path}`} className="flex items-center gap-2 border-b border-m-border pl-4 pr-1" data-testid="skill-row">
-										<button type="button" onClick={() => setOpenName(s.name)} className="min-h-14 min-w-0 flex-1 py-2 text-left">
-											<div className="flex flex-wrap items-center gap-x-2">
-												<span className="break-all text-m-md font-medium">{s.name}</span>
-												<span className="whitespace-nowrap text-m-xs text-m-text-3">{s.provider}</span>
-											</div>
-											{s.description && <div className="line-clamp-2 text-m-sm text-m-text-2">{s.description}</div>}
-											{!s.enabled && s.disabledReason && (
-												<div className="text-m-xs text-m-warn">已停用：{reasonText(s.disabledReason)}</div>
-											)}
-											{s.issues.length > 0 && (
-												<div className="text-m-xs text-m-danger">问题：{s.issues.map((i) => ISSUE_LABEL[i] ?? i).join("、")}</div>
-											)}
-										</button>
-										<Switch checked={s.enabled} label={`启用 ${s.name}`} onChange={() => void toggleSkill(s)} />
-									</li>
-								))}
-							</ul>
-						)}
-						{!query && (
-							<>
-								<SectionTitle title="扩展" count={data.extensions.length} />
-								{data.extensions.length === 0 ? (
-									<div className="px-4 py-3 text-m-sm text-m-text-3">没有扩展</div>
-								) : (
-									<ul>
-										{data.extensions.map((x) => (
-											<li key={x.path} className="flex items-center gap-2 border-b border-m-border pl-4 pr-1">
-												<div className="min-h-14 min-w-0 flex-1 py-2">
-													<div className="break-all text-m-md">{x.name}</div>
-													<div className="break-all text-m-xs text-m-text-3">{x.source}</div>
-												</div>
-												<Switch
-													checked={x.enabled}
-													label={`启用 ${x.name}`}
-													onChange={() =>
-														void toggle("/left/extensions/toggle", { path: x.path, enabled: !x.enabled }, (d) => ({
-															...d,
-															extensions: d.extensions.map((e) => (e.path === x.path ? { ...e, enabled: !x.enabled } : e)),
-														}))
-													}
-												/>
-											</li>
-										))}
-									</ul>
+						{(data.configError || data.skillsEnabled === false) && (
+							<ListGroup className="mt-4">
+								{data.configError && (
+									<ListRow
+										icon={<CircleAlert size={22} strokeWidth={1.75} />}
+										danger
+										title="配置读取异常"
+										subtitle={<span className="m-selectable">{data.configError}</span>}
+									/>
 								)}
-							</>
+								{data.skillsEnabled === false && <ListRow title="Skills 总开关已关闭" subtitle="在电脑端设置中打开后才会加载" />}
+							</ListGroup>
 						)}
+						{shown.length === 0 ? (
+							<EmptyState icon={<Puzzle size={26} strokeWidth={1.75} />} title={query ? "没有匹配的 Skill" : "没有 Skill"} />
+						) : (
+							<ListGroup title={`Skills · ${shown.length}`}>
+								{shown.map((s) => (
+									<ToggleRow
+										key={`${s.name}:${s.path}`}
+										testId="skill-row"
+										title={s.name}
+										subtitle={<SkillSubtitle s={s} />}
+										checked={s.enabled}
+										label={`启用 ${s.name}`}
+										onToggle={() => void toggleSkill(s)}
+										onOpen={() => setOpenName(s.name)}
+									/>
+								))}
+							</ListGroup>
+						)}
+						{!query &&
+							(data.extensions.length === 0 ? (
+								<ListGroup title="扩展 · 0">
+									<ListRow title="没有扩展" />
+								</ListGroup>
+							) : (
+								<ListGroup title={`扩展 · ${data.extensions.length}`}>
+									{data.extensions.map((x) => (
+										<ToggleRow
+											key={x.path}
+											title={x.name}
+											subtitle={<span className="break-all">{x.source}</span>}
+											checked={x.enabled}
+											label={`启用 ${x.name}`}
+											onToggle={() =>
+												void toggle("/left/extensions/toggle", { path: x.path, enabled: !x.enabled }, (d) => ({
+													...d,
+													extensions: d.extensions.map((e) => (e.path === x.path ? { ...e, enabled: !x.enabled } : e)),
+												}))
+											}
+										/>
+									))}
+								</ListGroup>
+							))}
 					</div>
 				)}
 			</PullToRefresh>

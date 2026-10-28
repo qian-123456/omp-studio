@@ -62,6 +62,36 @@ export function createDraftBook<A = unknown>(): DraftBook<A> {
 /** Module singleton: survives page unmount/mount while the app is open. */
 export const draftBook = createDraftBook<unknown>();
 
+/**
+ * Home composer → chat page: the first message of a session created on home. The chat page sends
+ * it through its controller on mount, so the bubble shows at once and failures restore the text
+ * into the chat composer.
+ */
+let queuedSend: Handoff | null = null;
+export function queueFirstSend(id: string, text: string): void {
+	queuedSend = { id, text };
+}
+/** Consumes the queued message if it targets `id` (only once). */
+export function takeFirstSend(id: string): string | null {
+	if (!queuedSend || queuedSend.id !== id) return null;
+	const t = queuedSend.text;
+	queuedSend = null;
+	return t;
+}
+
+export type ComposerAction = "goal" | "finder" | "workspace" | "sketch" | "plan";
+interface ComposerHandoff { id: string; action?: ComposerAction; files?: File[] }
+let composerHandoff: ComposerHandoff | null = null;
+export function queueComposerAction(id: string, action?: ComposerAction, files?: File[]): void {
+	composerHandoff = { id, action, files };
+}
+export function takeComposerAction(id: string): Omit<ComposerHandoff, "id"> | null {
+	if (!composerHandoff || composerHandoff.id !== id) return null;
+	const { action, files } = composerHandoff;
+	composerHandoff = null;
+	return { action, files };
+}
+
 /** Body of `POST /sessions/{draftId}/draft-activity`. */
 export function draftActivityBody(active: boolean, meaningful: boolean): { active: boolean; meaningful: boolean } {
 	return { active, meaningful };

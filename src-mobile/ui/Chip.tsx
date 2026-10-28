@@ -4,12 +4,13 @@ export type ChipTone = "neutral" | "accent" | "success" | "warn" | "danger";
 
 const TONES: Record<ChipTone, string> = {
 	neutral: "bg-m-surface text-m-text-2",
-	accent: "bg-[color-mix(in_srgb,var(--m-accent)_16%,transparent)] text-m-accent",
-	success: "bg-[color-mix(in_srgb,var(--m-success)_16%,transparent)] text-m-success",
-	warn: "bg-[color-mix(in_srgb,var(--m-warn)_16%,transparent)] text-m-warn",
-	danger: "bg-[color-mix(in_srgb,var(--m-danger)_16%,transparent)] text-m-danger",
+	accent: "bg-m-accent-soft text-m-accent-soft-text",
+	success: "bg-m-success-bg text-m-success",
+	warn: "bg-m-warn-bg text-m-warn",
+	danger: "bg-m-danger-bg text-m-danger",
 };
 
+/** 24px status/count capsule. Clickable chips reserve a 44px target in the layout. */
 export function Chip({
 	children,
 	tone = "neutral",
@@ -25,8 +26,8 @@ export function Chip({
 	active?: boolean;
 	className?: string;
 }) {
-	const cls = `relative inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-m-pill px-3 text-m-xs font-medium ${
-		active ? "bg-m-accent text-m-accent-text" : TONES[tone]
+	const cls = `relative inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-m-pill px-2.5 text-m-xs font-medium ${
+		active ? "bg-m-text text-m-bg" : TONES[tone]
 	} ${className}`;
 	const inner = (
 		<>
@@ -35,13 +36,12 @@ export function Chip({
 		</>
 	);
 	if (onClick) {
-		// The ::before pseudo-element extends the hit area to 44px without changing the visual size.
 		return (
 			<button
 				type="button"
 				onClick={onClick}
 				aria-pressed={active}
-				className={`${cls} before:absolute before:-inset-x-1 before:-inset-y-2 active:opacity-70`}
+				className={`${cls} min-h-11 min-w-11 justify-center active:opacity-70`}
 			>
 				{inner}
 			</button>

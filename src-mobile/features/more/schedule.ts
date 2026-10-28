@@ -47,9 +47,18 @@ export interface ScheduleRun {
 export const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 export const RUN_STATUS_LABEL: Record<string, string> = { running: "运行中", ok: "成功", error: "失败", skipped: "跳过" };
 export const LIFECYCLE_LABEL: Record<string, string> = { active: "进行中", paused: "已暂停", completed: "已完成" };
-export const KIND_LABEL: Record<CadenceKind, string> = { interval: "间隔", daily: "每天 / 每周", once: "仅一次", monthly: "每月" };
-export const NOTIFY_LABEL: Record<NotifyMode, string> = { all: "每次运行都通知", important: "仅失败 / 需要回复", none: "不通知" };
-export const RUN_MODE_LABEL: Record<RunMode, string> = { local: "在目录中直接运行", worktree: "每次新建工作树" };
+export const KIND_LABEL: Record<CadenceKind, string> = { interval: "间隔", daily: "每天/周", once: "仅一次", monthly: "每月" };
+export const NOTIFY_LABEL: Record<NotifyMode, string> = { all: "全部", important: "仅重要", none: "不通知" };
+export const NOTIFY_HINT: Record<NotifyMode, string> = {
+	all: "每次运行结束都通知",
+	important: "仅在失败或需要回复时通知",
+	none: "从不通知",
+};
+export const RUN_MODE_LABEL: Record<RunMode, string> = { local: "直接运行", worktree: "新建工作树" };
+export const RUN_MODE_HINT: Record<RunMode, string> = {
+	local: "在所选目录中直接运行",
+	worktree: "每次运行新建一个 Git 工作树，互不影响",
+};
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 
@@ -72,6 +81,7 @@ export function cadenceText(c: Cadence | null | undefined): string {
 	if (!c) return "";
 	switch (c.kind) {
 		case "interval":
+			if (!Number.isFinite(c.minutes) || c.minutes < 1) return "周期未设置";
 			return c.minutes % 60 === 0 ? `每 ${c.minutes / 60} 小时` : `每 ${c.minutes} 分钟`;
 		case "daily": {
 			const wd = c.weekdays ?? [];
@@ -258,9 +268,9 @@ export function buildPayload(f: ScheduleForm, existing?: Schedule | null): Recor
 
 /* ---------------------------------------------------------------- list / runs formatting */
 
-/** Secondary line of a schedule card: lifecycle · next run · last result · progress. */
+/** Secondary line of a schedule row: next run · last result · progress (lifecycle is a chip). */
 export function scheduleMeta(s: Schedule): string {
-	const parts = [LIFECYCLE_LABEL[s.lifecycle] ?? s.lifecycle];
+	const parts: string[] = [];
 	if (s.nextRunAt && s.enabled) parts.push(`下次 ${fmtTime(s.nextRunAt)}`);
 	if (s.lastRunStatus) parts.push(`上次${RUN_STATUS_LABEL[s.lastRunStatus] ?? s.lastRunStatus}`);
 	if (s.maxRuns) parts.push(`${s.runsDone}/${s.maxRuns} 次`);

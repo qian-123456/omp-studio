@@ -3,12 +3,11 @@
 
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Minus, Send, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import { confirmDialog, errMsg } from "../../lib/dialogs";
-import { isResumeCancelled } from "../../lib/ensureLive";
+import { confirmDialog } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { mergeHeldItems, useHeldItems, useHeldQueue } from "./heldQueue";
+import { useHeldItems, useHeldQueue } from "./heldQueue";
 import { useT } from "../../stores/language";
-import { sendPrompt } from "./send";
+import { drainNext, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
 export function HeldQueueBar({
 	sessionId,
 	streaming,
@@ -21,43 +20,33 @@ export function HeldQueueBar({
 	const dismissed = useHeldQueue((s) => s.dismissed[sessionId] === true);
 	const { update, remove, move, clear, setDismissed } = useHeldQueue();
 	const [expanded, setExpanded] = useState(false);
-	const [sending, setSending] = useState(false);
+	const [sendingLocal, setSending] = useState(false);
+	const busy = useQueuedBusy((s) => s.busy);
+	const sending = sendingLocal || items.some((item) => item.id in busy);
 
 	if (items.length === 0 || dismissed) return null;
 
 	const sendMerged = async () => {
 		if (streaming) return;
-		const { text: merged, images } = mergeHeldItems(items);
-		if (!merged) return;
 		setSending(true);
 		try {
-			await sendPrompt(sessionId, merged, images.length > 0 ? { images } : undefined);
-			clear(sessionId);
-			toast.success(t("chat.heldQueue.mergedSuccess"));
-		} catch (err) {
-			if (!isResumeCancelled(err))
-				toast.error(t("chat.heldQueue.sendFailed", { error: errMsg(err) }));
+			if (await drainNext(sessionId)) toast.success(t("chat.heldQueue.mergedSuccess"));
 		} finally {
 			setSending(false);
 		}
 	};
 
 	const sendOne = async (index: number) => {
-		if (streaming) return;
+		if (streaming || sending) return;
 		const item = items[index];
 		if (!item || !item.text.trim()) return;
 		setSending(true);
 		try {
-			await sendPrompt(
-				sessionId,
-				item.text.trim(),
-				item.images?.length ? { images: item.images } : undefined,
-			);
-			remove(sessionId, index);
-			toast.success(t("chat.heldQueue.sentSuccess"));
-		} catch (err) {
-			if (!isResumeCancelled(err))
-				toast.error(t("chat.heldQueue.sendFailed", { error: errMsg(err) }));
+			await sendQueuedNow(sessionId, { ...item, text: item.text.trim() }, false);
+			// The shared sender retains failed/skipped items and removes successes by ID.
+			if (!(useHeldQueue.getState().queues[sessionId] ?? []).some((queued) => queued.id === item.id)) {
+				toast.success(t("chat.heldQueue.sentSuccess"));
+			}
 		} finally {
 			setSending(false);
 		}

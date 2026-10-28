@@ -102,9 +102,8 @@ export default defineMessages({
 		"cmd.resume.noTurn": "没有可恢复的回合",
 
 		"cmd.plan.title": "规划模式",
-		"cmd.plan.desc": "切换规划模式：先出计划再执行",
-		"cmd.plan.on": "规划模式已开启：发送需求后生成计划",
-		"cmd.plan.off": "规划模式已关闭",
+		"cmd.plan.desc": "只读规划并交给你审阅，确认后再实施",
+		"cmd.plan.argHint": "要规划的任务（可留空，只切换规划模式）",
 
 		"cmd.goal.title": "目标",
 		"cmd.goal.desc": "设置或更新持续追求的目标",
@@ -315,9 +314,8 @@ export default defineMessages({
 		"cmd.resume.noTurn": "No turn to resume",
 
 		"cmd.plan.title": "Plan Mode",
-		"cmd.plan.desc": "Toggle plan mode: generate a plan before executing",
-		"cmd.plan.on": "Plan mode enabled: plans are generated upon prompt",
-		"cmd.plan.off": "Plan mode disabled",
+		"cmd.plan.desc": "Read-only planning with review before implementation",
+		"cmd.plan.argHint": "Task to plan (optional; leave empty to just toggle plan mode)",
 
 		"cmd.goal.title": "Goal",
 		"cmd.goal.desc": "Set or update ongoing objective",

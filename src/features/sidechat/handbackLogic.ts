@@ -49,10 +49,16 @@ export type DraftResult = { ok: true; text: string } | { ok: false; pending: boo
  * assistant text after it. `pending` = the instruction or its answer is not in
  * the transcript yet (caller may retry); otherwise `error` explains the failure.
  */
-export function extractHandbackDraft(items: readonly TranscriptItem[]): DraftResult {
+export function extractHandbackDraft(
+	items: readonly TranscriptItem[],
+	previouslySeenIds?: ReadonlySet<string>,
+): DraftResult {
 	let start = -1;
 	for (let i = items.length - 1; i >= 0; i--) {
-		if (isHandbackPrompt(items[i])) {
+		if (
+			isHandbackPrompt(items[i]) &&
+			(!previouslySeenIds || !previouslySeenIds.has(items[i].id))
+		) {
 			start = i;
 			break;
 		}

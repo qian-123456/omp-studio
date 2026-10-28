@@ -81,7 +81,7 @@ describe("MermaidBlock interactions", () => {
 		render(<MermaidBlock source="invalid diagram syntax" />);
 
 		await waitFor(() => {
-			expect(screen.getByText(/图表渲染失败: Syntax error in diagram/)).toBeDefined();
+			expect(screen.getByText(/图表渲染失败：Syntax error in diagram/)).toBeDefined();
 		});
 		expect(screen.getByText("重试")).toBeDefined();
 

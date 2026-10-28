@@ -30,6 +30,7 @@ describe("SettingsProvidersPage", () => {
 		});
 		render(<SettingsProvidersPage />);
 		await act(async () => {});
+		expect((await screen.findByText("· 0 个模型")).classList.contains("whitespace-nowrap")).toBe(true);
 		fireEvent.click(await screen.findByText("mine"));
 		const keyInput = screen.getByPlaceholderText("请输入 API Key") as HTMLInputElement;
 		expect(keyInput.type).toBe("password");
@@ -37,7 +38,8 @@ describe("SettingsProvidersPage", () => {
 		fireEvent.click(screen.getByLabelText("显示密钥"));
 		expect(keyInput.type).toBe("text");
 		fireEvent.click(screen.getByText("保存更改"));
-		const sheet = screen.getByRole("dialog");
+		const dialogs = screen.getAllByRole("dialog");
+		const sheet = dialogs[dialogs.length - 1];
 		expect(sheet.textContent).toContain("••••••••");
 		expect(sheet.textContent).not.toContain("sk-secret-123");
 		await act(async () => {

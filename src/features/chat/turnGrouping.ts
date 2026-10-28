@@ -29,6 +29,12 @@ export type TurnStep =
 			item: TranscriptItem;
 			text: string;
 	  }
+	| {
+			id: string;
+			kind: "narration";
+			item: TranscriptItem;
+			text: string;
+	  }
 	/**
 	 * Protocol/system item that arrived mid-run; id = `notice-${item.id}`.
 	 */
@@ -328,7 +334,33 @@ export function noticeSummary(item: TranscriptItem): string {
  * Items without tags are returned as-is.
  */
 function splitItemThinkTags(item: TranscriptItem): TranscriptItem {
-	if (item.kind !== "assistant" || !item.text) return item;
+	if (item.kind !== "assistant") return item;
+	// Structured narration is already public prose. Only ordinary text uses the
+	// same think-tag parser as live content, expanding at its original position.
+	if (item.assistantParts?.length) {
+		let parts: NonNullable<TranscriptItem["assistantParts"]> | null = null;
+		for (let index = 0; index < item.assistantParts.length; index++) {
+			const part = item.assistantParts[index];
+			const split = part.kind === "text" ? splitThinkTags(part.text) : null;
+			if (part.kind === "text" && split && (split.thinking !== "" || split.open || split.text !== part.text)) {
+				parts ??= item.assistantParts.slice(0, index);
+				if (split.thinking) parts.push({ kind: "thinking", text: split.thinking });
+				if (split.text) parts.push({ kind: "text", text: split.text });
+			} else if (parts) {
+				parts.push(part);
+			}
+		}
+		if (!parts) return item;
+		return {
+			...item,
+			assistantParts: parts,
+			text: parts.filter((part) => part.kind === "text" || part.kind === "narration")
+				.map((part) => part.text).join("\n\n") || null,
+			thinking: parts.filter((part) => part.kind === "thinking")
+				.map((part) => part.text).join("\n\n") || null,
+		};
+	}
+	if (!item.text) return item;
 	const split = splitThinkTags(item.text);
 	if (split.thinking === "" && split.text === item.text) return item;
 	const thinking = [item.thinking, split.thinking]
@@ -613,65 +645,125 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 			// calls (e.g. the `ask` call that hands the turn to the human).
 			const isIntermediate = hasSubsequentAssistantOrUser;
 
-			const hasThinking = Boolean(item.thinking && item.thinking.trim().length > 0);
-
-			// If it has thinking, extract thinking as a step
-			if (hasThinking && item.thinking) {
-				currentTurn.intermediateSteps.push({
-					id: `thinking-${item.id}`,
-					kind: "thinking",
-					item,
-					thinking: item.thinking,
-				});
-			}
-
-			// If it has tool calls, each tool call becomes a step
-			if (hasToolCalls && item.toolCalls) {
-				if (hasText) {
-					if (isIntermediate) {
-						currentTurn.intermediateSteps.push({
-							id: `text-${item.id}`,
-							kind: "text",
-							item,
-							text: item.text ?? "",
-						});
-					} else {
-						currentTurn.answerItem = item;
+			if (item.assistantParts?.length) {
+				const parts = item.assistantParts;
+				// A terminal tool (notably ask) does not demote the final ordinary
+				// prose. Narration and reasoning still cannot become the answer.
+				let answerPartIndex = -1;
+				if (!isIntermediate) {
+					for (let index = parts.length - 1; index >= 0; index--) {
+						const part = parts[index];
+						if (part.kind === "tool") continue;
+						if (part.kind === "text" && part.text.trim()) answerPartIndex = index;
+						break;
 					}
 				}
-
-				for (const call of item.toolCalls) {
-					currentTurn.intermediateSteps.push({
-						id: `call-${call.id}`,
-						kind: "tool",
-						item,
-						call,
-					});
+				const hasStructuredThinking = parts.some((part) => part.kind === "thinking");
+				const failedWithoutTools =
+					isIntermediate && item.stopReason === "error" && !hasToolCalls;
+				for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+					if (partIndex === answerPartIndex) continue;
+					const part = parts[partIndex];
+					if (failedWithoutTools && part.kind === "text") continue;
+					if (part.kind === "thinking") {
+						currentTurn.intermediateSteps.push({
+							id: `thinking-${item.id}-${partIndex}`,
+							kind: "thinking",
+							item,
+							thinking: part.text,
+						});
+					} else if (part.kind === "narration") {
+						currentTurn.intermediateSteps.push({
+							id: `narration-${item.id}-${partIndex}`,
+							kind: "narration",
+							item,
+							text: part.text,
+						});
+					} else if (part.kind === "text") {
+						currentTurn.intermediateSteps.push({
+							id: `text-${item.id}-${partIndex}`,
+							kind: "text",
+							item,
+							text: part.text,
+						});
+					} else {
+						const call = item.toolCalls.find((candidate) => candidate.id === part.id);
+						if (call) {
+							currentTurn.intermediateSteps.push({
+								id: `call-${call.id}`,
+								kind: "tool",
+								item,
+								call,
+							});
+						}
+					}
 				}
-			} else if (isIntermediate && item.stopReason === "error") {
-				// Failed request (retried by omp): its text is the error message,
-				// not prose. If it already has thinking or tool calls, its failure line is
-				// anchored under that step. Only emit a standalone failed step
-				// when the request produced no thinking and no tools.
-				if (!hasThinking) {
+				if (failedWithoutTools && !hasStructuredThinking) {
 					currentTurn.intermediateSteps.push({
 						id: `failed-${item.id}`,
 						kind: "request-failed",
 						item,
 					});
 				}
-			} else if (isIntermediate) {
-				if (item.text && item.text.trim().length > 0) {
-					currentTurn.intermediateSteps.push({
-						id: `text-${item.id}`,
-						kind: "text",
-						item,
-						text: item.text,
-					});
+				if (answerPartIndex >= 0) {
+					const answerPart = parts[answerPartIndex];
+					if (answerPart.kind === "text" || answerPart.kind === "narration") {
+						currentTurn.answerItem = { ...item, text: answerPart.text };
+					}
 				}
 			} else {
-				// Final assistant message of the turn!
-				currentTurn.answerItem = item;
+				const hasThinking = Boolean(item.thinking && item.thinking.trim().length > 0);
+				if (hasThinking && item.thinking) {
+					currentTurn.intermediateSteps.push({
+						id: `thinking-${item.id}`,
+						kind: "thinking",
+						item,
+						thinking: item.thinking,
+					});
+				}
+
+				if (hasToolCalls && item.toolCalls) {
+					if (hasText) {
+						if (isIntermediate) {
+							currentTurn.intermediateSteps.push({
+								id: `text-${item.id}`,
+								kind: "text",
+								item,
+								text: item.text ?? "",
+							});
+						} else {
+							currentTurn.answerItem = item;
+						}
+					}
+
+					for (const call of item.toolCalls) {
+						currentTurn.intermediateSteps.push({
+							id: `call-${call.id}`,
+							kind: "tool",
+							item,
+							call,
+						});
+					}
+				} else if (isIntermediate && item.stopReason === "error") {
+					if (!hasThinking) {
+						currentTurn.intermediateSteps.push({
+							id: `failed-${item.id}`,
+							kind: "request-failed",
+							item,
+						});
+					}
+				} else if (isIntermediate) {
+					if (item.text && item.text.trim().length > 0) {
+						currentTurn.intermediateSteps.push({
+							id: `text-${item.id}`,
+							kind: "text",
+							item,
+							text: item.text,
+						});
+					}
+				} else {
+					currentTurn.answerItem = item;
+				}
 			}
 			continue;
 		}
@@ -975,7 +1067,7 @@ export function splitInterimProseSlices<
 	let currentProse: T[] = [];
 
 	for (const step of steps) {
-		if (step.kind === "text" && (!step.item || step.item.kind === "assistant")) {
+		if ((step.kind === "text" || step.kind === "narration") && (!step.item || step.item.kind === "assistant")) {
 			currentProse.push(step);
 		} else {
 			if (currentProse.length > 0) {
@@ -1005,7 +1097,7 @@ export function splitInterimProse<
 	const folded: T[] = [];
 	const prose: T[] = [];
 	for (const step of steps) {
-		if (step.kind === "text" && (!step.item || step.item.kind === "assistant")) prose.push(step);
+		if ((step.kind === "text" || step.kind === "narration") && (!step.item || step.item.kind === "assistant")) prose.push(step);
 		else folded.push(step);
 	}
 	return { folded, prose };
@@ -1105,7 +1197,7 @@ export function splitLiveTurn<T extends { kind: string; text?: string }>(
 	const prose: T[] = [];
 	for (const step of steps) {
 		if (step === answer) continue;
-		if (step.kind === "text") prose.push(step);
+		if (step.kind === "text" || step.kind === "narration") prose.push(step);
 		else activity.push(step);
 	}
 	return { activity, prose, answer };

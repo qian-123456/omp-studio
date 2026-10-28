@@ -80,6 +80,10 @@ describe("normalizeThinkContent", () => {
 		]);
 	});
 
+	it("preserves explicitly marked narration instead of treating tags as thinking", () => {
+		const content = [{ type: "text", text: "<think>spoken</think>", narration: true }];
+		expect(normalizeThinkContent(content, { streaming: true })).toBe(content);
+	});
 	it("drops a text part that is only a half-typed tag while streaming", () => {
 		const c = [{ type: "text", text: "<thin" }];
 		expect(normalizeThinkContent(c, { streaming: true })).toEqual([]);

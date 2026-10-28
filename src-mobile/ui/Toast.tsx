@@ -44,13 +44,13 @@ export function ToastHost() {
 		<div
 			aria-live="polite"
 			className="pointer-events-none fixed inset-x-0 z-(--z-toast) flex flex-col items-center gap-2 px-4"
-			style={{ bottom: "calc(var(--m-safe-bottom) + 72px)" }}
+			style={{ bottom: "calc(var(--m-safe-bottom) + 96px)" }}
 		>
 			{list.map((t) => (
 				<div
 					key={t.id}
 					role="status"
-					className="pointer-events-auto flex max-w-full items-center gap-2 rounded-m-pill bg-m-text px-4 py-2.5 text-m-sm text-m-bg shadow-m-pop transition duration-200 starting:translate-y-2 starting:opacity-0"
+					className="m-selectable pointer-events-auto flex max-w-full items-center gap-2 rounded-m-md bg-m-text px-4 py-3 text-m-sm text-m-bg shadow-m-pop transition duration-200 starting:translate-y-2 starting:opacity-0"
 				>
 					{t.kind === "success" && <CircleCheck size={16} className="shrink-0" />}
 					{t.kind === "error" && <CircleAlert size={16} className="shrink-0" />}

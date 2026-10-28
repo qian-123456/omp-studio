@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { PullToRefresh } from "../../../ui";
+import { Button, PullToRefresh } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
 import type { Block, Turn } from "../lib/turns";
 import { SubagentCapsule } from "../../subagents";
@@ -27,7 +27,7 @@ const SYNTHETIC_TURN: Turn = {
 
 const BlockView = memo(function BlockView({ block, isLast, sessionId }: { block: Block; isLast: boolean; sessionId: string }) {
 	if (block.type === "notice") {
-		return <div className="m-turn px-4 py-2 text-center text-m-xs text-m-text-3">{block.text}</div>;
+		return <div className="m-turn px-5 py-3 text-center text-m-xs text-m-text-3">{block.text}</div>;
 	}
 	return (
 		<div className={isLast ? "m-turn-live" : "m-turn"}>
@@ -110,26 +110,24 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 
 	return (
 		<div className="relative flex min-h-0 flex-1 flex-col">
-			<div className="pointer-events-none absolute right-3 top-2 z-10">
-				<div className="pointer-events-auto">
-					<SubagentCapsule sessionId={sessionId} />
-				</div>
+			{/* Own row with its own height: the capsule can never sit on top of message text. */}
+			<div className="flex shrink-0 justify-end px-4 py-1 empty:hidden">
+				<SubagentCapsule sessionId={sessionId} />
 			</div>
 			<SelectionToolbar containerRef={contentRef} sessionId={sessionId} />
 			<PullToRefresh ref={scrollRef} onRefresh={() => controller.refresh()}>
-				<div ref={contentRef} className="py-2">
+				<div ref={contentRef} className="pt-1 pb-4">
 					{hidden > 0 && (
-						<div className="flex justify-center py-2">
-							<button
-								type="button"
+						<div className="flex justify-center py-3">
+							<Button
+								size="sm"
 								onClick={() => {
 									stick.current = false;
 									setLimit((n) => n + WINDOW_STEP);
 								}}
-								className="min-h-9 whitespace-nowrap rounded-m-pill border border-m-border px-4 text-m-sm text-m-text-2 active:bg-m-surface-hover"
 							>
-								加载更早的 {Math.min(hidden, WINDOW_STEP)} 轮（共 {hidden} 轮未显示）
-							</button>
+								加载更早的 {Math.min(hidden, WINDOW_STEP)} 轮
+							</Button>
 						</div>
 					)}
 					{shown.map((b, i) => (
@@ -144,14 +142,14 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 						</div>
 					)}
 					{localOut.map((o) => (
-						<div key={o.id} className="px-4 py-2">
-							<div className="rounded-m-md border border-m-border bg-m-surface p-3">
-								<div className="mb-1 whitespace-nowrap text-m-xs text-m-text-3">/{o.name} · 仅本地显示</div>
-								<pre className="m-0 whitespace-pre-wrap break-words font-m-mono text-m-sm">{o.text}</pre>
+						<div key={o.id} className="px-5 py-2">
+							<div className="rounded-m-lg bg-m-surface p-4">
+								<div className="mb-2 whitespace-nowrap text-m-xs text-m-text-3">/{o.name} · 仅本地显示</div>
+								<pre className="m-selectable m-0 whitespace-pre-wrap break-words font-m-mono text-m-sm text-m-text-2">{o.text}</pre>
 							</div>
 						</div>
 					))}
-					{empty && <div className="py-16 text-center text-m-sm text-m-text-3">还没有消息，发一条开始吧</div>}
+					{empty && <div className="py-20 text-center text-m-sm text-m-text-3">还没有消息，发一条开始吧</div>}
 				</div>
 			</PullToRefresh>
 			{showJump && (
@@ -159,9 +157,11 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 					type="button"
 					onClick={jump}
 					aria-label="回到底部"
-					className="absolute bottom-3 right-4 flex h-11 w-11 items-center justify-center rounded-full border border-m-border bg-m-bg-elev text-m-text shadow-m-pop"
+					className="absolute bottom-2 left-1/2 z-(--z-banner) flex h-11 w-11 -translate-x-1/2 items-center justify-center"
 				>
-					<ArrowDown size={20} />
+					<span className="flex h-10 w-10 items-center justify-center rounded-m-pill bg-m-surface text-m-text shadow-m-pop active:bg-m-surface-2">
+						<ArrowDown size={20} strokeWidth={1.75} />
+					</span>
 				</button>
 			)}
 		</div>

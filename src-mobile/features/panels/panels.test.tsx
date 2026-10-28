@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as apiModule from "../../core/api";
 import { loadUnsent, saveUnsent } from "../chat/lib/unsent";
+import { FilesPage } from "./FilesPage";
 import { gitCommitSuggest } from "./GitPage";
-import { HANDBACK_MARKER, HANDBACK_PROMPT } from "./SidechatPage";
+import { HANDBACK_MARKER, HANDBACK_PROMPT, SIDECHAT_DRAFT_PREFIX, SidechatPage } from "./SidechatPage";
 
 describe("gitCommitSuggest", () => {
 	afterEach(() => {
@@ -56,5 +58,38 @@ describe("Sidechat Handback", () => {
 		expect(updated).toContain("原有草稿");
 		expect(updated).toContain("[来自辅助对话：方案讨论]");
 		expect(updated).toContain(conclusion);
+	});
+});
+
+describe("panel presentation contracts", () => {
+	afterEach(() => {
+		cleanup();
+		sessionStorage.clear();
+		vi.restoreAllMocks();
+	});
+
+	it("preserves the annotation sessionStorage handoff and consumes it once", async () => {
+		const quote = "请解释这段实现：\n> const answer = 42;";
+		const key = `${SIDECHAT_DRAFT_PREFIX}parent`;
+		sessionStorage.setItem(key, quote);
+		vi.spyOn(apiModule, "api").mockResolvedValue([]);
+		render(<SidechatPage route={{ name: "sidechat", path: "/s/parent/sidechat", params: { id: "parent" }, query: {} }} />);
+		await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(quote));
+		expect(sessionStorage.getItem(key)).toBeNull();
+		expect(screen.getByRole("button", { name: "发送" }).className).toContain("h-11");
+	});
+
+	it("keeps long file names readable in content instead of squeezing the header", async () => {
+		const name = `${"非常长的中文文件名称".repeat(6)}.ts`;
+		vi.spyOn(apiModule, "api").mockImplementation(async (_method, path) =>
+			path.includes("/file?")
+				? { path: `/workspace/${name}`, size: 12, binary: false, truncated: false, text: "const a = 1;" }
+				: { path: "/workspace", parent: null, entries: [{ name, path: `/workspace/${name}`, kind: "file", size: 12 }] },
+		);
+		render(<FilesPage route={{ name: "files", path: "/s/parent/files", params: { id: "parent" }, query: {} }} />);
+		fireEvent.click(await screen.findByRole("button", { name: new RegExp(name) }));
+		const heading = await screen.findByRole("heading", { name });
+		expect(heading.closest("header")).toBeNull();
+		expect(screen.getByText("文件预览")).toBeTruthy();
 	});
 });

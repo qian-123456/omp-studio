@@ -1,34 +1,30 @@
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { nav } from "../core/nav";
-
-export function HeaderButton({
-	icon,
-	label,
-	onClick,
-	disabled,
-}: {
-	icon: ReactNode;
-	label: string;
-	onClick: () => void;
-	disabled?: boolean;
-}) {
-	return (
-		<button
-			type="button"
-			aria-label={label}
-			title={label}
-			disabled={disabled}
-			onClick={onClick}
-			className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill text-m-text active:bg-m-surface-hover disabled:opacity-40"
-		>
-			{icon}
-		</button>
-	);
-}
+import { IconButton } from "./IconButton";
 
 const goBack = (): void => nav.back();
 
+/**
+ * Bare top bar of the home and chat screens (docs/MOBILE_DESIGN.md §4.1): left slot, flexible
+ * centre, right slot, on the page background without a border.
+ */
+export function TopBar({ left, center, right, className = "" }: { left?: ReactNode; center?: ReactNode; right?: ReactNode; className?: string }) {
+	return (
+		<header className={`relative z-(--z-header) shrink-0 text-m-text ${className}`} style={{ paddingTop: "var(--m-safe-top)" }}>
+			<div className="flex h-14 items-center gap-1 px-2">
+				{left}
+				<div className="flex min-w-0 flex-1 items-center">{center}</div>
+				{right != null && <div className="flex shrink-0 items-center gap-1">{right}</div>}
+			</div>
+		</header>
+	);
+}
+
+/**
+ * Header of pushed sub-pages: filled circle back button, centred title, right slot.
+ * `large` puts the title as a 28px heading under the bar (Gemini settings style).
+ */
 export function PageHeader({
 	title,
 	subtitle,
@@ -36,6 +32,7 @@ export function PageHeader({
 	left,
 	right,
 	children,
+	large = false,
 	className = "",
 }: {
 	title: ReactNode;
@@ -44,28 +41,35 @@ export function PageHeader({
 	left?: ReactNode;
 	right?: ReactNode;
 	children?: ReactNode;
+	large?: boolean;
 	className?: string;
 }) {
 	const back = onBack === undefined ? goBack : onBack;
+	const leftNode =
+		left != null ? left : back !== false ? <IconButton variant="filled" icon={<ChevronLeft size={22} />} label="返回" onClick={back} /> : null;
 	return (
 		<header
-			className={`sticky top-0 shrink-0 border-b border-m-border bg-m-bg text-m-text ${className}`}
+			className={`sticky top-0 z-(--z-header) shrink-0 bg-m-bg text-m-text ${className}`}
 			style={{ paddingTop: "var(--m-safe-top)" }}
 		>
-			<div className="flex h-13 items-center gap-1 px-1">
-				{left != null ? (
-					left
-				) : back !== false ? (
-					<HeaderButton icon={<ChevronLeft size={24} />} label="返回" onClick={back} />
-				) : (
-					<div className="w-3 shrink-0" />
-				)}
-				<div className="min-w-0 flex-1">
-					<div className="truncate text-m-lg font-semibold leading-tight">{title}</div>
-					{subtitle != null && <div className="truncate text-m-xs leading-tight text-m-text-3">{subtitle}</div>}
+			<div className="relative flex h-14 items-center gap-1 px-2">
+				<div className="flex min-w-11 shrink-0 items-center">{leftNode}</div>
+				<div className="min-w-0 flex-1 px-1 text-center">
+					{!large && (
+						<>
+							<div className="text-m-md leading-tight font-semibold break-words">{title}</div>
+							{subtitle != null && <div className="text-m-xs leading-tight break-words text-m-text-3">{subtitle}</div>}
+						</>
+					)}
 				</div>
-				{right != null && <div className="flex shrink-0 items-center">{right}</div>}
+				<div className="flex min-w-11 shrink-0 items-center justify-end gap-1">{right}</div>
 			</div>
+			{large && (
+				<div className="px-5 pt-1 pb-3">
+					<h1 className="text-m-title font-medium break-words">{title}</h1>
+					{subtitle != null && <div className="mt-1 text-m-sm break-words text-m-text-3">{subtitle}</div>}
+				</div>
+			)}
 			{children}
 		</header>
 	);

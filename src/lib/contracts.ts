@@ -194,6 +194,12 @@ export interface ImageAttachment {
 	height?: number | null;
 }
 
+export type AssistantContentPart =
+	| { kind: "text"; text: string }
+	| { kind: "thinking"; text: string }
+	| { kind: "narration"; text: string }
+	| { kind: "tool"; id: string };
+
 export interface TranscriptItem {
 	id: string;
 	parentId: string | null;
@@ -201,6 +207,8 @@ export interface TranscriptItem {
 	kind: TranscriptKind;
 	text: string | null;
 	thinking: string | null;
+	/** Ordered assistant content blocks; narration is present only when explicitly marked. */
+	assistantParts?: AssistantContentPart[];
 	toolCalls: ToolCall[];
 	toolResult: ToolResultInfo | null;
 	usage: Usage | null;

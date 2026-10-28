@@ -1,10 +1,11 @@
+import { Compass, GitCommitHorizontal, ListChecks, PenLine, ScanSearch, Sparkles, SquareTerminal, Bot } from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
 import type { PageProps } from "../../../core/nav";
-import { BottomSheet } from "../../../ui/BottomSheet";
+import { BottomSheet, Button, Chip, ListGroup, ListRow, toast } from "../../../ui";
 import { ModelPicker } from "../../../ui/ModelPicker";
 import type { PickerModel } from "../../../ui/ModelPicker";
-import { toast } from "../../../ui/Toast";
 import {
 	describeRoleValue,
 	parseRoleValue,
@@ -15,8 +16,19 @@ import {
 	type DiffRow,
 	type RolesResponse,
 } from "./logic";
-import { Badge, Btn, ConfirmDiffSheet, SectionTitle, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
+import { ConfirmDiffSheet, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
 import { BatchReplaceSheet } from "./BatchReplaceSheet";
+
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
+const ROLE_ICONS: Record<string, ReactNode> = {
+	default: <Sparkles {...ICON} />,
+	reviewer: <ScanSearch {...ICON} />,
+	editor: <PenLine {...ICON} />,
+	bash: <SquareTerminal {...ICON} />,
+	commit: <GitCommitHorizontal {...ICON} />,
+	task: <ListChecks {...ICON} />,
+	scout: <Compass {...ICON} />,
+};
 interface Draft {
 	roleId: string;
 	label: string;
@@ -131,55 +143,67 @@ export function SettingsRolesPage({ route }: PageProps) {
 	return (
 		<SettingsPageFrame
 			title={cwd ? `项目角色 · ${baseName(cwd)}` : "模型角色与思考深度"}
+			right={
+				<Button size="sm" variant="tonal" onClick={() => setBatchReplaceOpen(true)} disabled={!data}>
+					批量替换
+				</Button>
+			}
 			loading={loading && !data}
 			error={error}
 			onRetry={reload}
 		>
-			<div className="flex items-center justify-between px-4 py-2">
-				<SectionTitle title={cwd ? `项目配置（${baseName(cwd)}）` : "全局配置"} hint={cwd ? "项目优先" : "所有项目生效"} />
-				<Btn onClick={() => setBatchReplaceOpen(true)}>批量替换</Btn>
-			</div>
-			{ROLE_KEYS.map((rk) => {
-				const { raw, isProject } = current(rk.id);
-				const v = parseRoleValue(raw, models);
-				return (
-					<div key={rk.id} className="flex items-stretch gap-2 border-b border-m-border px-4 py-2">
-						<button
-							type="button"
-							onClick={() => startEdit(rk.id, rk.label)}
-							className="min-h-11 min-w-0 flex-1 py-1 text-left"
-						>
-							<div className="flex flex-wrap items-center gap-2">
-								<span className="text-m-md text-m-text">{rk.label}</span>
-								{cwd && <Badge tone={isProject ? "accent" : "neutral"}>{isProject ? "项目专属" : "继承全局"}</Badge>}
-							</div>
-							<div className="mt-1 flex flex-wrap items-center gap-2">
-								<span className="break-all font-m-mono text-m-xs text-m-text-2">
-									{v.kind === "none"
-										? "未配置"
-										: v.kind === "alias"
-											? v.raw
-											: `${v.provider ? `${v.provider}/` : ""}${v.modelId}`}
+			<ListGroup
+				title={cwd ? `项目配置 · ${baseName(cwd)}` : "全局配置"}
+				note={cwd ? "项目专属配置优先于全局配置。" : "全局配置对所有项目生效。点按角色可更换模型和思考深度。"}
+			>
+				{ROLE_KEYS.map((rk) => {
+					const { raw, isProject } = current(rk.id);
+					const v = parseRoleValue(raw, models);
+					return (
+						<ListRow
+							key={rk.id}
+							icon={ROLE_ICONS[rk.id] ?? <Bot {...ICON} />}
+							title={rk.label}
+							subtitle={
+								<span className="mt-1 flex flex-col items-start gap-1.5">
+									<span className="break-all font-m-mono text-m-text-2">
+										{v.kind === "none"
+											? "未配置"
+											: v.kind === "alias"
+												? v.raw
+												: `${v.provider ? `${v.provider}/` : ""}${v.modelId}`}
+									</span>
+									{(v.kind === "model" || cwd) && (
+										<span className="flex flex-wrap gap-1.5">
+											{v.kind === "model" && <Chip>思考 {v.thinking ?? "自动"}</Chip>}
+											{cwd && <Chip tone={isProject ? "accent" : "neutral"}>{isProject ? "项目专属" : "继承全局"}</Chip>}
+										</span>
+									)}
 								</span>
-								{v.kind === "model" && <Badge>思考：{v.thinking ?? "自动"}</Badge>}
-							</div>
-						</button>
-						{cwd && isProject && (
-							<div className="flex items-center">
-								<Btn kind="danger" onClick={() => setEdit({ kind: "inherit", roleId: rk.id, label: rk.label })}>
-									恢复继承
-								</Btn>
-							</div>
-						)}
-					</div>
-				);
-			})}
+							}
+							chevron
+							onClick={() => startEdit(rk.id, rk.label)}
+						/>
+					);
+				})}
+			</ListGroup>
 
 			<BottomSheet
 				open={pickDraft != null}
 				onClose={closeEdit}
 				fullHeight
 				title={pickDraft ? `选择模型 · ${pickDraft.label}` : undefined}
+				headerRight={
+					cwd && pickDraft && current(pickDraft.roleId).isProject ? (
+						<Button
+							size="sm"
+							variant="danger"
+							onClick={() => setEdit({ kind: "inherit", roleId: pickDraft.roleId, label: pickDraft.label })}
+						>
+							恢复继承
+						</Button>
+					) : undefined
+				}
 				footer={
 					<SheetFooter
 						onCancel={closeEdit}

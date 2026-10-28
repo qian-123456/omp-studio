@@ -6,13 +6,13 @@ export interface KeySpec {
 	seq: string;
 }
 
-/** On-screen key bar (Ctrl is a sticky modifier handled separately). */
+/** On-screen key bar, in display order (the sticky Ctrl modifier is rendered after Esc). */
 export const TERMINAL_KEYS: readonly KeySpec[] = [
-	{ id: "esc", label: "Esc", seq: "\x1b" },
 	{ id: "tab", label: "Tab", seq: "\t" },
+	{ id: "esc", label: "Esc", seq: "\x1b" },
+	{ id: "left", label: "←", seq: "\x1b[D" },
 	{ id: "up", label: "↑", seq: "\x1b[A" },
 	{ id: "down", label: "↓", seq: "\x1b[B" },
-	{ id: "left", label: "←", seq: "\x1b[D" },
 	{ id: "right", label: "→", seq: "\x1b[C" },
 	{ id: "ctrl-c", label: "Ctrl+C", seq: "\x03" },
 	{ id: "ctrl-d", label: "Ctrl+D", seq: "\x04" },

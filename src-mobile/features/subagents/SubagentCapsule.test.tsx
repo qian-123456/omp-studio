@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nav, paths } from "../../core/nav";
-import { SubagentCapsule, getAncestryChain } from "./SubagentCapsule";
+import { SubagentCapsule, capsuleText } from "./SubagentCapsule";
 import type { SubagentSummary } from "./model";
 import { useSubagentStore } from "./store";
 
@@ -10,26 +10,17 @@ vi.mock("./settings", () => ({
 	useCapsuleVisible: () => true,
 }));
 
-describe("getAncestryChain", () => {
-	const rows: SubagentSummary[] = [
-		{ id: "0-task", status: "completed", prompt: "Root task prompt" },
-		{ id: "0-task.0-scout", status: "running", prompt: "Scout search prompt" },
-		{ id: "0-task.0-scout.0-eval", status: "pending", prompt: "Eval prompt" },
-	];
-
-	it("returns single element for root agent", () => {
-		expect(getAncestryChain("0-task", rows)).toEqual(["task"]);
-	});
-
-	it("returns full ancestry path for nested subagents (A > B > C)", () => {
-		const chain = getAncestryChain("0-task.0-scout.0-eval", rows);
-		expect(chain).toEqual(["task", "scout", "eval"]);
-		expect(chain.join(" > ")).toBe("task > scout > eval");
+describe("capsuleText", () => {
+	it("lists only non-zero states in a fixed order", () => {
+		expect(capsuleText({ running: 2, queued: 0, done: 5, failed: 0 })).toBe("2 运行 · 5 完成");
+		expect(capsuleText({ running: 0, queued: 1, done: 0, failed: 3 })).toBe("1 排队 · 3 失败");
 	});
 });
 
-describe("SubagentCapsule component", () => {
+describe("SubagentCapsule", () => {
 	const sessionId = "sess-capsule-test";
+	const seed = (rows: SubagentSummary[]) =>
+		useSubagentStore.setState({ bySession: { [sessionId]: { rows, loaded: true, error: null } } });
 
 	beforeEach(() => {
 		useSubagentStore.setState({ bySession: {} });
@@ -41,79 +32,53 @@ describe("SubagentCapsule component", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders nothing when session has no subagents", () => {
+	it("renders nothing when the session has no subagents", () => {
 		const { container } = render(<SubagentCapsule sessionId={sessionId} />);
 		expect(container.firstChild).toBeNull();
 	});
 
-	it("renders counts + progress at top-right and stays visible when subagents are completed", () => {
-		useSubagentStore.setState({
-			bySession: {
-				[sessionId]: {
-					rows: [
-						{ id: "0-task", status: "completed", prompt: "Task 1" },
-						{ id: "1-scout", status: "completed", prompt: "Scout 2" },
-					],
-					loaded: true,
-					error: null,
-				},
-			},
-		});
-
-		const { container } = render(<SubagentCapsule sessionId={sessionId} />);
-		expect(container.querySelector(".justify-end")).toBeTruthy();
-		expect(screen.getByText(/完成 2/)).toBeTruthy();
-		expect(screen.getByText(/\(2\/2\)/)).toBeTruthy();
+	it("stays visible after every subagent finished", () => {
+		seed([
+			{ id: "0-task", status: "completed" },
+			{ id: "1-scout", status: "completed" },
+		]);
+		render(<SubagentCapsule sessionId={sessionId} />);
+		expect(screen.getByRole("button", { name: "子代理：2 完成" })).toBeTruthy();
 	});
 
-	it("renders running and queued counts with spinner and progress", () => {
-		useSubagentStore.setState({
-			bySession: {
-				[sessionId]: {
-					rows: [
-						{ id: "0-task", status: "running", prompt: "Task 1" },
-						{ id: "1-scout", status: "pending", prompt: "Scout 2" },
-						{ id: "2-eval", status: "completed", prompt: "Eval 3" },
-					],
-					loaded: true,
-					error: null,
-				},
-			},
-		});
-
+	it("opens the nested overview and navigates to an agent's detail page", async () => {
+		seed([
+			{ id: "0-task", status: "completed", prompt: "Parent task" },
+			{ id: "0-task.0-scout", status: "running", prompt: "Child scout" },
+		]);
 		render(<SubagentCapsule sessionId={sessionId} />);
-		expect(screen.getByText(/运行中 1/)).toBeTruthy();
-		expect(screen.getByText(/等待 1/)).toBeTruthy();
-		expect(screen.getByText(/完成 1/)).toBeTruthy();
-		expect(screen.getByText(/\(1\/3\)/)).toBeTruthy();
-	});
+		const capsule = screen.getByRole("button", { name: "子代理：1 运行 · 1 完成" });
+		expect(capsule.getAttribute("aria-expanded")).toBe("false");
+		expect(capsule.className).toContain("min-h-11");
+		fireEvent.click(capsule);
+		expect(capsule.getAttribute("aria-expanded")).toBe("true");
 
-	it("tap opens BottomSheet with nested tree and tapping agent navigates to detail page", async () => {
-		useSubagentStore.setState({
-			bySession: {
-				[sessionId]: {
-					rows: [
-						{ id: "0-task", status: "completed", prompt: "Parent task" },
-						{ id: "0-task.0-scout", status: "running", prompt: "Child scout" },
-					],
-					loaded: true,
-					error: null,
-				},
-			},
-		});
-
-		render(<SubagentCapsule sessionId={sessionId} />);
-		const pillButton = screen.getByRole("button", { name: "打开子代理摘要" });
-		fireEvent.click(pillButton);
-
-		// BottomSheet should show tree and breadcrumbs
-		expect(await screen.findByText(/task > scout/)).toBeTruthy();
-		expect(screen.getByText("打开完整子代理列表")).toBeTruthy();
-
-		// Clicking child agent navigates to SubagentDetailPage
-		const childAgentBtn = screen.getByRole("button", { name: /scout/i });
-		fireEvent.click(childAgentBtn);
-
+		fireEvent.click(await screen.findByRole("button", { name: /^scout，/ }));
 		expect(nav.push).toHaveBeenCalledWith(paths.subagent(sessionId, "0-task.0-scout"));
+	});
+
+	it("keeps mixed status counts bounded and makes every count readable in the sheet", async () => {
+		seed([
+			{ id: "0-task", status: "running" },
+			{ id: "1-task", status: "pending" },
+			{ id: "2-task", status: "completed" },
+			{ id: "3-task", status: "failed" },
+		]);
+		render(<SubagentCapsule sessionId={sessionId} />);
+		const capsule = screen.getByRole("button", { name: "子代理：1 运行 · 1 排队 · 1 完成 · 1 失败" });
+		expect(capsule.className).toContain("max-w-full");
+		expect(capsule.className).toContain("min-w-0");
+		expect(capsule.className).not.toContain("shrink-0");
+		fireEvent.click(capsule);
+		for (const count of ["1 运行", "1 排队", "1 完成", "1 失败"]) {
+			expect(await screen.findByText(count)).toBeTruthy();
+		}
+		fireEvent.click(screen.getByRole("button", { name: "查看全部子代理" }));
+		expect(nav.push).toHaveBeenCalledWith(paths.subagents(sessionId));
 	});
 });

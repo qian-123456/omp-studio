@@ -69,14 +69,13 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		expect(pushMock).toHaveBeenCalledWith("/schedules");
 
 		// 2. Middle section: Space selector & "按项目 / 按时间" view toggle
-		const projectTab = screen.getByRole("tab", { name: "按项目" });
-		const timeTab = screen.getByRole("tab", { name: "按时间" });
-		expect(projectTab).not.toBeNull();
-		expect(timeTab).not.toBeNull();
+		const projectTab = screen.getByRole("radio", { name: "按项目" });
+		const timeTab = screen.getByRole("radio", { name: "按时间" });
+		expect(projectTab.getAttribute("aria-checked")).toBe("true");
 
 		// Toggle view mode
 		fireEvent.click(timeTab);
-		expect(timeTab.getAttribute("aria-selected")).toBe("true");
+		expect(timeTab.getAttribute("aria-checked")).toBe("true");
 
 		// 3. Bottom section
 		const inboxBtn = screen.getByRole("button", { name: /收件箱/i });
@@ -100,5 +99,22 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		expect(screen.queryByText(/自定义/)).toBeNull();
 		expect(screen.queryByText(/视频/)).toBeNull();
 		expect(screen.queryByText(/笔记本/)).toBeNull();
+	});
+
+	it("cancels interrupted and multi-touch swipes without closing navigation", () => {
+		const onClose = vi.fn();
+		render(<MenuSheet open onClose={onClose} />);
+		const drawer = screen.getByRole("dialog", { name: "导航" });
+		fireEvent.touchStart(drawer, { touches: [{ clientX: 300, clientY: 100 }] });
+		fireEvent.touchMove(drawer, { touches: [{ clientX: 100, clientY: 110 }] });
+		fireEvent.touchCancel(drawer);
+		expect(onClose).not.toHaveBeenCalled();
+		expect(drawer.style.transform).toBe("");
+		fireEvent.touchStart(drawer, { touches: [{ clientX: 300, clientY: 100 }] });
+		fireEvent.touchMove(drawer, { touches: [{ clientX: 100, clientY: 110 }] });
+		fireEvent.touchMove(drawer, { touches: [{ clientX: 100, clientY: 110 }, { clientX: 200, clientY: 110 }] });
+		fireEvent.touchEnd(drawer);
+		expect(onClose).not.toHaveBeenCalled();
+		expect(drawer.style.transform).toBe("");
 	});
 });

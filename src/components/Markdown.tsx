@@ -23,8 +23,7 @@ import { errMsg } from "../lib/dialogs";
 import { toast } from "../lib/toast";
 import { useSessions } from "../stores/sessions";
 import { useHomeDir } from "../lib/hooks";
-import { looksLikeFilePath } from "../lib/fileLinks";
-import { openFileLink } from "../stores/filePreview";
+import { decodeFilePath, looksLikeFilePath } from "../lib/fileLinks";
 import { useSettings } from "../features/settings/store";
 import { FILE_LINK_TAG, rehypeFilePathLinks } from "../features/chat/rehypeFilePathLinks";
 import { MarkdownSecretChip } from "../features/privacy/SecretChip";
@@ -474,9 +473,10 @@ function localImagePath(src: string, cwd: string | null, home: string | null): s
 			return src.replace(/^file:\/\//i, "");
 		}
 	}
-	if (src.startsWith("~/") && home) return `${home.replace(/\/$/, "")}/${src.slice(2)}`;
-	if (src.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(src) || !cwd) return src;
-	return `${cwd.replace(/\/$/, "")}/${src.replace(/^\.\//, "")}`;
+	const path = decodeFilePath(src);
+	if (path.startsWith("~/") && home) return `${home.replace(/\/$/, "")}/${path.slice(2)}`;
+	if (path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path) || !cwd) return path;
+	return `${cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "")}`;
 }
 
 /**

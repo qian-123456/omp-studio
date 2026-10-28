@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToolCall, TranscriptItem } from "../../lib/contracts";
+import { useLive } from "../../stores/live";
+import { buildShareEntries, listShareableIds } from "./share/shareEntries";
 import {
 	computeDurationMs,
 	activityGroupSummary,
@@ -951,5 +953,136 @@ describe("latestRequestAnchor", () => {
 	it("has no anchor when the last turn carries no visible request", () => {
 		expect(latestRequestAnchor(groupTurnBlocks([makeItem({ id: "a1", kind: "assistant", text: "hi" })]))).toBeNull();
 		expect(latestRequestAnchor([])).toBeNull();
+	});
+});
+
+describe("structured assistant content", () => {
+	it("keeps narration between the surrounding prose and tool call without making it the answer", () => {
+		const [block] = groupTurnBlocks([
+			makeItem({ id: "u", kind: "user", text: "inspect" }),
+			makeItem({
+				id: "a",
+				kind: "assistant",
+				text: "before\n\nspoken update\n\nafter",
+				thinking: "private reasoning",
+				toolCalls: [{ id: "c", name: "read", args: {}, intent: null }],
+				assistantParts: [
+					{ kind: "thinking", text: "private reasoning" },
+					{ kind: "text", text: "before" },
+					{ kind: "narration", text: "spoken update" },
+					{ kind: "tool", id: "c" },
+					{ kind: "text", text: "after" },
+				],
+			}),
+		]);
+		if (block.type !== "turn") throw new Error("Expected a turn");
+		expect(block.intermediateSteps.map((step) => step.kind)).toEqual([
+			"thinking", "text", "narration", "tool",
+		]);
+		expect(block.answerItem?.text).toBe("after");
+		const segments = splitInterimProseBySteer(block.intermediateSteps);
+		expect(segments).toEqual([
+			{ type: "steps", folded: [block.intermediateSteps[0]], prose: block.intermediateSteps.slice(1, 3) },
+			{ type: "steps", folded: [block.intermediateSteps[3]], prose: [] },
+		]);
+		expect(liveAnswerCandidate([{ kind: "narration", text: "spoken update" }])).toBeNull();
+	});
+
+	it("matches live normalization for ordinary tagged text without parsing explicit narration literals", () => {
+		const narration = "Public <think>literal</think> update";
+		const item = makeItem({
+			id: "mixed-tags",
+			kind: "assistant",
+			text: `before\n\n${narration}\n\n<think>private</think>answer`,
+			thinking: "earlier reasoning",
+			toolCalls: [{ id: "c", name: "read", args: {}, intent: null }],
+			assistantParts: [
+				{ kind: "thinking", text: "earlier reasoning" },
+				{ kind: "text", text: "before" },
+				{ kind: "narration", text: narration },
+				{ kind: "tool", id: "c" },
+				{ kind: "text", text: "<think>private</think>answer" },
+			],
+		});
+		const sessions = useLive.getState().sessions;
+		try {
+			const sessionId = "ordered-think-compatibility";
+			useLive.getState().reduceFrame({ sessionId, frame: { type: "agent_start" } });
+			useLive.getState().reduceFrame({
+				sessionId,
+				frame: {
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [
+							{ type: "thinking", thinking: "earlier reasoning" },
+							{ type: "text", text: "before" },
+							{ type: "text", narration: true, text: narration },
+							{ type: "toolCall", id: "c", name: "read", arguments: {} },
+							{ type: "text", text: "<think>private</think>answer" },
+						],
+					},
+				},
+			});
+			const [block] = groupTurnBlocks([item]);
+			if (block.type !== "turn") throw new Error("Expected a turn");
+			const ordered = block.intermediateSteps.map((step) => {
+				if (step.kind === "thinking") return { kind: step.kind, text: step.thinking };
+				if (step.kind === "tool") return { kind: step.kind, id: step.call.id };
+				if (step.kind === "text" || step.kind === "narration") return { kind: step.kind, text: step.text };
+				throw new Error("Unexpected step");
+			});
+			ordered.push({ kind: "text", text: block.answerItem?.text ?? "" });
+			expect(ordered).toEqual([
+				{ kind: "thinking", text: "earlier reasoning" },
+				{ kind: "text", text: "before" },
+				{ kind: "narration", text: narration },
+				{ kind: "tool", id: "c" },
+				{ kind: "thinking", text: "private" },
+				{ kind: "text", text: "answer" },
+			]);
+			expect(useLive.getState().sessions[sessionId].liveRequests[0].parts
+				.map(({ kind, ...part }) => kind === "thinking"
+					? { kind, text: "text" in part ? part.text : "" }
+					: { kind, ...part })).toEqual(ordered);
+			expect(block.answerItem?.text).toBe("answer");
+			expect(buildShareEntries([item], new Set([item.id])).map((entry) => entry.text)).toEqual(["answer"]);
+			expect(item.assistantParts?.[4]).toEqual({ kind: "text", text: "<think>private</think>answer" });
+		} finally {
+			useLive.setState({ sessions });
+		}
+	});
+
+	it("does not promote narration or private-only ordinary text to the final answer", () => {
+		const item = makeItem({
+			id: "private-only", kind: "assistant", text: "public\n\n<think>private</think>",
+			assistantParts: [
+				{ kind: "narration", text: "public" },
+				{ kind: "text", text: "<think>private</think>" },
+			],
+		});
+		const [block] = groupTurnBlocks([item]);
+		if (block.type !== "turn") throw new Error("Expected a turn");
+		expect(block.intermediateSteps.map((step) => step.kind)).toEqual(["narration", "thinking"]);
+		expect(block.answerItem).toBeUndefined();
+		expect(listShareableIds([item])).toEqual([]);
+	});
+
+	it("keeps the ordinary final question shareable when narration and a terminal ask tool are present", () => {
+		const item = makeItem({
+			id: "ask-answer", kind: "assistant", text: "public update\n\n<think>private</think>Which option?",
+			toolCalls: [{ id: "ask", name: "ask", args: {}, intent: null }],
+			assistantParts: [
+				{ kind: "narration", text: "public update" },
+				{ kind: "text", text: "<think>private</think>Which option?" },
+				{ kind: "tool", id: "ask" },
+			],
+		});
+		const [block] = groupTurnBlocks([item]);
+		if (block.type !== "turn") throw new Error("Expected a turn");
+		expect(block.intermediateSteps.map((step) => step.kind)).toEqual(["narration", "thinking", "tool"]);
+		expect(block.answerItem?.text).toBe("Which option?");
+		expect(listShareableIds([item])).toEqual([item.id]);
+		expect(buildShareEntries([item], new Set([item.id])).map((entry) => entry.text)).toEqual(["Which option?"]);
 	});
 });

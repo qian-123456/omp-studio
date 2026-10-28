@@ -28,6 +28,40 @@ export const THINK_DESC: Record<string, string> = {
 	max: "无限制深度推理，耗费最多预算",
 };
 
+/** Short Chinese name of a thinking level for the top bar and the level picker. */
+export const THINK_LABEL: Record<string, string> = {
+	auto: "自动",
+	off: "关闭",
+	minimal: "极简",
+	low: "低",
+	medium: "中",
+	high: "高",
+	xhigh: "超高",
+	max: "最高",
+};
+
+export function thinkLabel(level: string | null | undefined): string {
+	const l = level || "auto";
+	return THINK_LABEL[l] ?? l;
+}
+
+/**
+ * Split a settings model reference (`provider/id[:level]`, e.g. `google/gemini-3-flash:high`)
+ * into the catalog key and the optional thinking suffix.
+ */
+export function parseModelRef(ref: string | null | undefined): { provider?: string; id: string; thinking: string | null } | null {
+	const raw = (ref ?? "").trim();
+	if (!raw) return null;
+	const colon = raw.lastIndexOf(":");
+	const level = colon > 0 ? raw.slice(colon + 1) : "";
+	const known = level in THINK_LABEL;
+	const body = known ? raw.slice(0, colon) : raw;
+	const slash = body.indexOf("/");
+	return slash > 0
+		? { provider: body.slice(0, slash), id: body.slice(slash + 1), thinking: known ? level : null }
+		: { id: body, thinking: known ? level : null };
+}
+
 export interface ProviderGroup {
 	provider: string;
 	models: ModelOpt[];

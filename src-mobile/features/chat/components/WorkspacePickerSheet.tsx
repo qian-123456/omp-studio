@@ -1,74 +1,106 @@
-import { FolderOpen } from "lucide-react";
-import { useState } from "react";
+import { Check, Folder, Globe } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
-import { BottomSheet, toast } from "../../../ui";
 import { useSessions } from "../../../core/stores/sessions";
+import { BottomSheet, Button, Field, ListGroup, ListRow, Spinner, TextField, toast } from "../../../ui";
+import type { DirEntry } from "../../sessions/tree";
 
+/** Strip a leading emoji/symbol from desktop directory labels (「🌐 全局」 → 「全局」). */
+export function dirLabel(d: DirEntry): string {
+	return d.label.replace(/^[^\p{L}\p{N}]+/u, "") || d.path;
+}
+
+/** 「在项目中工作」: move this session to another known directory, or type a path. */
 export function WorkspacePickerSheet({
 	open,
 	onClose,
 	sessionId,
 	currentCwd,
-	onCwdChanged,
 }: {
 	open: boolean;
 	onClose: () => void;
 	sessionId: string;
 	currentCwd?: string | null;
-	onCwdChanged?: (newCwd: string) => void;
 }) {
 	const [path, setPath] = useState(currentCwd ?? "");
-	const [busy, setBusy] = useState(false);
+	const [busy, setBusy] = useState<string | null>(null);
+	const [dirs, setDirs] = useState<DirEntry[] | null>(null);
+	const [dirsError, setDirsError] = useState<string | null>(null);
 
-	const submit = async () => {
-		const trimmed = path.trim();
-		if (!trimmed) {
-			toast("请输入项目路径", { kind: "error" });
+	useEffect(() => {
+		if (!open) return;
+		setPath(currentCwd ?? "");
+		let dead = false;
+		setDirsError(null);
+		api<{ dirs: DirEntry[] }>("GET", "/left/dirs")
+			.then((r) => !dead && setDirs(r.dirs ?? []))
+			.catch((e) => !dead && setDirsError(errorMessage(e)));
+		return () => {
+			dead = true;
+		};
+	}, [open, currentCwd]);
+
+	const apply = async (target: string) => {
+		const trimmed = target.trim();
+		if (!trimmed || busy) return;
+		if (trimmed === currentCwd) {
+			onClose();
 			return;
 		}
-		setBusy(true);
+		setBusy(trimmed);
 		try {
 			await api("PATCH", `/sessions/${sessionId}`, { cwd: trimmed });
 			await useSessions.getState().refresh();
-			onCwdChanged?.(trimmed);
-			toast("工作项目目录已更新", { kind: "success" });
+			toast("已切换项目目录", { kind: "success" });
 			onClose();
 		} catch (e) {
-			toast(`更新目录失败：${errorMessage(e)}`, { kind: "error" });
+			toast(`切换目录失败：${errorMessage(e)}`, { kind: "error" });
 		} finally {
-			setBusy(false);
+			setBusy(null);
 		}
 	};
 
 	return (
-		<BottomSheet open={open} onClose={onClose} title="在项目中工作">
-			<div className="space-y-4 px-5 pb-6 pt-2">
-				<p className="text-m-sm text-m-text-2">
-					设置或切换当前会话的项目工作目录。AI 代理将在该目录下读写文件与运行命令。
-				</p>
-
-				<div>
-					<label className="block text-m-xs font-medium text-m-text-2 mb-1">项目目录绝对路径</label>
-					<div className="flex items-center gap-2 rounded-m-md border border-m-border bg-m-surface px-3 py-2">
-						<FolderOpen size={18} className="shrink-0 text-m-text-3" />
-						<input
-							type="text"
+		<BottomSheet open={open} onClose={onClose} title="在项目中工作" subtitle="会话改在所选目录里读写文件、运行命令">
+			<div className="pb-6">
+				{dirs === null && !dirsError && (
+					<div className="flex items-center justify-center gap-2 py-8 text-m-sm text-m-text-3">
+						<Spinner /> 正在加载目录
+					</div>
+				)}
+				{dirsError && <div className="m-selectable px-5 py-4 text-m-sm break-words text-m-danger">目录列表加载失败：{dirsError}</div>}
+				{dirs && dirs.length > 0 && (
+					<ListGroup title="常用目录">
+						{dirs.map((d) => (
+							<ListRow
+								key={d.path}
+								icon={d.kind === "global" ? <Globe size={22} strokeWidth={1.75} /> : <Folder size={22} strokeWidth={1.75} />}
+								title={dirLabel(d)}
+								subtitle={<span className="font-m-mono break-all">{d.path}</span>}
+								right={busy === d.path ? <Spinner size={18} /> : d.path === currentCwd ? <Check size={20} className="text-m-accent" aria-label="当前目录" /> : undefined}
+								chevron={false}
+								disabled={busy !== null}
+								onClick={() => void apply(d.path)}
+							/>
+						))}
+					</ListGroup>
+				)}
+				<div className="flex flex-col gap-3 px-5 pt-6">
+					<Field label="其他目录（绝对路径）">
+						<TextField
 							value={path}
 							onChange={(e) => setPath(e.target.value)}
-							placeholder="/Users/username/my-project"
-							className="min-w-0 flex-1 bg-transparent font-m-mono text-m-sm text-m-text outline-none placeholder:text-m-text-3"
+							placeholder="/Users/me/project"
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
+							className="font-m-mono"
 						/>
-					</div>
+					</Field>
+					<Button variant="primary" block busy={busy === path.trim()} disabled={!path.trim() || busy !== null} onClick={() => void apply(path)}>
+						切换到这个目录
+					</Button>
 				</div>
-
-				<button
-					type="button"
-					disabled={busy || !path.trim()}
-					onClick={() => void submit()}
-					className="flex min-h-11 w-full items-center justify-center rounded-m-pill bg-m-accent px-4 text-m-sm font-medium text-m-accent-text active:opacity-80 disabled:opacity-50"
-				>
-					{busy ? "正在更新…" : "确定并应用"}
-				</button>
 			</div>
 		</BottomSheet>
 	);

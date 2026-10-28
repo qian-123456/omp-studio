@@ -66,7 +66,12 @@ describe("reuseBlocks", () => {
 describe("foldLabel", () => {
 	it("formats running and finished labels", () => {
 		const t = { steps: [{ kind: "text", key: "k", text: "x" }] as Turn["steps"], start: 1000, end: 126_000 };
-		expect(foldLabel(t, true, 4000)).toBe("正在处理 3秒");
-		expect(foldLabel(t, false, 0)).toBe("已处理 1 个步骤 · 2分5秒");
+		expect(foldLabel(t, true, 4000)).toBe("正在运行 · 3 秒");
+		expect(foldLabel(t, false, 0)).toBe("已运行 1 个步骤 · 2 分 5 秒");
+		const tool = { id: "c", name: "bash", args: "ls", status: "done" as const, result: "" };
+		const tools = { steps: [{ kind: "tool", key: "a", tool }, { kind: "tool", key: "b", tool }] as Turn["steps"], start: 1000, end: 58_000 };
+		expect(foldLabel(tools, false, 0)).toBe("已运行 2 个步骤 · 57 秒");
+		const think = { steps: [{ kind: "thinking", key: "t", text: "hm", ms: 12_000 }] as Turn["steps"], start: 0, end: 0 };
+		expect(foldLabel(think, false, 0)).toBe("已思考 12 秒");
 	});
 });

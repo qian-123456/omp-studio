@@ -18,6 +18,7 @@ import { PendingCards } from "./components/PendingCards";
 import { SelectionToolbar } from "./components/SelectionToolbar";
 import { TurnView } from "./components/TurnView";
 import type { Turn } from "./lib/turns";
+import { queueFirstSend } from "./lib/drafts";
 
 class RO {
 	observe() {}
@@ -46,6 +47,7 @@ const wrap = (c: ChatController, node: React.ReactNode) => (
 
 describe("Top Bar (Change 1)", () => {
 	it("renders Menu (left), model+thinking pill, 新建对话, and tool menu", async () => {
+		apiMock.mockImplementation(async (_method: string, path: string) => path.endsWith("/models") ? { models: [{ provider: "openai", id: "gpt-test", thinking: ["low", "high"] }], current: { provider: "openai", id: "gpt-test" }, thinkingLevel: "low", liveThinking: ["low", "high"] } : {});
 		render(<ChatPage route={{ name: "chat", path: "/s/s1", params: { id: "s1" }, query: {} }} />);
 		// Left: Menu
 		expect(screen.getByRole("button", { name: "菜单" })).toBeTruthy();
@@ -57,10 +59,19 @@ describe("Top Bar (Change 1)", () => {
 		expect(screen.getByRole("button", { name: "工具菜单" })).toBeTruthy();
 
 		// Tapping the pill opens the model/thinking bottom sheet picker
-		fireEvent.click(pill);
-		expect(screen.getByText("模型与思考")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "选择模型" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "思考等级" })).toBeTruthy();
+		await act(async () => { fireEvent.click(pill); });
+		expect(screen.getByRole("dialog", { name: "模型" })).toBeTruthy();
+		expect(screen.getByRole("radiogroup", { name: "思考强度" })).toBeTruthy();
+		expect(screen.getAllByText("gpt-test").length).toBeGreaterThan(0);
+	});
+
+	it("consumes a queued home prompt after the draft composer mounts", async () => {
+		queueFirstSend("mobile-draft-home", "从首页开始");
+		apiMock.mockImplementation(async (_method: string, path: string) => path.endsWith("/prompt-ex") ? new Promise(() => {}) : {});
+		await act(async () => { render(<ChatPage route={{ name: "chat", path: "/s/mobile-draft-home", params: { id: "mobile-draft-home" }, query: {} }} />); });
+		expect(screen.getByText("从首页开始")).toBeTruthy();
+		expect(screen.queryByText("会话不存在")).toBeNull();
+		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/mobile-draft-home/prompt-ex", { text: "从首页开始", images: [] });
 	});
 });
 
@@ -156,10 +167,10 @@ describe("Plan mode (Change 7)", () => {
 		});
 
 		render(wrap(c, <Composer sessionId="s1" />));
-		expect(screen.getByText("规划模式已启用")).toBeTruthy();
+		expect(screen.getByText("规划模式")).toBeTruthy();
 	});
 
-	it("renders plan actions (执行计划, 修改计划, copy, download) on assistant output", () => {
+	it("renders plan actions, preserves edit mode, and exits plan mode on execution", async () => {
 		const c = new ChatController("s1");
 		c.store.setState({
 			cstate: {
@@ -186,13 +197,22 @@ describe("Plan mode (Change 7)", () => {
 			src: [],
 		};
 
+		const focus = vi.spyOn(c, "focusComposer");
+		const send = vi.spyOn(c, "send").mockResolvedValue(true);
 		render(wrap(c, <TurnView turn={turn} isLast={true} sessionId="s1" />));
 
-		expect(screen.getByText("规划模式 · 生成的计划")).toBeTruthy();
+		expect(screen.getByText("计划已生成")).toBeTruthy();
+		expect(screen.getByRole("heading", { name: "Step 1: Design" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "修改计划" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "复制计划" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "下载计划" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "下载 .md 文件" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "修改计划" }));
+		expect(focus).toHaveBeenCalledOnce();
+		expect(c.store.getState().cstate?.planMode).toBe(true);
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "执行计划" })); });
+		expect(send).toHaveBeenCalledWith("/plan-action approve keep", "followUp");
+		expect(c.store.getState().cstate?.planMode).toBe(false);
 	});
 });
 
@@ -216,7 +236,7 @@ describe("Text selection annotation (Change 8)", () => {
 });
 
 describe("Question & Choice cards (Change 9)", () => {
-	it("renders single-select radio, freeform input, skip, and retry", () => {
+	it("submits a custom single-select answer and retries a failed response", async () => {
 		const c = new ChatController("s1");
 		const questionEntry: PendingEntry = {
 			request: {
@@ -227,6 +247,7 @@ describe("Question & Choice cards (Change 9)", () => {
 			},
 		};
 
+		const respond = vi.spyOn(c, "respond").mockRejectedValueOnce(new Error("request failed")).mockResolvedValue(undefined);
 		render(wrap(c, <PendingCards />));
 		act(() => c.store.setState({ pendings: [questionEntry] }));
 
@@ -237,16 +258,17 @@ describe("Question & Choice cards (Change 9)", () => {
 		const radios = screen.getAllByRole("radio");
 		expect(radios.length).toBe(3);
 
-		// Freeform input for custom answer
-		expect(screen.getByPlaceholderText("其他（输入自定义回答）")).toBeTruthy();
-
-		// Skip and retry buttons
+		const custom = screen.getByRole("textbox", { name: "其他回答" });
+		fireEvent.change(custom, { target: { value: "Private deployment" } });
 		expect(screen.getByRole("button", { name: "跳过" })).toBeTruthy();
-		expect(screen.getAllByRole("button", { name: "重试" }).length).toBeGreaterThan(0);
-		expect(screen.getByRole("button", { name: "确认" })).toBeTruthy();
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "提交" })); });
+		expect(respond).toHaveBeenCalledWith(questionEntry, { value: "Private deployment" });
+		expect(screen.getByText("提交失败")).toBeTruthy();
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重试" })); });
+		expect(respond).toHaveBeenCalledTimes(2);
 	});
 
-	it("renders multi-select checkboxes for multi questions", () => {
+	it("submits selected choices for a multi-select question", async () => {
 		const c = new ChatController("s1");
 		const multiEntry: PendingEntry = {
 			request: {
@@ -257,12 +279,16 @@ describe("Question & Choice cards (Change 9)", () => {
 			},
 		};
 
+		const respondMulti = vi.spyOn(c, "respondMulti").mockResolvedValue(undefined);
 		render(wrap(c, <PendingCards />));
 		act(() => c.store.setState({ pendings: [multiEntry] }));
 
 		const checkboxes = screen.getAllByRole("checkbox");
 		expect(checkboxes.length).toBe(3);
-		expect(screen.getByRole("button", { name: "完成选择" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("checkbox", { name: "Feature B" }));
+		expect(screen.getByRole("checkbox", { name: "Feature B" }).getAttribute("aria-checked")).toBe("true");
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "提交" })); });
+		expect(respondMulti).toHaveBeenCalledWith(multiEntry, ["Feature B"]);
 		expect(screen.getByRole("button", { name: "跳过" })).toBeTruthy();
 	});
 });

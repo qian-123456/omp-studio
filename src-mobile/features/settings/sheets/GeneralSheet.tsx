@@ -1,9 +1,14 @@
+import { Cpu } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet } from "../../../ui/BottomSheet";
-import { Row, Segmented } from "../controls";
-import { APPROVAL_MODES, type ApprovalMode } from "../settingsMap";
 import { api, errorMessage } from "../../../core/api";
-import { toast } from "../../../ui/Toast";
+import { ListGroup, ListRow, Segmented, toast } from "../../../ui";
+import { SettingRow, SettingsSheet } from "../rows";
+import { APPROVAL_MODES, approvalEffect, type ApprovalMode } from "../settingsMap";
+
+const SOURCE_LABEL: Record<string, string> = {
+	"modelRoles.default": "来自模型角色「全局默认」",
+	newSessionModel: "来自新会话默认模型",
+};
 
 export function GeneralSheet({
 	open,
@@ -21,15 +26,14 @@ export function GeneralSheet({
 	onModeChange: (m: ApprovalMode) => void;
 }) {
 	const [busy, setBusy] = useState(false);
-	const currentMode = mode ?? "write";
 
-	const handleModeChange = async (next: ApprovalMode) => {
+	const choose = async (next: ApprovalMode) => {
 		if (busy) return;
 		setBusy(true);
 		try {
-			await api("POST", "/left/settings/set", { key: "tools.approvalMode", value: next });
-			onModeChange(next);
-			toast("审批模式已更新", { kind: "success" });
+			const r = await api<{ defaultApprovalMode?: ApprovalMode }>("POST", "/left/settings/approval-mode", { mode: next });
+			onModeChange(r.defaultApprovalMode ?? next);
+			toast("审批模式已更新，对之后新开的会话生效", { kind: "success" });
 		} catch (e) {
 			toast(`保存失败：${errorMessage(e)}`, { kind: "error" });
 		} finally {
@@ -38,41 +42,30 @@ export function GeneralSheet({
 	};
 
 	return (
-		<BottomSheet open={open} onClose={onClose} title="通用设置">
-			<div className="space-y-4 px-4 pb-8">
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-3">
-					<Row
-						name="审批权限模式"
-						hint="控制智能体在执行工具、改动文件或运行命令前是否需要征求同意。"
-						stacked
-					>
-						<Segmented
-							label="审批权限模式"
-							value={currentMode}
-							disabled={busy}
-							options={APPROVAL_MODES.map((m) => ({ value: m.value, label: m.label }))}
-							onChange={(v) => void handleModeChange(v as ApprovalMode)}
-						/>
-					</Row>
-
-					<p className="rounded-m-md bg-m-surface p-2.5 text-m-xs text-m-text-3 leading-relaxed">
-						{APPROVAL_MODES.find((m) => m.value === currentMode)?.effect}
-					</p>
-				</div>
-
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-2">
-					<div className="text-m-xs font-medium text-m-text-3">默认模型</div>
-					<div className="flex items-center justify-between text-m-sm">
-						<span className="font-m-mono text-m-text">{defaultModel || "OMP 内置推荐"}</span>
-						{defaultModelSource && (
-							<span className="text-m-xs text-m-text-3">来源：{defaultModelSource}</span>
-						)}
-					</div>
-					<p className="text-[11px] text-m-text-3">
-						可在「模型 → 模型角色」中直接修改主力模型角色与各阶段派发模型。
-					</p>
-				</div>
-			</div>
-		</BottomSheet>
+		<SettingsSheet open={open} onClose={onClose} title="通用设置">
+			<ListGroup title="审批" note="已经在运行的会话保持原来的模式，新开的会话使用这里的选择。">
+				<SettingRow name="审批权限模式" hint={mode ? approvalEffect(mode) : "正在读取当前模式"} stacked>
+					<Segmented
+						label="审批权限模式"
+						value={mode}
+						disabled={busy || mode == null}
+						options={APPROVAL_MODES}
+						onChange={(v) => void choose(v)}
+					/>
+				</SettingRow>
+			</ListGroup>
+			<ListGroup title="新会话" note="要换默认模型，去「模型角色」里修改「全局默认」。">
+				<ListRow
+					icon={<Cpu size={22} strokeWidth={1.75} />}
+					title="默认模型"
+					subtitle={
+						<>
+							<span className="m-selectable block font-m-mono break-all text-m-text-2">{defaultModel || "使用 OMP 内置推荐"}</span>
+							{defaultModelSource && <span className="block">{SOURCE_LABEL[defaultModelSource] ?? `来源：${defaultModelSource}`}</span>}
+						</>
+					}
+				/>
+			</ListGroup>
+		</SettingsSheet>
 	);
 }

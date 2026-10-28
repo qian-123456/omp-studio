@@ -57,7 +57,6 @@ import { useChatUi } from "../chatUi";
 import { openSideChatTab } from "../../sidechat/sideChatActions";
 import { forkAndSend, isForkDraftId, startFork } from "../../sessions/forkDraft";
 import { sendPrompt } from "../send";
-import { useComposer } from "../../../stores/composer";
 import { toast } from "../../../lib/toast";
 import { tNow } from "../../../stores/language";
 import { useSessions } from "../../../stores/sessions";
@@ -316,15 +315,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		get description() { return tNow("slash.cmd.plan.desc"); },
 		icon: NotebookPen,
 		group: "session",
-		// Client-side plan mode (prompt prefix + composer badge); the
-		// produced plan shows in the right-side 计划 tab. omp exposes no
-		// plan-mode RPC toggle for hosts.
+		get argHint() { return tNow("slash.cmd.plan.argHint"); },
+		// Runs the bundled plan extension's `/plan [task]` in omp (read-only
+		// planning, plan file). The right-side 计划 tab opens when a finished
+		// plan revision arrives (Composer), not when plan mode starts.
 		run: async (ctx) => {
-			const composer = useComposer.getState();
-			const on = !(composer.planModes[ctx.sessionId] === true);
-			composer.setPlanMode(ctx.sessionId, on);
-			if (on) useUi.getState().setRightTab("plan");
-			ctx.pushOutput("plan", on ? tNow("slash.cmd.plan.on") : tNow("slash.cmd.plan.off"));
+			await sendAsPrompt(ctx);
 		},
 	},
 	{

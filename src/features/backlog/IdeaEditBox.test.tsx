@@ -152,3 +152,49 @@ describe("IdeaEditBox ESC and overlay layering", () => {
 		expect(onCancel).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("IdeaEditBox stable 3-line editor display and interactions", () => {
+	it("renders stable 3-line textarea and 3-line hint while preserving Enter-to-save, Shift+Enter, and Esc", () => {
+		const onCancel = vi.fn();
+		const onSave = vi.fn();
+
+		render(
+			<IdeaEditBox
+				id="item-1"
+				kind="idea"
+				onKindChange={() => {}}
+				project=""
+				onProjectChange={() => {}}
+				onSave={onSave}
+				onCancel={onCancel}
+			/>,
+		);
+
+		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+		expect(textarea.getAttribute("rows")).toBe("3");
+		expect(textarea.rows).toBe(3);
+		expect(textarea.style.minHeight).toBe("74px");
+		expect(textarea.style.height).toBe("74px");
+
+		// Hint is split into 3 distinct lines with whitespace-nowrap
+		expect(screen.getByText("Enter 保存").className).toContain("whitespace-nowrap");
+		expect(screen.getByText("Shift+Enter 换行").className).toContain("whitespace-nowrap");
+		expect(screen.getByText("Esc 取消").className).toContain("whitespace-nowrap");
+
+		// Preserves text contents & update
+		fireEvent.change(textarea, { target: { value: "new text line" } });
+		expect(useBacklog.getState().editBuffer?.text).toBe("new text line");
+
+		// Preserves Shift+Enter (no save)
+		fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+		expect(onSave).not.toHaveBeenCalled();
+
+		// Preserves Enter-to-save
+		fireEvent.keyDown(textarea, { key: "Enter" });
+		expect(onSave).toHaveBeenCalledTimes(1);
+
+		// Preserves Escape cancel
+		fireEvent.keyDown(textarea, { key: "Escape" });
+		expect(onCancel).toHaveBeenCalledTimes(1);
+	});
+});

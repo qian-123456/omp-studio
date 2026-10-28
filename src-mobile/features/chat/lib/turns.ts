@@ -6,7 +6,7 @@ import type { ImageRef, Item, ToolItem } from "../../../core/types";
 import type { RequestStat } from "./requestStats";
 
 export type Step =
-	| { kind: "thinking"; key: string; text: string }
+	| { kind: "thinking"; key: string; text: string; /** Request duration of the row, ms (approximate thinking time). */ ms: number | null }
 	| { kind: "text"; key: string; text: string }
 	| { kind: "tool"; key: string; tool: ToolItem }
 	| { kind: "stat"; key: string; itemId: string; stat: RequestStat }
@@ -85,7 +85,10 @@ function finalize(d: Draft, stats: Readonly<Record<string, RequestStat>>): Turn 
 		}
 		const isAnswer = it === last && it.text.trim() !== "";
 		if (isAnswer) answer = { id: it.id, text: it.text, images: it.images };
-		if (it.thinking) steps.push({ kind: "thinking", key: `th-${it.id}`, text: it.thinking });
+		if (it.thinking) {
+			const ms = stats[it.id]?.durationMs ?? null;
+			steps.push({ kind: "thinking", key: `th-${it.id}`, text: it.thinking, ms });
+		}
 		if (it.text.trim() && !isAnswer && it.kind !== "bash") steps.push({ kind: "text", key: `tx-${it.id}`, text: it.text });
 		if (it.kind === "bash") {
 			steps.push({ kind: "tool", key: `bash-${it.id}`, tool: { id: it.id, name: "bash", args: it.text, status: "done", result: "" } });
@@ -178,22 +181,68 @@ export function reuseBlocks(prev: readonly Block[], next: Block[]): Block[] {
 	return identical ? (prev as Block[]) : out;
 }
 
-/** Human duration like 「2分5秒」 for fold labels. */
+/** Human duration like 「2 分 5 秒」 for fold labels. */
 export function fmtDur(msec: number): string {
-	if (!(msec > 0)) return "0秒";
+	if (!(msec > 0)) return "0 秒";
 	const s = Math.round(msec / 1000);
-	if (s < 60) return `${Math.max(1, s)}秒`;
+	if (s < 60) return `${Math.max(1, s)} 秒`;
 	const m = Math.floor(s / 60);
-	if (m < 60) return s % 60 ? `${m}分${s % 60}秒` : `${m}分`;
+	if (m < 60) return s % 60 ? `${m} 分 ${s % 60} 秒` : `${m} 分`;
 	const h = Math.floor(m / 60);
-	return m % 60 ? `${h}小时${m % 60}分` : `${h}小时`;
+	return m % 60 ? `${h} 小时 ${m % 60} 分` : `${h} 小时`;
 }
 
+/**
+ * The one quiet line that stands for a turn's machine work. Tools → 「已运行 6 个步骤 · 57 秒」;
+ * thinking only → 「已思考 12 秒」; running → 「正在运行 · 12 秒」.
+ */
 export function foldLabel(t: Pick<Turn, "steps" | "start" | "end">, running: boolean, now: number): string {
-	if (running) return `正在处理 ${fmtDur(now - (t.start || now))}`;
-	const n = t.steps.filter((s) => s.kind !== "stat").length;
-	const d = t.end > t.start && t.start ? ` · ${fmtDur(t.end - t.start)}` : "";
-	return `已处理 ${n} 个步骤${d}`;
+	if (running) return `正在运行 · ${fmtDur(now - (t.start || now))}`;
+	const tools = t.steps.filter((s) => s.kind === "tool").length;
+	const span = t.end > t.start && t.start ? t.end - t.start : 0;
+	if (!tools && t.steps.some((s) => s.kind === "thinking")) {
+		let ms = span;
+		if (!ms) for (const s of t.steps) if (s.kind === "thinking" && s.ms) ms += s.ms;
+		return ms ? `已思考 ${fmtDur(ms)}` : "已思考";
+	}
+	const n = tools || t.steps.filter((s) => s.kind !== "stat").length;
+	return `已运行 ${n} 个步骤${span ? ` · ${fmtDur(span)}` : ""}`;
+}
+
+/** Thinking line label: 「已思考 12 秒」 when the request duration is known. */
+export function thinkingLabel(ms: number | null): string {
+	return ms && ms > 0 ? `已思考 ${fmtDur(ms)}` : "已思考";
+}
+
+export type ToolKind = "shell" | "read" | "edit" | "search" | "web" | "agent" | "todo" | "other";
+
+const TOOL_VERBS: Record<string, [string, ToolKind]> = {
+	bash: ["运行", "shell"],
+	shell: ["运行", "shell"],
+	eval: ["执行代码", "shell"],
+	read: ["读取", "read"],
+	write: ["写入", "edit"],
+	edit: ["编辑", "edit"],
+	ast_edit: ["结构化编辑", "edit"],
+	notebook: ["编辑笔记本", "edit"],
+	grep: ["搜索", "search"],
+	find: ["查找", "search"],
+	glob: ["查找文件", "search"],
+	search: ["搜索", "search"],
+	lsp: ["代码分析", "search"],
+	web_search: ["搜索网页", "web"],
+	fetch: ["打开网页", "web"],
+	browser: ["浏览器", "web"],
+	task: ["子代理", "agent"],
+	todo_write: ["更新待办", "todo"],
+	todo: ["更新待办", "todo"],
+	ask: ["提问", "other"],
+};
+
+/** Readable row facts of a tool call: verb (Chinese when known, else the tool name), target, icon kind. */
+export function toolLine(name: string, args: unknown): { verb: string; target: string; kind: ToolKind } {
+	const hit = TOOL_VERBS[name.toLowerCase()];
+	return { verb: hit ? hit[0] : name, target: argSummary(args), kind: hit ? hit[1] : "other" };
 }
 
 /** One-line argument summary of a tool call, for the collapsed card header. */
@@ -201,7 +250,7 @@ export function argSummary(args: unknown): string {
 	if (args == null) return "";
 	if (typeof args === "string") return args.replace(/\s+/g, " ").slice(0, 120);
 	const rec = args as Record<string, unknown>;
-	for (const k of ["command", "path", "file_path", "pattern", "query", "url", "intent", "description", "prompt"]) {
+	for (const k of ["command", "path", "file_path", "pattern", "query", "url", "description", "prompt", "intent"]) {
 		const v = rec[k];
 		if (typeof v === "string") return v.replace(/\s+/g, " ").slice(0, 120);
 	}

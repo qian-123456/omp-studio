@@ -13,6 +13,7 @@ import type { Item, PendingEntry, RpcFrame, TranscriptPage } from "../../core/ty
 import { isDraftId } from "../../core/types";
 import { toast } from "../../ui";
 import { attention } from "./lib/attention";
+import { isFinalReply, matchRequest, resolveRequest, type AskAnswer, type AskDriverState, type AskSpec } from "./lib/askDriver";
 import { showApproveAll } from "./lib/approvals";
 import { createDebounce, DRAFT_ACTIVITY_DEBOUNCE_MS, draftActivityBody, draftBook } from "./lib/drafts";
 import { attachmentBlocker, buildPrompt, buildPromptBody, sendIntent, type StreamBehavior } from "./lib/prompt";
@@ -77,12 +78,31 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const DEAD = ["interrupted", "suspended", "error"];
 export const isDeadStatus = (status: string | undefined, working: boolean): boolean => !working && !!status && DEAD.includes(status);
 
+/** Markdown quote of a selected passage: every line prefixed with 「> 」 (blank lines kept as 「>」). */
+export function quoteMarkdown(text: string): string {
+	return text
+		.replace(/\r\n?/g, "\n")
+		.trim()
+		.split("\n")
+		.map((l) => (l.trim() ? `> ${l}` : ">"))
+		.join("\n");
+}
+
 /** Hook the composer registers so the controller can read/restore the uncontrolled textarea. */
 export interface ComposerHandle {
 	get(): string;
 	set(text: string, focus?: boolean): void;
 	focus?: () => void;
 	clear?: () => void;
+}
+
+interface AskReplayProgress {
+	states: (AskDriverState | undefined)[];
+	current: PendingEntry;
+	/** A successful reply consumed this request; only fetching its successor is safe. */
+	awaitingNext?: PendingEntry;
+	/** Retained until POST is acknowledged or a newer pending id proves it was consumed. */
+	attempt?: { requestId: string; qIndex: number; toggled: string[] };
 }
 
 export class ChatController {
@@ -108,6 +128,7 @@ export class ChatController {
 	private handoffText: string | null = null;
 	private offs: Array<() => void> = [];
 	private touchDraft: ReturnType<typeof createDebounce>;
+	private askProgress = new Map<string, AskReplayProgress>();
 
 	constructor(readonly id: string) {
 		const handoff = draftBook.takeHandoff(id);
@@ -414,6 +435,75 @@ export class ChatController {
 		}
 	}
 
+	/**
+	 * Replay locally drafted answers of an `ask` call: omp asks one question per request, so every reply waits
+	 * for the next request and answers it from `answers` until the last question is done. Throws (after a toast)
+	 * when a request cannot be answered automatically; the card then offers 重试 from the current request.
+	 */
+	async answerAsk(spec: AskSpec, answers: readonly (AskAnswer | undefined)[], first: PendingEntry): Promise<void> {
+		const kept = this.askProgress.get(spec.toolCallId);
+		const progress: AskReplayProgress = kept ?? {
+			states: answers.map((answer) => (answer ? { answer, toggled: [] } : undefined)),
+			current: first,
+		};
+		this.askProgress.set(spec.toolCallId, progress);
+		try {
+			if (kept) {
+				if (progress.awaitingNext) {
+					const next = await this.waitNextPending(progress.awaitingNext);
+					if (!next) throw new Error("等待下一题超时");
+					progress.current = next;
+					progress.awaitingNext = undefined;
+				} else {
+					// Refresh after a failed POST: it may have reached omp even if its response was lost.
+					const list = await api<PendingEntry[]>("GET", `/sessions/${this.id}/pending-ui`);
+					const current = (Array.isArray(list) ? list : []).find((p) => matchRequest(spec, p.request));
+					if (!current) throw new Error("找不到当前待回答的问题");
+					progress.current = current;
+					const attempted = progress.attempt;
+					if (attempted && current.request?.id !== attempted.requestId) {
+						const state = progress.states[attempted.qIndex];
+						if (state) progress.states[attempted.qIndex] = { ...state, toggled: attempted.toggled };
+					}
+					progress.attempt = undefined;
+				}
+				const current = matchRequest(spec, progress.current.request);
+				if (!current) throw new Error("问题已变化，请刷新后重试");
+				answers.forEach((answer, i) => {
+					if (answer && i >= current.qIndex) progress.states[i] = { answer, toggled: progress.states[i]?.toggled ?? [] };
+				});
+			}
+			for (let guard = 0; guard < 200; guard++) {
+				const cur = progress.current;
+				const m = matchRequest(spec, cur.request);
+				if (!m) throw new Error("问题已变化，请刷新后重试");
+				const q = spec.questions[m.qIndex];
+				const st = progress.states[m.qIndex];
+				const res = resolveRequest(q, m, st);
+				if (res.kind !== "auto") throw new Error(`第 ${m.qIndex + 1} 题无法自动提交`);
+				progress.attempt = { requestId: m.requestId, qIndex: m.qIndex, toggled: res.toggled };
+				await api("POST", `/sessions/${this.id}/ui-respond`, {
+					response: { ...buildPendingResponse(cur, { value: res.value }), type: "extension_ui_response" },
+				});
+				progress.attempt = undefined;
+				if (st) progress.states[m.qIndex] = { ...st, toggled: res.toggled };
+				if (isFinalReply(q, m, res.value) && m.qIndex === spec.questions.length - 1) break;
+				progress.awaitingNext = cur;
+				const next = await this.waitNextPending(cur);
+				if (!next) throw new Error("等待下一题超时");
+				progress.current = next;
+				progress.awaitingNext = undefined;
+			}
+			this.askProgress.delete(spec.toolCallId);
+			await useSessions.getState().refresh().catch(() => []);
+			await this.loadPendings();
+		} catch (e) {
+			toast(`提交失败：${errorMessage(e)}`, { kind: "error" });
+			await this.loadPendings();
+			throw e;
+		}
+	}
+
 	private async waitNextPending(prev: PendingEntry): Promise<PendingEntry | null> {
 		const prevId = prev.request?.id;
 		for (let i = 0; i < 20; i++) {
@@ -575,10 +665,12 @@ export class ChatController {
 		}
 	}
 
+	/** Insert a selected passage as a markdown quote (every line prefixed) at the end of the composer. */
 	stageAnnotation(quote: string, comment?: string): void {
-		const formatted = comment?.trim() ? `> ${quote}\n\n${comment.trim()}` : `> ${quote}\n\n`;
+		const block = quoteMarkdown(quote);
+		const formatted = comment?.trim() ? `${block}\n\n${comment.trim()}` : `${block}\n\n`;
 		const cur = this.composer?.get() ?? "";
-		const next = cur ? `${cur}\n\n${formatted}` : formatted;
+		const next = cur ? `${cur.replace(/\s+$/, "")}\n\n${formatted}` : formatted;
 		this.composer?.set(next, true);
 		this.composer?.focus?.();
 	}

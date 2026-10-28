@@ -1109,3 +1109,26 @@ describe("live reducer — retry event sequence", () => {
 		expect(live().retryHistory).toHaveLength(1);
 	});
 });
+
+describe("structured narration", () => {
+	it("keeps completed content in order without counting narration as reasoning", () => {
+		frame({ type: "agent_start" });
+		const content = [
+			{ type: "thinking", thinking: "spoken update", narration: true },
+			{ type: "toolCall", id: "c", name: "read", arguments: {} },
+			{ type: "text", text: "another update", narration: true },
+			{ type: "thinking", thinking: "private reasoning" },
+			{ type: "text", text: "answer" },
+		];
+		frame({ type: "message_update", timestamp: 100, message: { role: "assistant", content: content.slice(0, 1) } });
+		expect(live().thinkingStartedAt).toBeNull();
+		frame({ type: "message_end", message: { role: "assistant", content } });
+		expect(live().liveRequests[0].parts).toEqual([
+			{ kind: "narration", text: "spoken update" },
+			{ kind: "tool", id: "c" },
+			{ kind: "narration", text: "another update" },
+			{ kind: "thinking", text: "private reasoning", durationMs: undefined },
+			{ kind: "text", text: "answer" },
+		]);
+	});
+});

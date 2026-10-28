@@ -1,4 +1,7 @@
-import { BottomSheet } from "../../../ui/BottomSheet";
+import { BookOpen, Bot, Monitor, Wrench } from "lucide-react";
+import type { ReactNode } from "react";
+import { Chip, ListGroup } from "../../../ui";
+import { GroupBlock, SettingRow, SettingsSheet } from "../rows";
 
 interface PromptLayer {
 	name: string;
@@ -6,105 +9,95 @@ interface PromptLayer {
 	tokens: number;
 	pct: number;
 	source: string;
-	icon: string;
+	icon: ReactNode;
 }
+
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
 
 const LAYERS: PromptLayer[] = [
 	{
-		name: "基础人设与交互边界 (Base Persona)",
-		desc: "定义 OMP 核心助理角色、极简工程标准、避免重复造轮子与中文交流指引。",
+		name: "基础人设与交互边界",
+		desc: "定义 OMP 助理的角色、工程标准和中文交流方式。",
 		tokens: 1240,
 		pct: 25,
 		source: "内置核心",
-		icon: "🤖",
+		icon: <Bot {...ICON} />,
 	},
 	{
-		name: "工作区与运行环境 (Environment)",
-		desc: "动态注入当前工作区绝对路径、操作系统类型、CPU 架构与可用 Git 分支。",
+		name: "工作区与运行环境",
+		desc: "注入当前工作区路径、操作系统、CPU 架构和 Git 分支。",
 		tokens: 780,
 		pct: 16,
 		source: "运行时检测",
-		icon: "💻",
+		icon: <Monitor {...ICON} />,
 	},
 	{
-		name: "工具与审批约束 (Tools & Permissions)",
-		desc: "暴露所有可用工具定义（bash, read, edit, write, find 等）及其严格类型规范与审批级别。",
+		name: "工具与审批约束",
+		desc: "列出全部可用工具（bash、read、edit、write、find 等）的定义和审批级别。",
 		tokens: 2150,
 		pct: 43,
 		source: "工具协议",
-		icon: "🔧",
+		icon: <Wrench {...ICON} />,
 	},
 	{
-		name: "规则文件与跨会话记忆 (Rules & Memories)",
-		desc: "自动加载 AGENTS.md、RULES.md 以及跨会话持久化在 ~/.omp/agent/ 中的历史教训。",
+		name: "规则文件与跨会话记忆",
+		desc: "自动加载 AGENTS.md、RULES.md 和 ~/.omp/agent/ 里保存的历史经验。",
 		tokens: 790,
 		pct: 16,
 		source: "项目与全局",
-		icon: "📚",
+		icon: <BookOpen {...ICON} />,
 	},
 ];
 
-export function PromptCompositionSheet({
-	open,
-	onClose,
-}: {
-	open: boolean;
-	onClose: () => void;
-}) {
+/** Rounded share bar: accent fill on a surface-2 track. */
+function ShareBar({ pct, label }: { pct: number; label: string }) {
+	return (
+		<div
+			role="progressbar"
+			aria-label={label}
+			aria-valuemin={0}
+			aria-valuemax={100}
+			aria-valuenow={pct}
+			className="h-2 w-full overflow-hidden rounded-m-pill bg-m-surface-2"
+		>
+			<div className="h-full rounded-m-pill bg-m-accent" style={{ width: `${pct}%` }} />
+		</div>
+	);
+}
+
+/** Read-only breakdown of the system prompt layers and their token share. */
+export function PromptCompositionSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 	const totalTokens = LAYERS.reduce((s, l) => s + l.tokens, 0);
 
 	return (
-		<BottomSheet open={open} onClose={onClose} title="系统提示词构成 (只读)">
-			<div className="space-y-4 px-4 pb-8">
-				{/* Overview */}
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-2">
-					<div className="flex items-center justify-between">
-						<span className="text-m-xs font-semibold text-m-text">总提示词体积</span>
-						<span className="font-m-mono text-m-sm font-bold text-m-accent">
-							~{(totalTokens / 1000).toFixed(1)}k tokens
-						</span>
+		<SettingsSheet
+			open={open}
+			onClose={onClose}
+			title="系统提示词构成 (只读)"
+			subtitle="每个会话开始时按下面的层级拼成系统提示词。这里只能查看。"
+		>
+			<ListGroup title="总体积">
+				<GroupBlock>
+					<div className="flex items-baseline justify-between gap-3">
+						<span className="text-m-md text-m-text">合计</span>
+						<span className="font-m-mono text-m-lg text-m-text">约 {(totalTokens / 1000).toFixed(1)}k tokens</span>
 					</div>
-					{/* Stacked bar */}
-					<div className="flex h-2 w-full overflow-hidden rounded-full bg-m-surface-2">
-						{LAYERS.map((l, i) => {
-							const colors = ["#3186FF", "#10A37F", "#F59E0B", "#8B5CF6"];
-							return (
-								<div
-									key={l.name}
-									style={{ width: `${l.pct}%`, backgroundColor: colors[i % colors.length] }}
-									className="h-full"
-								/>
-							);
-						})}
-					</div>
-					<p className="text-[11px] text-m-text-3">
-						系统提示词按层级组合并在每个会话开启时注入，为只读构成预览。
-					</p>
-				</div>
+				</GroupBlock>
+			</ListGroup>
 
-				{/* Layer list */}
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-3">
-					<div className="text-m-xs font-semibold text-m-text">分层明细</div>
-
-					<div className="space-y-2.5">
-						{LAYERS.map((layer) => (
-							<div key={layer.name} className="rounded-m-md border border-m-border bg-m-surface/40 p-2.5 space-y-1.5">
-								<div className="flex items-center justify-between text-m-xs">
-									<span className="font-medium text-m-text flex items-center gap-1.5">
-										<span>{layer.icon}</span>
-										<span>{layer.name}</span>
-									</span>
-									<span className="font-m-mono text-m-text-3">
-										~{layer.tokens} ({layer.pct}%)
-									</span>
-								</div>
-								<p className="text-[11px] text-m-text-3 leading-relaxed">{layer.desc}</p>
-								<div className="text-[10px] text-m-text-3">来源：{layer.source}</div>
-							</div>
-						))}
-					</div>
-				</div>
-			</div>
-		</BottomSheet>
+			<ListGroup title="分层明细">
+				{LAYERS.map((layer) => (
+					<SettingRow key={layer.name} icon={layer.icon} name={layer.name} hint={layer.desc} stacked>
+						<ShareBar pct={layer.pct} label={`${layer.name}占比`} />
+						<div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+							<span className="font-m-mono text-m-xs whitespace-nowrap text-m-text-3">
+								约 {layer.tokens} tokens · {layer.pct}%
+							</span>
+							<Chip>{layer.source}</Chip>
+						</div>
+					</SettingRow>
+				))}
+			</ListGroup>
+		</SettingsSheet>
 	);
 }

@@ -1,39 +1,43 @@
-import { Copy, Check } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet } from "../../../ui/BottomSheet";
-import { Chip, toast } from "../../../ui";
 import { copyText } from "../../../core/lib/format";
-import type { MobileInfo } from "../sections";
+import { Chip, IconButton, ListGroup, ListRow, toast } from "../../../ui";
+import { SettingsSheet } from "../rows";
 
-function CopyRow({ label, value }: { label: string; value: string }) {
+/** `GET /left/settings` → `mobile`: state of the phone service on the desktop. */
+export interface MobileInfo {
+	running?: boolean;
+	port?: number | null;
+	lanUrl?: string | null;
+	tunnelUrl?: string | null;
+	ipv6Running?: boolean;
+	ipv6Url?: string | null;
+}
+
+function UrlRow({ label, url }: { label: string; url: string }) {
 	const [copied, setCopied] = useState(false);
-
 	const onCopy = async () => {
-		try {
-			await copyText(value);
+		if (await copyText(url)) {
 			setCopied(true);
-			toast("已复制到剪贴板", { kind: "success" });
+			toast("已复制", { kind: "success" });
 			setTimeout(() => setCopied(false), 2000);
-		} catch {
-			toast("复制失败", { kind: "error" });
+		} else {
+			toast("复制失败，请长按地址手动复制", { kind: "error" });
 		}
 	};
-
 	return (
-		<div className="flex items-center justify-between py-2 border-b border-m-border last:border-b-0">
-			<div className="min-w-0 pr-2">
-				<div className="text-[11px] text-m-text-3">{label}</div>
-				<div className="truncate font-m-mono text-m-xs text-m-text select-all">{value}</div>
-			</div>
-			<button
-				type="button"
-				aria-label={`复制 ${label}`}
-				onClick={onCopy}
-				className="flex h-9 w-9 shrink-0 items-center justify-center rounded-m-md bg-m-surface text-m-text active:bg-m-surface-hover"
-			>
-				{copied ? <Check size={16} className="text-m-success" /> : <Copy size={16} />}
-			</button>
-		</div>
+		<ListRow
+			title={label}
+			subtitle={<span className="m-selectable font-m-mono break-all text-m-text-2">{url}</span>}
+			right={
+				<IconButton
+					variant="plain"
+					icon={copied ? <Check size={20} className="text-m-success" /> : <Copy size={20} strokeWidth={1.75} />}
+					label={`复制${label}`}
+					onClick={() => void onCopy()}
+				/>
+			}
+		/>
 	);
 }
 
@@ -48,54 +52,23 @@ export function ConnectionSheet({
 	mobile?: MobileInfo;
 	appVersion?: string | null;
 }) {
-	const origin = typeof location !== "undefined" ? location.origin : "http://localhost:1425";
-
+	const here = typeof location === "undefined" ? "" : location.origin;
 	return (
-		<BottomSheet open={open} onClose={onClose} title="连接与设备">
-			<div className="space-y-4 px-4 pb-8">
-				{/* Status */}
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-3">
-					<div className="flex items-center justify-between">
-						<span className="text-m-xs font-semibold text-m-text">服务运行状态</span>
-						<Chip tone={mobile.running ? "success" : "warn"}>
-							{mobile.running ? "运行中" : "未运行"}
-						</Chip>
-					</div>
-
-					<div className="flex items-center justify-between text-m-xs text-m-text-3">
-						<span>服务端口</span>
-						<span className="font-m-mono text-m-text">{mobile.port || 1425}</span>
-					</div>
-
-					{appVersion && (
-						<div className="flex items-center justify-between text-m-xs text-m-text-3">
-							<span>电脑应用版本</span>
-							<span className="font-m-mono text-m-text">{appVersion}</span>
-						</div>
-					)}
-				</div>
-
-				{/* Access URLs */}
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-2">
-					<div className="text-m-xs font-semibold text-m-text">访问地址列表</div>
-
-					<div className="divide-y divide-m-border/60">
-						<CopyRow label="当前访问地址" value={origin} />
-						{mobile.lanUrl && <CopyRow label="局域网地址 (LAN)" value={mobile.lanUrl} />}
-						{mobile.tunnelUrl && <CopyRow label="安全隧道地址 (Tunnel)" value={mobile.tunnelUrl} />}
-						{mobile.ipv6Running && mobile.ipv6Url && (
-							<CopyRow label="IPv6 地址" value={mobile.ipv6Url} />
-						)}
-					</div>
-				</div>
-
-				<div className="rounded-m-lg border border-m-border bg-m-bg-elev p-3 space-y-2">
-					<div className="text-m-xs font-semibold text-m-text">配对安全提醒</div>
-					<p className="text-[11px] leading-relaxed text-m-text-3">
-						开关手机服务与切换端口需在电脑客户端操作。如需重置配对或注销已连接设备，请在电脑上重新生成配对二维码。
-					</p>
-				</div>
-			</div>
-		</BottomSheet>
+		<SettingsSheet open={open} onClose={onClose} title="连接与设备">
+			<ListGroup title="手机服务">
+				<ListRow title="服务状态" right={<Chip tone={mobile.running ? "success" : "warn"}>{mobile.running ? "运行中" : "未运行"}</Chip>} />
+				{mobile.port != null && <ListRow title="端口" right={<span className="font-m-mono">{mobile.port}</span>} />}
+				{appVersion && <ListRow title="电脑端版本" right={<span className="font-m-mono">{appVersion}</span>} />}
+			</ListGroup>
+			<ListGroup title="访问地址" note="把地址发到其他设备上的浏览器即可访问；首次打开需要在电脑上确认配对。">
+				{here && <UrlRow label="当前地址" url={here} />}
+				{mobile.lanUrl && <UrlRow label="局域网地址" url={mobile.lanUrl} />}
+				{mobile.tunnelUrl && <UrlRow label="隧道地址" url={mobile.tunnelUrl} />}
+				{mobile.ipv6Running && mobile.ipv6Url && <UrlRow label="IPv6 地址" url={mobile.ipv6Url} />}
+			</ListGroup>
+			<p className="px-8 pt-2 text-m-xs break-words text-m-text-3">
+				开关手机服务、切换端口和 IPv6 需要在电脑上操作：在手机上关闭会立刻断开当前连接，且无法再从手机重新打开。
+			</p>
+		</SettingsSheet>
 	);
 }

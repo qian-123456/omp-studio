@@ -3,18 +3,27 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 
 const HOLD_MS = 480;
 const MOVE_TOLERANCE = 8;
+/** After the hold fires, give the platform time to start a native text selection before opening the sheet. */
+const SELECTION_SETTLE_MS = 260;
+
+function hasSelectionIn(el: HTMLElement): boolean {
+	const s = window.getSelection();
+	if (!s || s.isCollapsed || !s.rangeCount) return false;
+	return el.contains(s.getRangeAt(0).commonAncestorContainer);
+}
 
 /**
  * Long-press (touch/pen only) handlers. Presses that start on links, buttons, code blocks or form controls are
- * ignored so they keep their own behaviour. Cheap: no state, one timer per press.
+ * ignored so they keep their own behaviour. A press that turns into a native text selection keeps the system
+ * selection menu (and the annotation toolbar) instead of opening the action sheet. Cheap: no state.
  */
 export function useLongPress(onLongPress: () => void) {
-	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const timer = useRef<number | null>(null);
 	const start = useRef<{ x: number; y: number } | null>(null);
 	const cb = useRef(onLongPress);
 	cb.current = onLongPress;
 	const cancel = () => {
-		if (timer.current !== null) clearTimeout(timer.current);
+		window.clearTimeout(timer.current ?? undefined);
 		timer.current = null;
 		start.current = null;
 	};
@@ -22,11 +31,14 @@ export function useLongPress(onLongPress: () => void) {
 		onPointerDown(e: ReactPointerEvent<HTMLElement>) {
 			if (e.pointerType === "mouse") return;
 			if ((e.target as HTMLElement).closest("a,button,pre,input,textarea,img,[data-no-longpress]")) return;
-			start.current = { x: e.clientX, y: e.clientY };
-			timer.current = setTimeout(() => {
+			const el = e.currentTarget;
+			timer.current = window.setTimeout(() => {
 				timer.current = null;
-				if (navigator.vibrate) navigator.vibrate(8);
-				cb.current();
+				setTimeout(() => {
+					if (hasSelectionIn(el)) return;
+					if (navigator.vibrate) navigator.vibrate(8);
+					cb.current();
+				}, SELECTION_SETTLE_MS);
 			}, HOLD_MS);
 		},
 		onPointerMove(e: ReactPointerEvent<HTMLElement>) {
@@ -35,9 +47,5 @@ export function useLongPress(onLongPress: () => void) {
 		},
 		onPointerUp: cancel,
 		onPointerCancel: cancel,
-		onContextMenu(e: { preventDefault(): void }) {
-			// Native context menu would fight the action sheet.
-			e.preventDefault();
-		},
 	};
 }

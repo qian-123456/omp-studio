@@ -32,7 +32,8 @@ export interface TreeNode {
  * Build the dispatch tree. The only parent signal in the data is a running
  * subagent's `progress.inflightTaskDetails.progress[]` (the subagents it
  * dispatched); children listed there that are also tracked become nested under
- * it. Everything else is a root. Siblings keep `index` order.
+ * it. Everything else is a root. Siblings display newest (highest index) first
+ * within running and non-running groups.
  */
 export function buildSubagentTree(
 	subagents: Record<string, SubagentInfo>,
@@ -41,6 +42,13 @@ export function buildSubagentTree(
 		.map((id, i) => ({ id, i, index: subagents[id].index ?? Number.POSITIVE_INFINITY }))
 		.sort((a, b) => a.index - b.index || a.i - b.i)
 		.map((x) => x.id);
+	const newestFirstIds = [...ids].sort((a, b) => {
+		const aIndex = subagents[a].index;
+		const bIndex = subagents[b].index;
+		if (aIndex === undefined) return bIndex === undefined ? 0 : 1;
+		if (bIndex === undefined) return -1;
+		return bIndex - aIndex;
+	});
 
 	const parentOf = new Map<string, string>();
 	const isAncestor = (anc: string, of: string): boolean => {
@@ -75,10 +83,10 @@ export function buildSubagentTree(
 	}
 
 	const nodes = new Map<string, TreeNode>(
-		ids.map((id) => [id, { id, state: rowState(subagents[id].status), children: [] }]),
+		newestFirstIds.map((id) => [id, { id, state: rowState(subagents[id].status), children: [] }]),
 	);
 	const roots: TreeNode[] = [];
-	for (const id of ids) {
+	for (const id of newestFirstIds) {
 		const node = nodes.get(id)!;
 		const parent = parentOf.get(id);
 		(parent ? nodes.get(parent)!.children : roots).push(node);
@@ -86,7 +94,7 @@ export function buildSubagentTree(
 	return sortRunningFirst(roots);
 }
 
-/** Stable sort, running siblings first; recurses into children. */
+/** Stable sort, running siblings first; recency order within each group survives. */
 export function sortRunningFirst(nodes: TreeNode[]): TreeNode[] {
 	for (const n of nodes) n.children = sortRunningFirst(n.children);
 	const running = nodes.filter((n) => n.state === "running");

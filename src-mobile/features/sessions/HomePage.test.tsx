@@ -4,14 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.fn();
 const createSessionMock = vi.fn();
-const pushMock = vi.fn();
+const replaceMock = vi.fn();
 
 vi.mock("../../core/api", () => ({
 	api: (...a: unknown[]) => apiMock(...a),
 	errorMessage: (e: unknown) => String((e as Error)?.message ?? e),
 }));
 vi.mock("../../core/nav", () => ({
-	nav: { push: (...a: unknown[]) => pushMock(...a), pushLayer: () => () => {} },
+	nav: { push: vi.fn(), replace: (...a: unknown[]) => replaceMock(...a), pushLayer: () => () => {} },
 	paths: { chat: (id: string) => `/s/${id}`, search: () => "/search", schedules: () => "/schedules", inbox: () => "/inbox", quota: () => "/quota", settings: () => "/settings" },
 }));
 vi.mock("../../core/stores/sessions", () => ({
@@ -30,6 +30,21 @@ vi.mock("../../core/stores/sessions", () => ({
 }));
 
 import { HomePage } from "./HomePage";
+import { takeFirstSend } from "../chat/lib/drafts";
+
+vi.mock("../chat/components/useVoiceInput", () => ({
+	useVoiceInput: ({ onTranscribed }: { onTranscribed: (text: string) => void }) => ({ recording: false, transcribing: false, toggleRecording: async () => onTranscribed("语音转写内容") }),
+}));
+
+const typeMessage = async (text: string) => {
+	const input = screen.getByLabelText("消息输入框") as HTMLTextAreaElement;
+	await act(async () => {
+		fireEvent.input(input, { target: { value: text } });
+		// iOS 15 is part of this app's supported target and lacks Promise.withResolvers.
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+	});
+	return input;
+};
 
 beforeEach(() => {
 	apiMock.mockImplementation(async (_m: string, path: string) => {
@@ -75,34 +90,38 @@ describe("HomePage", () => {
 		expect(screen.queryByText("聊天/任务")).toBeNull();
 
 		// Pill composer exists with + and mic (when empty)
-		expect(screen.getByRole("button", { name: "新建会话选项" })).not.toBeNull();
+		expect(screen.getByRole("button", { name: "添加" })).not.toBeNull();
 		expect(screen.getByRole("button", { name: "语音输入" })).not.toBeNull();
 		expect(screen.getByPlaceholderText("今天想做点什么？")).not.toBeNull();
 	});
 
-	it("switches from mic to send button when text is typed and hands off draft on send", async () => {
+	it("keeps the mic available while typing and activates the draft route with the first prompt queued", async () => {
 		render(<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />);
+		await typeMessage("帮我编写单元测试");
+		expect(screen.getByRole("button", { name: "语音输入" })).toBeTruthy();
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送" })); });
+		expect(createSessionMock).toHaveBeenCalledWith({ cwd: "/project/workspace", mode: "code" });
+		expect(replaceMock).toHaveBeenCalledWith("/s/mobile-draft-1");
+		expect(takeFirstSend("mobile-draft-1")).toBe("帮我编写单元测试");
+		expect(apiMock.mock.calls.some((call) => String(call[1]).includes("/prompt-ex"))).toBe(false);
+	});
 
-		const input = screen.getByPlaceholderText("今天想做点什么？");
-		fireEvent.change(input, { target: { value: "帮我编写单元测试" } });
+	it("inserts voice transcription at the caret without creating or sending a session", async () => {
+		render(<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />);
+		const input = await typeMessage("前文后文");
+		input.setSelectionRange(2, 2);
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "语音输入" })); });
+		expect(input.value).toBe("前文 语音转写内容后文");
+		expect(createSessionMock).not.toHaveBeenCalled();
+		expect(replaceMock).not.toHaveBeenCalled();
+	});
 
-		// Mic button is replaced by send button
-		expect(screen.queryByRole("button", { name: "语音输入" })).toBeNull();
-		const sendBtn = screen.getByRole("button", { name: "发送消息" });
-		expect(sendBtn).not.toBeNull();
-
-		await act(async () => {
-			fireEvent.click(sendBtn);
-		});
-
-		expect(createSessionMock).toHaveBeenCalledWith({
-			cwd: "/project/workspace",
-			mode: "code",
-		});
-		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/mobile-draft-1/prompt-ex", {
-			text: "帮我编写单元测试",
-			images: [],
-		});
-		expect(pushMock).toHaveBeenCalledWith("/s/real-session-123");
+	it("retains the text on creation failure instead of entering a missing-session route", async () => {
+		createSessionMock.mockRejectedValueOnce(new Error("离线"));
+		render(<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />);
+		const input = await typeMessage("保留这条消息");
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送" })); });
+		expect(input.value).toBe("保留这条消息");
+		expect(replaceMock).not.toHaveBeenCalled();
 	});
 });

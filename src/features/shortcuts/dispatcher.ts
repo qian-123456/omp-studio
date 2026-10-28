@@ -122,7 +122,7 @@ const ACTIONS: Record<ShortcutId, ((e: KeyboardEvent) => boolean) | undefined> =
 
 /** Resolve and run the shortcut `e` triggers. Returns true when an action handled it. */
 export function dispatchShortcut(e: KeyboardEvent): boolean {
-	if (e.isComposing || isComposing({ key: e.key })) return false;
+	if (e.isComposing || isComposing({ nativeEvent: e, key: e.key })) return false;
 	// Settings ▸ 快捷键 is recording a combo: it must not fire an already-bound action.
 	if (document.querySelector("[data-shortcut-recording]")) return false;
 	const id = matchShortcut(e);

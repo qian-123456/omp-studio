@@ -92,15 +92,18 @@ describe("schedule form", () => {
 describe("schedule text", () => {
 	it("describes cadences", () => {
 		expect(cadenceText({ kind: "interval", minutes: 120 })).toBe("每 2 小时");
+		expect(cadenceText({ kind: "interval", minutes: undefined as unknown as number })).toBe("周期未设置");
+		expect(cadenceText({ kind: "interval", minutes: 0 })).toBe("周期未设置");
+		expect(cadenceText({ kind: "interval", minutes: -1 })).toBe("周期未设置");
 		expect(cadenceText({ kind: "interval", minutes: 45 })).toBe("每 45 分钟");
 		expect(cadenceText(base.cadence)).toBe("每 2 周 周一、周三 09:00");
 		expect(cadenceText({ kind: "daily", time: "07:30" })).toBe("每天 07:30");
 		expect(cadenceText({ kind: "monthly", day: 5, time: "10:00", every: 3 })).toBe("每 3 月 5 日 10:00");
 	});
 
-	it("builds the card meta line", () => {
-		expect(scheduleMeta({ ...base, nextRunAt: "2026-01-02T03:04:00" })).toBe("进行中 · 下次 1-02 03:04 · 上次成功 · 2/5 次");
-		expect(scheduleMeta({ ...base, enabled: false, lifecycle: "paused", lastRunStatus: null, maxRuns: null })).toBe("已暂停");
+	it("builds the row meta line", () => {
+		expect(scheduleMeta({ ...base, nextRunAt: "2026-01-02T03:04:00" })).toBe("下次 1-02 03:04 · 上次成功 · 2/5 次");
+		expect(scheduleMeta({ ...base, enabled: false, lifecycle: "paused", lastRunStatus: null, maxRuns: null })).toBe("");
 	});
 
 	it("formats run history durations", () => {

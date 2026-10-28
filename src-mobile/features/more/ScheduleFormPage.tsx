@@ -1,21 +1,23 @@
-import { Cpu } from "lucide-react";
+import { ChevronRight, Cpu } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav } from "../../core/nav";
 import type { PageProps } from "../../core/nav";
-import { BottomSheet, PageHeader, toast } from "../../ui";
+import { BottomSheet, Button, Field, inputCls, PageHeader, Segmented, Spinner, Switch, toast } from "../../ui";
 import { ModelPicker } from "../../ui/ModelPicker";
 import type { PickerModel } from "../../ui/ModelPicker";
-import { btnCls, btnPrimaryCls, Field, inputCls, LoadState, Segmented, Switch, useLoad } from "./controls";
+import { LoadState, Select, useLoad } from "./controls";
 import {
 	buildPayload,
 	emptyForm,
 	formFromSchedule,
 	KIND_LABEL,
 	modelString,
+	NOTIFY_HINT,
 	NOTIFY_LABEL,
 	parseModel,
+	RUN_MODE_HINT,
 	RUN_MODE_LABEL,
 	validateForm,
 	WEEK,
@@ -27,21 +29,44 @@ interface Dir {
 	label?: string;
 }
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+const KIND_OPTIONS = (Object.keys(KIND_LABEL) as CadenceKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
+const RUN_MODE_OPTIONS = (Object.keys(RUN_MODE_LABEL) as RunMode[]).map((k) => ({ value: k, label: RUN_MODE_LABEL[k] }));
+const NOTIFY_OPTIONS = (Object.keys(NOTIFY_LABEL) as NotifyMode[]).map((k) => ({ value: k, label: NOTIFY_LABEL[k] }));
+
+/** Inline error node; `role="alert"` so screen readers announce it. */
+const err = (msg?: string): ReactNode => (msg ? <span role="alert">{msg}</span> : undefined);
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<section className="flex flex-col gap-4 rounded-m-lg border border-m-border bg-m-surface p-4">
-			<h2 className="flex items-center gap-2 text-m-md font-semibold">
-				<span className="flex h-6 w-6 items-center justify-center rounded-m-pill bg-m-accent text-m-xs text-m-accent-text">{n}</span>
-				{title}
-			</h2>
+		<section className="flex flex-col gap-4">
+			<h2 className="px-1 text-m-lg text-m-text">{title}</h2>
 			{children}
 		</section>
 	);
 }
 
-const KIND_OPTIONS = (Object.keys(KIND_LABEL) as CadenceKind[]).map((k) => [k, KIND_LABEL[k]] as const);
-const RUN_MODE_OPTIONS = (Object.keys(RUN_MODE_LABEL) as RunMode[]).map((k) => [k, RUN_MODE_LABEL[k]] as const);
-const NOTIFY_OPTIONS = (Object.keys(NOTIFY_LABEL) as NotifyMode[]).map((k) => [k, NOTIFY_LABEL[k]] as const);
+/** Label + hint for button groups (not a `<label>`, so tapping the caption never toggles a button). */
+function Group({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+	return (
+		<div role="group" aria-label={label}>
+			<span className="mb-1.5 block px-1 text-m-xs font-medium text-m-text-3">{label}</span>
+			{children}
+			{hint && <span className="mt-1.5 block px-1 text-m-xs break-words text-m-text-3">{hint}</span>}
+		</div>
+	);
+}
+
+function SwitchRow({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+	return (
+		<div className="flex min-h-14 items-center gap-3 rounded-[14px] bg-m-surface py-1.5 pr-3 pl-4">
+			<span className="min-w-0 flex-1">
+				<span className="block text-m-md text-m-text">{label}</span>
+				{hint && <span className="block text-m-xs break-words text-m-text-3">{hint}</span>}
+			</span>
+			<Switch checked={checked} label={label} onChange={onChange} />
+		</div>
+	);
+}
 
 interface Loaded {
 	dirs: Dir[];
@@ -129,51 +154,57 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 	return (
 		<>
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-				<div className="flex flex-col gap-4 p-4">
-					<Step n={1} title="任务内容">
-						<Field label="名称" error={errors.name}>
+				<div className="flex flex-col gap-9 px-4 pt-3 pb-8">
+					<Section title="任务内容">
+						<Field label="名称" error={err(errors.name)}>
 							<input className={inputCls} value={f.name} placeholder="例如：每日晨报" onChange={(e) => set({ name: e.target.value })} />
 						</Field>
-						<Field label="提示词" error={errors.prompt} hint="每次运行时发送给 agent">
+						<Field label="提示词" error={err(errors.prompt)} hint="每次运行时发送给 agent">
 							<textarea
-								className={`${inputCls} min-h-28 py-2`}
+								className={`${inputCls} min-h-32 resize-none leading-6`}
 								rows={5}
 								value={f.prompt}
 								placeholder="定时发送给 agent 的提示词"
 								onChange={(e) => set({ prompt: e.target.value })}
 							/>
 						</Field>
-					</Step>
+					</Section>
 
-					<Step n={2} title="运行环境">
-						<Field label="工作目录" error={errors.cwd}>
-							<select className={inputCls} value={f.cwd} onChange={(e) => set({ cwd: e.target.value })}>
+					<Section title="运行环境">
+						<Field label="工作目录" error={err(errors.cwd)} hint={f.cwd || undefined}>
+							<Select value={f.cwd} onChange={(v) => set({ cwd: v })}>
 								{!f.cwd && <option value="">请选择目录</option>}
 								{cwdOptions.map((d) => (
 									<option key={d.path} value={d.path}>
 										{d.label || d.path}
 									</option>
 								))}
-							</select>
+							</Select>
 						</Field>
-						<Field label="运行方式">
+						<Group label="运行方式" hint={RUN_MODE_HINT[f.runMode]}>
 							<Segmented label="运行方式" value={f.runMode} options={RUN_MODE_OPTIONS} onChange={(v) => set({ runMode: v })} />
-						</Field>
-						<Field label="模型" hint={f.model ? undefined : "留空使用默认模型"}>
-							<button type="button" onClick={openModels} className={`${btnCls} justify-start`}>
-								<Cpu size={16} className="shrink-0" />
-								<span className="min-w-0 break-all text-left">
-									{f.model ? `${f.model}${f.thinking ? ` · ${f.thinking}` : ""}` : "默认模型"}
+						</Group>
+						<Group label="模型" hint={f.model ? undefined : "留空使用默认模型"}>
+							<button
+								type="button"
+								onClick={openModels}
+								className="flex min-h-12 w-full items-center gap-3 rounded-[14px] bg-m-surface py-3 pr-3 pl-4 text-left active:bg-m-surface-2"
+							>
+								<Cpu size={20} strokeWidth={1.75} className="shrink-0 text-m-text-2" />
+								<span className="min-w-0 flex-1 text-m-md break-all text-m-text">
+									{f.model ?? "默认模型"}
+									{f.model && f.thinking && <span className="text-m-text-3"> · {f.thinking}</span>}
 								</span>
+								<ChevronRight size={18} className="shrink-0 text-m-text-3" aria-hidden />
 							</button>
-						</Field>
-					</Step>
+						</Group>
+					</Section>
 
-					<Step n={3} title="重复节奏">
+					<Section title="重复节奏">
 						<Segmented label="重复方式" value={f.kind} options={KIND_OPTIONS} onChange={(v) => set({ kind: v })} />
 						{f.kind === "interval" && (
-							<Field label="每隔" error={errors.iv}>
-								<div className="flex gap-2">
+							<Field label="每隔" error={err(errors.iv)}>
+								<span className="flex gap-2">
 									<input
 										className={inputCls}
 										type="number"
@@ -182,51 +213,57 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 										value={f.ivNum}
 										onChange={(e) => set({ ivNum: e.target.value })}
 									/>
-									<select className={`${inputCls} w-28 shrink-0`} value={f.ivUnit} onChange={(e) => set({ ivUnit: e.target.value as "min" | "hour" })}>
-										<option value="min">分钟</option>
-										<option value="hour">小时</option>
-									</select>
-								</div>
+									<span className="w-32 shrink-0">
+										<Select label="单位" value={f.ivUnit} onChange={(v) => set({ ivUnit: v as "min" | "hour" })}>
+											<option value="min">分钟</option>
+											<option value="hour">小时</option>
+										</Select>
+									</span>
+								</span>
 							</Field>
 						)}
 						{f.kind === "daily" && (
 							<>
-								<Field label="时间" error={errors.time}>
+								<Field label="时间" error={err(errors.time)}>
 									<input className={inputCls} type="time" value={f.time} onChange={(e) => set({ time: e.target.value })} />
 								</Field>
-								<Field label="星期" hint="不选 = 按天重复">
-									<div className="flex flex-wrap gap-2">
-										{WEEK.map((w, i) => (
-											<button
-												key={w}
-												type="button"
-												aria-pressed={f.weekdays.includes(i)}
-												onClick={() => toggleDay(i)}
-												className={`min-h-11 min-w-11 whitespace-nowrap rounded-m-pill border px-3 text-m-sm ${
-													f.weekdays.includes(i) ? "border-m-accent bg-m-accent text-m-accent-text" : "border-m-border bg-m-bg text-m-text-2"
-												}`}
-											>
-												周{w}
-											</button>
-										))}
+								<Group label="星期" hint="不选则按天重复">
+									<div className="flex flex-wrap justify-between gap-1">
+										{WEEK.map((w, i) => {
+											const on = f.weekdays.includes(i);
+											return (
+												<button
+													key={w}
+													type="button"
+													aria-pressed={on}
+													aria-label={`周${w}`}
+													onClick={() => toggleDay(i)}
+													className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill text-m-sm whitespace-nowrap transition-colors duration-(--m-dur-fast) ${
+														on ? "bg-m-accent-soft font-medium text-m-accent-soft-text" : "bg-m-surface text-m-text-2"
+													}`}
+												>
+													{w}
+												</button>
+											);
+										})}
 									</div>
-								</Field>
+								</Group>
 								<Field label={f.weekdays.length ? "每隔几周" : "每隔几天"}>
 									<input className={inputCls} type="number" inputMode="numeric" min={1} value={f.every} onChange={(e) => set({ every: e.target.value })} />
 								</Field>
 							</>
 						)}
 						{f.kind === "once" && (
-							<Field label="运行时间" error={errors.at}>
+							<Field label="运行时间" error={err(errors.at)}>
 								<input className={inputCls} type="datetime-local" value={f.at} onChange={(e) => set({ at: e.target.value })} />
 							</Field>
 						)}
 						{f.kind === "monthly" && (
 							<>
-								<Field label="每月几号" error={errors.mday} hint="超过当月天数时按当月最后一天运行">
+								<Field label="每月几号" error={err(errors.mday)} hint="超过当月天数时按当月最后一天运行">
 									<input className={inputCls} type="number" inputMode="numeric" min={1} max={31} value={f.mday} onChange={(e) => set({ mday: e.target.value })} />
 								</Field>
-								<Field label="时间" error={errors.mTime}>
+								<Field label="时间" error={err(errors.mTime)}>
 									<input className={inputCls} type="time" value={f.mTime} onChange={(e) => set({ mTime: e.target.value })} />
 								</Field>
 								<Field label="每隔几个月">
@@ -236,10 +273,10 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 						)}
 						{f.kind !== "once" && (
 							<>
-								<Field label="结束时间（可选）" error={errors.endAt}>
+								<Field label="结束时间（可选）" error={err(errors.endAt)}>
 									<input className={inputCls} type="datetime-local" value={f.endAt} onChange={(e) => set({ endAt: e.target.value })} />
 								</Field>
-								<Field label="最多运行次数（可选）" error={errors.maxRuns}>
+								<Field label="最多运行次数（可选）" error={err(errors.maxRuns)}>
 									<input
 										className={inputCls}
 										type="number"
@@ -252,40 +289,33 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 								</Field>
 							</>
 						)}
-					</Step>
+					</Section>
 
-					<Step n={4} title="通知与开关">
-						<Field label="通知">
+					<Section title="通知与开关">
+						<Group label="通知" hint={NOTIFY_HINT[f.notify]}>
 							<Segmented label="通知" value={f.notify} options={NOTIFY_OPTIONS} onChange={(v) => set({ notify: v })} />
-						</Field>
-						<div className="flex items-center justify-between gap-3">
-							<span className="text-m-md">每次运行新建会话</span>
-							<Switch checked={f.fresh} label="每次运行新建会话" onChange={(v) => set({ fresh: v })} />
+						</Group>
+						<div className="flex flex-col gap-2">
+							<SwitchRow label="每次运行新建会话" hint="关闭则在同一个会话里继续" checked={f.fresh} onChange={(v) => set({ fresh: v })} />
+							<SwitchRow label="启用" checked={f.enabled} onChange={(v) => set({ enabled: v })} />
 						</div>
-						<div className="flex items-center justify-between gap-3">
-							<span className="text-m-md">启用</span>
-							<Switch checked={f.enabled} label="启用" onChange={(v) => set({ enabled: v })} />
-						</div>
-					</Step>
+					</Section>
 				</div>
 			</div>
-			<div
-				className="shrink-0 border-t border-m-border bg-m-bg px-4 pt-3"
-				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 12px)" }}
-			>
+			<div className="shrink-0 bg-m-bg px-4 pt-2" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 12px)" }}>
 				{errCount > 0 && (
-					<div role="alert" className="mb-2 text-m-sm text-m-danger">
+					<div role="alert" className="mb-2 px-1 text-m-sm text-m-danger">
 						有 {errCount} 项需要修改，请查看上方标红提示
 					</div>
 				)}
 				{submitError && (
-					<div role="alert" className="mb-2 break-words text-m-sm text-m-danger">
+					<div role="alert" className="m-selectable mb-2 px-1 text-m-sm break-words text-m-danger">
 						{submitError}
 					</div>
 				)}
-				<button type="button" className={`${btnPrimaryCls} w-full`} disabled={saving} onClick={() => void save()}>
-					{saving ? "保存中" : "保存"}
-				</button>
+				<Button variant="primary" block busy={saving} onClick={() => void save()}>
+					保存
+				</Button>
 			</div>
 
 			<BottomSheet
@@ -295,27 +325,36 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 				fullHeight
 				footer={
 					<div className="flex gap-2">
-						<button type="button" className={`${btnCls} flex-1`} onClick={() => { set({ model: null, thinking: null }); setModelOpen(false); }}>
+						<Button
+							block
+							className="flex-1"
+							onClick={() => {
+								set({ model: null, thinking: null });
+								setModelOpen(false);
+							}}
+						>
 							使用默认模型
-						</button>
-						<button type="button" className={`${btnPrimaryCls} flex-1`} onClick={() => setModelOpen(false)}>
+						</Button>
+						<Button variant="primary" block className="flex-1" onClick={() => setModelOpen(false)}>
 							完成
-						</button>
+						</Button>
 					</div>
 				}
 			>
 				{models ? (
 					<ModelPicker
-						className="h-full p-4"
+						className="h-full px-4 pb-4"
 						models={models}
 						value={selected}
 						onChange={(m) => set({ model: modelString(m), thinking: null })}
 						thinking={{ value: f.thinking, onChange: (t) => set({ thinking: t }) }}
 					/>
 				) : modelsError ? (
-					<div className="p-4 text-m-sm text-m-danger">{modelsError}</div>
+					<p className="m-selectable px-5 py-4 text-m-sm break-words text-m-danger">{modelsError}</p>
 				) : (
-					<div className="p-4 text-m-text-3">加载模型列表</div>
+					<div className="flex justify-center py-12 text-m-text-3">
+						<Spinner size={22} />
+					</div>
 				)}
 			</BottomSheet>
 		</>

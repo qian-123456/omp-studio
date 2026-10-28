@@ -343,3 +343,22 @@ describe("MessageList live turn", () => {
 		});
 	});
 });
+
+describe("live narration visibility", () => {
+	it.each(["message_update", "message_end"])("renders narration in source order for %s", (type) => {
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: {
+			type,
+			message: { role: "assistant", content: [
+				{ type: "thinking", thinking: "first spoken update", narration: true },
+				{ type: "toolCall", id: "read-call", name: "read", arguments: { path: "/example.txt" } },
+				{ type: "text", text: "second spoken update", narration: true },
+			] },
+		} });
+		mount("s1");
+		const first = screen.getByText("first spoken update");
+		const second = screen.getByText("second spoken update");
+		expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /正在思考|已思考/ })).toBeNull();
+	});
+});

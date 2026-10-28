@@ -1,6 +1,5 @@
-/** [B] Held-queue sending: the turn-end auto-send drain (one item per turn
- * end) and send-now for one item. The queued items themselves are shown as
- * grey "排队中" bubbles in the thread (QueuedBubbles). */
+/** [B] Held-queue sending: merge every ready item at turn end, plus send-now
+ * for one item. Queued items appear as grey bubbles in the thread. */
 
 import { useEffect, useRef } from "react";
 import { create } from "zustand";
@@ -11,32 +10,59 @@ import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { useSettings } from "../settings/store";
 import { dropEchoesForTexts, isFlowBusy, restoreTextsToDraft, useLive } from "../../stores/live";
-import { type HeldItem, heldQueueItems, useHeldQueue } from "./heldQueue";
+import { type HeldItem, heldQueueItems, mergeHeldItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 
 const EMPTY_LIST: HeldItem[] = [];
 /** Sessions with an auto-send in flight (guards concurrent drains). */
 const draining = new Set<string>();
 
-/** Send the first queued item for `sid`. Returns false when nothing was sent. */
-export async function drainNext(sid: string): Promise<boolean> {
-	if (draining.has(sid)) return false;
+export interface ReadyHeldBatch {
+	items: HeldItem[];
+	originalItems: HeldItem[];
+}
+
+/** Reserve the currently ready messages so a user send and drain cannot duplicate them. */
+export function takeReadyHeldBatch(sid: string, allowStreaming = false): ReadyHeldBatch | null {
+	if (draining.has(sid)) return null;
 	const live = useLive.getState().sessions[sid];
-	if (live && isFlowBusy(live)) return false;
-	const item = heldQueueItems(sid)[0];
-	// Send-now already has this item in flight: it removes it on success.
-	if (!item || item.id in useQueuedBusy.getState().busy) return false;
-	useHeldQueue.getState().shift(sid);
+	if (live && (isFlowBusy(live) || (!allowStreaming && live.streaming))) return null;
+	const originalItems = heldQueueItems(sid);
+	const busy = useQueuedBusy.getState().busy;
+	const items = originalItems.filter((item) => item.text.trim() && !(item.id in busy));
+	if (items.length === 0) return null;
 	draining.add(sid);
+	const ids = new Set(items.map((item) => item.id));
+	const queue = useHeldQueue.getState();
+	for (let i = (queue.queues[sid]?.length ?? 0) - 1; i >= 0; i--) {
+		if (ids.has(queue.queues[sid][i].id)) queue.remove(sid, i);
+	}
+	return { items, originalItems };
+}
+
+/** Restore exactly the reserved snapshot after a failed or cancelled send. */
+export function restoreReadyHeldBatch(sid: string, batch: ReadyHeldBatch): void {
+	useHeldQueue.getState().restore(sid, batch.items, batch.originalItems);
+}
+
+export function releaseReadyHeldBatch(sid: string): void {
+	draining.delete(sid);
+}
+
+/** Send all ready queued items for `sid` as one prompt. */
+export async function drainNext(sid: string): Promise<boolean> {
+	const batch = takeReadyHeldBatch(sid);
+	if (!batch) return false;
+	const { text, images } = mergeHeldItems(batch.items);
 	try {
-		await sendPrompt(sid, item.text, item.images?.length ? { images: item.images } : undefined);
+		await sendPrompt(sid, text, images.length ? { images } : undefined);
 		return true;
 	} catch (err) {
-		useHeldQueue.getState().unshift(sid, item);
+		restoreReadyHeldBatch(sid, batch);
 		if (!isResumeCancelled(err)) toast.error(tNow("chatView.queue.sendFailed", { error: errMsg(err) }));
 		return false;
 	} finally {
-		draining.delete(sid);
+		releaseReadyHeldBatch(sid);
 	}
 }
 
@@ -89,7 +115,7 @@ const setBusy = (id: string, on: boolean) =>
  * A second call while one is in flight, or for an item the turn-end drain
  * already took, sends nothing. */
 export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean): Promise<void> {
-	if (item.id in useQueuedBusy.getState().busy) return;
+	if (draining.has(sid) || item.id in useQueuedBusy.getState().busy) return;
 	if (!(useHeldQueue.getState().queues[sid] ?? EMPTY_LIST).some((x) => x.id === item.id)) return;
 	setBusy(item.id, true);
 	try {

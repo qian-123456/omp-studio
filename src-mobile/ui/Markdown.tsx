@@ -117,7 +117,7 @@ function MdPre({ children, node }: ComponentProps<"pre"> & ExtraProps) {
 			);
 		}
 		return (
-			<CodeBlock code={code} lang={lang} className="my-2">
+			<CodeBlock code={code} lang={lang} className="my-4">
 				{codeEl?.props.children}
 			</CodeBlock>
 		);
@@ -129,14 +129,14 @@ function MdPre({ children, node }: ComponentProps<"pre"> & ExtraProps) {
 			return <MermaidBlock source={code} />;
 		}
 		return (
-			<CodeBlock code={code} lang={lang} className="my-2">
+			<CodeBlock code={code} lang={lang} className="my-4">
 				{codeEl?.props.children}
 			</CodeBlock>
 		);
 	}
 
 	return (
-		<CodeBlock code={code} lang={lang} className="my-2">
+		<CodeBlock code={code} lang={lang} className="my-4">
 			{codeEl?.props.children}
 		</CodeBlock>
 	);

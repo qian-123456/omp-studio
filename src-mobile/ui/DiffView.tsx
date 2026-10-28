@@ -70,7 +70,7 @@ export const DiffView = memo(function DiffView({ diff, className = "" }: { diff:
 	}, [lines]);
 	return (
 		<div
-			className={`overflow-x-auto rounded-m-md border border-m-border bg-m-code-bg font-m-mono text-m-xs ${className}`}
+			className={`overflow-x-auto rounded-m-md bg-m-code-bg font-m-mono text-m-xs ${className}`}
 		>
 			<div className="w-max min-w-full py-1">
 				{chunks

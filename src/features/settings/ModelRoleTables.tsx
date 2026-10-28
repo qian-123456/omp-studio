@@ -282,7 +282,7 @@ function RowEditor({
 	const table: AssignmentTable = isAgent ? "agentModelOverrides" : "modelRoles";
 	const project = ctx.scope === "project";
 	const committed = isAgent ? (project ? row.projectOverride : row.globalOverride) : project ? row.projectValue : row.globalValue;
-	const shown = isAgent ? (row.steps[0]?.value ?? null) : project ? (row.projectValue ?? row.globalValue) : row.globalValue;
+	const shown = isAgent ? (row.steps[0]?.value ?? null) : project ? row.projectValue : row.globalValue;
 	const pinned = isLiteral(shown);
 	const fallback = isAgent ? agentFallbackRole(row) : "";
 	// Neither way is "in use" while nothing is set: an unset row must not look like it picked a role.

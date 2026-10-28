@@ -1,26 +1,31 @@
-import { GitBranch, Sparkles } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { FileDiff, GitBranch, GitCommitHorizontal, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { relTime } from "../../core/lib/format";
 import type { PageProps } from "../../core/nav";
-import { BottomSheet, Chip, DiffView, EmptyState, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
-import { ActionButton, ErrorState, LoadGate, Loading } from "./PanelState";
+import {
+	Button,
+	Chip,
+	DiffView,
+	EmptyState,
+	inputCls,
+	ListGroup,
+	ListRow,
+	PageHeader,
+	PullToRefresh,
+	Segmented,
+	Switch,
+	toast,
+} from "../../ui";
+import { ErrorState, LoadGate, Loading } from "./PanelState";
 import { useLayer, useLoad } from "./hooks";
-import { groupGitStatus, splitPath, statusTone } from "./pure";
+import { splitPath, stageState, statusTone } from "./pure";
 import type { GitFile } from "./pure";
 
 interface GitStatus {
 	isRepo: boolean;
 	branch: string | null;
 	files: GitFile[];
-}
-interface Branch {
-	name: string;
-	displayName?: string;
-	isRemote: boolean;
-	isCurrentWorktree: boolean;
-	upstream?: string | null;
-	lastCommitMessage?: string | null;
 }
 interface Commit {
 	sha: string;
@@ -29,7 +34,7 @@ interface Commit {
 	author: string;
 	ts: string;
 }
-type Tab = "status" | "branches" | "log";
+type Tab = "status" | "log";
 type DiffTarget = { title: string; query: string };
 
 const q = encodeURIComponent;
@@ -38,11 +43,12 @@ export async function gitCommitSuggest(base: string): Promise<string> {
 	return res?.suggestion ?? "";
 }
 
-const TABS: readonly [Tab, string][] = [
-	["status", "变更"],
-	["branches", "分支"],
-	["log", "历史"],
+const TABS: ReadonlyArray<{ value: Tab; label: string }> = [
+	{ value: "status", label: "改动" },
+	{ value: "log", label: "历史" },
 ];
+
+const STATUS_LABEL: Record<string, string> = { M: "修改", A: "新增", D: "删除", R: "重命名", "??": "新文件" };
 
 export function GitPage({ route }: PageProps) {
 	const id = route.params.id;
@@ -56,17 +62,11 @@ export function GitPage({ route }: PageProps) {
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader title="Git">
-				<div className="flex gap-2 px-4 pb-2">
-					{TABS.map(([t, label]) => (
-						<Chip key={t} active={tab === t} onClick={() => setTab(t)}>
-							{label}
-						</Chip>
-					))}
+				<div className="px-4 pt-1 pb-3">
+					<Segmented label="Git 视图" value={tab} options={TABS} onChange={setTab} />
 				</div>
 			</PageHeader>
-			{tab === "status" && <StatusTab base={base} onDiff={setDiff} />}
-			{tab === "branches" && <BranchesTab base={base} />}
-			{tab === "log" && <LogTab base={base} onDiff={setDiff} />}
+			{tab === "status" ? <StatusTab base={base} onDiff={setDiff} /> : <LogTab base={base} onDiff={setDiff} />}
 		</div>
 	);
 }
@@ -78,12 +78,20 @@ function DiffPage({ base, target, onClose }: { base: string; target: DiffTarget;
 	);
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
-			<PageHeader title={target.title} onBack={onClose} />
-			<div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+			<PageHeader title="改动差异" onBack={onClose} />
+			<div
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2"
+				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}
+			>
+				<h1 className="m-selectable mb-3 px-1 text-m-lg font-medium break-all text-m-text">{target.title}</h1>
 				{state.loading && <Loading />}
 				{state.error !== null && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
 				{state.data &&
-					(state.data.diff.trim() ? <DiffView diff={state.data.diff} /> : <EmptyState title="没有差异" />)}
+					(state.data.diff.trim() ? (
+						<DiffView diff={state.data.diff} className="m-selectable rounded-m-lg" />
+					) : (
+						<EmptyState icon={<FileDiff size={22} strokeWidth={1.75} />} title="没有差异" />
+					))}
 			</div>
 		</div>
 	);
@@ -92,27 +100,11 @@ function DiffPage({ base, target, onClose }: { base: string; target: DiffTarget;
 function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => void }) {
 	const state = useLoad((signal) => api<GitStatus>("GET", `${base}/status`, undefined, { signal }), [base]);
 	const [busy, setBusy] = useState(false);
-	const [sheet, setSheet] = useState(false);
+	const [message, setMessage] = useState("");
 	const [suggesting, setSuggesting] = useState(false);
-	const msgRef = useRef<HTMLTextAreaElement>(null);
-
-	const handleSuggest = async () => {
-		if (suggesting || busy) return;
-		setSuggesting(true);
-		try {
-			const text = await gitCommitSuggest(base);
-			if (text) {
-				if (msgRef.current) msgRef.current.value = text;
-			} else {
-				toast("未能生成提交建议", { kind: "error" });
-			}
-		} catch (e) {
-			toast(`建议失败：${errorMessage(e)}`, { kind: "error" });
-		} finally {
-			setSuggesting(false);
-		}
-	};
-	const groups = useMemo(() => groupGitStatus(state.data?.files ?? []), [state.data]);
+	const files = state.data?.files ?? [];
+	const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files]);
+	const pendingPaths = useMemo(() => files.filter((f) => f.unstaged || f.status === "??").map((f) => f.path), [files]);
 
 	const act = async (fn: () => Promise<unknown>): Promise<boolean> => {
 		if (busy) return false;
@@ -128,185 +120,158 @@ function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => 
 			setBusy(false);
 		}
 	};
-	const stage = (kind: "stage" | "unstage", paths: string[]) =>
-		act(() => api("POST", `${base}/${kind}`, { paths }));
+	const stage = (kind: "stage" | "unstage", paths: string[]) => act(() => api("POST", `${base}/${kind}`, { paths }));
+
+	const suggest = async () => {
+		if (suggesting || busy) return;
+		setSuggesting(true);
+		try {
+			const text = await gitCommitSuggest(base);
+			if (text) setMessage(text);
+			else toast("没能生成提交说明", { kind: "error" });
+		} catch (e) {
+			toast(`生成失败：${errorMessage(e)}`, { kind: "error" });
+		} finally {
+			setSuggesting(false);
+		}
+	};
 	const commit = async () => {
-		const message = msgRef.current?.value.trim() ?? "";
-		if (!message) {
-			toast("请输入提交信息", { kind: "error" });
+		const msg = message.trim();
+		if (!msg) {
+			toast("请先写提交说明", { kind: "error" });
 			return;
 		}
-		const ok = await act(() => api("POST", `${base}/commit`, { message }));
-		if (ok) {
-			setSheet(false);
+		if (await act(() => api("POST", `${base}/commit`, { message: msg }))) {
+			setMessage("");
 			toast("已提交", { kind: "success" });
 		}
 	};
-	const closeSheet = () => setSheet(false);
 
 	return (
-		<>
-			<PullToRefresh onRefresh={() => state.reload(true)}>
-				<LoadGate state={state}>
-					{(st) => {
-						if (!st.isRepo) return <EmptyState title="当前目录不是 Git 仓库" />;
-						return (
-							<div className="pb-24">
-								<div className="flex items-center gap-2 border-b border-m-border px-4 py-3 text-m-sm text-m-text-2">
-									<GitBranch size={16} className="shrink-0" />
-									<span className="whitespace-nowrap">分支</span>
-									<b className="min-w-0 break-all text-m-text">{st.branch ?? "(detached)"}</b>
-								</div>
-								{st.files.length === 0 && <EmptyState title="工作区干净" />}
-								<Section title="已暂存" files={groups.staged} staged busy={busy} onStage={stage} onDiff={onDiff} />
-								<Section title="未暂存" files={groups.unstaged} busy={busy} onStage={stage} onDiff={onDiff} />
-								<Section title="未跟踪" files={groups.untracked} busy={busy} onStage={stage} onDiff={onDiff} />
+		<PullToRefresh onRefresh={() => state.reload(true)}>
+			<LoadGate state={state}>
+				{(st) => {
+					if (!st.isRepo) return <EmptyState icon={<GitBranch size={22} strokeWidth={1.75} />} title="当前目录不是 Git 仓库" />;
+					return (
+						<div style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}>
+							<div className="flex flex-wrap items-center gap-2 px-5 pt-1 pb-1 text-m-sm text-m-text-2">
+								<GitBranch size={18} strokeWidth={1.75} className="shrink-0" />
+								<span className="m-selectable min-w-0 font-medium break-all text-m-text">{st.branch ?? "未在分支上"}</span>
 							</div>
-						);
-					}}
-				</LoadGate>
-			</PullToRefresh>
-			{state.data?.isRepo && (
-				<div
-					className="shrink-0 border-t border-m-border bg-m-bg px-4 pt-2"
-					style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}
-				>
-					<ActionButton
-						tone="primary"
-						className="w-full"
-						disabled={groups.staged.length === 0 || busy}
-						onClick={() => setSheet(true)}
-					>
-						提交已暂存的变更（{groups.staged.length}）
-					</ActionButton>
-				</div>
-			)}
-			<BottomSheet
-				open={sheet}
-				onClose={closeSheet}
-				title="提交变更"
-				footer={
-					<div className="flex gap-2 p-3">
-						<ActionButton className="flex-1" onClick={closeSheet}>
-							取消
-						</ActionButton>
-						<ActionButton tone="primary" className="flex-1" disabled={busy || suggesting} onClick={() => void commit()}>
-							确认提交（{groups.staged.length}）
-						</ActionButton>
-					</div>
-				}
-			>
-				<div className="p-4">
-					<div className="mb-2 flex items-center justify-between">
-						<span className="text-m-sm text-m-text-2">提交说明</span>
-						<button
-							type="button"
-							disabled={busy || suggesting}
-							onClick={() => void handleSuggest()}
-							className="flex min-h-8 items-center gap-1.5 rounded-m-pill border border-m-border px-3 text-m-xs font-medium text-m-accent active:bg-m-surface-hover disabled:opacity-50"
-						>
-							{suggesting ? <Spinner size={12} /> : <Sparkles size={14} />}
-							AI 建议
-						</button>
-					</div>
-					<textarea
-						ref={msgRef}
-						rows={4}
-						placeholder="输入提交信息，或点击右上角 AI 建议"
-						autoCapitalize="off"
-						className="w-full resize-none rounded-m-md border border-m-border bg-m-surface p-3 text-m-md text-m-text outline-none focus:border-m-accent"
-					/>
-				</div>
-			</BottomSheet>
-		</>
+							{st.files.length === 0 ? (
+								<EmptyState icon={<GitCommitHorizontal size={22} strokeWidth={1.75} />} title="没有改动" hint="工作区是干净的" />
+							) : (
+								<>
+									<div className="flex items-center justify-between gap-3 px-8 pt-4 pb-2">
+										<span className="text-m-xs font-medium whitespace-nowrap text-m-text-3">
+											改动 {st.files.length} · 已暂存 {stagedCount}
+										</span>
+										{pendingPaths.length > 0 ? (
+											<Button variant="ghost" disabled={busy} onClick={() => void stage("stage", pendingPaths)} className="-mr-4">
+												全部暂存
+											</Button>
+										) : (
+											<Button
+												variant="ghost"
+												disabled={busy}
+												onClick={() => void stage("unstage", st.files.map((f) => f.path))}
+												className="-mr-4"
+											>
+												全部取消暂存
+											</Button>
+										)}
+									</div>
+									<ListGroup>
+										{st.files.map((f) => (
+											<FileRow key={f.path} file={f} busy={busy} onStage={stage} onDiff={onDiff} />
+										))}
+									</ListGroup>
+									<section className="mt-6 px-4">
+										<h3 className="px-4 pb-2 text-m-xs font-medium whitespace-nowrap text-m-text-3">提交</h3>
+										<textarea
+											value={message}
+											onChange={(e) => setMessage(e.target.value)}
+											rows={3}
+											aria-label="提交说明"
+											placeholder="写一句提交说明"
+											autoCapitalize="off"
+											className={`${inputCls} block resize-none rounded-m-lg`}
+										/>
+										<div className="mt-3 flex items-center justify-end gap-2">
+											<Button
+												variant="tonal"
+												icon={<Sparkles size={18} strokeWidth={1.75} />}
+												busy={suggesting}
+												disabled={busy}
+												onClick={() => void suggest()}
+											>
+												AI 生成
+											</Button>
+											<Button
+												variant="primary"
+												disabled={busy || suggesting || stagedCount === 0 || !message.trim()}
+												onClick={() => void commit()}
+											>
+												提交
+											</Button>
+										</div>
+										{stagedCount === 0 && <p className="px-4 pt-2 text-right text-m-xs text-m-text-3">先暂存要提交的文件</p>}
+									</section>
+								</>
+							)}
+						</div>
+					);
+				}}
+			</LoadGate>
+		</PullToRefresh>
 	);
 }
 
-function Section({
-	title,
-	files,
-	staged = false,
+function FileRow({
+	file,
 	busy,
 	onStage,
 	onDiff,
 }: {
-	title: string;
-	files: GitFile[];
-	staged?: boolean;
+	file: GitFile;
 	busy: boolean;
 	onStage: (kind: "stage" | "unstage", paths: string[]) => Promise<boolean>;
 	onDiff: (t: DiffTarget) => void;
 }) {
-	if (files.length === 0) return null;
-	const kind = staged ? "unstage" : "stage";
+	const { name, dir } = splitPath(file.path);
+	const st = stageState(file);
+	const fullyStaged = st === "staged";
+	const partial = st === "partial";
 	return (
-		<section>
-			<div className="flex items-center justify-between gap-2 bg-m-surface px-4 py-1">
-				<span className="whitespace-nowrap text-m-sm font-semibold text-m-text-2">
-					{title}（{files.length}）
+		<div className="m-list-row flex w-full items-center pl-4">
+			<button
+				type="button"
+				onClick={() => onDiff({ title: name, query: `path=${q(file.path)}&staged=${fullyStaged}` })}
+				className="m-list-sep flex min-h-14 min-w-0 flex-1 items-center gap-3 py-3 pr-3 text-left active:bg-m-surface-hover"
+			>
+				<Chip tone={statusTone(file.status)} className="min-w-12 justify-center">
+					{STATUS_LABEL[file.status] ?? file.status}
+				</Chip>
+				<span className="min-w-0 flex-1">
+					<span className="block text-m-md break-all text-m-text">{name}</span>
+					{(dir || partial) && (
+						<span className="mt-0.5 block text-m-xs break-all text-m-text-3">
+							{dir}
+							{dir && partial ? " · " : ""}
+							{partial ? "部分已暂存" : ""}
+						</span>
+					)}
 				</span>
-				<ActionButton disabled={busy} onClick={() => void onStage(kind, files.map((f) => f.path))}>
-					{staged ? "全部取消暂存" : "全部暂存"}
-				</ActionButton>
-			</div>
-			{files.map((f) => {
-				const { name, dir } = splitPath(f.path);
-				return (
-					<div key={f.path} className="flex items-center gap-2 border-b border-m-border pl-4 pr-2">
-						<Chip tone={statusTone(f.status)} className="w-9 justify-center">
-							{f.status}
-						</Chip>
-						<button
-							type="button"
-							onClick={() =>
-								onDiff({
-									title: `${name}${staged ? "（已暂存）" : ""}`,
-									query: `path=${q(f.path)}&staged=${staged}`,
-								})
-							}
-							className="min-h-14 min-w-0 flex-1 py-2 text-left active:bg-m-surface-hover"
-						>
-							<span className="block break-all text-m-md text-m-text">{name}</span>
-							{dir && <span className="block break-all text-m-xs text-m-text-3">{dir}</span>}
-						</button>
-						<ActionButton disabled={busy} onClick={() => void onStage(kind, [f.path])}>
-							{staged ? "取消暂存" : "暂存"}
-						</ActionButton>
-					</div>
-				);
-			})}
-		</section>
-	);
-}
-
-function BranchesTab({ base }: { base: string }) {
-	const state = useLoad((signal) => api<Branch[]>("GET", `${base}/branches`, undefined, { signal }), [base]);
-	return (
-		<PullToRefresh onRefresh={() => state.reload(true)}>
-			<LoadGate state={state}>
-				{(bs) =>
-					bs.length === 0 ? (
-						<EmptyState title="没有分支" />
-					) : (
-						<ul className="m-0 list-none p-0">
-							{bs.map((b) => (
-								<li key={b.name} className="border-b border-m-border px-4 py-3">
-									<div className="flex flex-wrap items-center gap-2">
-										<span className="min-w-0 break-all text-m-md text-m-text">{b.displayName || b.name}</span>
-										{b.isCurrentWorktree && <Chip tone="accent">当前</Chip>}
-										{b.isRemote && <Chip>远程</Chip>}
-									</div>
-									{b.upstream && <div className="break-all text-m-xs text-m-text-3">跟踪 {b.upstream}</div>}
-									{b.lastCommitMessage && (
-										<div className="break-words text-m-xs text-m-text-3">{b.lastCommitMessage}</div>
-									)}
-								</li>
-							))}
-						</ul>
-					)
-				}
-			</LoadGate>
-		</PullToRefresh>
+			</button>
+			<span className="m-list-sep flex min-h-14 shrink-0 items-center self-stretch pr-3">
+				<Switch
+					label={`暂存 ${file.path}`}
+					checked={fullyStaged}
+					disabled={busy}
+					onChange={(next) => void onStage(next ? "stage" : "unstage", [file.path])}
+				/>
+			</span>
+		</div>
 	);
 }
 
@@ -317,26 +282,26 @@ function LogTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => voi
 			<LoadGate state={state}>
 				{(cs) =>
 					cs.length === 0 ? (
-						<EmptyState title="没有提交" />
+						<EmptyState icon={<GitCommitHorizontal size={22} strokeWidth={1.75} />} title="还没有提交" />
 					) : (
-						<ul className="m-0 list-none p-0">
-							{cs.map((c) => (
-								<li key={c.sha}>
-									<button
-										type="button"
+						<div className="pt-2" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}>
+							<ListGroup>
+								{cs.map((c) => (
+									<ListRow
+										key={c.sha}
+										title={c.subject}
+										subtitle={
+											<span className="flex flex-wrap items-center gap-x-2">
+												<code className="font-m-mono">{c.short}</code>
+												<span className="break-all">{c.author}</span>
+												<span className="whitespace-nowrap">{relTime(c.ts)}</span>
+											</span>
+										}
 										onClick={() => onDiff({ title: c.short, query: `commit=${q(c.sha)}` })}
-										className="block min-h-14 w-full border-b border-m-border px-4 py-3 text-left active:bg-m-surface-hover"
-									>
-										<span className="block break-words text-m-md text-m-text">{c.subject}</span>
-										<span className="mt-0.5 flex items-center gap-2 text-m-xs text-m-text-3">
-											<code className="font-m-mono">{c.short}</code>
-											<span className="min-w-0 break-all">{c.author}</span>
-											<span className="ml-auto whitespace-nowrap">{relTime(c.ts)}</span>
-										</span>
-									</button>
-								</li>
-							))}
-						</ul>
+									/>
+								))}
+							</ListGroup>
+						</div>
 					)
 				}
 			</LoadGate>

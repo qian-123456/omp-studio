@@ -146,6 +146,9 @@ const TUI_ONLY_SUBCOMMANDS: Record<string, readonly string[]> = {
 	mcp: ["reauth", "unauth", "smithery-login", "smithery-logout", "reconnect", "notifications"],
 };
 
+/** omp commands the app drives itself (the plan review panel's actions). */
+const HOST_ONLY_COMMANDS: ReadonlySet<string> = new Set(["plan-action"]);
+
 function runnableSubs(parent: string, subs: SlashSubcommand[] | undefined): SlashSubcommand[] {
 	const banned = TUI_ONLY_SUBCOMMANDS[parent];
 	return (subs ?? []).filter((s) => s.name && !banned?.includes(s.name));
@@ -226,7 +229,7 @@ export function buildSlashSections(
 	}
 	const seen = new Set<string>();
 	for (const c of commands) {
-		if (taken.has(c.name) || seen.has(c.name)) continue;
+		if (taken.has(c.name) || seen.has(c.name) || HOST_ONLY_COMMANDS.has(c.name)) continue;
 		if (c.aliases?.some((a) => taken.has(a))) continue;
 		seen.add(c.name);
 		const item = toDynamicItem(c);

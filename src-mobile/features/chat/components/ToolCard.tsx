@@ -1,13 +1,25 @@
-import { ChevronRight } from "lucide-react";
+import {
+	Bot,
+	CircleAlert,
+	Check,
+	FilePen,
+	FileText,
+	Globe,
+	ListChecks,
+	Search,
+	SquareTerminal,
+	Wrench,
+	type LucideIcon,
+} from "lucide-react";
 import { memo, useState } from "react";
 import type { ToolItem } from "../../../core/types";
 import { DiffView, looksLikeDiff, Spinner } from "../../../ui";
-import { argSummary, prettyArgs } from "../lib/turns";
+import { prettyArgs, toolLine, type ToolKind } from "../lib/turns";
 
-/** Open state survives virtualized remounts of the row. */
+/** Open state survives remounts of the row. */
 const openKeys = new Set<string>();
+/** Very long results render in steps; 「显示全部」 always reveals the rest. */
 const RESULT_CAP = 8000;
-const ARGS_CAP = 4000;
 
 export type ToolState = "run" | "ok" | "bad" | "none";
 
@@ -18,41 +30,58 @@ export function toolState(t: ToolItem, turnRunning: boolean): ToolState {
 	return "ok";
 }
 
-function StateBadge({ state }: { state: ToolState }) {
-	if (state === "run")
+const KIND_ICON: Record<ToolKind, LucideIcon> = {
+	shell: SquareTerminal,
+	read: FileText,
+	edit: FilePen,
+	search: Search,
+	web: Globe,
+	agent: Bot,
+	todo: ListChecks,
+	other: Wrench,
+};
+
+function StateMark({ state }: { state: ToolState }) {
+	if (state === "run") return <Spinner size={14} className="text-m-text-3" />;
+	if (state === "bad")
 		return (
-			<span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-m-pill bg-m-surface-2 px-2 py-0.5 text-m-xs text-m-text-2">
-				<Spinner size={12} />
-				运行中
+			<span className="inline-flex items-center gap-1 whitespace-nowrap text-m-xs text-m-danger">
+				<CircleAlert size={16} strokeWidth={1.75} aria-hidden />
+				失败
 			</span>
 		);
-	if (state === "bad")
-		return <span className="shrink-0 whitespace-nowrap rounded-m-pill bg-m-diff-del px-2 py-0.5 text-m-xs text-m-danger">失败</span>;
-	if (state === "ok") return <span className="shrink-0 whitespace-nowrap text-m-xs text-m-success">✓</span>;
+	if (state === "ok") return <Check size={16} strokeWidth={1.75} aria-label="完成" className="text-m-text-3" />;
 	return null;
 }
 
+/** Monospace block: wraps (full text, no sideways scrolling for prose output). */
 function Pre({ text, err }: { text: string; err?: boolean }) {
 	const [all, setAll] = useState(false);
 	const cut = !all && text.length > RESULT_CAP;
 	return (
 		<>
-			<pre className={`m-0 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-m-sm bg-m-code-bg p-2 font-m-mono text-m-xs ${err ? "text-m-danger" : "text-m-text"}`}>
+			<pre
+				className={`m-selectable m-0 whitespace-pre-wrap break-words font-m-mono text-m-xs leading-5 ${err ? "text-m-danger" : "text-m-text-2"}`}
+			>
 				{cut ? text.slice(0, RESULT_CAP) : text}
 			</pre>
 			{cut && (
 				<button
 					type="button"
 					onClick={() => setAll(true)}
-					className="mt-1 min-h-9 whitespace-nowrap rounded-m-pill border border-m-border px-3 text-m-xs text-m-text-2 active:bg-m-surface-hover"
+					className="mt-2 min-h-11 min-w-11 whitespace-nowrap rounded-m-pill bg-m-surface-2 px-4 text-m-xs text-m-text-2 active:opacity-80"
 				>
-					显示全部（{text.length} 字符）
+					显示全部（共 {text.length} 字）
 				</button>
 			)}
 		</>
 	);
 }
 
+/**
+ * One tool call inside an expanded 「已运行 N 个步骤」 group: icon, verb + target in a readable line and a quiet
+ * status. Tap reveals arguments and result in an 18-radius surface block.
+ */
 export const ToolCard = memo(function ToolCard({ id, tool, state }: { id: string; tool: ToolItem; state: ToolState }) {
 	const [open, setOpen] = useState(openKeys.has(id));
 	const toggle = () => {
@@ -62,38 +91,45 @@ export const ToolCard = memo(function ToolCard({ id, tool, state }: { id: string
 			return !o;
 		});
 	};
+	const line = toolLine(tool.name, tool.args);
+	const Icon = KIND_ICON[line.kind];
 	const args = prettyArgs(tool.args);
 	const hasResult = tool.status !== "running" || tool.result !== "";
 	return (
-		<div className="my-1.5 rounded-m-md border border-m-border bg-m-surface">
+		<div>
 			<button
 				type="button"
 				onClick={toggle}
 				aria-expanded={open}
-				className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-m-sm"
+				className="-mx-2 flex min-h-11 w-[calc(100%+16px)] items-start gap-3 rounded-m-md px-2 py-2.5 text-left active:bg-m-surface-hover"
 			>
-				<ChevronRight size={14} className={`shrink-0 text-m-text-3 transition-transform ${open ? "rotate-90" : ""}`} />
-				<span className="shrink-0 whitespace-nowrap font-m-mono font-medium">{tool.name}</span>
-				<span className="min-w-0 flex-1 truncate text-m-xs text-m-text-3">{argSummary(tool.args)}</span>
-				<StateBadge state={state} />
+				<Icon size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-m-text-3" />
+				<span className="min-w-0 flex-1 text-m-sm text-m-text-2">
+					<span className="font-medium text-m-text">{line.verb}</span>
+					{line.target && <span className="break-words [overflow-wrap:anywhere]"> {line.target}</span>}
+				</span>
+				<span className="mt-0.5 flex shrink-0 items-center">
+					<StateMark state={state} />
+				</span>
 			</button>
 			{open && (
-				<div className="space-y-1.5 border-t border-m-border px-3 py-2">
+				<div className="mt-1 mb-2 space-y-3 rounded-m-md bg-m-surface p-4">
+					<div className="whitespace-nowrap font-m-mono text-m-xs text-m-text-3">{tool.name}</div>
 					{args && (
-						<>
-							<div className="text-m-xs text-m-text-3">参数</div>
-							<Pre text={args.length > ARGS_CAP ? `${args.slice(0, ARGS_CAP)}\n（参数过长，已截断）` : args} />
-						</>
+						<div>
+							<div className="mb-1 text-m-xs text-m-text-3">参数</div>
+							<Pre text={args} />
+						</div>
 					)}
 					{hasResult && (
-						<>
-							<div className="text-m-xs text-m-text-3">结果</div>
+						<div>
+							<div className="mb-1 text-m-xs text-m-text-3">{tool.status === "error" ? "错误" : "结果"}</div>
 							{tool.result && looksLikeDiff(tool.result) ? (
 								<DiffView diff={tool.result} />
 							) : (
 								<Pre text={tool.result || "（无输出）"} err={tool.status === "error"} />
 							)}
-						</>
+						</div>
 					)}
 				</div>
 			)}

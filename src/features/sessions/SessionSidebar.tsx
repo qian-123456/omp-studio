@@ -480,7 +480,7 @@ export function SessionSidebar() {
 	const shownDraftId = usePendingSession((s) => s.selectedId);
 	const draftInputKey = useComposer((s) => {
 		const ids = new Set<string>();
-		for (const m of [s.drafts, s.images, s.files, s.annotations, s.planModes]) {
+		for (const m of [s.drafts, s.images, s.files, s.annotations]) {
 			for (const id of Object.keys(m)) if (isLocalDraftId(id)) ids.add(id);
 		}
 		return Array.from(ids).sort().join(",");

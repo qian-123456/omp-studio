@@ -58,5 +58,6 @@ describe("new-session wizard state", () => {
 		expect(createInput(picked, dirs)).toEqual({ cwd: "/p/a", mode: "code", model: picked.model, thinking: "high" });
 		expect(createInput({ ...base, cwd: "/g" }, dirs)?.mode).toBe("chat");
 		expect(createInput(initialNewSession(), dirs)).toBeNull();
+		expect(createInput(initialNewSession("/removed"), dirs)).toBeNull();
 	});
 });

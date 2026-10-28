@@ -16,10 +16,12 @@ import {
 	X,
 } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipboardFilePaths, clipboardTextBesideFiles, importImageFile, listWorkspaceFiles, ompConfigList, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
+import { clipboardFilePaths, clipboardTextBesideFiles, importImageFile, listWorkspaceFiles, ompConfigList, ompModelRolesRead, ompModelRolesSet, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
+import type { ImageAttachment, ModelRoleSnapshot, SessionSnapshot } from "../../lib/contracts";
+import { useOmpConfigStore } from "../settings/ompConfigStore";
+import { PLAN_ROLE, effectiveRoles, planRoleScope, resolvePlanChoice, savedPlanValue } from "./plan/planModelChoice";
 import { applyArgName, buildArgItems, type ArgCandidate } from "./slash/argComplete";
 import { findArgProvider } from "./slash/argProviders";
 import { AttachmentThumb, FileChip } from "./ImageChips";
@@ -139,7 +141,8 @@ import { isBlankComposerSession } from "./sessionWorkspace";
 import { skillCommandsFromCatalog } from "./slash/skillCatalog";
 import { DEFAULT_SKILL_CONFIG, parseSkillConfig } from "../../lib/skillEnablement";
 import { useSessions } from "../../stores/sessions";
-import { useHeldQueue } from "./heldQueue";
+import { mergeHeldItems, useHeldQueue } from "./heldQueue";
+import { releaseReadyHeldBatch, restoreReadyHeldBatch, takeReadyHeldBatch, type ReadyHeldBatch } from "./QueuedBar";
 import { abortTurn, interruptAndWait, linkSentSecrets, sendPrompt, useAbortState } from "./send";
 import {
 	type FollowUpAction,
@@ -218,16 +221,14 @@ import { GoalBar } from "./GoalBar";
 import { claimEscape } from "../../lib/escapeClaim";
 import { draftMeta, isLocalDraftId, usePendingSession } from "../sessions/pendingSession";
 import { materializeDraft, setDraftModel, setDraftThinking, warmDraft } from "../sessions/draftSession";
+import { isSessionCompacting, runOrDeferThinkingLevel } from "./thinkingLevelSelection";
 
 /** Slash commands that only drive composer UI and therefore run on a local draft. */
-const DRAFT_LOCAL_SLASH: ReadonlySet<string> = new Set(["model", "thinking", "context", "plan"]);
+const DRAFT_LOCAL_SLASH: ReadonlySet<string> = new Set(["model", "thinking", "context"]);
 
 /** How long an interrupt waits for the aborted turn to stop before holding the message. */
 const INTERRUPT_WAIT_MS = 15_000;
 
-/** Prepended to outgoing prompts while plan mode is on. */
-const PLAN_MODE_PREFIX =
-	"[规划模式] 请先分析需求并给出详细的分步实施计划，在我确认之前不要修改任何文件或执行有副作用的操作。\n\n";
 const GOAL_TEMPLATE = "[目标: 请输入本次任务目标]";
 const FINDER_SELECTION_SCRIPT =
 	`osascript -e 'tell application "Finder" to set sel to selection as alias list' -e 'set out to ""' -e 'repeat with f in sel' -e 'set out to out & POSIX path of f & linefeed' -e 'end repeat' -e 'return out'`;
@@ -579,17 +580,37 @@ export function Composer({
 		() => [wsPillBtnRef, addBtnRef],
 		[],
 	);
-	const planMode = useComposer((s) => s.planModes[sessionId] === true);
-	const togglePlanMode = useComposer((s) => s.togglePlanMode);
+	const planMode = useLive((s) => s.sessions[sessionId]?.plan?.enabled === true);
+	// undefined = no status frame yet (never a plan revision).
+	const planVersion = useLive((s) => s.sessions[sessionId]?.plan?.version);
+	// Raw `plan` role spec from the status frame (null when the role is unset).
+	const planStatusModel = useLive((s) => s.sessions[sessionId]?.plan?.planModel);
+	// Picker edit made during this plan-mode visit (a `plan` role value); wins over the status spec.
+	const [planEditState, setPlanEditState] = useState<{ sid: string; value: string } | null>(null);
+	const [planRolesState, setPlanRolesState] = useState<{ sid: string; snap: ModelRoleSnapshot } | null>(null);
+	// State is keyed by session so the render right after a session switch never
+	// shows (or auto-applies) the previous session's edit or role layers.
+	const planEdit = planEditState?.sid === sessionId ? planEditState.value : null;
+	const planRoles = planRolesState?.sid === sessionId ? planRolesState.snap : null;
+	// Bumps when the plan-mode visit (mode or session) changes: late async results of an old visit are dropped.
+	const planVisit = useRef(0);
+	// Bumps on every successful role write: an older role read must not overwrite it.
+	const planRolesWrite = useRef(0);
+	const planAppliedRef = useRef(false);
+	// Bumps when the visit changes or the user picks a model, so an in-flight
+	// auto-apply cannot overwrite that newer choice.
+	const planApplyGen = useRef(0);
 
-	// When a plan-mode turn yields, surface the produced plan in the
-	// right-side 计划 tab (once per streaming round).
-	const prevStreamingRef = useRef(streaming);
+	// The 计划 tab opens only when a finished plan revision arrives while plan
+	// mode is on. The first observed version is a baseline (e.g. resuming a
+	// session that already has a plan), never an arrival.
+	const prevPlanVersionRef = useRef(planVersion);
 	useEffect(() => {
-		const wasStreaming = prevStreamingRef.current;
-		prevStreamingRef.current = streaming;
-		if (wasStreaming && !streaming && planMode) useUi.getState().setRightTab("plan");
-	}, [streaming, planMode]);
+		const prev = prevPlanVersionRef.current;
+		prevPlanVersionRef.current = planVersion;
+		if (prev === undefined || planVersion === undefined) return;
+		if (planMode && planVersion > prev) useUi.getState().setRightTab("plan");
+	}, [planVersion, planMode]);
 
 	/** Attach one filesystem path: images go to the gallery, text files are
 	 * inlined as doc references, folders/binaries as path-only references. */
@@ -824,9 +845,17 @@ export function Composer({
 	const state = live?.state ?? {};
 	const stateThinkingLevel =
 		typeof state.thinkingLevel === "string" ? state.thinkingLevel : (snapshot?.thinkingLevel ?? undefined);
-	const currentThinking = localDraft?.thinking ?? stateThinkingLevel ?? "auto";
+	// While planning, the chip shows the `plan` role's model even if the process still runs the previous one.
+	const planChoice = useMemo(
+		() =>
+			planMode
+				? resolvePlanChoice({ edit: planEdit, statusSpec: planStatusModel, roles: effectiveRoles(planRoles), models })
+				: null,
+		[planMode, planEdit, planStatusModel, planRoles, models],
+	);
+	const currentThinking = planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel ?? "auto";
 
-	const current = useMemo(
+	const sessionCurrent = useMemo(
 		// A read-only (terminal-driven) session has no live process of ours: its model
 		// is whatever the transcript last recorded, not a leftover get_state frame.
 		() =>
@@ -837,6 +866,22 @@ export function Composer({
 			),
 		[readonly, isLocalDraft, state.model, sessionMeta?.model, models],
 	);
+	const current = useMemo(
+		() => (planChoice ? pickCurrentModel([planChoice.key], models) : sessionCurrent),
+		[planChoice, sessionCurrent, models],
+	);
+	// Role layers feed `@role` resolution and the write scope; read while planning only.
+	useEffect(() => {
+		if (!planMode) return;
+		let cancelled = false;
+		const write = planRolesWrite.current;
+		ompModelRolesRead(sessionMeta?.cwd ?? null, sessionCurrent.value || null)
+			.then((snap) => !cancelled && planRolesWrite.current === write && setPlanRolesState({ sid: sessionId, snap }))
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [planMode, sessionId, sessionMeta?.cwd]);
 
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
 	const currentModelOption = useMemo(
@@ -876,27 +921,130 @@ export function Composer({
 	const thinkingLevels = useMemo(
 		() =>
 			resolveThinkingLevels(
-				isLocalDraft ? undefined : (state.model as Record<string, unknown> | undefined)?.thinking,
+				isLocalDraft || planChoice ? undefined : (state.model as Record<string, unknown> | undefined)?.thinking,
 				currentModelOption?.thinking,
-				localDraft?.thinking ?? stateThinkingLevel,
+				planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel,
 			),
-		[isLocalDraft, state.model, currentModelOption, stateThinkingLevel, localDraft?.thinking],
+		[isLocalDraft, planChoice, state.model, currentModelOption, stateThinkingLevel, localDraft?.thinking],
 	);
 
 
-	const selectThinkingLevel = async (level: string) => {
-		if (isLocalDraft) {
-			setDraftThinking(sessionId, level);
-			return;
-		}
+	const applyThinkingLevel = async (targetSessionId: string, targetLevel: string) => {
 		try {
-			if (!live?.alive) await ensureLive(sessionId);
-			await rpcSend(sessionId, { type: "set_thinking_level", level });
-			await rpcSend(sessionId, { type: "get_state" });
+			if (!useLive.getState().sessions[targetSessionId]?.alive) await ensureLive(targetSessionId);
+			if (isSessionCompacting(targetSessionId)) {
+				runOrDeferThinkingLevel(targetSessionId, targetLevel, applyThinkingLevel);
+				return;
+			}
+			await rpcSend(targetSessionId, { type: "set_thinking_level", level: targetLevel });
+			await rpcSend(targetSessionId, { type: "get_state" });
 		} catch (err) {
 			if (!isResumeCancelled(err)) toast.error(t("composer.switchThinkingFailed", { error: errMsg(err) }));
 		}
 	};
+
+
+	/** Save the `plan` role; false (after a toast) when the write failed. */
+	const savePlanRole = async (value: string, failKey: "composer.switchModelFailed" | "composer.switchThinkingFailed") => {
+		const visit = planVisit.current;
+		try {
+			const cwd = sessionMeta?.cwd ?? null;
+			const sessionModel = sessionCurrent.value || null;
+			const scope = planRoleScope(await ompModelRolesRead(cwd, sessionModel));
+			const snap = await ompModelRolesSet(cwd, scope, "modelRoles", PLAN_ROLE, value, sessionModel);
+			planRolesWrite.current += 1;
+			if (planVisit.current === visit) setPlanRolesState({ sid: sessionId, snap });
+			useOmpConfigStore.getState().invalidate();
+			return true;
+		} catch (err) {
+			toast.error(t(failKey, { error: errMsg(err) }));
+			return false;
+		}
+	};
+
+	const selectThinkingLevel = async (level: string) => {
+		if (planChoice) {
+			const value = savedPlanValue(planChoice.selector, level);
+			const visit = planVisit.current;
+			if (!(await savePlanRole(value, "composer.switchThinkingFailed"))) return;
+			// The visit changed while saving: the role is saved, but this choice no longer targets the session.
+			if (planVisit.current !== visit) return;
+			planApplyGen.current += 1;
+			planAppliedRef.current = true;
+			setPlanEditState({ sid: sessionId, value });
+		}
+		if (isLocalDraft) {
+			setDraftThinking(sessionId, level);
+			return;
+		}
+		runOrDeferThinkingLevel(sessionId, level, applyThinkingLevel);
+	};
+
+	/** Switch the session (or stage the draft) to `key`; false when it failed. */
+	const switchSessionModel = async (key: string, notify: boolean) => {
+		const payload = buildSetModelPayload(key, models);
+		if (!payload) return false;
+		if (isLocalDraft) {
+			// No process yet: stage the choice; it is applied before the first send.
+			setDraftModel(sessionId, key);
+			return true;
+		}
+		try {
+			if (!live?.alive) await ensureLive(sessionId);
+			const cur = useLive.getState().sessions[sessionId];
+			const turnRunning = !!cur && (cur.streaming || cur.streamingMessage !== null);
+			await rpcSend(sessionId, payload);
+			await rpcSend(sessionId, { type: "get_state" });
+			if (notify) {
+				const notice = modelSwitchNotice(key, turnRunning);
+				toast[notice.kind](notice.text, notice.ttlMs);
+			}
+			return true;
+		} catch (err) {
+			if (!isResumeCancelled(err)) toast.error(t("composer.switchModelFailed", { error: errMsg(err) }));
+			return false;
+		}
+	};
+
+	const selectModel = async (key: string) => {
+		if (planMode && !readonly && buildSetModelPayload(key, models)) {
+			// While planning the picker edits the `plan` role itself, keeping the shown level.
+			const value = savedPlanValue(key, currentThinking);
+			const visit = planVisit.current;
+			if (!(await savePlanRole(value, "composer.switchModelFailed"))) return;
+			if (planVisit.current !== visit) return;
+			planApplyGen.current += 1;
+			planAppliedRef.current = true;
+			setPlanEditState({ sid: sessionId, value });
+		}
+		await switchSessionModel(key, true);
+	};
+
+	// Entering plan mode: bring the process in line with the shown plan model once. Later
+	// status refreshes and picker edits (which mark it applied) never re-apply.
+	useEffect(() => {
+		planVisit.current += 1;
+		planApplyGen.current += 1;
+		planAppliedRef.current = false;
+		setPlanEditState(null);
+	}, [planMode, sessionId]);
+	useEffect(() => {
+		if (!planMode || !planChoice || planAppliedRef.current || readonly) return;
+		if (!buildSetModelPayload(planChoice.key, models)) return;
+		if (!isLocalDraft && (!live?.alive || !live.state)) return;
+		const gen = planApplyGen.current;
+		planAppliedRef.current = true;
+		const key = planChoice.key;
+		const level = planChoice.level;
+		void (async () => {
+			if (planApplyGen.current !== gen) return;
+			if (sessionCurrent.value !== key && !(await switchSessionModel(key, false))) return;
+			if (planApplyGen.current !== gen) return;
+			if (!level || level === (localDraft?.thinking ?? stateThinkingLevel)) return;
+			if (isLocalDraft) setDraftThinking(sessionId, level);
+			else await applyThinkingLevel(sessionId, level);
+		})();
+	}, [planMode, sessionId, planChoice?.key, planChoice?.level, readonly, models, live?.alive, live?.state != null, isLocalDraft]);
 
 	// The toolbar never wraps: its own width picks how much collapses (composerToolbar.ts).
 	const toolbarRef = useRef<HTMLDivElement>(null);
@@ -1036,6 +1184,17 @@ export function Composer({
 	/** Commands that only drive composer UI can run on a draft; the rest need a real process. */
 	const slashTarget = async (name: string): Promise<string> =>
 		isLocalDraft && !DRAFT_LOCAL_SLASH.has(name) ? materializeDraft(sessionId) : sessionId;
+
+	/** Plan mode is owned by the omp plan extension: `/plan` toggles it. */
+	const togglePlanMode = async () => {
+		try {
+			const target = await slashTarget("plan");
+			await sendSlashPrompt(target, "/plan");
+		} catch (err) {
+			if (!isResumeCancelled(err))
+				toast.error(t("composer.cmdFailed", { name: "plan", error: errMsg(err) }));
+		}
+	};
 
 	/** Menu selection: arg commands become an atomic chip at the input start
 	 * (draft keeps only the args); the rest run now, removing only the
@@ -1224,6 +1383,10 @@ export function Composer({
 		if (trimmedRaw.startsWith("/")) {
 			// Registry command (/fork, /status, …) — run natively or forward.
 			setBusy(true);
+			// Clear the serialized chip before a draft materializes, so the
+			// transferred composer state does not carry it to the real session.
+			const sentChip = chip;
+			setChip(null);
 			try {
 				// A draft becomes a real session first unless the command is UI-only.
 				const target = await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "");
@@ -1233,7 +1396,10 @@ export function Composer({
 					expandImageTokens(trimmedMasked, slashImages),
 					makeSlashDeps(),
 				);
-				if (outcome === "keep") return;
+				if (outcome === "keep") {
+					if (inputOwner === sessionId) setChip(sentChip);
+					return;
+				}
 				if (outcome === null) {
 					// Unknown `/x`: send to omp so its own builtins still run. The
 					// command stays first; file markers and quote blocks follow it.
@@ -1264,6 +1430,9 @@ export function Composer({
 					clearDraft(target);
 				}
 			} catch (err) {
+				// Restore only while this composer still owns the input; a
+				// materialized draft keeps its args via the transferred text.
+				if (inputOwner === sessionId) setChip(sentChip);
 				if (!isResumeCancelled(err))
 					toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 			} finally {
@@ -1287,7 +1456,11 @@ export function Composer({
 		}));
 
 		const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
-		const message = planMode ? `${PLAN_MODE_PREFIX}${formatted}` : formatted;
+		const message = formatted;
+		let outgoingMessage = message;
+		let outgoingImages = imageAttachments;
+		let heldBatch: ReadyHeldBatch | null = null;
+		let heldRestored = false;
 		// Queue (and a plain send that raced turn-end while streaming): hold locally
 		// (ARCHITECTURE §11 B); the post-turn HeldQueueBar sends it with its image attachments.
 		if (action === "queue" || (action === "send" && streaming)) {
@@ -1362,13 +1535,28 @@ export function Composer({
 					? await interruptAndWait(sessionId, INTERRUPT_WAIT_MS)
 					: true;
 			if (idle) {
-				await sendPrompt(sessionId, message, {
+				heldBatch = takeReadyHeldBatch(sessionId, true);
+				if (heldBatch) {
+					const merged = mergeHeldItems([
+						{ id: "composer-send", text: message, images: imageAttachments },
+						...heldBatch.items,
+					]);
+					outgoingMessage = merged.text;
+					outgoingImages = merged.images;
+				}
+				await sendPrompt(sessionId, outgoingMessage, {
 					steer: action === "steer",
-					images: imageAttachments,
+					images: outgoingImages,
 					onEchoed: releaseComposer,
 				});
-				// Cancelled takeover returns without echoing: keep the draft for retry.
-				if (!released) return;
+				// Cancelled takeover returns without echoing: keep the draft and queue for retry.
+				if (!released) {
+					if (heldBatch) {
+						restoreReadyHeldBatch(sessionId, heldBatch);
+						heldRestored = true;
+					}
+					return;
+				}
 			} else {
 				pushHeld(sessionId, message, imageAttachments);
 				toast.error(t("composer.interruptTimeout"));
@@ -1378,8 +1566,13 @@ export function Composer({
 			finishPrivacySend();
 		} catch (err) {
 			restoreComposer();
+			if (heldBatch && !heldRestored) {
+				restoreReadyHeldBatch(sessionId, heldBatch);
+				heldRestored = true;
+			}
 			if (!isResumeCancelled(err)) toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 		} finally {
+			if (heldBatch) releaseReadyHeldBatch(sessionId);
 			setBusy(false);
 		}
 	};
@@ -1808,7 +2001,13 @@ export function Composer({
 	};
 
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (isComposing(e)) return;
+		if (isComposing(e)) {
+			// Committing an IME candidate with Enter must never insert an unintended newline.
+			if (e.key === "Enter" && !e.shiftKey) {
+				e.preventDefault();
+			}
+			return;
+		}
 		// Atomic ArrowLeft navigation across image token
 		if (e.key === "ArrowLeft" && !e.altKey && !e.metaKey) {
 			const ta = taRef.current;
@@ -2046,6 +2245,7 @@ export function Composer({
 									ctrlKey: false,
 									altKey: false,
 									isComposing: false,
+									repeat: e.repeat,
 								},
 								sendShortcut,
 							)
@@ -2118,6 +2318,7 @@ export function Composer({
 				ctrlKey: e.ctrlKey,
 				altKey: e.altKey,
 				isComposing: isComposing(e),
+				repeat: e.repeat,
 			},
 			sendShortcut,
 		);
@@ -2126,6 +2327,9 @@ export function Composer({
 			void submit(
 				resolveFollowUpAction(followUpBehavior, decision === "send-alternate", streaming),
 			);
+		} else if (decision === "ignore" && e.key === "Enter" && !e.shiftKey) {
+			// Enter key that should neither send nor insert a newline (e.g. IME or duplicate)
+			e.preventDefault();
 		}
 	};
 
@@ -2163,7 +2367,7 @@ export function Composer({
 						: "border-[var(--line,var(--border))]",
 				)}
 			>
-				{!sessionHasMessages && !readonly && !isLocalDraft && (
+				{!sessionHasMessages && !readonly && (
 					<ContextPillBar
 						sessionId={sessionId}
 						onWorkspaceClick={() => setWorkspacePickerOpen((v) => !v)}
@@ -2182,7 +2386,7 @@ export function Composer({
 					<div className="flex items-center gap-1 px-3 pt-2">
 						<button
 							type="button"
-							onClick={() => togglePlanMode(sessionId)}
+							onClick={() => void togglePlanMode()}
 							title={t("chat.planMode.clickToDisable")}
 							className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 hover:bg-amber-500/20"
 						>
@@ -2312,13 +2516,11 @@ export function Composer({
 							{inlineRange && chip ? (
 								<>
 									{renderHighlightedText(text.slice(0, inlineRange.start))}
-									{/* The literal is plain, breakable text exactly like the
-									 * textarea's own (so both wrap identically, including at the
-									 * hyphen of `/skill:grill-me`); the badge is painted over its
-									 * first fragment instead of replacing it with an atomic box. */}
-									<span className="relative">
+									{/* The literal stays plain, breakable text like the textarea.
+									 * Center the badge without replacing it with an atomic box. */}
+									<span className="relative align-baseline">
 										<span className="invisible">{chipLiteral(chip)}</span>
-										<span className="absolute left-0 top-1/2 flex -translate-y-1/2 items-center whitespace-nowrap">
+										<span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap">
 											<CommandChipBadge chip={chip} />
 										</span>
 									</span>
@@ -2549,7 +2751,7 @@ export function Composer({
 								onAttachFinder={() => void handleAttachFinder()}
 								onPickProject={() => setWorkspacePickerOpen(true)}
 								onGoal={handleInsertGoal}
-								onTogglePlan={() => togglePlanMode(sessionId)}
+								onTogglePlan={() => void togglePlanMode()}
 								onSketch={() => setSketchOpen(true)}
 							/>
 						)}
@@ -2568,9 +2770,11 @@ export function Composer({
 									if (!models || models.length === 0) void loadModels();
 								}}
 							title={
-								toolbarTier >= TIER_MERGED && thinkingKind !== "unsupported"
-									? t("composer.modelThinkingTooltip", { model: modelLabel, level: currentThinking })
-									: modelLabel
+								planChoice
+									? t("composer.planModelTitle")
+									: toolbarTier >= TIER_MERGED && thinkingKind !== "unsupported"
+										? t("composer.modelThinkingTooltip", { model: modelLabel, level: currentThinking })
+										: modelLabel
 							}
 							className={clsx(
 								"flex min-w-0 items-center gap-1 rounded-md py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
@@ -2606,26 +2810,7 @@ export function Composer({
 												toast.error(t("chat.context.cannotSwitchModelWhileCompacting"));
 												return;
 											}
-											const payload = buildSetModelPayload(key, models);
-											if (isLocalDraft) {
-												// No process yet: stage the choice; it is applied before the first send.
-												if (payload) setDraftModel(sessionId, key);
-											} else if (payload) {
-												try {
-													if (!live?.alive) {
-														await ensureLive(sessionId);
-													}
-													const cur = useLive.getState().sessions[sessionId];
-													const turnRunning = !!cur && (cur.streaming || cur.streamingMessage !== null);
-													await rpcSend(sessionId, payload);
-													await rpcSend(sessionId, { type: "get_state" });
-													const notice = modelSwitchNotice(key, turnRunning);
-													toast[notice.kind](notice.text, notice.ttlMs);
-												} catch (err) {
-													if (!isResumeCancelled(err))
-														toast.error(t("composer.switchModelFailed", { error: errMsg(err) }));
-												}
-											}
+											await selectModel(key);
 											setModelOpen(false);
 										}}
 									/>

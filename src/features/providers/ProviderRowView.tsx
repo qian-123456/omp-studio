@@ -155,7 +155,11 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 		</>
 	);
 
-	const sourceModels = row.models;
+	// Sort a display-only copy: provider configuration order remains unchanged for editors and persistence.
+	const sourceModels = [...row.models].sort((a, b) => {
+		const byCaseInsensitiveId = modelEntryId(a).localeCompare(modelEntryId(b), undefined, { sensitivity: "base" });
+		return byCaseInsensitiveId || modelEntryId(a).localeCompare(modelEntryId(b));
+	});
 	const visibleModels = showAllModels ? sourceModels : sourceModels.slice(0, MODELS_COLLAPSED);
 	const canDelete = row.origin === "custom" || row.origin === "override";
 	const testReason = row.testable ? null : t("providers.cannotTestReason");

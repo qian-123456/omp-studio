@@ -10,14 +10,19 @@ pub const EXT_SOURCE: &str = include_str!("../../../extension/omp-workspace-priv
 
 /// Write the extension to `path` when missing or different. Returns true if written.
 pub fn install_to(path: &Path) -> std::io::Result<bool> {
-    if std::fs::read_to_string(path).is_ok_and(|cur| cur == EXT_SOURCE) {
+    write_if_changed(path, EXT_SOURCE)
+}
+
+/// Atomically write `source` to `path` unless it already holds exactly that text.
+pub(super) fn write_if_changed(path: &Path, source: &str) -> std::io::Result<bool> {
+    if std::fs::read_to_string(path).is_ok_and(|cur| cur == source) {
         return Ok(false);
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension("ts.tmp");
-    std::fs::write(&tmp, EXT_SOURCE)?;
+    std::fs::write(&tmp, source)?;
     std::fs::rename(&tmp, path)?;
     Ok(true)
 }

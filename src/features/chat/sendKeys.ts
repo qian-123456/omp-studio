@@ -20,6 +20,7 @@ export interface EnterKeyEvent {
 	ctrlKey: boolean;
 	altKey: boolean;
 	isComposing: boolean;
+	repeat?: boolean;
 }
 
 export function normalizeSendShortcut(value: unknown): SendShortcut {
@@ -39,10 +40,13 @@ export function decideEnterKey(ev: EnterKeyEvent, shortcut: SendShortcut): Enter
 	const mod = ev.metaKey || ev.ctrlKey;
 	if (shortcut === "mod-enter") {
 		if (!mod) return "newline";
+		if (ev.repeat) return "ignore";
 		return ev.altKey ? "send-alternate" : "send";
 	}
 	// enter mode: Shift+Enter is a newline unless ⌘/Ctrl is held.
 	if (!mod && ev.shiftKey) return "newline";
+	// Rapid key repeat on Enter must not fire duplicate sends
+	if (ev.repeat) return "ignore";
 	return ev.altKey ? "send-alternate" : "send";
 }
 

@@ -8,8 +8,8 @@ use serde_json::Value;
 
 use super::parse::content_text;
 use crate::contracts::{
-    SessionSnapshot, ToolCall, ToolResultInfo, TranscriptItem, TranscriptKind, TranscriptPage,
-    Usage,
+    AssistantContentPart, SessionSnapshot, ToolCall, ToolResultInfo, TranscriptItem,
+    TranscriptKind, TranscriptPage, Usage,
 };
 
 /// Read complete lines from `from_offset` and normalize them.
@@ -233,6 +233,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
             item.kind = TranscriptKind::Assistant;
             let mut texts = Vec::new();
             let mut thinking = Vec::new();
+            let mut assistant_parts = Vec::new();
             for block in msg
                 .get("content")
                 .and_then(Value::as_array)
@@ -240,9 +241,35 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 .flatten()
             {
                 match block.get("type").and_then(Value::as_str) {
-                    Some("text") => texts.push(s(block, "text")),
-                    Some("thinking") => thinking.push(s(block, "thinking")),
+                    Some("text") => {
+                        let text = s(block, "text");
+                        if !text.trim().is_empty() {
+                            texts.push(text.clone());
+                            if block.get("narration").and_then(Value::as_bool) == Some(true) {
+                                assistant_parts.push(AssistantContentPart::Narration { text });
+                            } else {
+                                assistant_parts.push(AssistantContentPart::Text { text });
+                            }
+                        }
+                    }
+                    Some("thinking") => {
+                        let text = s(block, "thinking");
+                        if text.trim().is_empty() {
+                            continue;
+                        }
+                        if block.get("narration").and_then(Value::as_bool) == Some(true) {
+                            texts.push(text.clone());
+                            assistant_parts.push(AssistantContentPart::Narration { text });
+                        } else {
+                            thinking.push(text.clone());
+                            assistant_parts.push(AssistantContentPart::Thinking { text });
+                        }
+                    }
                     Some("toolCall") => {
+                        let id = s(block, "id");
+                        if !id.is_empty() {
+                            assistant_parts.push(AssistantContentPart::Tool { id: id.clone() });
+                        }
                         let args = block.get("arguments").cloned().unwrap_or(Value::Null);
                         let intent = block
                             .get("intent")
@@ -250,7 +277,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                             .or_else(|| args.get("i").and_then(Value::as_str))
                             .map(str::to_string);
                         item.tool_calls.push(ToolCall {
-                            id: s(block, "id"),
+                            id,
                             name: s(block, "name"),
                             args,
                             intent,
@@ -264,6 +291,17 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
+            if texts.is_empty() {
+                if let Some(text) = raw_text.as_ref().filter(|text| !text.trim().is_empty()) {
+                    assistant_parts.push(AssistantContentPart::Text { text: text.clone() });
+                }
+            }
+            if assistant_parts
+                .iter()
+                .any(|part| matches!(part, AssistantContentPart::Narration { .. }))
+            {
+                item.assistant_parts = assistant_parts;
+            }
             item.text = raw_text
                 .map(|t| super::parse::strip_image_markers(&t))
                 .filter(|t| !t.trim().is_empty());
@@ -496,6 +534,32 @@ mod tests {
         let r = items[4].tool_result.as_ref().unwrap();
         assert_eq!((r.tool_call_id.as_str(), r.text.as_str()), ("c1", "a.txt"));
         assert_eq!(items[5].text.as_deref(), Some("sum"));
+    }
+
+    #[test]
+    fn assistant_narration_is_explicit_and_keeps_content_order() {
+        let line = r#"{"type":"message","id":"a","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private thought"},{"type":"text","text":"before"},{"type":"thinking","thinking":"spoken update","narration":true},{"type":"toolCall","id":"c1","name":"bash","arguments":{}},{"type":"text","text":"after"}]}}"#;
+        let item = normalize_entry(&serde_json::from_str(line).unwrap()).unwrap();
+
+        assert_eq!(item.thinking.as_deref(), Some("private thought"));
+        assert_eq!(
+            item.text.as_deref(),
+            Some("before\n\nspoken update\n\nafter")
+        );
+        assert!(matches!(
+            item.assistant_parts.as_slice(),
+            [
+                AssistantContentPart::Thinking { text: before },
+                AssistantContentPart::Text { text: first },
+                AssistantContentPart::Narration { text: narration },
+                AssistantContentPart::Tool { id },
+                AssistantContentPart::Text { text: after },
+            ] if before == "private thought"
+                && first == "before"
+                && narration == "spoken update"
+                && id == "c1"
+                && after == "after"
+        ));
     }
 
     /// A user message whose only content is an image must stay visible: the

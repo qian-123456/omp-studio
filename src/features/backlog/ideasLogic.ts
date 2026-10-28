@@ -183,6 +183,60 @@ export function splitSent(
 	for (const it of items) (sentIds.has(it.id) ? sent : remaining).push(it);
 	return { remaining, sent };
 }
+export interface DispatchAttemptResult {
+	sentIds: Set<string>;
+	pendingStatusUpdates: Map<string, string>;
+	sendErrors: Record<string, unknown>;
+	statusErrors: Record<string, unknown>;
+	firstSession: string | null;
+}
+
+/** Send unsent groups once, then retry only the backlog status writes for delivered items. */
+export async function dispatchGroups(
+	groups: BacklogItem[][],
+	sentIds: ReadonlySet<string>,
+	pendingStatusUpdates: ReadonlyMap<string, string>,
+	sendGroup: (group: BacklogItem[]) => Promise<string>,
+	updateStatus: (id: string, sessionId: string) => Promise<void>,
+	previousSession: string | null = null,
+): Promise<DispatchAttemptResult> {
+	const nextSentIds = new Set(sentIds);
+	const nextStatusUpdates = new Map(pendingStatusUpdates);
+	const sendErrors: Record<string, unknown> = {};
+	let firstSession: string | null = previousSession;
+
+	for (const group of groups) {
+		const groupKey = group[0]?.id ?? "";
+		try {
+			const sessionId = await sendGroup(group);
+			firstSession ??= sessionId;
+			for (const item of group) {
+				nextSentIds.add(item.id);
+				nextStatusUpdates.set(item.id, sessionId);
+			}
+		} catch (error) {
+			sendErrors[groupKey] = error;
+		}
+	}
+
+	const statusErrors: Record<string, unknown> = {};
+	for (const [id, sessionId] of nextStatusUpdates) {
+		try {
+			await updateStatus(id, sessionId);
+			nextStatusUpdates.delete(id);
+		} catch (error) {
+			statusErrors[id] = error;
+		}
+	}
+
+	return {
+		sentIds: nextSentIds,
+		pendingStatusUpdates: nextStatusUpdates,
+		sendErrors,
+		statusErrors,
+		firstSession,
+	};
+}
 
 /**
  * Group by projectRoot(projectDir) (null = its own group);

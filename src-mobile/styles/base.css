@@ -8,34 +8,58 @@
 	--color-m-surface: var(--m-surface);
 	--color-m-surface-2: var(--m-surface-2);
 	--color-m-surface-hover: var(--m-surface-hover);
+	--color-m-card: var(--m-card);
+	--color-m-segment-on: var(--m-segment-on);
 	--color-m-border: var(--m-border);
+	--color-m-border-strong: var(--m-border-strong);
 	--color-m-text: var(--m-text);
 	--color-m-text-2: var(--m-text-2);
 	--color-m-text-3: var(--m-text-3);
 	--color-m-accent: var(--m-accent);
 	--color-m-accent-text: var(--m-accent-text);
+	--color-m-accent-soft: var(--m-accent-soft);
+	--color-m-accent-soft-text: var(--m-accent-soft-text);
+	--color-m-link: var(--m-link);
 	--color-m-danger: var(--m-danger);
+	--color-m-danger-bg: var(--m-danger-bg);
 	--color-m-warn: var(--m-warn);
+	--color-m-warn-bg: var(--m-warn-bg);
 	--color-m-success: var(--m-success);
+	--color-m-success-bg: var(--m-success-bg);
 	--color-m-bubble-user-bg: var(--m-bubble-user-bg);
 	--color-m-bubble-user-text: var(--m-bubble-user-text);
 	--color-m-composer-bg: var(--m-composer-bg);
 	--color-m-code-bg: var(--m-code-bg);
+	--color-m-code-text: var(--m-code-text);
 	--color-m-diff-add: var(--m-diff-add);
 	--color-m-diff-del: var(--m-diff-del);
 	--color-m-scrim: var(--m-scrim);
 	--radius-m-sm: var(--m-r-sm);
 	--radius-m-md: var(--m-r-md);
 	--radius-m-lg: var(--m-r-lg);
+	--radius-m-xl: var(--m-r-xl);
 	--radius-m-pill: var(--m-r-pill);
 	--text-m-xs: var(--m-fs-xs);
+	--text-m-xs--line-height: 18px;
 	--text-m-sm: var(--m-fs-sm);
+	--text-m-sm--line-height: 20px;
 	--text-m-md: var(--m-fs-md);
+	--text-m-md--line-height: 22px;
+	--text-m-body: var(--m-msg-fs);
+	--text-m-body--line-height: var(--m-lh-body);
 	--text-m-lg: var(--m-fs-lg);
+	--text-m-lg--line-height: 26px;
 	--text-m-title: var(--m-fs-title);
+	--text-m-title--line-height: 34px;
+	--text-m-display: var(--m-fs-display);
+	--text-m-display--line-height: 38px;
 	--font-m-sans: var(--m-font-sans);
 	--font-m-mono: var(--m-font-mono);
 	--shadow-m-pop: var(--m-shadow-pop);
+	--shadow-m-card: var(--m-shadow-card);
+	--shadow-m-composer: var(--m-composer-shadow);
+	--ease-m: var(--m-ease);
+	--ease-m-sheet: var(--m-ease-sheet);
 }
 
 /* Layer scale (Tailwind: z-(--z-sheet)). Never use raw z-index numbers in components. */
@@ -75,8 +99,11 @@ body {
 	color: var(--m-text);
 	font-family: var(--m-font-sans);
 	font-size: var(--m-fs-md);
-	line-height: 1.5;
+	line-height: 1.4;
+	letter-spacing: 0;
 	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 	-webkit-tap-highlight-color: transparent;
 	-webkit-touch-callout: none;
 }
@@ -89,27 +116,38 @@ body {
 	-webkit-touch-callout: default;
 }
 
-button,
-input,
-select,
-textarea {
-	font: inherit;
-	color: inherit;
-}
-button {
-	cursor: pointer;
-	touch-action: manipulation;
-}
-/* iOS zooms into inputs below 16px. */
-input,
-textarea,
-select {
-	font-size: max(16px, 1em);
+/* Element resets live in the base layer so Tailwind utilities (text colour/size on buttons) win. */
+@layer base {
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+		color: inherit;
+	}
+	button {
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	/* iOS zooms into inputs below 16px. */
+	input,
+	textarea,
+	select {
+		font-size: max(16px, 1em);
+	}
 }
 
 :focus-visible {
 	outline: 2px solid var(--m-accent);
 	outline-offset: 2px;
+}
+
+/* Hide scrollbars on touch surfaces; scrolling stays native. */
+.m-noscrollbar {
+	scrollbar-width: none;
+}
+.m-noscrollbar::-webkit-scrollbar {
+	display: none;
 }
 
 /* App frame: height follows the visual viewport (keyboard aware) without per-keystroke work. */
@@ -142,4 +180,45 @@ select {
 	to {
 		transform: rotate(360deg);
 	}
+}
+
+/* Shimmer for in-progress one-line labels (「思考中」). Apply on an inline element with text. */
+@keyframes m-shimmer {
+	from {
+		background-position: 150% 0;
+	}
+	to {
+		background-position: -50% 0;
+	}
+}
+.m-shimmer {
+	background: linear-gradient(90deg, var(--m-text-3) 0%, var(--m-text-3) 35%, var(--m-text) 50%, var(--m-text-3) 65%, var(--m-text-3) 100%);
+	background-size: 250% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: m-shimmer 1.8s linear infinite;
+}
+
+/* Pulsing status dot (running sessions / agents). */
+@keyframes m-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+.m-pulse {
+	animation: m-pulse 1.4s ease-in-out infinite;
+}
+
+/* ListGroup separators: inset from the label for ListRow, full width for any other child. */
+.m-list > .m-list-row:not(:first-child) .m-list-sep {
+	box-shadow: inset 0 1px 0 var(--m-border);
+}
+.m-list > :not(.m-list-row) + *,
+.m-list > .m-list-row + :not(.m-list-row) {
+	border-top: 1px solid var(--m-border);
 }

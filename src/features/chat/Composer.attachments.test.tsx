@@ -11,6 +11,7 @@ import type * as EventsModule from "../../lib/events";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
+import { useHeldQueue } from "./heldQueue";
 import { Composer } from "./Composer";
 
 const SESSION = "s1";
@@ -76,6 +77,7 @@ beforeEach(() => {
 	h.listWorkspaceFiles.mockReset();
 	h.listWorkspaceFiles.mockResolvedValue([]);
 	useComposer.setState({ drafts: {}, annotations: {}, images: {}, files: {}, history: [] });
+	useHeldQueue.setState({ queues: {}, dismissed: {} });
 	useLive.setState({
 		sessions: { [SESSION]: { ...emptySessionLive(), alive: true, state: {}, commands: [] } },
 	});
@@ -166,6 +168,57 @@ describe("slash-prefixed send", () => {
 		await waitFor(() => expect(draft()).toBe(""));
 		expect(useComposer.getState().annotations[SESSION] ?? []).toHaveLength(0);
 		expect(useComposer.getState().files[SESSION] ?? []).toHaveLength(0);
+	});
+});
+
+describe("held queue included in the next Composer send", () => {
+	const queuedImage = { id: "queued-image", path: "/queued.png", marker: "[Image #1]" };
+	const currentImage = { id: "current-image", path: "/current.png", marker: "[Image #1]" };
+
+	it("sends queued messages in order with the typed prompt and renumbered images", async () => {
+		const addUserEcho = vi.spyOn(useLive.getState(), "addUserEcho");
+		act(() => {
+			useHeldQueue.getState().push(SESSION, "[Image #1: /queued.png] first", [queuedImage]);
+			useHeldQueue.getState().push(SESSION, "[Image #1: /second.png] second", [
+				{ id: "second-image", path: "/second.png", marker: "[Image #1]" },
+			]);
+			useComposer.getState().setImages(SESSION, [img(currentImage.id, currentImage.path)]);
+			useComposer.getState().setDraft(SESSION, "current 🖼️#1");
+		});
+
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		const expected =
+			"current [Image #1: /current.png]\n\n---\n\n[Image #2: /queued.png] first\n\n---\n\n[Image #3: /second.png] second";
+		await waitFor(() => expect(prompts()).toEqual([expected]));
+		expect(useHeldQueue.getState().queues[SESSION]).toEqual([]);
+		expect(addUserEcho).toHaveBeenCalledWith(
+			SESSION,
+			expected,
+			[
+				{ ...currentImage, marker: "[Image #1]", width: undefined, height: undefined },
+				{ ...queuedImage, marker: "[Image #2]" },
+				{ id: "second-image", path: "/second.png", marker: "[Image #3]" },
+			],
+			false,
+		);
+		addUserEcho.mockRestore();
+	});
+
+	it("restores the snapshotted held messages exactly once when the combined send fails", async () => {
+		h.rpcSend.mockRejectedValue(new Error("boom"));
+		act(() => {
+			useHeldQueue.getState().push(SESSION, "held one");
+			useHeldQueue.getState().push(SESSION, "held two");
+			useComposer.getState().setDraft(SESSION, "current prompt");
+		});
+
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(useHeldQueue.getState().queues[SESSION]).toHaveLength(2));
+		expect(useHeldQueue.getState().queues[SESSION]?.map((item) => item.text)).toEqual([
+			"held one",
+			"held two",
+		]);
+		expect(draft()).toContain("current prompt");
 	});
 });
 

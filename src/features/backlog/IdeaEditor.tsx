@@ -30,6 +30,7 @@ export const IdeaEditor = forwardRef<
 		autoFocus?: boolean;
 		minHeight: number;
 		maxHeight: number;
+		rows?: number;
 		onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 		onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 		onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
@@ -42,7 +43,7 @@ export const IdeaEditor = forwardRef<
 		bgClass?: string;
 	}
 >(function IdeaEditor(
-	{ doc, onChange, placeholder, autoFocus, minHeight, maxHeight, onKeyDown, onPaste, onBlur, onFocus, boxClass = "", textClass = "text-xs leading-5", bgClass = "bg-[var(--bg)]" },
+	{ doc, onChange, placeholder, autoFocus, minHeight, maxHeight, rows = 1, onKeyDown, onPaste, onBlur, onFocus, boxClass = "", textClass = "text-xs leading-5", bgClass = "bg-[var(--bg)]" },
 	ref,
 ) {
 	const { t } = useT();
@@ -92,7 +93,7 @@ export const IdeaEditor = forwardRef<
 				value={doc.text}
 				autoFocus={autoFocus}
 				spellCheck={false}
-				rows={1}
+				rows={rows}
 				placeholder={placeholder}
 				onChange={(e) => onChange({ text: e.target.value, images: doc.images })}
 				onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}

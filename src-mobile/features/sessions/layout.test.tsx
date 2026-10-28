@@ -52,7 +52,7 @@ describe("Responsive layout (390x844)", () => {
 		expect(root.scrollWidth).toBeLessThanOrEqual(390);
 	});
 
-	it("renders MenuSheet within 390px max-width bounds", () => {
+	it("renders MenuSheet as a full-screen drawer", () => {
 		window.innerWidth = 390;
 		window.innerHeight = 844;
 
@@ -60,7 +60,8 @@ describe("Responsive layout (390x844)", () => {
 
 		const dialog = document.querySelector('[role="dialog"]');
 		expect(dialog).not.toBeNull();
-		// Check that dialog styling has max-w-[340px] or w-full ensuring no overflow past 390px
-		expect(dialog?.className).toContain("max-w-[340px]");
+		// Full-screen panel: pinned to every edge, never wider than the viewport.
+		expect(dialog?.className).toContain("inset-0");
+		expect(dialog?.className).toContain("w-full");
 	});
 });

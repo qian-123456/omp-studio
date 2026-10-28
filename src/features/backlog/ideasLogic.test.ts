@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BacklogItem, BacklogStatus, SessionMeta, SessionStatus, Workspace } from "../../lib/contracts";
 import {
 	appendToDraft,
@@ -7,6 +7,7 @@ import {
 	captureProjectOptions,
 	resolveCaptureProject,
 	byCreatedDesc,
+	dispatchGroups,
 	EMPTY_SEARCH,
 	effectiveScope,
 	filterIdeas,
@@ -413,6 +414,55 @@ describe("tab membership", () => {
 
 	it("badge count excludes trashed items", () => {
 		expect(needsAttentionCount(all, sessionMap)).toBe(2);
+	});
+});
+
+describe("dispatchGroups", () => {
+	const batch = [
+		item("a", "inbox", "/p/a", "2026-01-01T00:00:00Z"),
+		item("b", "inbox", "/p/a", "2026-01-02T00:00:00Z"),
+	];
+
+	it("retries failed status writes without resending a delivered group", async () => {
+		let failFirstStatusWrite = true;
+		const sendGroup = vi.fn(async (_group: BacklogItem[]) => "session-1");
+		const updateStatus = vi.fn(async (id: string, _sessionId: string) => {
+			if (id === "a" && failFirstStatusWrite) {
+				failFirstStatusWrite = false;
+				throw new Error("database unavailable");
+			}
+		});
+
+		const first = await dispatchGroups([batch], new Set(), new Map(), sendGroup, updateStatus);
+		expect(first.sentIds).toEqual(new Set(["a", "b"]));
+		expect(first.pendingStatusUpdates).toEqual(new Map([["a", "session-1"]]));
+		expect(first.statusErrors).toEqual({ a: expect.any(Error) });
+		expect(splitSent(batch, first.sentIds).remaining).toEqual([]);
+
+		const retry = await dispatchGroups([], first.sentIds, first.pendingStatusUpdates, sendGroup, updateStatus, first.firstSession);
+		expect(retry.pendingStatusUpdates).toEqual(new Map());
+		expect(retry.statusErrors).toEqual({});
+		expect(retry.firstSession).toBe("session-1");
+		expect(sendGroup).toHaveBeenCalledTimes(1);
+		expect(updateStatus.mock.calls).toEqual([
+			["a", "session-1"],
+			["b", "session-1"],
+			["a", "session-1"],
+		]);
+	});
+
+	it("does not mark or update items when prompt delivery fails", async () => {
+		const sendError = new Error("session unavailable");
+		const sendGroup = vi.fn(async () => {
+			throw sendError;
+		});
+		const updateStatus = vi.fn(async () => {});
+
+		const result = await dispatchGroups([batch], new Set(), new Map(), sendGroup, updateStatus);
+		expect(result.sentIds).toEqual(new Set());
+		expect(result.pendingStatusUpdates).toEqual(new Map());
+		expect(result.sendErrors).toEqual({ a: sendError });
+		expect(updateStatus).not.toHaveBeenCalled();
 	});
 });
 

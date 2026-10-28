@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 import * as apiModule from "../../core/api";
 import * as navModule from "../../core/nav";
+import { usePrefs } from "../../core/stores/prefs";
 
 vi.mock("../../core/api", () => ({
 	api: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock("../../core/api", () => ({
 describe("SettingsPage navigation and groups", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		usePrefs.setState({ scheme: "system", extra: {} });
 		vi.mocked(apiModule.api).mockImplementation((_method: string, path: string) => {
 			if (path === "/left/settings") {
 				return Promise.resolve({
@@ -128,9 +130,27 @@ describe("SettingsPage navigation and groups", () => {
 		fireEvent.click(appearanceBtn);
 
 		expect(await screen.findByText("外观设置")).toBeDefined();
-		expect(screen.getByText("主题风格")).toBeDefined();
-		expect(screen.getByText("色彩模式")).toBeDefined();
-		expect(screen.getByText("对话字号")).toBeDefined();
+		expect(screen.getByRole("switch", { name: "默认展开步骤" })).toBeDefined();
+		expect(screen.getByRole("radiogroup", { name: "色彩模式" })).toBeDefined();
+		expect(screen.getByRole("radiogroup", { name: "对话字号" })).toBeDefined();
+	});
+
+	it("keeps system, light, and dark appearance choices editable and persisted locally", async () => {
+		render(<SettingsPage />);
+		fireEvent.click(await screen.findByText("外观"));
+
+		for (const [label, value] of [["浅色", "light"], ["深色", "dark"], ["跟随系统", "system"]] as const) {
+			const option = screen.getByRole("radio", { name: label });
+			fireEvent.click(option);
+			expect(option.getAttribute("aria-checked")).toBe("true");
+			expect(usePrefs.getState().scheme).toBe(value);
+		}
+
+		fireEvent.click(screen.getByRole("radio", { name: "特大" }));
+		expect(usePrefs.getState().extra.msgSize).toBe("xl");
+		fireEvent.click(screen.getByRole("switch", { name: "默认展开步骤" }));
+		expect(usePrefs.getState().extra.foldOpen).toBe(true);
+		expect(apiModule.api).not.toHaveBeenCalledWith("POST", expect.anything(), expect.anything());
 	});
 
 	it("opens the Doctor bottom sheet on tapping 会话体检", async () => {
@@ -183,5 +203,31 @@ describe("SettingsPage navigation and groups", () => {
 		const quotaBtn = screen.getByText("订阅与配额");
 		fireEvent.click(quotaBtn);
 		expect(pushSpy).toHaveBeenCalledWith("/quota");
+	});
+
+	it("scopes roles to the project picked in 配置范围", async () => {
+		vi.mocked(apiModule.api).mockImplementation((_m: string, path: string) =>
+			Promise.resolve(path === "/left/dirs" ? { dirs: [{ path: "/p/app", label: "app" }] } : { defaultApprovalMode: "write" }),
+		);
+		const pushSpy = vi.spyOn(navModule.nav, "push").mockImplementation(() => {});
+		render(<SettingsPage />);
+
+		fireEvent.click(await screen.findByText("配置范围"));
+		fireEvent.click(await screen.findByText("app"));
+		fireEvent.click(screen.getByText("模型角色"));
+		expect(pushSpy).toHaveBeenCalledWith("/settings/roles?cwd=%2Fp%2Fapp");
+	});
+
+	it("shows the desktop's current OMP values in the 工具 sheet", async () => {
+		vi.mocked(apiModule.api).mockImplementation((_m: string, path: string) =>
+			Promise.resolve(path === "/left/dirs" ? { dirs: [] } : { omp: { "ask.enabled": false, "bash.autoBackground.enabled": true } }),
+		);
+		render(<SettingsPage />);
+
+		fireEvent.click(await screen.findByText("工具"));
+		expect((await screen.findByRole("switch", { name: "允许智能体向我提问" })).getAttribute("aria-checked")).toBe("false");
+		expect(screen.getByRole("switch", { name: "长命令自动转后台" }).getAttribute("aria-checked")).toBe("true");
+		// Keys the desktop did not return are hidden instead of showing made-up defaults.
+		expect(screen.queryByText("工具最长超时")).toBeNull();
 	});
 });

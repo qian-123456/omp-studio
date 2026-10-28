@@ -1,7 +1,7 @@
+import { Bot, Plus, Wand2 } from "lucide-react";
 import { useState } from "react";
-import { Plus, Wand2, ChevronRight, ArrowLeft, Save } from "lucide-react";
-import { BottomSheet } from "../../../ui/BottomSheet";
-import { toast } from "../../../ui/Toast";
+import { Button, Chip, Field, inputCls, ListGroup, ListRow, TextField, toast } from "../../../ui";
+import { SettingsSheet } from "../rows";
 
 interface AgentDef {
 	id: string;
@@ -52,217 +52,206 @@ const INITIAL_AGENTS: AgentDef[] = [
 	},
 ];
 
-export function SubagentsSheet({
-	open,
-	onClose,
-}: {
-	open: boolean;
-	onClose: () => void;
-}) {
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
+const MONO_INPUT = "font-m-mono";
+
+/** Prompt draft written for the user from the name and description. */
+function draftPrompt(a: AgentDef): string {
+	const name = a.name.trim() || "新子代理";
+	const desc = a.description.trim() || "自定义专业领域任务";
+	return `# ${name} 角色指令\n\n- 职责范围：${desc}\n- 执行准则：严格遵循六个月可维护性原则，不留 TODO。\n- 产出要求：提交完整验证与实现方案。`;
+}
+
+/**
+ * Editor mode: `new` is a two-step flow (基本信息 → 提示词) with 上一步 keeping every field;
+ * `edit` shows all fields on one page.
+ */
+type Mode = { kind: "new"; step: 1 | 2 } | { kind: "edit" };
+
+/** Sub-agent definitions: list, create (with AI-written prompt) and edit. */
+export function SubagentsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 	const [agents, setAgents] = useState<AgentDef[]>(INITIAL_AGENTS);
-	const [editingAgent, setEditingAgent] = useState<AgentDef | null>(null);
-	const [isNew, setIsNew] = useState(false);
+	// The draft stays set while the editor sheet animates out, so its title does not flash.
+	const [draft, setDraft] = useState<AgentDef | null>(null);
+	const [mode, setMode] = useState<Mode>({ kind: "edit" });
+	const [editorOpen, setEditorOpen] = useState(false);
+	const [nameError, setNameError] = useState<string | null>(null);
 
-	const handleStartCreate = () => {
-		const newAgent: AgentDef = {
-			id: `agent-${Date.now()}`,
-			name: "",
-			description: "",
-			tools: "*",
-			model: "@task",
-			prompt: "",
-			isBuiltin: false,
-		};
-		setEditingAgent(newAgent);
-		setIsNew(true);
+	const patch = (p: Partial<AgentDef>) => setDraft((d) => (d ? { ...d, ...p } : d));
+
+	const startCreate = () => {
+		setDraft({ id: `agent-${Date.now()}`, name: "", description: "", tools: "*", model: "@task", prompt: "", isBuiltin: false });
+		setMode({ kind: "new", step: 1 });
+		setNameError(null);
+		setEditorOpen(true);
 	};
 
-	const handleStartEdit = (agent: AgentDef) => {
-		setEditingAgent({ ...agent });
-		setIsNew(false);
+	const startEdit = (agent: AgentDef) => {
+		setDraft({ ...agent });
+		setMode({ kind: "edit" });
+		setNameError(null);
+		setEditorOpen(true);
 	};
 
-	const handleAiHelp = () => {
-		if (!editingAgent) return;
-		const name = editingAgent.name || "新子代理";
-		const desc = editingAgent.description || "自定义专业领域任务";
-
-		// Auto fill prompt and notify
-		setEditingAgent((prev) =>
-			prev
-				? {
-						...prev,
-						prompt:
-							prev.prompt ||
-							`# ${name} 角色指令\n\n- 职责范围：${desc}\n- 执行准则：严格遵循六个月可维护性原则，不留 TODO。\n- 产出要求：提交完整验证与实现方案。`,
-					}
-				: null,
-		);
-		toast("AI 已协助生成提示词草稿，请根据需要微调", { kind: "success" });
+	const checkName = (): boolean => {
+		if (draft?.name.trim()) return true;
+		setNameError("请填写子代理名称");
+		return false;
 	};
 
-	const handleSave = () => {
-		if (!editingAgent) return;
-		if (!editingAgent.name.trim()) {
-			toast("请填写子代理名称", { kind: "error" });
+	const aiWrite = () => {
+		if (!draft) return;
+		if (draft.prompt.trim()) {
+			toast("提示词已有内容，清空后再让 AI 写", { kind: "info" });
 			return;
 		}
-
-		if (isNew) {
-			setAgents((prev) => [...prev, editingAgent]);
-			toast(`已成功创建子代理 ${editingAgent.name}`, { kind: "success" });
-		} else {
-			setAgents((prev) => prev.map((a) => (a.id === editingAgent.id ? editingAgent : a)));
-			toast(`子代理 ${editingAgent.name} 已更新`, { kind: "success" });
-		}
-		setEditingAgent(null);
+		patch({ prompt: draftPrompt(draft) });
+		toast("AI 已写好提示词草稿，可以再改改", { kind: "success" });
 	};
 
+	const save = () => {
+		if (!draft || !checkName()) return;
+		const next = { ...draft, name: draft.name.trim() };
+		if (mode.kind === "new") {
+			setAgents((prev) => [...prev, next]);
+			toast(`已创建子代理 ${next.name}`, { kind: "success" });
+		} else {
+			setAgents((prev) => prev.map((a) => (a.id === next.id ? next : a)));
+			toast(`子代理 ${next.name} 已更新`, { kind: "success" });
+		}
+		setEditorOpen(false);
+	};
+
+	const showBasics = mode.kind === "edit" || mode.step === 1;
+	const showPrompt = mode.kind === "edit" || mode.step === 2;
+
+	const footer =
+		mode.kind === "new" && mode.step === 1 ? (
+			<div className="flex gap-3">
+				<Button variant="tonal" block className="flex-1" onClick={() => setEditorOpen(false)}>
+					取消
+				</Button>
+				<Button variant="primary" block className="flex-1" onClick={() => checkName() && setMode({ kind: "new", step: 2 })}>
+					下一步
+				</Button>
+			</div>
+		) : mode.kind === "new" ? (
+			<div className="flex gap-3">
+				<Button variant="tonal" block className="flex-1" onClick={() => setMode({ kind: "new", step: 1 })}>
+					上一步
+				</Button>
+				<Button variant="primary" block className="flex-1" onClick={save}>
+					创建
+				</Button>
+			</div>
+		) : (
+			<div className="flex gap-3">
+				<Button variant="tonal" block className="flex-1" onClick={() => setEditorOpen(false)}>
+					取消
+				</Button>
+				<Button variant="primary" block className="flex-1" onClick={save}>
+					保存
+				</Button>
+			</div>
+		);
+
 	return (
-		<BottomSheet
-			open={open}
-			onClose={onClose}
-			fullHeight={Boolean(editingAgent)}
-			title={editingAgent ? (isNew ? "新建子代理" : `编辑 · ${editingAgent.name}`) : "子代理管理"}
-		>
-			<div className="space-y-4 px-4 pb-8">
-				{editingAgent ? (
-					/* Editor View */
-					<div className="space-y-3.5">
-						<div className="flex items-center justify-between">
-							<button
-								type="button"
-								onClick={() => setEditingAgent(null)}
-								className="flex items-center gap-1 text-m-xs text-m-accent"
-							>
-								<ArrowLeft size={14} />
-								<span>返回列表</span>
-							</button>
+		<SettingsSheet open={open} onClose={onClose} title="子代理管理" subtitle="主 AI 可以通过 task 工具把独立的子任务交给子代理处理。">
+			<ListGroup>
+				<ListRow icon={<Plus {...ICON} />} title={<span className="text-m-accent">新建子代理</span>} onClick={startCreate} chevron={false} />
+			</ListGroup>
 
-							<div className="flex items-center gap-2">
-								<button
-									type="button"
-									onClick={handleAiHelp}
-									className="flex items-center gap-1.5 rounded-m-md border border-m-border bg-m-surface px-2.5 py-1.5 text-m-xs font-medium text-m-accent active:bg-m-surface-hover"
-								>
-									<Wand2 size={13} />
-									<span>让 AI 帮我写</span>
-								</button>
-								<button
-									type="button"
-									onClick={handleSave}
-									className="flex items-center gap-1.5 rounded-m-md bg-m-accent px-3 py-1.5 text-m-xs font-medium text-m-accent-text"
-								>
-									<Save size={14} />
-									<span>保存</span>
-								</button>
-							</div>
-						</div>
+			<ListGroup title="已有子代理">
+				{agents.map((a) => (
+					<ListRow
+						key={a.id}
+						icon={<Bot {...ICON} />}
+						title={<span className="font-m-mono break-all">{a.name}</span>}
+						subtitle={a.description || undefined}
+						right={a.isBuiltin ? <Chip>内置</Chip> : undefined}
+						chevron
+						onClick={() => startEdit(a)}
+					/>
+				))}
+			</ListGroup>
 
-						<div className="space-y-3 rounded-m-lg border border-m-border bg-m-bg-elev p-3">
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">名称 (Name)</label>
-								<input
-									type="text"
-									placeholder="如 doc-writer, refactor-bot"
-									value={editingAgent.name}
-									disabled={editingAgent.isBuiltin}
-									onChange={(e) => setEditingAgent({ ...editingAgent, name: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text"
-								/>
-							</div>
-
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">职责描述 (Description)</label>
-								<input
-									type="text"
-									placeholder="一句话说明负责什么、主 AI 什么时候该派发给它"
-									value={editingAgent.description}
-									onChange={(e) => setEditingAgent({ ...editingAgent, description: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text"
-								/>
-							</div>
-
-							<div className="grid grid-cols-2 gap-2">
-								<div className="space-y-1">
-									<label className="text-m-xs font-medium text-m-text-3">可用工具 (Tools)</label>
-									<input
-										type="text"
-										placeholder="* 或 read, edit"
-										value={editingAgent.tools}
-										onChange={(e) => setEditingAgent({ ...editingAgent, tools: e.target.value })}
-										className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text"
+			<SettingsSheet
+				open={editorOpen && draft != null}
+				onClose={() => setEditorOpen(false)}
+				title={mode.kind === "new" ? "新建子代理" : `编辑 ${draft?.name ?? ""}`}
+				subtitle={mode.kind === "new" ? (mode.step === 1 ? "第 1 步，共 2 步：基本信息" : "第 2 步，共 2 步：提示词") : undefined}
+				footer={footer}
+			>
+				{draft && (
+					<div className="flex flex-col gap-4 px-5 pt-2">
+						{showBasics && (
+							<>
+								<Field label="名称" hint={draft.isBuiltin ? "内置子代理不能改名" : "例如 doc-writer"} error={nameError}>
+									<TextField
+										value={draft.name}
+										disabled={draft.isBuiltin}
+										placeholder="英文短名"
+										autoCapitalize="off"
+										spellCheck={false}
+										onChange={(e) => {
+											patch({ name: e.target.value });
+											setNameError(null);
+										}}
+										className={MONO_INPUT}
 									/>
-								</div>
-								<div className="space-y-1">
-									<label className="text-m-xs font-medium text-m-text-3">模型 (Model)</label>
-									<input
-										type="text"
-										placeholder="@task 或 provider/model"
-										value={editingAgent.model}
-										onChange={(e) => setEditingAgent({ ...editingAgent, model: e.target.value })}
-										className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text"
+								</Field>
+								<Field label="职责描述" hint="一句话说明它负责什么，主 AI 据此决定什么时候交给它">
+									<textarea
+										value={draft.description}
+										rows={2}
+										placeholder="例如 只读的代码库探索"
+										onChange={(e) => patch({ description: e.target.value })}
+										className={`${inputCls} block resize-none`}
 									/>
-								</div>
-							</div>
-
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">系统提示词 (Prompt)</label>
+								</Field>
+								<Field label="可用工具" hint="* 表示全部工具，或用逗号分隔，如 read, edit">
+									<TextField
+										value={draft.tools}
+										autoCapitalize="off"
+										spellCheck={false}
+										onChange={(e) => patch({ tools: e.target.value })}
+										className={MONO_INPUT}
+									/>
+								</Field>
+								<Field label="模型" hint="模型角色如 @task，或 供应商/模型">
+									<TextField
+										value={draft.model}
+										autoCapitalize="off"
+										spellCheck={false}
+										onChange={(e) => patch({ model: e.target.value })}
+										className={MONO_INPUT}
+									/>
+								</Field>
+							</>
+						)}
+						{showPrompt && (
+							<Field label="系统提示词" hint="它的专属指令、工作范围和交回标准">
 								<textarea
-									rows={8}
-									placeholder="这个子代理特有的提示词指令、工作范围与交回标准"
-									value={editingAgent.prompt}
-									onChange={(e) => setEditingAgent({ ...editingAgent, prompt: e.target.value })}
-									className="w-full rounded-m-md border border-m-border bg-m-bg p-3 font-m-mono text-m-xs leading-relaxed text-m-text outline-none focus:border-m-accent"
+									value={draft.prompt}
+									rows={10}
+									placeholder="不知道怎么写？点下面的按钮让 AI 先写一版"
+									autoCapitalize="off"
+									spellCheck={false}
+									onChange={(e) => patch({ prompt: e.target.value })}
+									className={`${inputCls} m-selectable block resize-none rounded-m-lg ${MONO_INPUT}`}
 								/>
+							</Field>
+						)}
+						{showPrompt && (
+							<div>
+								<Button variant="accent" icon={<Wand2 size={18} strokeWidth={1.75} />} onClick={aiWrite}>
+									让 AI 帮我写
+								</Button>
 							</div>
-						</div>
-					</div>
-				) : (
-					/* List View */
-					<div className="space-y-3">
-						<div className="flex items-center justify-between">
-							<p className="text-m-xs text-m-text-3">
-								主 AI 可通过 task 工具直接调用子代理，按职责专注处理独立子步骤。
-							</p>
-							<button
-								type="button"
-								onClick={handleStartCreate}
-								className="flex items-center gap-1 shrink-0 rounded-m-md bg-m-accent px-3 py-1.5 text-m-xs font-medium text-m-accent-text"
-							>
-								<Plus size={14} />
-								<span>新建子代理</span>
-							</button>
-						</div>
-
-						<div className="rounded-m-lg border border-m-border bg-m-bg-elev divide-y divide-m-border">
-							{agents.map((agent) => (
-								<button
-									key={agent.id}
-									type="button"
-									onClick={() => handleStartEdit(agent)}
-									className="flex w-full items-center justify-between p-3 text-left active:bg-m-surface-hover"
-								>
-									<div className="min-w-0 pr-2">
-										<div className="flex items-center gap-2">
-											<span className="font-m-mono text-m-sm font-semibold text-m-text">
-												{agent.name}
-											</span>
-											{agent.isBuiltin && (
-												<span className="rounded-m-pill bg-m-surface-2 px-1.5 py-0.2 text-[10px] text-m-text-3">
-													内置
-												</span>
-											)}
-										</div>
-										<p className="mt-0.5 truncate text-m-xs text-m-text-3">{agent.description}</p>
-									</div>
-									<ChevronRight size={16} className="text-m-text-3 shrink-0" />
-								</button>
-							))}
-						</div>
+						)}
 					</div>
 				)}
-			</div>
-		</BottomSheet>
+			</SettingsSheet>
+		</SettingsSheet>
 	);
 }

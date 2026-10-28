@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { api } from "../../core/api";
 import type { PageProps } from "../../core/nav";
 import { events } from "../../core/sse";
-import { EmptyState, HeaderButton, Markdown, PageHeader, PullToRefresh } from "../../ui";
+import { EmptyState, IconButton, Markdown, PageHeader, PullToRefresh } from "../../ui";
 import { LoadGate } from "./PanelState";
 import { useLoad, useResync } from "./hooks";
 
@@ -40,13 +40,13 @@ export function PlanPage({ route }: PageProps) {
 			<PageHeader
 				title="计划"
 				subtitle={state.data?.streaming ? "生成中" : "最新一条助手回复"}
-				right={<HeaderButton icon={<RefreshCw size={20} />} label="刷新" onClick={() => void state.reload(true)} />}
+				right={<IconButton icon={<RefreshCw size={20} />} label="刷新" onClick={() => void state.reload(true)} />}
 			/>
 			<PullToRefresh onRefresh={() => state.reload(true)}>
 				<LoadGate state={state}>
 					{(p) =>
 						p.text ? (
-							<div className="p-4">
+							<div className="m-selectable px-5 pt-2 pb-8">
 								<Markdown text={p.text} streaming={!!p.streaming} />
 							</div>
 						) : (

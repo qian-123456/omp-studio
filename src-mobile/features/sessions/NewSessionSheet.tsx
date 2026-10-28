@@ -1,9 +1,10 @@
-import { Check, ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, Folder, FolderGit2, MessageSquare } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths } from "../../core/nav";
 import { useSessions } from "../../core/stores/sessions";
-import { BottomSheet, Spinner, toast } from "../../ui";
+import { BottomSheet, Button, Chip, ListGroup, Spinner, toast } from "../../ui";
 import { ModelPicker, type PickerModel } from "../../ui/ModelPicker";
 import { createInput, initialNewSession, newSessionReducer, preselectCwd } from "./newSession";
 import { modeLabel, type DirEntry } from "./tree";
@@ -11,9 +12,48 @@ import { modeLabel, type DirEntry } from "./tree";
 const KIND_TITLE: Record<string, string> = { workspace: "工作区", worktree: "工作树", global: "无项目" };
 const KIND_ORDER = ["workspace", "worktree", "global"];
 
-const btn = "inline-flex min-h-11 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-m-md px-4 text-m-md font-medium disabled:opacity-50";
-const primaryBtn = `${btn} bg-m-accent text-m-accent-text`;
-const secondaryBtn = `${btn} border border-m-border bg-m-surface text-m-text`;
+const KIND_ICON: Record<string, ReactNode> = {
+	workspace: <Folder size={22} strokeWidth={1.75} />,
+	worktree: <FolderGit2 size={22} strokeWidth={1.75} />,
+	global: <MessageSquare size={22} strokeWidth={1.75} />,
+};
+
+/** Selectable row inside a grouped card (radio semantics, check mark on the right). */
+function ChoiceRow({
+	checked,
+	onPick,
+	icon,
+	title,
+	subtitle,
+	tag,
+}: {
+	checked: boolean;
+	onPick: () => void;
+	icon?: ReactNode;
+	title: ReactNode;
+	subtitle?: ReactNode;
+	tag?: ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			role="radio"
+			aria-checked={checked}
+			onClick={onPick}
+			className="m-list-row flex w-full items-center gap-4 pl-4 text-left active:bg-m-surface-hover"
+		>
+			{icon != null && <span className="flex w-6 shrink-0 items-center justify-center text-m-text-2">{icon}</span>}
+			<span className="m-list-sep flex min-h-14 min-w-0 flex-1 items-center gap-3 py-3 pr-4">
+				<span className="min-w-0 flex-1">
+					<span className="block text-m-md break-words text-m-text">{title}</span>
+					{subtitle != null && <span className="mt-0.5 block text-m-xs break-all text-m-text-3">{subtitle}</span>}
+				</span>
+				{tag}
+				<span className="flex w-5 shrink-0 justify-center">{checked && <Check size={20} className="text-m-accent" />}</span>
+			</span>
+		</button>
+	);
+}
 
 interface Load<T> {
 	data: T | null;
@@ -45,54 +85,36 @@ function DirStep({
 }) {
 	if (load.loading && !load.data)
 		return (
-			<div className="flex items-center justify-center gap-2 p-8 text-m-sm text-m-text-3">
+			<div className="flex items-center justify-center gap-2 p-10 text-m-sm text-m-text-3">
 				<Spinner size={18} />
 				加载目录
 			</div>
 		);
 	if (load.error)
 		return (
-			<div className="flex flex-col items-center gap-3 p-6 text-center">
-				<div className="select-text break-words text-m-sm text-m-danger">加载目录失败：{load.error}</div>
-				<button type="button" onClick={onRetry} className={secondaryBtn}>
-					重试
-				</button>
+			<div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
+				<div className="m-selectable text-m-sm break-words text-m-danger">加载目录失败：{load.error}</div>
+				<Button onClick={onRetry}>重试</Button>
 			</div>
 		);
 	const groups = groupDirs(load.data ?? []);
-	if (!groups.length) return <div className="p-8 text-center text-m-sm text-m-text-3">没有可用目录</div>;
+	if (!groups.length) return <div className="px-6 py-10 text-center text-m-sm text-m-text-3">没有可用目录</div>;
 	return (
-		<div className="flex flex-col gap-3 px-4 pb-3" role="radiogroup" aria-label="选择目录">
+		<div className="flex flex-col pb-3" role="radiogroup" aria-label="选择目录">
 			{groups.map((g) => (
-				<div key={g.kind} className="flex flex-col gap-2">
-					<div className="text-m-xs font-medium text-m-text-3">{g.title}</div>
-					{g.dirs.map((d) => {
-						const active = d.path === cwd;
-						return (
-							<button
+				<ListGroup key={g.kind} title={g.title}>
+						{g.dirs.map((d) => (
+							<ChoiceRow
 								key={d.path}
-								type="button"
-								role="radio"
-								aria-checked={active}
-								onClick={() => onPick(d.path)}
-								className={`flex min-h-11 items-center gap-3 rounded-m-md border px-3 py-2 text-left ${
-									active ? "border-m-accent bg-m-surface-2" : "border-m-border bg-m-surface"
-								}`}
-							>
-								<span className="min-w-0 flex-1">
-									<span className="block break-words text-m-md text-m-text">{d.label || d.path}</span>
-									<span className="block break-all text-m-xs text-m-text-3">{d.path}</span>
-								</span>
-								{d.kind !== "global" && d.mode && (
-									<span className="shrink-0 whitespace-nowrap rounded-m-pill bg-m-surface-2 px-2 py-0.5 text-m-xs text-m-text-2">
-										{modeLabel(d.mode)}
-									</span>
-								)}
-								{active && <Check size={18} className="shrink-0 text-m-accent" />}
-							</button>
-						);
-					})}
-				</div>
+								checked={d.path === cwd}
+								onPick={() => onPick(d.path)}
+								icon={KIND_ICON[d.kind] ?? KIND_ICON.workspace}
+								title={d.label || d.path}
+								subtitle={d.label ? d.path : undefined}
+								tag={d.kind !== "global" && d.mode ? <Chip>{modeLabel(d.mode)}</Chip> : undefined}
+							/>
+						))}
+				</ListGroup>
 			))}
 		</div>
 	);
@@ -115,34 +137,42 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 	const [creating, setCreating] = useState(false);
 	const defaultCwdRef = useRef(defaultCwd);
 	defaultCwdRef.current = defaultCwd;
+	const dirsRequest = useRef(0);
+	const modelsRequest = useRef(0);
+	const createPending = useRef(false);
 
 	const loadDirs = useCallback(() => {
-		setDirs((d) => ({ ...d, error: null, loading: true }));
+		const request = ++dirsRequest.current;
+		setDirs({ data: null, error: null, loading: true });
 		api<{ dirs: DirEntry[] }>("GET", "/left/dirs")
-			.then((r) => setDirs({ data: r.dirs ?? [], error: null, loading: false }))
-			.catch((e) => setDirs({ data: null, error: errorMessage(e), loading: false }));
+			.then((r) => {
+				if (request !== dirsRequest.current) return;
+				const data = r.dirs ?? [];
+				setDirs({ data, error: null, loading: false });
+				const cwd = preselectCwd(data, defaultCwdRef.current);
+				if (cwd) dispatch({ type: "pickDir", cwd });
+			})
+			.catch((e) => { if (request === dirsRequest.current) setDirs({ data: null, error: errorMessage(e), loading: false }); });
 	}, []);
 
 	// Opening restarts the wizard and refetches the directory list.
 	useEffect(() => {
 		if (!open) return;
 		dispatch({ type: "reset", cwd: null });
-		setCreating(false);
+		setCreating(createPending.current);
+		setDirs({ data: null, error: null, loading: true });
+		setModels({ data: null, error: null, loading: false, cwd: null });
 		loadDirs();
+		return () => { ++dirsRequest.current; ++modelsRequest.current; };
 	}, [open, loadDirs]);
 
-	// Preselect `defaultCwd` once the directory list is known (only when nothing is chosen yet).
-	useEffect(() => {
-		if (!open || !dirs.data || state.cwd) return;
-		const pre = preselectCwd(dirs.data, defaultCwdRef.current);
-		if (pre) dispatch({ type: "pickDir", cwd: pre });
-	}, [open, dirs.data, state.cwd]);
 
 	const loadModels = useCallback((cwd: string) => {
+		const request = ++modelsRequest.current;
 		setModels({ data: null, error: null, loading: true, cwd });
 		api<{ models?: PickerModel[] }>("GET", `/left/roles?cwd=${encodeURIComponent(cwd)}`)
-			.then((r) => setModels({ data: r.models ?? [], error: null, loading: false, cwd }))
-			.catch((e) => setModels({ data: null, error: errorMessage(e), loading: false, cwd }));
+			.then((r) => { if (request === modelsRequest.current) setModels({ data: r.models ?? [], error: null, loading: false, cwd }); })
+			.catch((e) => { if (request === modelsRequest.current) setModels({ data: null, error: errorMessage(e), loading: false, cwd }); });
 	}, []);
 
 	// The catalog is fetched when the model step opens (cached per directory; back/forward does not refetch).
@@ -160,7 +190,8 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 
 	const create = async () => {
 		const input = createInput(state, dirs.data ?? []);
-		if (!input || creating) return;
+		if (!input || createPending.current) return;
+		createPending.current = true;
 		setCreating(true);
 		try {
 			const { id } = await useSessions.getState().createSession(input);
@@ -168,31 +199,35 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 			nav.push(paths.chat(id));
 		} catch (e) {
 			toast(`新建失败：${errorMessage(e)}`, { kind: "error" });
+		} finally {
+			createPending.current = false;
 			setCreating(false);
 		}
 	};
 
 	const onModel = state.step === "model";
 	const footer = onModel ? (
-		<div className="flex gap-2">
-			<button type="button" className={secondaryBtn} onClick={() => dispatch({ type: "back" })} disabled={creating}>
-				<ChevronLeft size={18} />
+		<div className="flex gap-3">
+			<Button
+				className="flex-1"
+				icon={<ChevronLeft size={18} strokeWidth={1.75} />}
+				onClick={() => dispatch({ type: "back" })}
+				disabled={creating}
+			>
 				上一步
-			</button>
-			<button type="button" className={primaryBtn} onClick={() => void create()} disabled={creating}>
-				{creating && <Spinner size={16} />}
+			</Button>
+			<Button className="flex-1" variant="primary" busy={creating} onClick={() => void create()}>
 				创建会话
-			</button>
+			</Button>
 		</div>
 	) : (
-		<div className="flex gap-2">
-			<button type="button" className={secondaryBtn} disabled={!state.cwd || creating} onClick={() => void create()}>
-				{creating && <Spinner size={16} />}
+		<div className="flex gap-3">
+			<Button className="flex-1" disabled={!state.cwd} busy={creating} onClick={() => void create()}>
 				直接创建
-			</button>
-			<button type="button" className={primaryBtn} disabled={!state.cwd} onClick={() => dispatch({ type: "next" })}>
+			</Button>
+			<Button className="flex-1" variant="primary" disabled={!state.cwd || creating} onClick={() => dispatch({ type: "next" })}>
 				下一步
-			</button>
+			</Button>
 		</div>
 	);
 
@@ -202,28 +237,23 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 			onClose={onClose}
 			fullHeight
 			title={onModel ? "选择模型" : "在哪个目录新建会话"}
+			subtitle={onModel ? `第 2 步，共 2 步 · ${state.cwd ?? ""}` : "第 1 步，共 2 步"}
 			footer={footer}
 		>
 			{!onModel ? (
 				<DirStep load={dirs} cwd={state.cwd} onPick={(cwd) => dispatch({ type: "pickDir", cwd })} onRetry={loadDirs} />
 			) : (
-				<div className="flex h-full min-h-0 flex-col gap-3 px-4 pb-3">
-					<div className="break-all text-m-xs text-m-text-3">目录：{state.cwd}</div>
-					<button
-						type="button"
-						role="radio"
-						aria-checked={state.model === null}
-						onClick={() => dispatch({ type: "pickModel", model: null })}
-						className={`flex min-h-11 items-center gap-3 rounded-m-md border px-3 py-2 text-left ${
-							state.model === null ? "border-m-accent bg-m-surface-2" : "border-m-border bg-m-surface"
-						}`}
-					>
-						<span className="min-w-0 flex-1">
-							<span className="block text-m-md text-m-text">使用默认模型</span>
-							{defaultModel && <span className="block break-all text-m-xs text-m-text-3">{defaultModel}</span>}
-						</span>
-						{state.model === null && <Check size={18} className="shrink-0 text-m-accent" />}
-					</button>
+				<div className="flex h-full min-h-0 flex-col gap-3 pb-3">
+					<div className="px-4">
+						<ListGroup className="px-0!">
+							<ChoiceRow
+								checked={state.model === null}
+								onPick={() => dispatch({ type: "pickModel", model: null })}
+								title="使用默认模型"
+								subtitle={defaultModel || undefined}
+							/>
+						</ListGroup>
+					</div>
 					{models.loading && (
 						<div className="flex items-center justify-center gap-2 p-6 text-m-sm text-m-text-3">
 							<Spinner size={18} />
@@ -231,16 +261,14 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 						</div>
 					)}
 					{models.error && (
-						<div className="flex flex-col items-center gap-3 p-4 text-center">
-							<div className="select-text break-words text-m-sm text-m-danger">加载模型失败：{models.error}</div>
-							<button type="button" className={secondaryBtn} onClick={() => state.cwd && loadModels(state.cwd)}>
-								重试
-							</button>
+						<div className="flex flex-col items-center gap-4 px-6 py-6 text-center">
+							<div className="m-selectable text-m-sm break-words text-m-danger">加载模型失败：{models.error}</div>
+							<Button onClick={() => state.cwd && loadModels(state.cwd)}>重试</Button>
 						</div>
 					)}
 					{models.data && (
 						<ModelPicker
-							className="min-h-0 flex-1"
+							className="min-h-0 flex-1 px-4"
 							value={state.model}
 							models={models.data}
 							onChange={(m) => dispatch({ type: "pickModel", model: m })}

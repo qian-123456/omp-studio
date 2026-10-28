@@ -22,6 +22,21 @@ vi.mock("../../lib/ipc", async (importOriginal) => ({
 	getTranscript: vi.fn(async () => ({ items: [] })),
 	acceptSession: vi.fn(async () => undefined),
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
+vi.mock("@tauri-apps/api/webview", () => ({
+	getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
+}));
+vi.mock("../chat/ImageChips", () => ({
+	AttachmentThumb: ({ index, onRemove }: { index: number; onRemove?: () => void }) => (
+		<button
+			type="button"
+			aria-label={onRemove ? `remove-image-${index}` : `staged-image-${index}`}
+			onClick={onRemove}
+		>
+			#{index}
+		</button>
+	),
+}));
 vi.mock("../../stores/live", () => ({
 	useLive: Object.assign(
 		(selector: (s: { sessions: Record<string, never>; scrollToItem: () => void }) => unknown) =>
@@ -99,6 +114,7 @@ beforeEach(() => {
 	useComposer.setState({
 		annotations: {},
 		sideChatDrafts: {},
+		images: {},
 		focusNonce: {},
 	});
 	useSessions.setState({
@@ -166,7 +182,7 @@ describe("SideChatPanel blank new chat", () => {
 		expect(selection).toContain("[1]");
 		expect(selection).toContain("> hello quote");
 		expect(selection).toContain("批注：批注内容");
-		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", expect.stringContaining("> [1]"));
+		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", expect.stringContaining("> [1]"), []);
 		expect(h.addUserEcho.mock.calls[0]![1]).toContain("解释一下");
 		const view = useSideChatView.getState();
 		expect(view.openTabs["p1"]).toEqual(["child-new"]);
@@ -176,12 +192,59 @@ describe("SideChatPanel blank new chat", () => {
 		expect(useComposer.getState().annotations[sideChatAnnKey("p1")] ?? []).toEqual([]);
 		expect(screen.getByTestId("child-view").textContent).toBe("child-new");
 	});
+	it("allows image-only first sends and preserves prompt and echo attachment order", async () => {
+		const first = useComposer.getState().addImage(blankId, "/first.png");
+		const second = useComposer.getState().addImage(blankId, "/second.png");
+		render(<SideChatPanel />);
 
-	it("restores the draft and starts nothing when creation fails", async () => {
+		const send = screen.getByTitle("发送 (Enter)") as HTMLButtonElement;
+		expect(send.disabled).toBe(false);
+		fireEvent.click(send);
+		await waitFor(() => expect(h.sideChatAsk).toHaveBeenCalled());
+
+		const [sid, question, selection] = h.sideChatAsk.mock.calls[0]!;
+		expect(sid).toBe("child-new");
+		expect(question).toBe("请结合所附图片回答。 [Image #1: /first.png] [Image #2: /second.png]");
+		expect(selection).toBeUndefined();
+		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", "请结合所附图片回答。", [
+			{ id: first.id, path: first.path, marker: "[Image #1]" },
+			{ id: second.id, path: second.path, marker: "[Image #2]" },
+		]);
+		expect(h.addUserEcho.mock.invocationCallOrder[0]).toBeLessThan(
+			h.sideChatAsk.mock.invocationCallOrder[0]!,
+		);
+	});
+
+	it("removing an image renumbers the remaining marker and first prompt", async () => {
+		const first = useComposer.getState().addImage(blankId, "/first.png");
+		useComposer.getState().addImage(blankId, "/removed.png");
+		const third = useComposer.getState().addImage(blankId, "/third.png");
+		useComposer.getState().setSideChatDraft(blankId, "Review 🖼️#1, 🖼️#2 and 🖼️#3");
+		render(<SideChatPanel />);
+
+		fireEvent.click(screen.getByLabelText("remove-image-2"));
+		expect((input() as HTMLTextAreaElement).value).toBe("Review 🖼️#1, and 🖼️#2");
+		expect(useComposer.getState().images[blankId]).toEqual([first, third]);
+
+		fireEvent.click(screen.getByTitle("发送 (Enter)"));
+		await waitFor(() => expect(h.sideChatAsk).toHaveBeenCalled());
+		const question = h.sideChatAsk.mock.calls[0]![1];
+		expect(question).toBe("Review [Image #1: /first.png], and [Image #2: /third.png]");
+		expect(h.addUserEcho.mock.calls[0]![2]).toEqual([
+			{ id: first.id, path: first.path, marker: "[Image #1]" },
+			{ id: third.id, path: third.path, marker: "[Image #2]" },
+		]);
+	});
+
+	it("restores the text and retains staged images when creation fails", async () => {
+		const image = useComposer.getState().addImage(blankId, "/kept.png");
 		h.createSideChat.mockReset().mockRejectedValue(new Error("boom"));
 		render(<SideChatPanel />);
-		typeAndSend("问题");
-		await waitFor(() => expect((input() as HTMLTextAreaElement).value).toBe("问题"));
+		typeAndSend("问题 🖼️#1");
+		await waitFor(() => expect((input() as HTMLTextAreaElement).value).toBe("问题 🖼️#1"));
+		expect(useComposer.getState().sideChatDrafts[blankId]).toBe("问题 🖼️#1");
+		expect(useComposer.getState().images[blankId]).toEqual([image]);
+		expect(h.addUserEcho).not.toHaveBeenCalled();
 		expect(h.sideChatAsk).not.toHaveBeenCalled();
 		expect(useSideChatView.getState().openTabs["p1"]).toEqual([blankId]);
 		expect(useSideChatView.getState().pending).toEqual({});

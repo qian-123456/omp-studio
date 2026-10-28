@@ -104,8 +104,20 @@ export const isSideChatBusy = (childId: string): boolean =>
 export async function startHandback(childId: string): Promise<void> {
 	const store = useHandback.getState();
 	if (store.runs[childId]?.phase === "running") return;
+	if (isSideChatBusy(childId)) {
+		toast.info(tNow("sidechat.sideChatBusyWait"));
+		return;
+	}
 	store.set(childId, { phase: "running", draft: "", transcript: "", error: null });
 	try {
+		const previousItems = await loadItems(childId);
+		const previouslySeenIds = new Set(previousItems.map((item) => item.id));
+		if (isSideChatBusy(childId)) {
+			const error = tNow("sidechat.sideChatBusyWait");
+			useHandback.getState().set(childId, { phase: "error", error });
+			toast.info(error);
+			return;
+		}
 		const turn = watchTurn(childId);
 		try {
 			// The summary is handed to the parent, not read in the side chat: its
@@ -121,7 +133,7 @@ export async function startHandback(childId: string): Promise<void> {
 		await turn.done;
 		for (let i = 0; i < RETRIES; i++) {
 			const items = await loadItems(childId);
-			const res = extractHandbackDraft(items);
+			const res = extractHandbackDraft(items, previouslySeenIds);
 			if (res.ok) {
 				useHandback.getState().set(childId, {
 					phase: "ready",

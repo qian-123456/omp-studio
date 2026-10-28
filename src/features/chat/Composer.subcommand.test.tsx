@@ -494,7 +494,7 @@ describe("Composer generic subcommands (registry command + omp dynamic list)", (
 });
 
 describe("Composer inline skill chip overlay", () => {
-	it("paints the badge over breakable literal text so the mirror wraps like the textarea", () => {
+	it("shows the selected skill chip while retaining its command in the draft", () => {
 		act(() => {
 			useLive.setState({
 				sessions: {
@@ -510,14 +510,8 @@ describe("Composer inline skill chip overlay", () => {
 		typeText("/grill");
 		fireEvent.keyDown(ta(), { key: "Enter" });
 		const badge = document.querySelector("[data-command-chip]");
-		expect(badge).not.toBeNull();
-		// An atomic (inline-block / no-wrap) literal breaks differently from the
-		// textarea at the hyphen of `/skill:grill-me`, desyncing lines and caret.
-		for (let el = badge?.parentElement; el && !el.hasAttribute("aria-hidden"); el = el.parentElement) {
-			expect(el.className).not.toMatch(/inline-block|whitespace-pre(?!-wrap)/);
-		}
-		const literal = [...document.querySelectorAll("[aria-hidden] .invisible")].find((n) => n.textContent === "/skill:grill-me");
-		expect(literal).toBeDefined();
+		expect(badge?.textContent).toContain("grill-me");
+		expect(ta().value).toContain("/skill:grill-me");
 	});
 });
 

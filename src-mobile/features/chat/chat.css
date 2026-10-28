@@ -7,38 +7,14 @@
 .m-turn-live {
 	content-visibility: visible;
 }
-.m-msg {
-	font-size: var(--m-msg-fs, 16px);
-	line-height: 1.55;
+/* Assistant reply text (Markdown root): the Settings ▸ 外观 size with CJK-friendly leading. */
+.m-md.m-msg {
+	font-size: var(--m-msg-fs);
+	line-height: calc(var(--m-msg-fs) * 28 / 17);
 	overflow-wrap: anywhere;
 }
 .m-composer-input {
 	field-sizing: content;
 	min-height: 24px;
 	max-height: 140px;
-}
-.m-dots i {
-	display: inline-block;
-	width: 6px;
-	height: 6px;
-	margin-right: 4px;
-	border-radius: 9999px;
-	background: var(--m-text-3);
-	animation: m-dot 1.2s infinite ease-in-out;
-}
-.m-dots i:nth-child(2) {
-	animation-delay: 0.15s;
-}
-.m-dots i:nth-child(3) {
-	animation-delay: 0.3s;
-}
-@keyframes m-dot {
-	0%,
-	80%,
-	100% {
-		opacity: 0.25;
-	}
-	40% {
-		opacity: 1;
-	}
 }

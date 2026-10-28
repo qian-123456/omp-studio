@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { api, errorMessage } from "../../core/api";
-import { toast } from "../../ui";
-import { Row, Section, Segmented, Stepper, Switch } from "./controls";
-import { clampInt, visibleGroups, type OmpValue, type SettingDef } from "./settingsMap";
+import { ListGroup, Segmented, Stepper, Switch, toast } from "../../ui";
+import { SettingRow } from "./rows";
+import { clampInt, SETTING_GROUPS, type OmpValue, type SettingDef } from "./settingsMap";
 
-type Omp = Record<string, OmpValue>;
+export type Omp = Record<string, OmpValue>;
+
+const DEFS: ReadonlyMap<string, SettingDef> = new Map(SETTING_GROUPS.flatMap((g) => g.items.map((d) => [d.key, d] as const)));
 
 function SettingControl({ def, value, onSave, busy }: { def: SettingDef; value: OmpValue; onSave: (v: boolean | number | string) => void; busy: boolean }) {
 	if (def.type === "bool") return <Switch label={def.name} checked={value === true} disabled={busy} onChange={onSave} />;
@@ -33,11 +35,30 @@ function SettingControl({ def, value, onSave, busy }: { def: SettingDef; value: 
 	);
 }
 
-/** Allowlisted OMP switches/inputs, saved optimistically through `POST /left/settings/set` with rollback. */
-export function OmpSettings({ omp, onValue }: { omp: Omp; onValue: (key: string, value: OmpValue) => void }) {
+/**
+ * One group of allowlisted OMP settings (current values from `GET /left/settings` → `omp`),
+ * saved optimistically through `POST /left/settings/set` with rollback. Keys the server did not
+ * return (unset/unreadable config) are hidden.
+ */
+export function OmpSettingsGroup({
+	title,
+	keys,
+	omp,
+	onValue,
+}: {
+	title?: string;
+	keys: readonly string[];
+	omp: Omp | undefined;
+	onValue: (key: string, value: OmpValue) => void;
+}) {
 	const [busyKey, setBusyKey] = useState<string | null>(null);
+	const defs = keys.flatMap((k) => {
+		const d = DEFS.get(k);
+		return d && omp && k in omp ? [d] : [];
+	});
+	if (defs.length === 0) return null;
 	const save = async (def: SettingDef, next: boolean | number | string) => {
-		if (busyKey) return;
+		if (busyKey || !omp) return;
 		const prev = omp[def.key];
 		setBusyKey(def.key);
 		onValue(def.key, next);
@@ -52,16 +73,32 @@ export function OmpSettings({ omp, onValue }: { omp: Omp; onValue: (key: string,
 		}
 	};
 	return (
-		<>
-			{visibleGroups(omp).map((g) => (
-				<Section key={g.title} title={g.title}>
-					{g.items.map((def) => (
-						<Row key={def.key} name={def.name} hint={def.hint} stacked={def.type !== "bool"}>
-							<SettingControl def={def} value={omp[def.key]} busy={busyKey === def.key} onSave={(v) => void save(def, v)} />
-						</Row>
-					))}
-				</Section>
+		<ListGroup title={title}>
+			{defs.map((def) => (
+				<SettingRow key={def.key} name={def.name} hint={def.hint} stacked={def.type !== "bool"}>
+					<SettingControl def={def} value={omp?.[def.key]} busy={busyKey === def.key} onSave={(v) => void save(def, v)} />
+				</SettingRow>
 			))}
-		</>
+		</ListGroup>
+	);
+}
+
+/** Props of sheets editing allowlisted OMP settings. */
+export interface OmpSheetProps {
+	open: boolean;
+	onClose: () => void;
+	omp: Omp | undefined;
+	ompError?: string | null;
+	onOmp: (key: string, value: OmpValue) => void;
+}
+
+/** Shown instead of the rows when the desktop could not read the OMP config. */
+export function OmpError({ omp, ompError }: { omp: Omp | undefined; ompError?: string | null }) {
+	if (!ompError && omp) return null;
+	return (
+		<div role="alert" className="mx-4 rounded-m-lg bg-m-danger-bg px-4 py-3 text-m-sm break-words text-m-danger">
+			<div className="font-medium">读不到电脑上的 OMP 配置</div>
+			<div className="m-selectable mt-1">{ompError || "设置还没有加载出来，请返回后下拉刷新。"}</div>
+		</div>
 	);
 }

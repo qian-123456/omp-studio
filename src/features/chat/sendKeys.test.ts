@@ -81,6 +81,28 @@ describe("decideEnterKey: ignores", () => {
 	});
 });
 
+describe("decideEnterKey: rapid/duplicate repeat Enter", () => {
+	it("plain Enter with repeat does not fire duplicate sends in enter mode", () => {
+		expect(decideEnterKey(enter({ repeat: true }), "enter")).toBe("ignore");
+		expect(decideEnterKey(enter({ repeat: true, altKey: true }), "enter")).toBe("ignore");
+		expect(decideEnterKey(enter({ repeat: true, metaKey: true }), "enter")).toBe("ignore");
+	});
+
+	it("Shift+Enter with repeat remains a newline in enter mode", () => {
+		expect(decideEnterKey(enter({ repeat: true, shiftKey: true }), "enter")).toBe("newline");
+	});
+
+	it("⌘/Ctrl+Enter with repeat does not fire duplicate sends in mod-enter mode", () => {
+		expect(decideEnterKey(enter({ repeat: true, metaKey: true }), "mod-enter")).toBe("ignore");
+		expect(decideEnterKey(enter({ repeat: true, ctrlKey: true }), "mod-enter")).toBe("ignore");
+	});
+
+	it("plain Enter and Shift+Enter with repeat remain newlines in mod-enter mode", () => {
+		expect(decideEnterKey(enter({ repeat: true }), "mod-enter")).toBe("newline");
+		expect(decideEnterKey(enter({ repeat: true, shiftKey: true }), "mod-enter")).toBe("newline");
+	});
+});
+
 describe("resolveFollowUpAction", () => {
 	it("not streaming: every send is a plain send, alternate or not", () => {
 		for (const behavior of ["steer", "queue", "interrupt"] as const) {

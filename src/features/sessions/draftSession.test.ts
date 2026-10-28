@@ -55,7 +55,7 @@ beforeEach(() => {
 	rpcTouch.mockResolvedValue(undefined);
 	deleteSession.mockResolvedValue(undefined);
 	usePendingSession.setState({ drafts: {}, selectedId: null });
-	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {}, planModes: {} });
+	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {} });
 	useSessions.setState({ sessions: {} });
 	useUi.setState({ selectedSessionId: null, centerView: "session" });
 	useModelCatalog.setState({
@@ -77,9 +77,6 @@ describe("hasMeaningfulDraft", () => {
 		useComposer.getState().setDraft(id, "hi");
 		expect(hasMeaningfulDraft(id)).toBe(true);
 		useComposer.getState().setDraft(id, "");
-		useComposer.getState().setPlanMode(id, true);
-		expect(hasMeaningfulDraft(id)).toBe(true);
-		useComposer.getState().setPlanMode(id, false);
 		setDraftThinking(id, "high");
 		expect(hasMeaningfulDraft(id)).toBe(true);
 	});

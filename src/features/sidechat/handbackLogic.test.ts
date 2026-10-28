@@ -65,6 +65,22 @@ describe("extractHandbackDraft", () => {
 		expect(extractHandbackDraft(items)).toEqual({ ok: true, text: "新" });
 	});
 
+	it("does not accept a previous handback response for a new run", () => {
+		const previousPrompt = item("user", HANDBACK_PROMPT);
+		const previousAnswer = item("assistant", "旧结论");
+		const previouslySeenIds = new Set([previousPrompt.id, previousAnswer.id]);
+		expect(
+			extractHandbackDraft([previousPrompt, previousAnswer], previouslySeenIds),
+		).toEqual({ ok: false, pending: true });
+		const currentPrompt = item("user", HANDBACK_PROMPT);
+		const currentAnswer = item("assistant", "新结论");
+		expect(
+			extractHandbackDraft(
+				[previousPrompt, previousAnswer, currentPrompt, currentAnswer],
+				previouslySeenIds,
+			),
+		).toEqual({ ok: true, text: "新结论" });
+	});
 	it("skips tool-only assistant turns and takes the last one with text", () => {
 		const items = [
 			item("user", HANDBACK_PROMPT),

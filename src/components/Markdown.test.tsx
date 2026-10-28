@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -6,8 +7,52 @@ vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
 
 import { Markdown } from "./Markdown";
 import { pendingMarkdownAssets } from "../features/chat/markdownAssets";
+import { suppressWebViewContextMenu } from "../lib/webviewContextMenu";
 
 const html = (text: string) => renderToStaticMarkup(<Markdown text={text} />);
+
+function dispatchContextMenu(target: Element, beforeSuppress?: (e: MouseEvent) => void): MouseEvent {
+	const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+	if (beforeSuppress) target.addEventListener("contextmenu", beforeSuppress, { once: true });
+	document.addEventListener("contextmenu", suppressWebViewContextMenu, { once: true });
+	try {
+		target.dispatchEvent(event);
+	} finally {
+		document.removeEventListener("contextmenu", suppressWebViewContextMenu);
+	}
+	return event;
+}
+
+describe("Markdown context menus", () => {
+	it("preserves native link and image context menus", () => {
+		const root = document.createElement("div");
+		root.innerHTML = html("[**external link**](https://example.com)\n\n![image](/Users/me/pic.png)");
+		document.body.append(root);
+		try {
+			const linkText = root.querySelector("a strong");
+			const image = root.querySelector("img");
+			expect(linkText).not.toBeNull();
+			expect(image).not.toBeNull();
+			expect(dispatchContextMenu(linkText!).defaultPrevented).toBe(false);
+			expect(dispatchContextMenu(image!).defaultPrevented).toBe(false);
+		} finally {
+			root.remove();
+		}
+	});
+
+	it("keeps generic WebView suppression and respects custom selection menus", () => {
+		const text = document.createElement("p");
+		const customSelectionMenu = vi.fn((e: MouseEvent) => e.preventDefault());
+		document.body.append(text);
+		try {
+			expect(dispatchContextMenu(text).defaultPrevented).toBe(true);
+			expect(dispatchContextMenu(text, customSelectionMenu).defaultPrevented).toBe(true);
+			expect(customSelectionMenu).toHaveBeenCalledOnce();
+		} finally {
+			text.remove();
+		}
+	});
+});
 
 describe("Markdown inline HTML", () => {
 	it("renders details/summary", () => {

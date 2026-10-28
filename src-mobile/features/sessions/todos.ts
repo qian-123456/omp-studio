@@ -74,6 +74,8 @@ export const openTodos = (todos: readonly Todo[]): Todo[] => todos.filter((t) =>
 interface TodosState {
 	todos: Todo[];
 	loaded: boolean;
+	loading: boolean;
+	error: string | null;
 	load: () => Promise<void>;
 	act: (id: string, action: "done" | "ignore") => Promise<boolean>;
 	respond: (t: Todo, choice: TodoChoice) => Promise<boolean>;
@@ -96,11 +98,18 @@ function notifyNew(todos: Todo[]): void {
 export const useTodos = create<TodosState>((set, get) => ({
 	todos: [],
 	loaded: false,
+	loading: false,
+	error: null,
 	load: async () => {
-		const todos = await api<Todo[]>("GET", "/todos");
-		const list = Array.isArray(todos) ? todos : [];
-		set({ todos: list, loaded: true });
-		notifyNew(list);
+		set({ loading: true });
+		try {
+			const todos = await api<Todo[]>("GET", "/todos");
+			const list = Array.isArray(todos) ? todos : [];
+			set({ todos: list, loaded: true, loading: false, error: null });
+			notifyNew(list);
+		} catch (e) {
+			set({ loaded: true, loading: false, error: errorMessage(e) });
+		}
 	},
 	act: async (id, action) => {
 		try {
@@ -134,7 +143,7 @@ let off: (() => void) | null = null;
 /** Keep todos fresh from SSE while the home page is mounted (ref-counted). */
 export function startTodosSync(): () => void {
 	if (refs++ === 0) {
-		const reload = () => void useTodos.getState().load().catch(() => {});
+		const reload = () => void useTodos.getState().load();
 		reload();
 		const offs = [events.on("todos", reload), events.on("resync", reload), events.on("hello", reload)];
 		off = () => offs.forEach((o) => o());

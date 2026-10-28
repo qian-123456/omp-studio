@@ -3,7 +3,7 @@ import {
 	MISSING,
 	buildStat,
 	fieldText,
-	formatRequestStat,
+	statSummary,
 	formatStatDateTime,
 	formatStatTokens,
 	requestStatFromItem,
@@ -61,7 +61,10 @@ describe("stats", () => {
 		expect(fieldText({ ...s, usage: { ...usage, cost: 3.456 } }, "cost")).toBe("3.46");
 		const empty = buildStat(null, null, null, null);
 		expect(fieldText(empty, "time")).toBeNull();
-		expect(formatRequestStat(empty).map((p) => p.text)).toEqual(Array(6).fill(MISSING));
+		expect(statSummary(empty)).toBe("");
+		expect(statSummary(buildStat(new Date(2026, 0, 1, 20, 30, 17).getTime() + 7800, 7800, 400, usage))).toBe(
+			"20:30 · 18K tokens · 7.8 秒",
+		);
 	});
 
 	it("formats local date-time", () => {

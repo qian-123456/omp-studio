@@ -81,6 +81,10 @@ describe("resolveFilePath", () => {
 		expect(resolveFilePath("./a.ts", { cwd: "/repo" })).toBe("/repo/a.ts");
 		expect(resolveFilePath("src/a.ts")).toBe("");
 	});
+	it("decodes percent-encoded path components", () => {
+		expect(resolveFilePath("/repo/%E6%8C%87%E5%8D%97.md")).toBe("/repo/指南.md");
+		expect(resolveFilePath("file:///repo/%E6%8C%87%E5%8D%97.md")).toBe("/repo/指南.md");
+	});
 
 	it("drops editor line suffixes and URL fragments", () => {
 		expect(resolveFilePath("/a/b.py:42:7")).toBe("/a/b.py");

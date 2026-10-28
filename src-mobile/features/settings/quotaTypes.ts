@@ -21,7 +21,6 @@ export interface QuotaProvider {
 	id: string;
 	name: string;
 	badge?: string;
-	color?: string;
 	accounts: QuotaAccount[];
 }
 
@@ -33,88 +32,60 @@ export interface QuotaResponse {
 export interface ProviderBrandStyle {
 	name: string;
 	badge: string;
-	color: string;
-	barColor: string;
 }
 
 export const KNOWN_BRANDS: Record<string, ProviderBrandStyle> = {
 	anthropic: {
 		name: "Anthropic Claude",
 		badge: "Claude Pro/Max",
-		color: "#D97757",
-		barColor: "#D97757",
 	},
 	"openai-codex": {
 		name: "ChatGPT Plus/Pro",
 		badge: "Codex Subscription",
-		color: "#10A37F",
-		barColor: "#10A37F",
 	},
 	openai: {
 		name: "OpenAI / ChatGPT",
 		badge: "ChatGPT Plus/Pro",
-		color: "#10A37F",
-		barColor: "#10A37F",
 	},
 	"google-antigravity": {
 		name: "Google Antigravity",
 		badge: "Gemini / Claude / GPT",
-		color: "#3186FF",
-		barColor: "#3186FF",
 	},
 	google: {
 		name: "Google Gemini",
 		badge: "Gemini Code Assist",
-		color: "#4285F4",
-		barColor: "#4285F4",
 	},
 	zai: {
 		name: "Z.AI (GLM Coding Plan)",
 		badge: "GLM Coding Plan",
-		color: "#A855F7",
-		barColor: "#A855F7",
 	},
 	"zai-coding-plan": {
 		name: "Z.AI (GLM Coding Plan)",
 		badge: "Coding Plan",
-		color: "#A855F7",
-		barColor: "#A855F7",
 	},
 	codegeex: {
 		name: "CodeGeeX (智谱)",
 		badge: "Coding Plan",
-		color: "#00E7E7",
-		barColor: "#00E7E7",
 	},
 	"zhipu-coding-plan": {
 		name: "智谱 CodeGeeX",
 		badge: "Coding Plan",
-		color: "#00E7E7",
-		barColor: "#00E7E7",
 	},
 	devin: {
 		name: "Devin AI",
 		badge: "Cognition Devin",
-		color: "#10B981",
-		barColor: "#10B981",
 	},
 	"github-copilot": {
 		name: "GitHub Copilot",
 		badge: "Copilot Business/Individual",
-		color: "#6366F1",
-		barColor: "#6366F1",
 	},
 	deepseek: {
 		name: "DeepSeek",
 		badge: "DeepSeek API",
-		color: "#0284C7",
-		barColor: "#0284C7",
 	},
 	moonshot: {
 		name: "Moonshot (Kimi)",
 		badge: "Kimi Coding",
-		color: "#6366F1",
-		barColor: "#6366F1",
 	},
 };
 
@@ -127,9 +98,7 @@ export function resolveBrand(id: string, name?: string): ProviderBrandStyle {
 	const fallbackName = name || id;
 	return {
 		name: fallbackName,
-		badge: "订阅配额",
-		color: "var(--m-accent, #a8c7fa)",
-		barColor: "var(--m-accent, #a8c7fa)",
+		badge: "",
 	};
 }
 
@@ -234,7 +203,6 @@ export function normalizeQuotaData(raw: unknown): QuotaResponse {
 				id,
 				name: nameVal || brand.name,
 				badge: brand.badge,
-				color: brand.color,
 				accounts,
 			};
 		});
@@ -292,7 +260,6 @@ export function normalizeQuotaData(raw: unknown): QuotaResponse {
 				id,
 				name: brand.name,
 				badge: brand.badge,
-				color: brand.color,
 				accounts,
 			});
 		}

@@ -126,6 +126,14 @@ export function stripMentionPrefix(path: string): string {
 export function stripLineSuffix(path: string): string {
 	return path.replace(/:\d+(?::\d+)?$/, "");
 }
+/** Decode percent escapes from a file link, preserving malformed literal text. */
+export function decodeFilePath(path: string): string {
+	try {
+		return decodeURIComponent(path);
+	} catch {
+		return path;
+	}
+}
 
 /** How the right panel should show a file: rendered text, an image, or nowhere. */
 export function previewKind(path: string): "text" | "image" | "external" {
@@ -194,15 +202,8 @@ export function resolveFilePath(
 	opts: { cwd?: string | null; home?: string | null } = {},
 ): string {
 	let path = stripMentionPrefix(raw.trim());
-	if (/^file:\/\//i.test(path)) {
-		path = path.slice("file://".length);
-		try {
-			path = decodeURIComponent(path);
-		} catch {
-			/* keep the raw value */
-		}
-	}
-	path = stripLineSuffix(path).replace(/[?#].*$/, "").replace(/\/+$/, "");
+	if (/^file:\/\//i.test(path)) path = path.slice("file://".length);
+	path = decodeFilePath(stripLineSuffix(path).replace(/[?#].*$/, "")).replace(/\/+$/, "");
 	if (!path) return "";
 	if (path === "~") return opts.home ?? path;
 	if (path.startsWith("~/")) {

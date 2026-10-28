@@ -65,10 +65,11 @@ export function createInput(
 ): { cwd: string; model?: { provider: string; modelId: string }; thinking?: string; mode?: DirEntry["mode"] } | null {
 	if (!s.cwd) return null;
 	const dir = dirs.find((d) => d.path === s.cwd);
+	if (!dir) return null;
 	const out: { cwd: string; model?: { provider: string; modelId: string }; thinking?: string; mode?: DirEntry["mode"] } = {
 		cwd: s.cwd,
 	};
-	if (dir) out.mode = dir.kind === "global" ? "chat" : dir.mode;
+	if (dir.kind === "global" || dir.mode) out.mode = dir.kind === "global" ? "chat" : dir.mode;
 	if (s.model) {
 		out.model = s.model;
 		if (s.thinking) out.thinking = s.thinking;

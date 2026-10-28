@@ -1,51 +1,143 @@
-@import "./themes/chatgpt.css";
-@import "./themes/gemini.css";
-
 /*
- * Semantic token contract of the phone app. Components use ONLY these names (no raw hex);
- * the skins in themes/*.css override them on html[data-skin][data-scheme]. The values below are
- * neutral fallbacks so a missing/late theme still renders legibly. Extra tokens a skin defines
- * (--m-link, --m-border-strong, --m-accent-soft, ...) are optional: always reference them with a
- * fallback, e.g. var(--m-link, var(--m-accent)).
+ * Design tokens of the phone app (contract: docs/MOBILE_DESIGN.md §2).
+ * One design (Gemini iOS look), two schemes on html[data-scheme="light|dark"].
+ * Components use ONLY these names (no raw hex). Tailwind utilities are bound in base.css.
  */
 :root {
-	--m-bg: #ffffff;
-	--m-bg-elev: #ffffff;
-	--m-surface: #f4f4f5;
-	--m-surface-2: #e9e9eb;
-	--m-surface-hover: #ececee;
-	--m-border: #e2e2e5;
-	--m-text: #111113;
-	--m-text-2: #4a4a50;
-	--m-text-3: #6e6e75;
-	--m-accent: #111113;
-	--m-accent-text: #ffffff;
-	--m-danger: #c62828;
-	--m-warn: #a15c00;
-	--m-success: #1b7f3b;
-	--m-bubble-user-bg: #f4f4f5;
-	--m-bubble-user-text: #111113;
-	--m-composer-bg: #f4f4f5;
-	--m-code-bg: #f4f4f5;
-	--m-diff-add: rgb(27 127 59 / 0.16);
-	--m-diff-del: rgb(198 40 40 / 0.16);
-	--m-scrim: rgb(0 0 0 / 0.4);
-	--m-r-sm: 8px;
-	--m-r-md: 12px;
-	--m-r-lg: 20px;
-	--m-r-pill: 999px;
-	--m-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	/* Type: system stacks only (no bundled brand fonts). */
+	--m-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", Roboto, "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
 	--m-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", monospace;
-	--m-fs-xs: 12px;
-	--m-fs-sm: 14px;
-	--m-fs-md: 16px;
-	--m-fs-lg: 18px;
-	--m-fs-title: 22px;
-	--m-shadow-pop: 0 8px 28px rgb(0 0 0 / 0.18);
-	--m-ease: cubic-bezier(0.32, 0.72, 0, 1);
+	--m-fs-display: 30px;
+	--m-fs-title: 28px;
+	--m-fs-lg: 20px;
+	--m-fs-body: 17px;
+	--m-fs-md: 17px;
+	--m-fs-sm: 15px;
+	--m-fs-xs: 13px;
+	--m-lh-body: 28px;
+	--m-ls-body: 0;
+	/* Message text size; Settings ▸ 外观 overrides it at runtime (displayPrefs). */
+	--m-msg-fs: var(--m-fs-body);
+	--m-heading-size: var(--m-fs-display);
+	--m-heading-weight: 400;
+
+	/* Shape */
+	--m-r-sm: 12px;
+	--m-r-md: 18px;
+	--m-r-lg: 24px;
+	--m-r-xl: 28px;
+	--m-r-pill: 9999px;
+	--m-bubble-radius: 24px;
+	--m-composer-radius: 28px;
+	--m-user-bubble-max: 85%;
+
+	/* Space (4-pt grid) */
+	--m-sp-1: 4px;
+	--m-sp-2: 8px;
+	--m-sp-3: 12px;
+	--m-sp-4: 16px;
+	--m-sp-5: 20px;
+	--m-sp-6: 24px;
+	--m-gutter: 16px;
+	--m-thread-gutter: 20px;
+	--m-touch: 44px;
+
+	/* Motion */
+	--m-ease: cubic-bezier(0.2, 0, 0, 1);
+	--m-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+	--m-dur-fast: 160ms;
+	--m-dur: 260ms;
+	--m-dur-sheet: 380ms;
+
+	/* Device */
 	--m-safe-top: env(safe-area-inset-top, 0px);
 	--m-safe-bottom: env(safe-area-inset-bottom, 0px);
-	/* Written by app/viewport.ts (only on viewport resize/scroll): visual viewport height / top offset / keyboard inset. */
+	/* Written by app/viewport.ts (only on viewport resize/scroll): visual viewport height / keyboard inset. */
 	--m-vh: 100dvh;
 	--m-kb: 0px;
+
+	--m-assistant-bg: transparent;
+}
+
+html[data-scheme="dark"] {
+	color-scheme: dark;
+	--m-bg: #000000;
+	--m-bg-elev: #101012;
+	--m-surface: #2a2b2e;
+	--m-surface-2: #37393d;
+	--m-surface-hover: rgb(255 255 255 / 0.08);
+	--m-card: #1f2022;
+	--m-segment-on: #45474b;
+	--m-border: rgb(255 255 255 / 0.1);
+	--m-border-strong: rgb(255 255 255 / 0.22);
+	--m-text: #e8eaed;
+	--m-text-2: #c4c7c5;
+	--m-text-3: #8e918f;
+	--m-accent: #a8c7fa;
+	--m-accent-text: #062e6f;
+	--m-accent-soft: #1f3760;
+	--m-accent-soft-text: #d3e3fd;
+	--m-link: #a8c7fa;
+	--m-danger: #f2b8b5;
+	--m-warn: #fdd663;
+	--m-success: #6dd58c;
+	--m-danger-bg: rgb(242 184 181 / 0.14);
+	--m-warn-bg: rgb(253 214 99 / 0.14);
+	--m-success-bg: rgb(109 213 140 / 0.14);
+	--m-bubble-user-bg: #26272a;
+	--m-bubble-user-text: #e8eaed;
+	--m-composer-bg: #1e1f20;
+	--m-composer-shadow: none;
+	--m-code-bg: #141416;
+	--m-code-text: #e8eaed;
+	--m-inline-code-bg: #26272a;
+	--m-inline-code-text: #e8eaed;
+	--m-diff-add: rgb(109 213 140 / 0.18);
+	--m-diff-del: rgb(242 184 181 / 0.2);
+	--m-scrim: rgb(0 0 0 / 0.6);
+	--m-shadow-pop: 0 8px 32px rgb(0 0 0 / 0.5);
+	--m-shadow-card: none;
+	/* Home glow: soft blue light rising from the bottom edge. */
+	--m-glow: radial-gradient(120% 60% at 50% 110%, rgb(40 70 170 / 0.55), rgb(25 40 110 / 0.25) 45%, transparent 75%);
+}
+
+html[data-scheme="light"] {
+	color-scheme: light;
+	--m-bg: #ffffff;
+	--m-bg-elev: #f3f5f9;
+	--m-surface: #e9edf3;
+	--m-surface-2: #dce2ea;
+	--m-surface-hover: rgb(0 0 0 / 0.05);
+	--m-card: #ffffff;
+	--m-segment-on: #ffffff;
+	--m-border: rgb(0 0 0 / 0.08);
+	--m-border-strong: rgb(0 0 0 / 0.18);
+	--m-text: #1f1f1f;
+	--m-text-2: #444746;
+	--m-text-3: #747775;
+	--m-accent: #0b57d0;
+	--m-accent-text: #ffffff;
+	--m-accent-soft: #d3e3fd;
+	--m-accent-soft-text: #041e49;
+	--m-link: #0b57d0;
+	--m-danger: #b3261e;
+	--m-warn: #8a5100;
+	--m-success: #146c2e;
+	--m-danger-bg: #fce8e6;
+	--m-warn-bg: #fef3d4;
+	--m-success-bg: #e6f4ea;
+	--m-bubble-user-bg: #e9eef6;
+	--m-bubble-user-text: #1f1f1f;
+	--m-composer-bg: #ffffff;
+	--m-composer-shadow: 0 2px 12px rgb(31 31 31 / 0.1), 0 0 1px rgb(31 31 31 / 0.18);
+	--m-code-bg: #f0f2f6;
+	--m-code-text: #1f1f1f;
+	--m-inline-code-bg: #eef0f3;
+	--m-inline-code-text: #1f1f1f;
+	--m-diff-add: rgb(20 108 46 / 0.12);
+	--m-diff-del: rgb(179 38 30 / 0.12);
+	--m-scrim: rgb(0 0 0 / 0.32);
+	--m-shadow-pop: 0 8px 28px rgb(31 31 31 / 0.14), 0 0 1px rgb(31 31 31 / 0.2);
+	--m-shadow-card: 0 1px 2px rgb(31 31 31 / 0.06);
+	--m-glow: radial-gradient(120% 55% at 50% 110%, rgb(160 190 255 / 0.45), rgb(220 205 255 / 0.25) 45%, transparent 75%);
 }

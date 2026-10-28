@@ -81,10 +81,6 @@ export interface ComposerState {
 	drafts: Record<string, string>;
 	setDraft(sessionId: string, text: string): void;
 	clearDraft(sessionId: string): void;
-	/** Plan mode toggle per session. */
-	planModes: Record<string, boolean>;
-	setPlanMode: (sessionId: string, enabled: boolean) => void;
-	togglePlanMode: (sessionId: string) => void;
 	/** Side-chat input drafts keyed by parent sessionId. */
 	sideChatDrafts: Record<string, string>;
 	setSideChatDraft: (parentId: string, text: string) => void;
@@ -416,13 +412,6 @@ export const useComposer = create<ComposerState>((set, get) => ({
 			saveMap(STORAGE_KEY_DRAFTS, drafts);
 			return { drafts };
 		}),
-	planModes: {},
-	setPlanMode: (sessionId, enabled) =>
-		set((s) => ({ planModes: { ...s.planModes, [sessionId]: enabled } })),
-	togglePlanMode: (sessionId) =>
-		set((s) => ({
-			planModes: { ...s.planModes, [sessionId]: !s.planModes[sessionId] },
-		})),
 	sideChatDrafts: loadMap(STORAGE_KEY_SIDECHAT_DRAFTS),
 	setSideChatDraft: (parentId, text) =>
 		set((s) => {
@@ -479,7 +468,6 @@ export const useComposer = create<ComposerState>((set, get) => ({
 				files: strip(s.files),
 				drafts,
 				sideChatDrafts,
-				planModes: strip(s.planModes),
 				focusNonce: strip(s.focusNonce),
 			};
 		}),

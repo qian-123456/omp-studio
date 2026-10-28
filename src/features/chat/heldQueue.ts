@@ -79,6 +79,8 @@ export interface HeldQueueState {
 	shift(sid: string): HeldItem | undefined;
 	/** Put an item back at the head (e.g. after a failed auto-send). */
 	unshift(sid: string, item: HeldItem): void;
+	/** Restore a sent snapshot into its original queue position after failure. */
+	restore(sid: string, items: HeldItem[], original: HeldItem[]): void;
 	setDismissed(sid: string, dismissed: boolean): void;
 	/** Session deleted: drop its queue (memory + localStorage) and dismissed flag. */
 	pruneSessions(ids: readonly string[]): void;
@@ -134,6 +136,35 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 			return arr[0];
 		},
 		unshift: (sid, item) => write(sid, [item, ...items(sid)]),
+		restore: (sid, restored, original) => {
+			const current = items(sid).slice();
+			const present = new Set(current.map((item) => item.id));
+			for (const item of restored) {
+				if (present.has(item.id)) continue;
+				const originalIndex = original.findIndex((candidate) => candidate.id === item.id);
+				let insertionIndex = -1;
+				for (let i = originalIndex + 1; i < original.length; i++) {
+					const nextIndex = current.findIndex((candidate) => candidate.id === original[i].id);
+					if (nextIndex >= 0) {
+						insertionIndex = nextIndex;
+						break;
+					}
+				}
+				if (insertionIndex < 0) {
+					for (let i = originalIndex - 1; i >= 0; i--) {
+						const previousIndex = current.findIndex((candidate) => candidate.id === original[i].id);
+						if (previousIndex >= 0) {
+							insertionIndex = previousIndex + 1;
+							break;
+						}
+					}
+				}
+				if (insertionIndex < 0) insertionIndex = Math.min(originalIndex, current.length);
+				current.splice(insertionIndex, 0, item);
+				present.add(item.id);
+			}
+			write(sid, current);
+		},
 		setDismissed: (sid, dismissed) =>
 			set((s) => ({ dismissed: { ...s.dismissed, [sid]: dismissed } })),
 		pruneSessions: (ids) => {

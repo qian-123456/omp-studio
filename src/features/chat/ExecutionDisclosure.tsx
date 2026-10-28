@@ -72,6 +72,14 @@ export type StepShape =
 			/** Live rows: the completed request that produced this prose. */
 			requestId?: string;
 	  }
+	| {
+			id: string;
+			kind: "narration";
+			text: string;
+			item?: TranscriptItem;
+			streaming?: boolean;
+			requestId?: string;
+	  }
 	| { id: string; kind: "notice"; item: TranscriptItem }
 	/** Live retry / fallback rows, placed where they happened in the step flow. */
 	| { id: string; kind: "retry"; notices: RetryNotice[]; fallback?: FallbackInfo }
@@ -605,6 +613,7 @@ export function TurnSteps({
 				);
 			}
 			case "text":
+			case "narration":
 				return (
 					<div
 						key={step.id}

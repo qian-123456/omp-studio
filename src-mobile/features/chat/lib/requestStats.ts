@@ -1,6 +1,5 @@
-/* Per-request model stats, TUI-style glyphs. Typed port of the legacy
-   request-stats.js (same math and formatting). The phone always shows the six
-   LINE_FIELDS; duration/cost stay card-only. */
+/* Per-request model stats. Typed port of the legacy request-stats.js (same math). The thread shows one calm
+   summary (time · tokens · duration); every field lives in the tap card. */
 
 export type StatField = "time" | "input" | "output" | "cache" | "ttft" | "tps" | "duration" | "cost";
 
@@ -21,22 +20,20 @@ export interface RequestStat {
 	usage: RequestUsage | null;
 }
 
-/** Field metadata: TUI glyph plus the Chinese explanation shown in the tap card. */
-export const FIELDS: Record<StatField, { glyph: string; label: string; description: string }> = {
-	time: { glyph: "", label: "开始时间", description: "这次请求发出的时间" },
-	input: { glyph: "↘", label: "输入", description: "发给模型的新内容，含写入缓存的部分" },
-	output: { glyph: "↗", label: "输出", description: "模型生成的内容（含思考）" },
-	cache: { glyph: "💾", label: "缓存命中", description: "直接从缓存读取的内容，更快更便宜" },
-	ttft: { glyph: "⏱", label: "首字延迟", description: "从发出请求到收到第一个字的时间" },
-	tps: { glyph: "⚡", label: "输出速度", description: "每秒生成的 token 数（输出 ÷ 总耗时）" },
-	duration: { glyph: "⌛", label: "总耗时", description: "这次请求从发出到结束的时间" },
-	cost: { glyph: "$", label: "费用", description: "这次请求的费用（美元）" },
+/** Field metadata: the Chinese label and explanation shown in the tap card. */
+export const FIELDS: Record<StatField, { label: string; description: string }> = {
+	time: { label: "开始时间", description: "这次请求发出的时间" },
+	input: { label: "输入", description: "发给模型的新内容，含写入缓存的部分" },
+	output: { label: "输出", description: "模型生成的内容（含思考）" },
+	cache: { label: "缓存命中", description: "直接从缓存读取的内容，更快更便宜" },
+	ttft: { label: "首字延迟", description: "从发出请求到收到第一个字的时间" },
+	tps: { label: "输出速度", description: "每秒生成的 token 数（输出 ÷ 总耗时）" },
+	duration: { label: "总耗时", description: "这次请求从发出到结束的时间" },
+	cost: { label: "费用", description: "这次请求的费用（美元）" },
 };
 
 /** Display order of every field. */
 export const FIELD_IDS: readonly StatField[] = ["time", "input", "output", "cache", "ttft", "tps", "duration", "cost"];
-/** What the phone always renders on the stats line. */
-export const LINE_FIELDS: readonly StatField[] = ["time", "input", "output", "cache", "ttft", "tps"];
 
 export const MISSING = "—";
 
@@ -170,13 +167,20 @@ export function fieldText(stat: RequestStat, field: StatField): string | null {
 	}
 }
 
-/** The six always-on fields of one request, each formatted ("—" when missing). */
-export function formatRequestStat(stat: RequestStat): { field: StatField; glyph: string; text: string }[] {
-	return LINE_FIELDS.map((field) => ({
-		field,
-		glyph: FIELDS[field].glyph,
-		text: fieldText(stat, field) ?? MISSING,
-	}));
+/**
+ * Quiet one-line summary under a reply, e.g. 「20:30 · 2.4K tokens · 7.8 秒」. Missing parts are skipped;
+ * empty string when the request recorded nothing.
+ */
+export function statSummary(stat: RequestStat): string {
+	const parts: string[] = [];
+	if (stat.startedAt != null) parts.push(formatStatClock(stat.startedAt).slice(0, 5));
+	const u = stat.usage;
+	if (u) {
+		const total = u.input + u.cacheWrite + u.cacheRead + u.output;
+		if (total > 0) parts.push(`${formatStatTokens(total)} tokens`);
+	}
+	if (stat.durationMs != null && stat.durationMs > 0) parts.push(`${(stat.durationMs / 1000).toFixed(1)} 秒`);
+	return parts.join(" · ");
 }
 
 /** Waiting-for-first-token vs generation split for the card bar; null when it cannot be drawn. */

@@ -1,5 +1,7 @@
+import { Check, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Segmented } from "./controls";
+import { thinkLabel } from "../features/chat/lib/models";
 
 /** Minimal catalog model shape (mirrors the backend `Model` contract). */
 export interface PickerModel {
@@ -20,8 +22,6 @@ export interface ProviderGroup {
 	provider: string;
 	models: PickerModel[];
 }
-
-export const ALL_PROVIDERS = "*";
 
 /** Group models by provider, keeping first-seen provider order. */
 export function groupModels(models: PickerModel[]): ProviderGroup[] {
@@ -61,11 +61,19 @@ export function thinkingOptions(model: PickerModel | undefined): { value: string
 	if (!levels.length) return [];
 	return [
 		{ value: null, label: "自动" },
-		...levels.map((l) => ({ value: l, label: l })),
+		...levels.map((l) => ({ value: l, label: thinkLabel(l) })),
 		{ value: THINKING_OFF, label: "关闭" },
 	];
 }
 
+/** Search results beyond this are not rendered; the user narrows the query instead. */
+const SEARCH_CAP = 80;
+
+/**
+ * Inline model picker (docs/MOBILE_DESIGN.md §4.6): providers drill into their models with a back
+ * row, search flattens across providers, the selected model shows a check. Optional thinking chips
+ * for the selected model below.
+ */
 export function ModelPicker({
 	value,
 	onChange,
@@ -82,98 +90,100 @@ export function ModelPicker({
 }) {
 	const groups = useMemo(() => groupModels(models), [models]);
 	const [query, setQuery] = useState("");
-	const [pane, setPane] = useState<string>(() => value?.provider ?? groups[0]?.provider ?? ALL_PROVIDERS);
+	// null = provider list. Start inside the selected model's provider, or the only provider.
+	const [pane, setPane] = useState<string | null>(() => value?.provider ?? (groups.length === 1 ? groups[0].provider : null));
 	const searching = query.trim().length > 0;
-	const shown = useMemo(() => {
-		if (searching) return filterModels(models, query);
-		return groups.find((g) => g.provider === pane)?.models ?? [];
-	}, [searching, models, query, groups, pane]);
+	const paneModels = pane != null ? (groups.find((g) => g.provider === pane)?.models ?? null) : null;
+	const shown = useMemo(() => (searching ? filterModels(models, query) : (paneModels ?? [])), [searching, models, query, paneModels]);
 	const selected = value ? models.find((m) => m.provider === value.provider && m.id === value.modelId) : undefined;
 	const options = thinking ? thinkingOptions(selected) : [];
+	const listing = searching || paneModels != null;
 
 	return (
-		<div className={`flex min-h-0 flex-col gap-2 ${className}`}>
-			<label className="flex min-h-11 items-center gap-2 rounded-m-md border border-m-border bg-m-surface px-3">
-				<Search size={16} className="shrink-0 text-m-text-3" aria-hidden />
+		<div className={`flex min-h-0 flex-col gap-3 ${className}`}>
+			{thinking && options.length > 0 && (
+				<section className="flex shrink-0 flex-col gap-2">
+					<div className="px-1 text-m-xs text-m-text-3">思考强度</div>
+					<Segmented label="思考强度" value={thinking.value ?? THINKING_AUTO} options={options.map((o) => ({ value: o.value ?? THINKING_AUTO, label: o.label }))} onChange={(level) => thinking.onChange(level === THINKING_AUTO ? null : level)} className="m-noscrollbar overflow-x-auto" />
+				</section>
+			)}
+			<label className="flex min-h-12 shrink-0 items-center gap-3 rounded-m-pill bg-m-surface px-4">
+				<Search size={18} className="shrink-0 text-m-text-3" aria-hidden />
 				<input
 					type="search"
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					placeholder="搜索模型或供应商"
 					aria-label="搜索模型"
-					className="min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none"
+					className="min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none placeholder:text-m-text-3"
 				/>
 			</label>
-			<div className="flex min-h-0 flex-1 gap-2">
-				{!searching && (
-					<div className="flex w-28 shrink-0 flex-col gap-1 overflow-y-auto" role="tablist" aria-label="供应商">
-						{groups.map((g) => (
+			{!searching && paneModels != null && groups.length > 1 && (
+				<button
+					type="button"
+					onClick={() => setPane(null)}
+					className="-my-1 flex min-h-11 shrink-0 items-center gap-1 self-start rounded-m-pill pr-3 text-m-md text-m-accent active:bg-m-surface-hover"
+				>
+					<ChevronLeft size={22} />
+					<span className="whitespace-nowrap">全部供应商</span>
+					<span className="break-all text-m-text-3">· {pane}</span>
+				</button>
+			)}
+			<div className="min-h-0 flex-1 overflow-y-auto rounded-m-lg bg-m-card shadow-m-card">
+				{listing ? (
+					<div role="listbox" aria-label="模型">
+						{shown.length === 0 && <div className="px-4 py-6 text-center text-m-sm text-m-text-3">没有匹配的模型</div>}
+						{shown.slice(0, searching ? SEARCH_CAP : undefined).map((m, i) => {
+							const active = !!value && value.provider === m.provider && value.modelId === m.id;
+							return (
+								<button
+									key={`${m.provider}/${m.id}`}
+									type="button"
+									role="option"
+									aria-selected={active}
+									onClick={() => onChange(m)}
+									className={`flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left active:bg-m-surface-hover ${
+										i > 0 ? "shadow-[inset_0_1px_0_var(--m-border)]" : ""
+									}`}
+								>
+									<span className="min-w-0 flex-1">
+										<span className="block text-m-md break-words text-m-text">{m.name || m.id}</span>
+										<span className="mt-0.5 block font-m-mono text-m-xs break-all text-m-text-3">
+											{searching ? `${m.provider}/${m.id}` : m.id}
+										</span>
+									</span>
+									{active && <Check size={20} className="shrink-0 text-m-accent" aria-hidden />}
+								</button>
+							);
+						})}
+						{searching && shown.length > SEARCH_CAP && (
+							<div className="px-4 py-3 text-m-xs text-m-text-3">只列出前 {SEARCH_CAP} 个，输入更多关键词缩小范围</div>
+						)}
+					</div>
+				) : (
+					<div aria-label="供应商">
+						{groups.map((g, i) => (
 							<button
 								key={g.provider}
 								type="button"
-								role="tab"
-								aria-selected={pane === g.provider}
 								onClick={() => setPane(g.provider)}
-								className={`min-h-11 whitespace-nowrap rounded-m-md border px-2 text-left text-m-sm ${
-									pane === g.provider
-										? "border-m-accent bg-m-surface-2 text-m-text"
-										: "border-m-border bg-m-surface text-m-text-2"
+								className={`flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left active:bg-m-surface-hover ${
+									i > 0 ? "shadow-[inset_0_1px_0_var(--m-border)]" : ""
 								}`}
 							>
-								<span className="block overflow-x-auto">{g.provider}</span>
+								<span className="min-w-0 flex-1">
+									<span className="block text-m-md break-all text-m-text">{g.provider}</span>
+									{value?.provider === g.provider && selected && (
+										<span className="mt-0.5 block text-m-xs break-words text-m-text-3">正在使用 {selected.name || selected.id}</span>
+									)}
+								</span>
+								<span className="shrink-0 text-m-sm text-m-text-3">{g.models.length}</span>
+								<ChevronRight size={18} className="shrink-0 text-m-text-3" aria-hidden />
 							</button>
 						))}
 					</div>
 				)}
-				<div className="flex min-w-0 flex-1 flex-col gap-1 overflow-y-auto" role="listbox" aria-label="模型">
-					{shown.length === 0 && <div className="p-3 text-m-sm text-m-text-3">没有匹配的模型</div>}
-					{shown.map((m) => {
-						const active = !!value && value.provider === m.provider && value.modelId === m.id;
-						return (
-							<button
-								key={`${m.provider}/${m.id}`}
-								type="button"
-								role="option"
-								aria-selected={active}
-								onClick={() => onChange(m)}
-								className={`min-h-11 rounded-m-md border px-3 py-2 text-left ${
-									active ? "border-m-accent bg-m-surface-2" : "border-m-border bg-m-surface"
-								}`}
-							>
-								<div className="break-words text-m-md text-m-text">{m.name || m.id}</div>
-								<div className="break-all font-m-mono text-m-xs text-m-text-3">
-									{searching ? `${m.provider}/${m.id}` : m.id}
-								</div>
-							</button>
-						);
-					})}
-				</div>
 			</div>
-			{thinking && options.length > 0 && (
-				<div className="flex flex-col gap-1">
-					<div className="text-m-xs text-m-text-3">思考深度</div>
-					<div className="flex flex-wrap gap-2">
-						{options.map((o) => {
-							const active = (thinking.value ?? null) === o.value;
-							return (
-								<button
-									key={o.label}
-									type="button"
-									aria-pressed={active}
-									onClick={() => thinking.onChange(o.value)}
-									className={`min-h-11 whitespace-nowrap rounded-m-pill border px-4 text-m-sm ${
-										active
-											? "border-m-accent bg-m-accent text-m-accent-text"
-											: "border-m-border bg-m-surface text-m-text-2"
-									}`}
-								>
-									{o.label}
-								</button>
-							);
-						})}
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }

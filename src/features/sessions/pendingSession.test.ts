@@ -4,7 +4,7 @@ import { isBlankLocalDraft, isLocalDraftId, usePendingSession } from "./pendingS
 
 beforeEach(() => {
 	usePendingSession.setState({ drafts: {}, selectedId: null });
-	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {}, planModes: {} });
+	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {} });
 });
 
 describe("usePendingSession.open", () => {

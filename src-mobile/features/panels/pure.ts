@@ -90,22 +90,15 @@ export interface GitFile {
 	unstaged: boolean;
 }
 
-export interface GitGroups {
-	staged: GitFile[];
-	unstaged: GitFile[];
-	untracked: GitFile[];
-}
+export type StageState = "staged" | "partial" | "unstaged";
 
-/** Split porcelain status rows: a file edited after staging appears in both staged and unstaged. */
-export function groupGitStatus(files: readonly GitFile[]): GitGroups {
-	const out: GitGroups = { staged: [], unstaged: [], untracked: [] };
-	for (const f of files) {
-		const untracked = f.status === "??";
-		if (f.staged) out.staged.push(f);
-		if (untracked) out.untracked.push(f);
-		else if (f.unstaged) out.unstaged.push(f);
-	}
-	return out;
+/**
+ * Per-file stage toggle state from porcelain flags: a file edited after staging is `partial`;
+ * untracked files are never staged.
+ */
+export function stageState(f: GitFile): StageState {
+	if (f.status === "??" || !f.staged) return "unstaged";
+	return f.unstaged ? "partial" : "staged";
 }
 
 export function splitPath(path: string): { name: string; dir: string } {

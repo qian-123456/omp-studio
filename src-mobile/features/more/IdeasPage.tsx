@@ -1,11 +1,29 @@
-import { Camera, Check, Image as ImageIcon, Lightbulb, PenLine, Plus, Send, X } from "lucide-react";
+import { Camera, Check, CircleCheck, CircleX, Image as ImageIcon, Lightbulb, ListChecks, PenLine, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { api, apiUrl, errorMessage, upload } from "../../core/api";
 import { baseName, relTime, sessionName } from "../../core/lib/format";
 import { useSessions } from "../../core/stores/sessions";
 import { STATUS_LABEL as SESSION_STATUS } from "../../core/types";
-import { BottomSheet, Chip, confirm, EmptyState, HeaderButton, openImage, PageHeader, PullToRefresh, toast } from "../../ui";
-import { btnCls, btnDangerCls, btnPrimaryCls, Field, inputCls, LoadState, Segmented, useLoad } from "./controls";
+import type { MobileSession } from "../../core/types";
+import {
+	BottomSheet,
+	Button,
+	Chip,
+	confirm,
+	EmptyState,
+	Field,
+	IconButton,
+	inputCls,
+	ListGroup,
+	ListRow,
+	openImage,
+	PageHeader,
+	PullToRefresh,
+	Segmented,
+	toast,
+} from "../../ui";
+import { LoadState, Select, useLoad } from "./controls";
 import {
 	buildCreatePayload,
 	buildDispatch,
@@ -25,8 +43,11 @@ import {
 import type { Idea, IdeaKind, IdeaTab } from "./ideas";
 import { SketchPad } from "./SketchPad";
 
-const KIND_OPTIONS = (Object.keys(KIND_LABEL) as IdeaKind[]).map((k) => [k, KIND_LABEL[k]] as const);
+const KIND_OPTIONS = (Object.keys(KIND_LABEL) as IdeaKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
 const imageUrl = (path: string): string => apiUrl(`/ideas/image?path=${encodeURIComponent(path)}`);
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
+/** Inputs inside sheets sit on `--m-bg-elev`, where the card tone separates better than `--m-surface`. */
+const sheetInput = `${inputCls} bg-m-card! resize-none leading-6`;
 
 interface Draft {
 	blob: Blob;
@@ -37,13 +58,34 @@ function Thumbs({ paths }: { paths: string[] }) {
 	if (!paths.length) return null;
 	const urls = paths.map(imageUrl);
 	return (
-		<div className="flex flex-wrap gap-2">
+		<div className="flex flex-wrap gap-2 px-5">
 			{urls.map((u) => (
-				<button key={u} type="button" onClick={() => openImage({ src: u, alt: "想法图片" })} className="h-16 w-16 overflow-hidden rounded-m-md border border-m-border bg-m-surface">
+				<button key={u} type="button" onClick={() => openImage({ src: u, alt: "想法图片" })} className="h-20 w-20 overflow-hidden rounded-m-md bg-m-surface">
 					<img src={u} alt="想法图片" loading="lazy" className="h-full w-full object-cover" />
 				</button>
 			))}
 		</div>
+	);
+}
+
+function ErrorText({ children }: { children: ReactNode }) {
+	return (
+		<p role="alert" className="m-selectable px-1 text-m-sm break-words text-m-danger">
+			{children}
+		</p>
+	);
+}
+
+function Tile({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-m-md bg-m-card text-m-text shadow-m-card active:bg-m-surface-hover"
+		>
+			<span className="text-m-text-2">{icon}</span>
+			<span className="text-m-sm whitespace-nowrap">{label}</span>
+		</button>
 	);
 }
 
@@ -123,18 +165,18 @@ function CaptureSheet({
 				title="添加想法"
 				footer={
 					<div className="flex gap-2">
-						<button type="button" className={`${btnCls} flex-1`} onClick={onClose}>
+						<Button block className="flex-1" onClick={onClose}>
 							取消
-						</button>
-						<button type="button" className={`${btnPrimaryCls} flex-1`} disabled={saving} onClick={() => void save()}>
-							{saving ? "保存中" : "保存"}
-						</button>
+						</Button>
+						<Button variant="primary" block className="flex-1" busy={saving} onClick={() => void save()}>
+							保存
+						</Button>
 					</div>
 				}
 			>
-				<div className="flex flex-col gap-4 p-4">
+				<div className="flex flex-col gap-4 px-4 pt-1 pb-3">
 					<textarea
-						className={`${inputCls} min-h-28 py-2`}
+						className={`${sheetInput} min-h-32`}
 						rows={4}
 						value={text}
 						placeholder="记下想法或 Bug"
@@ -146,50 +188,42 @@ function CaptureSheet({
 					/>
 					<Segmented label="类型" value={kind} options={KIND_OPTIONS} onChange={setKind} />
 					<div className="grid grid-cols-3 gap-2">
-						<button type="button" className={btnCls} onClick={() => album.current?.click()}>
-							<ImageIcon size={16} /> 相册
-						</button>
-						<button type="button" className={btnCls} onClick={() => camera.current?.click()}>
-							<Camera size={16} /> 拍照
-						</button>
-						<button type="button" className={btnCls} onClick={() => setSketch(true)}>
-							<PenLine size={16} /> 草图
-						</button>
+						<Tile icon={<ImageIcon {...ICON} />} label="相册" onClick={() => album.current?.click()} />
+						<Tile icon={<Camera {...ICON} />} label="拍照" onClick={() => camera.current?.click()} />
+						<Tile icon={<PenLine {...ICON} />} label="草图" onClick={() => setSketch(true)} />
 					</div>
 					<input ref={album} type="file" accept="image/*" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
 					<input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
 					{files.length > 0 && (
-						<div className="flex flex-wrap gap-2">
+						<div className="flex flex-wrap gap-3 pt-1">
 							{files.map((f, i) => (
-								<div key={f.url} className="relative h-16 w-16">
-									<img src={f.url} alt={`待上传图片 ${i + 1}`} className="h-full w-full rounded-m-md border border-m-border object-cover" />
+								<div key={f.url} className="relative h-20 w-20">
+									<img src={f.url} alt={`待上传图片 ${i + 1}`} className="h-full w-full rounded-m-md object-cover" />
 									<button
 										type="button"
 										aria-label="移除图片"
 										onClick={() => remove(i)}
-										className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-m-pill bg-m-text text-m-bg"
+										className="absolute -top-3 -right-3 flex h-11 w-11 items-center justify-center"
 									>
-										<X size={14} />
+										<span className="flex h-6 w-6 items-center justify-center rounded-m-pill bg-m-text text-m-bg">
+											<X size={14} />
+										</span>
 									</button>
 								</div>
 							))}
 						</div>
 					)}
-					<Field label="所属项目">
-						<select className={inputCls} value={dir} onChange={(e) => setDir(e.target.value)}>
+					<Field label="所属项目" hint={dir || undefined}>
+						<Select value={dir} onChange={setDir} className="bg-m-card!">
 							<option value="">全局（不属于项目）</option>
 							{dirs.map((d) => (
 								<option key={d} value={d}>
-									{baseName(d)}　{d}
+									{baseName(d)}
 								</option>
 							))}
-						</select>
+						</Select>
 					</Field>
-					{error && (
-						<div role="alert" className="break-words text-m-sm text-m-danger">
-							{error}
-						</div>
-					)}
+					{error && <ErrorText>{error}</ErrorText>}
 				</div>
 			</BottomSheet>
 			<SketchPad
@@ -252,7 +286,7 @@ function EditSheet({
 		void patch(p, "已保存");
 	};
 	const del = async () => {
-		if (!idea || !(await confirm({ title: "删除想法", message: "确定删除这条想法？", danger: true }))) return;
+		if (!idea || !(await confirm({ title: "删除想法", message: "确定删除这条想法？", danger: true, confirmText: "删除" }))) return;
 		try {
 			await api("DELETE", `/ideas/${encodeURIComponent(idea.id)}`);
 			onDeleted(idea.id);
@@ -268,58 +302,69 @@ function EditSheet({
 		<BottomSheet
 			open={!!idea}
 			onClose={onClose}
-			title={idea ? `编辑 · ${STATUS_LABEL[idea.status] ?? idea.status}` : undefined}
+			title="编辑想法"
+			subtitle={idea ? `${STATUS_LABEL[idea.status] ?? idea.status} · ${idea.projectDir ? baseName(idea.projectDir) : "全局"}` : undefined}
 			footer={
 				<div className="flex gap-2">
-					<button type="button" className={`${btnCls} flex-1`} onClick={onClose}>
+					<Button block className="flex-1" onClick={onClose}>
 						取消
-					</button>
-					<button type="button" className={`${btnPrimaryCls} flex-1`} disabled={busy} onClick={save}>
+					</Button>
+					<Button variant="primary" block className="flex-1" disabled={busy} onClick={save}>
 						保存
-					</button>
+					</Button>
 				</div>
 			}
 		>
 			{idea && (
-				<div className="flex flex-col gap-4 p-4">
-					<textarea className={`${inputCls} min-h-32 py-2`} rows={5} value={text} aria-label="内容" onChange={(e) => { setText(e.target.value); setError(null); }} />
-					<Segmented label="类型" value={kind} options={KIND_OPTIONS} onChange={setKind} />
-					<Thumbs paths={imageRefs(idea).map((r) => r.path as string)} />
-					<div className="flex flex-col gap-1 text-m-sm text-m-text-3">
-						<span>项目：{idea.projectDir ? baseName(idea.projectDir) : "全局"}</span>
-						{sess.map((r) => (
-							<span key={r.sessionId} className="break-all">
-								关联会话：{sessionName(byId[r.sessionId as string]) || (r.sessionId as string).slice(0, 8)}
-							</span>
-						))}
+				<div className="flex flex-col gap-4 pt-1 pb-3">
+					<div className="flex flex-col gap-4 px-4">
+						<textarea
+							className={`${sheetInput} min-h-32`}
+							rows={5}
+							value={text}
+							aria-label="内容"
+							onChange={(e) => {
+								setText(e.target.value);
+								setError(null);
+							}}
+						/>
+						<Segmented label="类型" value={kind} options={KIND_OPTIONS} onChange={setKind} />
 					</div>
-					{error && (
-						<div role="alert" className="break-words text-m-sm text-m-danger">
-							{error}
+					<Thumbs paths={imageRefs(idea).map((r) => r.path as string)} />
+					{sess.length > 0 && (
+						<div className="flex flex-col gap-0.5 px-5 text-m-xs text-m-text-3">
+							{sess.map((r) => (
+								<span key={r.sessionId} className="break-words">
+									关联会话：{sessionName(byId[r.sessionId as string]) || (r.sessionId as string).slice(0, 8)}
+								</span>
+							))}
 						</div>
 					)}
-					<div className="grid grid-cols-2 gap-2">
+					{error && (
+						<div className="px-4">
+							<ErrorText>{error}</ErrorText>
+						</div>
+					)}
+					<ListGroup>
+						<ListRow
+							icon={<Send {...ICON} />}
+							title="派发到会话"
+							onClick={() => {
+								const i = idea.id;
+								onClose();
+								onDispatch(i);
+							}}
+						/>
 						{isActive(idea) ? (
 							<>
-								<button type="button" className={btnCls} disabled={busy} onClick={() => void patch({ status: "done" }, "已完成")}>
-									<Check size={16} /> 完成
-								</button>
-								<button type="button" className={btnCls} disabled={busy} onClick={() => void patch({ status: "closed" }, "已关闭")}>
-									关闭
-								</button>
+								<ListRow icon={<CircleCheck {...ICON} />} title="标记完成" disabled={busy} chevron={false} onClick={() => void patch({ status: "done" }, "已完成")} />
+								<ListRow icon={<CircleX {...ICON} />} title="关闭" disabled={busy} chevron={false} onClick={() => void patch({ status: "closed" }, "已关闭")} />
 							</>
 						) : (
-							<button type="button" className={btnCls} disabled={busy} onClick={() => void patch({ status: "inbox" }, "已重新打开")}>
-								重新打开
-							</button>
+							<ListRow icon={<RotateCcw {...ICON} />} title="重新打开" disabled={busy} chevron={false} onClick={() => void patch({ status: "inbox" }, "已重新打开")} />
 						)}
-						<button type="button" className={btnCls} onClick={() => { const i = idea.id; onClose(); onDispatch(i); }}>
-							<Send size={16} /> 派发
-						</button>
-						<button type="button" className={btnDangerCls} onClick={() => void del()}>
-							删除
-						</button>
-					</div>
+						<ListRow icon={<Trash2 {...ICON} />} title="删除" danger chevron={false} onClick={() => void del()} />
+					</ListGroup>
 				</div>
 			)}
 		</BottomSheet>
@@ -327,6 +372,19 @@ function EditSheet({
 }
 
 /* ---------------------------------------------------------------- dispatch */
+
+function RadioMark({ on }: { on: boolean }) {
+	return (
+		<span
+			aria-hidden
+			className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast) ${
+				on ? "bg-m-accent text-m-accent-text" : "border-2 border-m-border-strong"
+			}`}
+		>
+			{on && <Check size={14} strokeWidth={2.5} />}
+		</span>
+	);
+}
 
 function DispatchSheet({
 	ids,
@@ -372,23 +430,20 @@ function DispatchSheet({
 	};
 
 	const row = (id: string, name: string, sub: string) => (
-		<li key={id || "new"}>
-			<button
-				type="button"
-				role="radio"
-				aria-checked={target === id}
-				onClick={() => setTarget(id)}
-				className={`flex min-h-14 w-full items-center gap-3 border-b border-m-border px-4 py-2 text-left ${target === id ? "bg-m-surface-2" : "active:bg-m-surface-hover"}`}
-			>
-				<span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-m-pill border ${target === id ? "border-m-accent bg-m-accent text-m-accent-text" : "border-m-border"}`}>
-					{target === id && <Check size={12} />}
-				</span>
-				<span className="min-w-0 flex-1">
-					<span className="block break-words text-m-md">{name}</span>
-					<span className="block break-all text-m-xs text-m-text-3">{sub}</span>
-				</span>
-			</button>
-		</li>
+		<button
+			key={id || "new"}
+			type="button"
+			role="radio"
+			aria-checked={target === id}
+			onClick={() => setTarget(id)}
+			className="m-list-row flex w-full items-center gap-4 pl-4 text-left active:bg-m-surface-hover"
+		>
+			<RadioMark on={target === id} />
+			<span className="m-list-sep min-h-14 min-w-0 flex-1 py-3 pr-4">
+				<span className="block text-m-md break-words text-m-text">{name}</span>
+				<span className="mt-0.5 block text-m-xs break-words text-m-text-3">{sub}</span>
+			</span>
+		</button>
 	);
 
 	return (
@@ -396,35 +451,82 @@ function DispatchSheet({
 			open={open}
 			onClose={onClose}
 			title="派发到会话"
+			subtitle={n > 1 ? `将 ${n} 项合并为一条提示发送` : "选择目标会话"}
 			fullHeight
 			footer={
 				<div className="flex flex-col gap-2">
-					{error && (
-						<div role="alert" className="break-words text-m-sm text-m-danger">
-							{error}
-						</div>
-					)}
-					<div className="flex gap-2">
-						<button type="button" className={`${btnCls} flex-1`} onClick={onClose}>
-							取消
-						</button>
-						<button type="button" className={`${btnPrimaryCls} flex-1`} disabled={busy} onClick={() => void go()}>
-							{busy ? "派发中" : n > 1 ? `派发 ${n} 项` : "派发"}
-						</button>
-					</div>
+					{error && <ErrorText>{error}</ErrorText>}
+					<Button variant="primary" block busy={busy} onClick={() => void go()}>
+						{n > 1 ? `派发 ${n} 项` : "派发"}
+					</Button>
 				</div>
 			}
 		>
-			<div className="px-4 py-3 text-m-sm text-m-text-3">{n > 1 ? `将 ${n} 项合并为一条提示发送` : "选择目标会话"}</div>
-			<ul role="radiogroup" aria-label="目标会话">
-				{row("", "新会话", "在条目所属项目中新建会话")}
-				{cands.map((s) => row(s.id, sessionName(s), `${baseName(s.cwd)} · ${SESSION_STATUS[s.status] ?? s.status}`))}
-			</ul>
+			<div role="radiogroup" aria-label="目标会话" className="pb-4">
+				<ListGroup>{row("", "新会话", "在条目所属项目中新建会话")}</ListGroup>
+				{cands.length > 0 && (
+					<ListGroup title="已有会话">
+						{cands.map((s) => row(s.id, sessionName(s), `${baseName(s.cwd)} · ${SESSION_STATUS[s.status] ?? s.status}`))}
+					</ListGroup>
+				)}
+			</div>
 		</BottomSheet>
 	);
 }
 
 /* ---------------------------------------------------------------- page */
+
+function IdeaRow({
+	it,
+	selecting,
+	picked,
+	onTap,
+	byId,
+}: {
+	it: Idea;
+	selecting: boolean;
+	picked: boolean;
+	onTap: () => void;
+	byId: Record<string, MobileSession>;
+}) {
+	const imgs = imageRefs(it).length;
+	const sess = sessionRefs(it);
+	const tgt = it.targetSessionId ? byId[it.targetSessionId] : null;
+	return (
+		<button
+			type="button"
+			data-testid="idea-card"
+			aria-pressed={selecting ? picked : undefined}
+			onClick={onTap}
+			className={`m-list-row flex w-full items-start gap-3 pl-5 text-left active:bg-m-surface-hover ${picked ? "bg-m-accent-soft/40" : ""}`}
+		>
+			{selecting && (
+				<span className="pt-4">
+					<RadioMark on={picked} />
+				</span>
+			)}
+			<span className="m-list-sep min-w-0 flex-1 py-3.5 pr-5">
+				<span className="flex items-center gap-1.5">
+					<Chip tone={it.kind === "bug" ? "danger" : "accent"}>{KIND_LABEL[it.kind] ?? it.kind}</Chip>
+					<Chip>{STATUS_LABEL[it.status] ?? it.status}</Chip>
+					<span className="ml-auto text-m-xs whitespace-nowrap text-m-text-3">{relTime(it.createdAt)}</span>
+				</span>
+				<span className="mt-2 block text-m-md break-words whitespace-pre-wrap text-m-text">{it.text}</span>
+				{(imgs > 0 || sess.length > 0 || tgt) && (
+					<span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-m-xs text-m-text-3">
+						{imgs > 0 && <span className="whitespace-nowrap">{imgs} 张图片</span>}
+						{sess.map((r) => (
+							<span key={r.sessionId} className="break-words">
+								会话：{sessionName(byId[r.sessionId as string]) || (r.sessionId as string).slice(0, 8)}
+							</span>
+						))}
+						{tgt && <span className="break-words">派发至：{sessionName(tgt)}</span>}
+					</span>
+				)}
+			</span>
+		</button>
+	);
+}
 
 export function IdeasPage() {
 	const { data, setData, error, loading, reload } = useLoad(() => api<Idea[]>("GET", "/ideas"));
@@ -461,28 +563,33 @@ export function IdeasPage() {
 	};
 	const upsert = (it: Idea) => setData((d) => (d ? (d.some((x) => x.id === it.id) ? mergeItems(d, [it]) : [it, ...d]) : [it]));
 
-	const tabs: ReadonlyArray<readonly [IdeaTab, string]> = [
-		["active", `进行中 ${counts.active}`],
-		["done", `已完成 ${counts.done}`],
-		["all", `全部 ${counts.all}`],
-	];
+	const tabs = [
+		{ value: "active", label: `进行中 ${counts.active}` },
+		{ value: "done", label: `已完成 ${counts.done}` },
+		{ value: "all", label: `全部 ${counts.all}` },
+	] as const;
 
 	return (
-		<div className="relative flex h-full min-h-0 flex-col bg-m-bg text-m-text">
+		<div className="relative flex h-full min-h-0 flex-col bg-m-bg-elev text-m-text">
 			<PageHeader
 				title="想法"
+				className="bg-m-bg-elev!"
 				right={
 					<>
 						{tab !== "done" && list.length > 0 && (
-							<button type="button" onClick={toggleSelect} className="min-h-11 whitespace-nowrap px-3 text-m-md text-m-accent">
-								{selecting ? "取消多选" : "多选"}
-							</button>
+							<IconButton
+								variant={selecting ? "tinted" : "plain"}
+								icon={selecting ? <X {...ICON} /> : <ListChecks {...ICON} />}
+								label={selecting ? "退出多选" : "多选"}
+								pressed={selecting}
+								onClick={toggleSelect}
+							/>
 						)}
-						<HeaderButton icon={<Plus size={22} />} label="添加想法" onClick={() => setCapture(true)} />
+						<IconButton variant="filled" icon={<Plus {...ICON} />} label="添加想法" onClick={() => setCapture(true)} />
 					</>
 				}
 			>
-				<div className="px-4 pb-2">
+				<div className="px-4 pt-1 pb-3">
 					<Segmented label="筛选" value={tab} options={tabs} onChange={changeTab} />
 				</div>
 			</PageHeader>
@@ -491,88 +598,52 @@ export function IdeasPage() {
 					<LoadState loading={loading} error={error} onRetry={reload} />
 				) : list.length === 0 ? (
 					<EmptyState
-						icon={<Lightbulb size={40} />}
+						className="min-h-[60dvh]"
+						icon={<Lightbulb size={26} strokeWidth={1.75} />}
 						title={tab === "done" ? "暂无已完成的条目" : tab === "all" ? "还没有任何想法" : "还没有想法"}
 						hint="随手记下想法或 Bug，之后一键派发给 agent"
 						action={
-							<button type="button" className={btnCls} onClick={() => setCapture(true)}>
+							<Button variant="primary" icon={<Plus size={18} />} onClick={() => setCapture(true)}>
 								添加想法
-							</button>
+							</Button>
 						}
 					/>
 				) : (
-					<div style={{ paddingBottom: `calc(var(--m-safe-bottom) + ${selecting ? 88 : 16}px)` }}>
-						{error && <div className="px-4 pt-3 text-m-sm text-m-danger">刷新失败：{error}</div>}
+					<div style={{ paddingBottom: `calc(var(--m-safe-bottom) + ${selecting ? 104 : 24}px)` }}>
+						{error && <p className="m-selectable px-8 pt-3 text-m-sm break-words text-m-danger">刷新失败：{error}</p>}
 						{groups.map((g) => (
-							<section key={g.dir || "global"}>
-								<div className="flex items-center gap-2 px-4 pb-1 pt-4 text-m-sm font-medium text-m-text-2">
-									<span className="min-w-0 break-all">{g.label}</span>
-									<span className="rounded-m-pill bg-m-surface px-2 text-m-xs text-m-text-3">{g.items.length}</span>
-								</div>
-								<ul className="flex flex-col gap-2 px-4">
-									{g.items.map((it) => {
-										const imgs = imageRefs(it).length;
-										const sess = sessionRefs(it);
-										const tgt = it.targetSessionId ? byId[it.targetSessionId] : null;
-										const isPicked = picked.has(it.id);
-										return (
-											<li key={it.id}>
-												<button
-													type="button"
-													data-testid="idea-card"
-													aria-pressed={selecting ? isPicked : undefined}
-													onClick={() => {
-														if (!selecting) return setEditId(it.id);
-														setPicked((p) => {
-															const n = new Set(p);
-															if (n.has(it.id)) n.delete(it.id);
-															else n.add(it.id);
-															return n;
-														});
-													}}
-													className={`block w-full rounded-m-lg border p-3 text-left ${isPicked ? "border-m-accent bg-m-surface-2" : "border-m-border bg-m-surface"}`}
-												>
-													<div className="flex items-center gap-2">
-														{selecting && (
-															<span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-m-sm border ${isPicked ? "border-m-accent bg-m-accent text-m-accent-text" : "border-m-border"}`}>
-																{isPicked && <Check size={12} />}
-															</span>
-														)}
-														<Chip tone={it.kind === "bug" ? "danger" : "accent"}>{KIND_LABEL[it.kind] ?? it.kind}</Chip>
-														<Chip>{STATUS_LABEL[it.status] ?? it.status}</Chip>
-														<span className="ml-auto whitespace-nowrap text-m-xs text-m-text-3">{relTime(it.createdAt)}</span>
-													</div>
-													<div className="mt-2 whitespace-pre-wrap break-words text-m-md">{it.text}</div>
-													{(imgs > 0 || sess.length > 0 || tgt) && (
-														<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-m-xs text-m-text-3">
-															{imgs > 0 && <span className="whitespace-nowrap">{imgs} 张图片</span>}
-															{sess.map((r) => (
-																<span key={r.sessionId} className="break-all">
-																	会话：{sessionName(byId[r.sessionId as string]) || (r.sessionId as string).slice(0, 8)}
-																</span>
-															))}
-															{tgt && <span className="break-all">派发至：{sessionName(tgt)}</span>}
-														</div>
-													)}
-												</button>
-											</li>
-										);
-									})}
-								</ul>
-							</section>
+							<ListGroup key={g.dir || "global"} title={`${g.label} · ${g.items.length}`}>
+								{g.items.map((it) => (
+									<IdeaRow
+										key={it.id}
+										it={it}
+										byId={byId}
+										selecting={selecting}
+										picked={picked.has(it.id)}
+										onTap={() => {
+											if (!selecting) return setEditId(it.id);
+											setPicked((p) => {
+												const n = new Set(p);
+												if (n.has(it.id)) n.delete(it.id);
+												else n.add(it.id);
+												return n;
+											});
+										}}
+									/>
+								))}
+							</ListGroup>
 						))}
 					</div>
 				)}
 			</PullToRefresh>
 			{selecting && (
-				<div
-					className="absolute inset-x-0 bottom-0 z-(--z-banner) flex items-center justify-between gap-3 border-t border-m-border bg-m-bg px-4 pt-3"
-					style={{ paddingBottom: "calc(var(--m-safe-bottom) + 12px)" }}
-				>
-					<span className="whitespace-nowrap text-m-md">已选 {picked.size}</span>
-					<button type="button" className={btnPrimaryCls} disabled={picked.size === 0} onClick={() => setDispatchIds([...picked])}>
-						派发所选
-					</button>
+				<div className="pointer-events-none absolute inset-x-4 z-(--z-banner) flex justify-center" style={{ bottom: "calc(var(--m-safe-bottom) + 16px)" }}>
+					<div className="pointer-events-auto flex w-full items-center gap-3 rounded-m-pill bg-m-surface py-1.5 pr-1.5 pl-5 shadow-m-pop">
+						<span className="flex-1 text-m-md whitespace-nowrap">已选 {picked.size} 项</span>
+						<Button variant="primary" icon={<Send size={18} />} disabled={picked.size === 0} onClick={() => setDispatchIds([...picked])}>
+							派发所选
+						</Button>
+					</div>
 				</div>
 			)}
 			<CaptureSheet open={capture} onClose={() => setCapture(false)} dirs={dirs} onCreated={(it) => { upsert(it); setTab("active"); }} />

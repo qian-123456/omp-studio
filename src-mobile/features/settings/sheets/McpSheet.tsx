@@ -1,7 +1,7 @@
+import { Plus, Server } from "lucide-react";
 import { useState } from "react";
-import { Plus, Edit2, ArrowLeft, Save } from "lucide-react";
-import { BottomSheet } from "../../../ui/BottomSheet";
-import { toast } from "../../../ui/Toast";
+import { Button, Chip, Field, inputCls, ListGroup, ListRow, Switch, TextField, toast } from "../../../ui";
+import { SettingRow, SettingsSheet } from "../rows";
 
 interface McpServer {
 	id: string;
@@ -31,201 +31,144 @@ const INITIAL_SERVERS: McpServer[] = [
 	},
 ];
 
-export function McpSheet({
-	open,
-	onClose,
-}: {
-	open: boolean;
-	onClose: () => void;
-}) {
+const ICON = { size: 22, strokeWidth: 1.75 } as const;
+const MONO_INPUT = "font-m-mono";
+
+/** MCP servers: view, add and edit. Deleting is desktop-only on purpose. */
+export function McpSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 	const [servers, setServers] = useState<McpServer[]>(INITIAL_SERVERS);
-	const [editingServer, setEditingServer] = useState<McpServer | null>(null);
+	// The draft stays set while the editor sheet animates out, so its title does not flash.
+	const [draft, setDraft] = useState<McpServer | null>(null);
+	const [editorOpen, setEditorOpen] = useState(false);
 	const [isNew, setIsNew] = useState(false);
+	const [nameError, setNameError] = useState<string | null>(null);
 
-	const handleStartCreate = () => {
-		const newServer: McpServer = {
-			id: `mcp-${Date.now()}`,
-			name: "",
-			command: "npx",
-			args: "",
-			env: "",
-			enabled: true,
-		};
-		setEditingServer(newServer);
-		setIsNew(true);
+	const openEditor = (server: McpServer, fresh: boolean) => {
+		setDraft(server);
+		setIsNew(fresh);
+		setNameError(null);
+		setEditorOpen(true);
 	};
 
-	const handleStartEdit = (server: McpServer) => {
-		setEditingServer({ ...server });
-		setIsNew(false);
-	};
+	const patch = (p: Partial<McpServer>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
-	const handleSave = () => {
-		if (!editingServer) return;
-		if (!editingServer.name.trim()) {
-			toast("请填写服务器名称", { kind: "error" });
+	const save = () => {
+		if (!draft) return;
+		const name = draft.name.trim();
+		if (!name) {
+			setNameError("请填写服务器名称");
 			return;
 		}
-
+		const next = { ...draft, name };
 		if (isNew) {
-			setServers((prev) => [...prev, editingServer]);
-			toast(`已添加 MCP 服务器 ${editingServer.name}`, { kind: "success" });
+			setServers((prev) => [...prev, next]);
+			toast(`已添加 MCP 服务器 ${name}`, { kind: "success" });
 		} else {
-			setServers((prev) => prev.map((s) => (s.id === editingServer.id ? editingServer : s)));
-			toast(`MCP 服务器 ${editingServer.name} 已保存`, { kind: "success" });
+			setServers((prev) => prev.map((s) => (s.id === next.id ? next : s)));
+			toast(`MCP 服务器 ${name} 已保存`, { kind: "success" });
 		}
-		setEditingServer(null);
-	};
-
-	const handleToggleEnable = (id: string, enabled: boolean) => {
-		setServers((prev) => prev.map((s) => (s.id === id ? { ...s, enabled } : s)));
-		toast(enabled ? "已启用 MCP 服务器" : "已停用 MCP 服务器", { kind: "info" });
+		setEditorOpen(false);
 	};
 
 	return (
-		<BottomSheet
-			open={open}
-			onClose={onClose}
-			fullHeight={Boolean(editingServer)}
-			title={editingServer ? (isNew ? "添加 MCP 服务器" : `编辑 · ${editingServer.name}`) : "MCP 服务器"}
-		>
-			<div className="space-y-4 px-4 pb-8">
-				{editingServer ? (
-					/* Editor View (strictly no delete) */
-					<div className="space-y-3.5">
-						<div className="flex items-center justify-between">
-							<button
-								type="button"
-								onClick={() => setEditingServer(null)}
-								className="flex items-center gap-1 text-m-xs text-m-accent"
-							>
-								<ArrowLeft size={14} />
-								<span>返回服务器列表</span>
-							</button>
+		<SettingsSheet open={open} onClose={onClose} title="MCP 服务器" subtitle="通过模型上下文协议（MCP）给智能体接入外部工具和数据。">
+			<ListGroup>
+				<ListRow
+					icon={<Plus {...ICON} />}
+					title={<span className="text-m-accent">添加服务器</span>}
+					onClick={() => openEditor({ id: `mcp-${Date.now()}`, name: "", command: "npx", args: "", env: "", enabled: true }, true)}
+					chevron={false}
+				/>
+			</ListGroup>
 
-							<button
-								type="button"
-								onClick={handleSave}
-								className="flex items-center gap-1.5 rounded-m-md bg-m-accent px-3 py-1.5 text-m-xs font-medium text-m-accent-text"
-							>
-								<Save size={14} />
-								<span>保存配置</span>
-							</button>
-						</div>
+			<ListGroup title="已配置" note="为防止误触，手机上只能查看、添加和编辑，删除请在电脑上操作。">
+				{servers.map((s) => (
+					<ListRow
+						key={s.id}
+						icon={<Server {...ICON} />}
+						title={<span className="font-m-mono break-all">{s.name}</span>}
+						subtitle={<span className="font-m-mono break-all">{`${s.command} ${s.args}`.trim()}</span>}
+						right={<Chip tone={s.enabled ? "success" : "neutral"}>{s.enabled ? "已启用" : "已停用"}</Chip>}
+						chevron
+						onClick={() => openEditor({ ...s }, false)}
+					/>
+				))}
+			</ListGroup>
 
-						<div className="space-y-3 rounded-m-lg border border-m-border bg-m-bg-elev p-3">
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">服务器名称</label>
-								<input
-									type="text"
-									placeholder="如 filesystem, sqlite"
-									value={editingServer.name}
+			<SettingsSheet
+				open={editorOpen && draft != null}
+				onClose={() => setEditorOpen(false)}
+				title={isNew ? "添加 MCP 服务器" : `编辑 ${draft?.name ?? ""}`}
+				footer={
+					<div className="flex gap-3">
+						<Button variant="tonal" block className="flex-1" onClick={() => setEditorOpen(false)}>
+							取消
+						</Button>
+						<Button variant="primary" block className="flex-1" onClick={save}>
+							{isNew ? "添加" : "保存"}
+						</Button>
+					</div>
+				}
+			>
+				{draft && (
+					<>
+						<ListGroup>
+							<SettingRow name="启用" hint="停用后新会话不再加载这个服务器">
+								<Switch label="启用" checked={draft.enabled} onChange={(enabled) => patch({ enabled })} />
+							</SettingRow>
+						</ListGroup>
+
+						<div className="flex flex-col gap-4 px-5 pt-4">
+							<Field label="名称" hint={isNew ? undefined : "名称创建后不能修改"} error={nameError}>
+								<TextField
+									value={draft.name}
 									disabled={!isNew}
-									onChange={(e) => setEditingServer({ ...editingServer, name: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text"
+									placeholder="例如 filesystem"
+									autoCapitalize="off"
+									spellCheck={false}
+									onChange={(e) => {
+										patch({ name: e.target.value });
+										setNameError(null);
+									}}
+									className={MONO_INPUT}
 								/>
-							</div>
-
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">执行命令 (Command)</label>
-								<input
-									type="text"
-									placeholder="如 npx, node, python"
-									value={editingServer.command}
-									onChange={(e) => setEditingServer({ ...editingServer, command: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text font-m-mono"
+							</Field>
+							<Field label="启动命令">
+								<TextField
+									value={draft.command}
+									placeholder="例如 npx、node、python"
+									autoCapitalize="off"
+									spellCheck={false}
+									onChange={(e) => patch({ command: e.target.value })}
+									className={MONO_INPUT}
 								/>
-							</div>
-
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">命令行参数 (Args)</label>
-								<input
-									type="text"
-									placeholder="空格分隔的启动参数"
-									value={editingServer.args}
-									onChange={(e) => setEditingServer({ ...editingServer, args: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text font-m-mono"
+							</Field>
+							<Field label="命令参数" hint="用空格分隔">
+								<textarea
+									value={draft.args}
+									rows={3}
+									placeholder="-y @modelcontextprotocol/server-filesystem /tmp"
+									autoCapitalize="off"
+									spellCheck={false}
+									onChange={(e) => patch({ args: e.target.value })}
+									className={`${inputCls} m-selectable block resize-none ${MONO_INPUT}`}
 								/>
-							</div>
-
-							<div className="space-y-1">
-								<label className="text-m-xs font-medium text-m-text-3">环境变量 (Environment)</label>
-								<input
-									type="text"
-									placeholder="KEY=VALUE （多项逗号或换行分隔）"
-									value={editingServer.env}
-									onChange={(e) => setEditingServer({ ...editingServer, env: e.target.value })}
-									className="min-h-11 w-full rounded-m-md border border-m-border bg-m-bg px-3 text-m-sm text-m-text font-m-mono"
+							</Field>
+							<Field label="环境变量" hint="每行一个，格式 KEY=VALUE">
+								<textarea
+									value={draft.env}
+									rows={3}
+									placeholder="DEBUG=1"
+									autoCapitalize="off"
+									spellCheck={false}
+									onChange={(e) => patch({ env: e.target.value })}
+									className={`${inputCls} m-selectable block resize-none ${MONO_INPUT}`}
 								/>
-							</div>
+							</Field>
 						</div>
-						<p className="px-1 text-[11px] text-m-text-3">
-							注：为避免移动端误触破坏工程服务配置，移动端仅支持查看、添加与编辑，不支持删除操作。
-						</p>
-					</div>
-				) : (
-					/* List View */
-					<div className="space-y-3">
-						<div className="flex items-center justify-between">
-							<p className="text-m-xs text-m-text-3">
-								通过模型上下文协议 (MCP) 挂载外部工具与数据源。
-							</p>
-							<button
-								type="button"
-								onClick={handleStartCreate}
-								className="flex items-center gap-1 shrink-0 rounded-m-md bg-m-accent px-3 py-1.5 text-m-xs font-medium text-m-accent-text"
-							>
-								<Plus size={14} />
-								<span>添加服务器</span>
-							</button>
-						</div>
-
-						<div className="rounded-m-lg border border-m-border bg-m-bg-elev divide-y divide-m-border">
-							{servers.map((server) => (
-								<div key={server.id} className="flex items-center justify-between p-3">
-									<div className="min-w-0 pr-3">
-										<div className="flex items-center gap-2">
-											<span className="font-m-mono text-m-sm font-semibold text-m-text">
-												{server.name}
-											</span>
-											<span
-												className={`rounded-m-pill px-1.5 py-0.2 text-[10px] ${
-													server.enabled
-														? "bg-m-success/10 text-m-success"
-														: "bg-m-surface-2 text-m-text-3"
-												}`}
-											>
-												{server.enabled ? "已启用" : "已停用"}
-											</span>
-										</div>
-										<p className="mt-0.5 truncate font-m-mono text-[11px] text-m-text-3">
-											{server.command} {server.args}
-										</p>
-									</div>
-
-									<div className="flex items-center gap-2 shrink-0">
-										<button
-											type="button"
-											onClick={() => handleToggleEnable(server.id, !server.enabled)}
-											className="rounded-m-md border border-m-border px-2 py-1 text-m-xs text-m-text"
-										>
-											{server.enabled ? "停用" : "启用"}
-										</button>
-										<button
-											type="button"
-											aria-label={`编辑 ${server.name}`}
-											onClick={() => handleStartEdit(server)}
-											className="flex h-8 w-8 items-center justify-center rounded-m-md bg-m-surface text-m-text-2 active:bg-m-surface-hover"
-										>
-											<Edit2 size={14} />
-										</button>
-									</div>
-								</div>
-							))}
-						</div>
-					</div>
+					</>
 				)}
-			</div>
-		</BottomSheet>
+			</SettingsSheet>
+		</SettingsSheet>
 	);
 }

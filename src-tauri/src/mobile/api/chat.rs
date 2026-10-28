@@ -29,7 +29,7 @@
 //!   process (`get_available_commands`) that the desktop registry does not shadow.
 //!   Desktop-only commands (pickers, settings, browser/computer…) are not listed.
 //! - `POST /sessions/{id}/slash` `{name, args?}` (name without `/`, aliases ok) →
-//!   `{ok: true, output?: string, sessionId?: string, forwarded?: bool, planMode?: bool}`.
+//!   `{ok: true, output?: string, sessionId?: string, forwarded?: bool}`.
 //!   `output` is a text block to show in the thread; `sessionId` means the client
 //!   should open that (new / side-chat) session. Forwarded commands are sent as a
 //!   `/name args` prompt (their reply arrives as `command_output` SSE frames).
@@ -43,9 +43,9 @@
 //!   `{op: "pause"|"resume"|"drop"}` → `{ok: true, goal}`. `DELETE /sessions/{id}/goal`
 //!   clears (= `op: "drop"`).
 //! - `GET /sessions/{id}/plan-mode` → `{on}`; `POST /sessions/{id}/plan-mode`
-//!   `{on?: bool}` (omitted = toggle) → `{on}`. Plan mode is client-side on desktop
-//!   too (prompt prefix); the mobile flag lives in server memory per session and is
-//!   independent of the desktop's flag.
+//!   `{on?: bool}` (omitted = toggle) → `{on, sessionId?}`. Plan mode is real omp plan
+//!   mode from the bundled extension: toggling sends the `/plan` prompt, and the state
+//!   is the session handle's cached `ompws-plan` status (`enabled`).
 //! - `GET /sessions/{id}/models` →
 //!   `{models: [{provider, id, name, thinking: [level], contextWindow?}], current: {provider, id}|null,
 //!   thinkingLevel: string|null, liveThinking: [level], live: bool}`. Read-only, NEVER resumes the
@@ -84,11 +84,6 @@ const MAX_UPLOAD: usize = 20 * 1024 * 1024;
 const MAX_PROMPT_BODY: usize = 30 * 1024 * 1024;
 /// Longest stored file name in bytes (before any collision prefix).
 const MAX_NAME_BYTES: usize = 120;
-
-/// Prepended to outgoing prompts while plan mode is on (same as `Composer.tsx`).
-const PLAN_MODE_PREFIX: &str = "[规划模式] 请先分析需求并给出详细的分步实施计划，在我确认之前不要修改任何文件或执行有副作用的操作。\n\n";
-
-static PLAN_MODES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
 
 pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
     Router::new()
@@ -380,24 +375,17 @@ fn build_images(images: &[ImageIn]) -> Result<Vec<Value>, ApiError> {
     Ok(out)
 }
 
-fn apply_plan_prefix(text: &str, plan_on: bool) -> String {
-    if plan_on && !text.trim_start().starts_with('/') {
-        format!("{PLAN_MODE_PREFIX}{text}")
-    } else {
-        text.to_string()
-    }
-}
-
-fn is_plan_on(id: &str) -> bool {
-    PLAN_MODES.lock().iter().any(|s| s == id)
-}
-
-fn set_plan(id: &str, on: bool) {
-    let mut set = PLAN_MODES.lock();
-    set.retain(|s| s != id);
-    if on {
-        set.push(id.to_string());
-    }
+/// Plan mode state from the extension's last `ompws-plan` status frame.
+fn plan_enabled(id: &str) -> bool {
+    crate::rpc::get_handle(id)
+        .and_then(|h| {
+            h.plan_status
+                .lock()
+                .as_ref()
+                .and_then(|p| p.get("enabled"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false)
 }
 
 fn valid_behavior(b: &str) -> bool {
@@ -495,7 +483,7 @@ async fn prompt_ex<B: Backend>(
     } else {
         text
     };
-    let message = apply_plan_prefix(text, is_plan_on(&id));
+    let message = text.to_string();
     let (real, streaming) = send_prompt_ex(
         &ctx,
         &id,
@@ -727,7 +715,7 @@ const CURATED: &[Cmd] = &[
         "切换规划模式：先出计划再执行",
         None,
         "会话",
-        true,
+        false,
         false,
     ),
     cmd(
@@ -1099,7 +1087,7 @@ fn status_text(id: &str, meta: &SessionMeta, st: Option<&Value>) -> String {
     }
     lines.push(format!(
         "- 规划模式：{}",
-        if is_plan_on(id) { "开" } else { "关" }
+        if plan_enabled(id) { "开" } else { "关" }
     ));
     lines.join("\n")
 }
@@ -1277,14 +1265,6 @@ async fn slash<B: Backend>(
         "resume" => {
             send_prompt_ex(&ctx, &id, "Continue", Vec::new(), None).await?;
             ok(json!({}))
-        }
-        "plan" => {
-            let on = parse_toggle(args, is_plan_on(&id))?;
-            set_plan(&id, on);
-            ok(json!({
-                "planMode": on,
-                "output": if on { "规划模式已开启：发送需求后生成计划" } else { "规划模式已关闭" },
-            }))
         }
         "goal" => {
             let lower = args.to_ascii_lowercase();
@@ -1508,7 +1488,7 @@ async fn composer_state<B: Backend>(
         "contextPercent": usage.percent,
         "model": model,
         "thinkingLevel": draft_thinking.or_else(|| st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned()),
-        "planMode": is_plan_on(&id),
+        "planMode": plan_enabled(&id),
         "goal": st.as_ref().map_or(Value::Null, goal_json),
         "fastMode": st.as_ref().and_then(|s| s.get("fastModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
         "slowMode": st.as_ref().and_then(|s| s.get("slowModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
@@ -1729,18 +1709,36 @@ async fn plan_get<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     load_session(&ctx, &id).await?;
-    Ok(Json(json!({"on": is_plan_on(&id)})))
+    Ok(Json(json!({"on": plan_enabled(&id)})))
 }
 
+/// Plan mode lives in the bundled omp extension: toggling sends the `/plan`
+/// prompt and waits (briefly) for the extension's `ompws-plan` status frame.
 async fn plan_set<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
     Json(body): Json<PlanBody>,
 ) -> ApiResult<Value> {
     load_session(&ctx, &id).await?;
-    let on = body.on.unwrap_or_else(|| !is_plan_on(&id));
-    set_plan(&id, on);
-    Ok(Json(json!({"on": on})))
+    let cur = plan_enabled(&id);
+    if body.on == Some(cur) {
+        return Ok(Json(json!({"on": cur})));
+    }
+    let (real, _) = send_prompt_ex(&ctx, &id, "/plan", Vec::new(), None).await?;
+    let target = real.as_deref().unwrap_or(&id);
+    let mut on = plan_enabled(target);
+    for _ in 0..60 {
+        if on != cur {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        on = plan_enabled(target);
+    }
+    let mut out = json!({"on": on});
+    if let Some(real) = real {
+        out["sessionId"] = json!(real);
+    }
+    Ok(Json(out))
 }
 
 #[cfg(test)]
@@ -1846,10 +1844,8 @@ mod tests {
     }
 
     #[test]
-    fn plan_prefix_skips_slash_commands() {
-        assert!(apply_plan_prefix("做点事", true).starts_with("[规划模式]"));
-        assert_eq!(apply_plan_prefix("/compact", true), "/compact");
-        assert_eq!(apply_plan_prefix("做点事", false), "做点事");
+    fn plan_enabled_reads_cached_status() {
+        assert!(!plan_enabled("no-such-session"));
     }
 
     #[test]
@@ -1871,14 +1867,6 @@ mod tests {
         let bare = json!({"goal": {"objective": "x"}});
         assert_eq!(goal_of(&bare), Some(("x".into(), String::new())));
         assert_eq!(goal_of(&json!({"goal": null})), None);
-    }
-
-    #[test]
-    fn plan_flag_roundtrip() {
-        set_plan("t-1", true);
-        assert!(is_plan_on("t-1"));
-        set_plan("t-1", false);
-        assert!(!is_plan_on("t-1"));
     }
 
     #[test]

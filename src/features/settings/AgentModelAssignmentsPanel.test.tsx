@@ -80,6 +80,63 @@ describe("模型角色 scope row", () => {
 		expect(screen.getByText(/只写入/).textContent).toContain("alpha");
 	});
 
+	it("clears a project role override when inheriting, then reflects later global changes", async () => {
+		const initialSnapshot = {
+			...SNAPSHOT,
+			global: {
+				...SNAPSHOT.global,
+				modelRoles: { default: "openai/gpt-5", smol: "anthropic/claude-3-5-sonnet" },
+			},
+			project: {
+				path: "/repo/alpha",
+				exists: true,
+				modelRoles: { default: "@smol" },
+				agentModelOverrides: {},
+			},
+		};
+		let currentSnapshot = initialSnapshot;
+		rolesRead.mockImplementation(async () => currentSnapshot);
+		rolesSet.mockImplementation(async (_cwd, _scope, _table, name, value) => {
+			if (value === null) {
+				const modelRoles = { ...currentSnapshot.project.modelRoles };
+				delete modelRoles[name];
+				currentSnapshot = { ...currentSnapshot, project: { ...currentSnapshot.project, modelRoles } };
+			}
+			return currentSnapshot;
+		});
+		useSessions.setState({
+			workspaces: [{ id: "w1", name: "alpha", path: "/repo/alpha", kind: "project", sort: 0, mode: "code" }],
+		});
+		render(<Harness />);
+		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith(null, null));
+		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith("/repo/alpha", null));
+
+		fireEvent.click(screen.getByRole("radio", { name: "项目" }));
+		await waitFor(() => expect(screen.getByTestId("role-table").getAttribute("data-scope")).toBe("project"));
+
+		const defaultRow = screen.getByTestId("role-table").querySelector('[data-row-kind="role"][data-row-name="default"]')!;
+		fireEvent.click(defaultRow.querySelector('[role="button"]')!);
+		const reuseRole = defaultRow.querySelector("select") as HTMLSelectElement;
+		expect(reuseRole.value).toBe("@smol");
+		fireEvent.change(reuseRole, { target: { value: "" } });
+
+		await waitFor(() =>
+			expect(rolesSet).toHaveBeenCalledWith("/repo/alpha", "project", "modelRoles", "default", null, null),
+		);
+		await waitFor(() => expect(defaultRow.textContent).toContain("openai/gpt-5"));
+
+		currentSnapshot = {
+			...currentSnapshot,
+			global: { ...currentSnapshot.global, modelRoles: { ...currentSnapshot.global.modelRoles, default: "openai/gpt-5.1" } },
+		};
+		const projectReads = rolesRead.mock.calls.filter(([cwd]) => cwd === "/repo/alpha").length;
+		fireEvent.click(screen.getByRole("button", { name: "重新读取模型角色" }));
+		await waitFor(() =>
+			expect(rolesRead.mock.calls.filter(([cwd]) => cwd === "/repo/alpha").length).toBe(projectReads + 1),
+		);
+		await waitFor(() => expect(defaultRow.textContent).toContain("openai/gpt-5.1"));
+	});
+
 	it("re-reads the current scope from the header action", async () => {
 		render(<Harness />);
 		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
