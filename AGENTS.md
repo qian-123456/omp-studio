@@ -9,6 +9,17 @@ DB schema (§6), file layout (§2), and cross-module APIs (§9) are pinned there
 Do not change a contract silently — if a module truly needs one, note it in your
 final report under "Contract changes" with the exact diff.
 
+## OMP upstream reference (never reverse-engineer locally)
+
+OMP (oh-my-pi) is open source at `https://github.com/can1357/oh-my-pi`.
+When investigating OMP CLI behaviors, slash commands, RPC protocols, frame types,
+or internal states:
+- **Always inspect the upstream source directly on GitHub** (via `gh api`, web
+  fetch, or repository search).
+- **Never reverse-engineer local binaries** (`~/.local/bin/omp` strings,
+  decompilation, or trial-and-error guessing). The upstream repository is the
+  canonical source of truth and much faster to check.
+
 ## Ownership (§2)
 
 Each module only edits files it owns (`[A]`/`[B]`/`[C]`/`[D]`/`[E]`/`[LEAD]` tags
