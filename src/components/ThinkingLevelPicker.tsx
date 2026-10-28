@@ -137,7 +137,7 @@ export function ThinkingLevelPicker({
 					layer="popover"
 					ignoreRefs={[ref]}
 					onDismiss={() => onOpenChange(false)}
-					className="w-[288px] max-w-[calc(100vw-16px)] rounded-2xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]"
+					className="w-[300px] max-w-[calc(100vw-16px)] rounded-[22px] border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
 				>
 					<ThinkingLevelControl levels={levels} value={value} onSelect={onSelect} />
 				</FloatingLayer>
@@ -206,7 +206,7 @@ function ThinkingLevelControl({
 		itemRefs.current[(i + n) % n]?.focus();
 	};
 	return (
-		<div className="px-3 py-2.5">
+		<div className="px-4 pb-4 pt-3">
 			<div className="flex justify-center">
 				<button
 					ref={buttonRef}
@@ -232,7 +232,7 @@ function ThinkingLevelControl({
 				<div className="mt-0.5 text-center text-[13px] text-[var(--text-40,var(--text-dim))]">{cur.desc}</div>
 			)}
 			{stops.length > 0 && (
-				<div className="mt-2">
+				<div className="mt-3">
 					<EffortSlider
 						count={stops.length}
 						value={stops.indexOf(shown)}
@@ -256,10 +256,10 @@ function ThinkingLevelControl({
 					onDismiss={() => {
 						setListOpen(false);
 					}}
-					className="w-[260px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
+					className="w-[260px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-2xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
 				>
 					<div id={listId}>
-						<div className="border-b border-[var(--line,var(--border-divider))] px-3 py-2 text-[13px] text-[var(--text-40,var(--text-dim))]">
+						<div className="px-3 pb-1.5 pt-1 text-[13px] text-[var(--text-40,var(--text-dim))]">
 							{t("components.thinkingLevel")}
 						</div>
 						<div className="py-0.5">
@@ -289,7 +289,7 @@ function ThinkingLevelControl({
 											}
 										}}
 										className={clsx(
-											"flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors",
+											"flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors",
 											shown === level
 												? "bg-[var(--bg-active-fill)] text-[var(--text)]"
 												: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
