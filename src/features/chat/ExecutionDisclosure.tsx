@@ -863,7 +863,7 @@ function CollapsingRegion({ open, children }: { open: boolean; children: ReactNo
 	return (
 		<div
 			className={clsx(
-				"grid transition-[grid-template-rows,opacity] ease-out motion-reduce:transition-none",
+				"grid grid-cols-[minmax(0,1fr)] transition-[grid-template-rows,opacity] ease-out motion-reduce:transition-none",
 				open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
 			)}
 			style={{ transitionDuration: `${FOLD_MS}ms` }}
