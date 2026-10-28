@@ -45,7 +45,7 @@ pub async fn create(
         child_count(state, parent_session_id).await + 1
     );
 
-    let trimmed_fork = forkcut::truncate(
+    let trimmed_fork = forkcut::truncate_for_side_chat(
         &parent_file,
         forkcut::Cut::LastCompleteTurn,
         "omp-sidechat-fork",

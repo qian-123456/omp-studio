@@ -26,6 +26,48 @@ pub(crate) fn truncate(
     cut: Cut<'_>,
     tmp_prefix: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
+    cut_copy(file, cut, tmp_prefix, false)
+}
+
+/// Like [`truncate`], but the copy also has bundled plan mode switched off: a
+/// side chat is an independent conversation and must not inherit the parent's
+/// planning state (read-only tools and the `plan` role model).
+pub(crate) fn truncate_for_side_chat(
+    file: &str,
+    cut: Cut<'_>,
+    tmp_prefix: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    cut_copy(file, cut, tmp_prefix, true)
+}
+
+/// Entry type the bundled plan extension persists its state under
+/// (`extension/omp-workspace-plan.ts` `STATE_ENTRY`).
+const PLAN_STATE_ENTRY: &str = "ompws-plan-state";
+
+/// Turn `enabled` off in a plan-state entry line; `None` when the line is not
+/// an enabled plan-state entry. The entry stays in place so parent links hold.
+fn disable_plan_state(line: &str) -> Option<String> {
+    if !line.contains(PLAN_STATE_ENTRY) {
+        return None;
+    }
+    let mut v: Value = serde_json::from_str(line).ok()?;
+    if v.get("customType").and_then(Value::as_str) != Some(PLAN_STATE_ENTRY) {
+        return None;
+    }
+    let data = v.get_mut("data")?.as_object_mut()?;
+    if data.get("enabled").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    data.insert("enabled".into(), Value::Bool(false));
+    serde_json::to_string(&v).ok()
+}
+
+fn cut_copy(
+    file: &str,
+    cut: Cut<'_>,
+    tmp_prefix: &str,
+    drop_plan_mode: bool,
+) -> Result<Option<std::path::PathBuf>, String> {
     let text =
         std::fs::read_to_string(file).map_err(|e| format!("无法读取会话文件 {file}：{e}"))?;
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -34,11 +76,21 @@ pub(crate) fn truncate(
         Cut::AfterEntry(id) => prefix_len_after_entry(&lines, id)
             .ok_or_else(|| format!("在会话文件中找不到所选回复（条目 {id}）"))?,
     };
-    if keep == lines.len() {
+    let kept: Vec<std::borrow::Cow<'_, str>> = lines[..keep]
+        .iter()
+        .map(
+            |l| match drop_plan_mode.then(|| disable_plan_state(l)).flatten() {
+                Some(changed) => std::borrow::Cow::Owned(changed),
+                None => std::borrow::Cow::Borrowed(*l),
+            },
+        )
+        .collect();
+    let rewritten = kept.iter().any(|l| matches!(l, std::borrow::Cow::Owned(_)));
+    if keep == lines.len() && !rewritten {
         return Ok(None);
     }
     let out = std::env::temp_dir().join(format!("{tmp_prefix}-{}.jsonl", uuid::Uuid::new_v4()));
-    let mut body = lines[..keep].join("\n");
+    let mut body = kept.join("\n");
     body.push('\n');
     std::fs::write(&out, body).map_err(|e| format!("无法写入分支临时文件：{e}"))?;
     Ok(Some(out))
@@ -118,6 +170,53 @@ mod tests {
             Cut::LastCompleteTurn,
             "omp-cut-test",
         )
+    }
+
+    const PLAN_ON: &str = r#"{"type":"custom","id":"ps","customType":"ompws-plan-state","data":{"enabled":true,"version":2,"phase":"planning"}}"#;
+
+    fn plan_enabled_in(file: &std::path::Path) -> Vec<bool> {
+        std::fs::read_to_string(file)
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| v["customType"] == PLAN_STATE_ENTRY)
+            .map(|v| v["data"]["enabled"].as_bool().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn side_chat_copy_switches_plan_mode_off_even_when_nothing_is_cut() {
+        let (dir, src) = tmp_file(&[HEAD, PLAN_ON, U1, A1]);
+        let out =
+            truncate_for_side_chat(src.to_str().unwrap(), Cut::LastCompleteTurn, "omp-cut-test")
+                .unwrap()
+                .expect("a plan-enabled parent always needs a rewritten copy");
+        assert_eq!(plan_enabled_in(&out), vec![false]);
+        // Entries and their order are untouched.
+        assert_eq!(std::fs::read_to_string(&out).unwrap().lines().count(), 4);
+        // The parent file itself is never modified.
+        assert_eq!(plan_enabled_in(&src), vec![true]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn plain_fork_copy_keeps_plan_mode() {
+        let (dir, src) = tmp_file(&[HEAD, PLAN_ON, U1, A1]);
+        assert!(last_turn(&src).unwrap().is_none());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn side_chat_copy_without_plan_state_is_not_rewritten() {
+        let (dir, src) = tmp_file(&[HEAD, U1, A1]);
+        assert!(truncate_for_side_chat(
+            src.to_str().unwrap(),
+            Cut::LastCompleteTurn,
+            "omp-cut-test"
+        )
+        .unwrap()
+        .is_none());
+        std::fs::remove_dir_all(dir).ok();
     }
 
     const HEAD: &str = r#"{"type":"session","id":"p"}"#;
