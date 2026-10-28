@@ -1,9 +1,4 @@
-/**
- * Pairing: omp's `/pair?code=` redeems a one-time code and answers 303 + Set-Cookie. Loading it in a
- * hidden same-origin iframe lets the browser store the HttpOnly cookie without navigating away.
- * Never retried: a code is single-use.
- */
-import { api } from "./api";
+/** A pairing code is consumed only by an explicit POST; never infer success from an older cookie. */
 import { reconnectEvents } from "./sse";
 import { useConnection } from "./stores/connection";
 
@@ -21,32 +16,20 @@ export function takePairCode(): string | null {
 	}
 }
 
-export function pairWithCode(code: string, timeoutMs = 8000): Promise<boolean> {
-	return new Promise((resolve) => {
-		if (!code) return resolve(false);
-		const frame = document.createElement("iframe");
-		frame.setAttribute("aria-hidden", "true");
-		frame.style.cssText = "position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none";
-		let done = false;
-		const finish = (ok: boolean) => {
-			if (done) return;
-			done = true;
-			setTimeout(() => frame.remove(), 0);
-			if (ok) {
-				useConnection.getState().setPhase("idle");
-				reconnectEvents();
-			}
-			resolve(ok);
-		};
-		frame.onload = () => {
-			// The first load can still be the redirect chain; probe with a real call.
-			api("GET", "/sessions").then(
-				() => finish(true),
-				() => finish(false),
-			);
-		};
-		frame.src = `/pair?code=${encodeURIComponent(code)}`;
-		document.body.appendChild(frame);
-		setTimeout(() => finish(false), timeoutMs);
-	});
+export async function pairWithCode(code: string, timeoutMs = 8000): Promise<boolean> {
+	if (!code) return false;
+	const ctl = new AbortController();
+	const timer = setTimeout(() => ctl.abort(), timeoutMs);
+	try {
+		const res = await fetch("/pair", {
+			method: "POST", credentials: "same-origin", signal: ctl.signal,
+			headers: { "content-type": "application/json" }, body: JSON.stringify({ code }),
+		});
+		if (res.status !== 204) return false;
+		// Explicit successful redemption is the only transition out of terminal 401.
+		useConnection.setState({ phase: "idle", error: null });
+		reconnectEvents();
+		return true;
+	} catch { return false; }
+	finally { clearTimeout(timer); }
 }

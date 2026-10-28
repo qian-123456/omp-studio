@@ -216,8 +216,7 @@ pub fn close_all() {
     }
 }
 
-#[cfg(test)]
-fn is_open(term_id: &str) -> bool {
+pub(super) fn is_open(term_id: &str) -> bool {
     registry().lock().contains_key(term_id)
 }
 

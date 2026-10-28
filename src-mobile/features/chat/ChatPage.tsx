@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PageProps } from "../../core/nav";
+import { startViewingPresence } from "../../core/presence";
 import { useSession } from "../../core/stores/sessions";
 import { Spinner } from "../../ui";
 import { STATUS_LABEL } from "../../core/types";
@@ -73,8 +74,10 @@ export function ChatPage({ route }: PageProps) {
 	useEffect(() => {
 		const c = new ChatController(id);
 		c.start();
+		const stopPresence = startViewingPresence(id);
 		setController(c);
 		return () => {
+			stopPresence();
 			c.dispose();
 			setController(null);
 		};

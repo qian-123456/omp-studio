@@ -79,6 +79,7 @@ interface ExtensionApiLike {
 
 interface TurnState {
 	sid: string;
+	cwd: string;
 	turnId: string;
 	headBefore: string | null;
 	before: string;
@@ -137,6 +138,7 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 		// and factories are rebound into subagent runners.
 		if (ctx?.agent?.kind === "sub") return null;
 		const cwd = ctx?.cwd ?? process.cwd();
+		if (current && current.cwd !== cwd) abandonTurn();
 		if (isRepo === null || repoCwd !== cwd) {
 			repoCwd = cwd;
 			isRepo =
@@ -195,6 +197,18 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 
 	const deleteRef = (cwd: string, ref: string): void => {
 		git(cwd, ["update-ref", "-d", ref]);
+	};
+
+	const cleanupTurn = (turn: TurnState): void => {
+		const base = `refs/omp/turns/${turn.sid}/${turn.turnId}`;
+		deleteRef(turn.cwd, `${base}/before`);
+		deleteRef(turn.cwd, `${base}/after`);
+	};
+
+	const abandonTurn = (): void => {
+		const turn = current;
+		current = null;
+		if (turn) cleanupTurn(turn);
 	};
 
 	const listRefs = (cwd: string, prefix: string): string[] => {
@@ -306,7 +320,7 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 		}
 	};
 
-	/** Keep newest KEEP_TURNS turnIds for this sid; drop their undone refs too. */
+	/** Expire snapshot refs only: undone markers are durable history state. */
 	const pruneTurns = (cwd: string, sid: string): void => {
 		const refs = listRefs(cwd, `turns/${sid}/`);
 		const byTurn = new Map<string, string[]>();
@@ -320,7 +334,6 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 		const turnIds = [...byTurn.keys()].sort((a, b) => turnNum(b) - turnNum(a));
 		for (const turnId of turnIds.slice(KEEP_TURNS)) {
 			for (const ref of byTurn.get(turnId) ?? []) deleteRef(cwd, ref);
-			deleteRef(cwd, `refs/omp/undone/${sid}/${turnId}`);
 		}
 	};
 
@@ -419,14 +432,13 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 		}
 	};
 
-	on("session_start", () => {
-		current = null;
-		notified = new Set();
-	});
-	on("session_switch", () => {
-		current = null;
-		notified = new Set();
-	});
+	for (const event of ["session_start", "session_switch", "session_shutdown"]) {
+		on(event, (ctx) => {
+			if (ctx.agent?.kind === "sub") return;
+			abandonTurn();
+			notified = new Set();
+		});
+	}
 
 	// Inject the auto-commit rule once per session, plus any pending undo
 	// notices — merged into ONE returned message.
@@ -466,18 +478,13 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 	});
 
 	on("agent_start", (ctx) => {
+		if (ctx.agent?.kind === "sub") return;
+		// Discard the previous turn before checking the new repository/session.
+		abandonTurn();
 		const g = guard(ctx);
 		if (!g) return;
 		const sid = sanitizeSid(ctx.sessionManager?.getSessionId?.() ?? "");
 		if (!sid) return;
-		// A previous turn that never saw agent_end leaves an orphan before-ref;
-		// drop it rather than accumulate.
-		if (current) {
-			deleteRef(
-				g.cwd,
-				`refs/omp/turns/${current.sid}/${current.turnId}/before`,
-			);
-		}
 		const turnId = `t${Date.now()}`;
 		const headBefore = head(g.cwd);
 		const before = snapshot(
@@ -486,53 +493,58 @@ export default function ompWorkspaceCheckpoints(pi: ExtensionApiLike): void {
 			headBefore,
 			`omp turn snapshot ${turnId} before`,
 		);
-		if (!before) {
-			current = null;
-			return;
-		}
+		if (!before) return;
+		current = { sid, cwd: g.cwd, turnId, headBefore, before };
 		if (!updateRef(g.cwd, `refs/omp/turns/${sid}/${turnId}/before`, before))
-			return;
-		current = { sid, turnId, headBefore, before };
+			abandonTurn();
 	});
 
-	on("agent_end", (ctx) => {
-		const g = guard(ctx);
+	on("agent_end", async (ctx) => {
+		if (ctx.agent?.kind === "sub") return;
 		const turn = current;
 		current = null;
-		if (!g || !turn) return;
-		const headAfter = head(g.cwd);
-		const after = snapshot(
-			g.cwd,
-			headAfter,
-			turn.before,
-			`omp turn snapshot ${turn.turnId} after`,
-		);
-		if (!after) return;
-		const base = `refs/omp/turns/${turn.sid}/${turn.turnId}`;
-		if (!updateRef(g.cwd, `${base}/after`, after)) return;
+		if (!turn) return;
+		let recorded = false;
+		try {
+			const g = guard(ctx);
+			const sid = sanitizeSid(ctx.sessionManager?.getSessionId?.() ?? "");
+			if (!g || g.cwd !== turn.cwd || sid !== turn.sid) return;
+			const headAfter = head(turn.cwd);
+			const after = snapshot(
+				turn.cwd,
+				headAfter,
+				turn.before,
+				`omp turn snapshot ${turn.turnId} after`,
+			);
+			if (!after) return;
+			const base = `refs/omp/turns/${turn.sid}/${turn.turnId}`;
+			if (!updateRef(turn.cwd, `${base}/after`, after)) return;
 
-		const files = diffFiles(g.cwd, turn.before, after);
-		const commits = newCommits(g.cwd, turn.headBefore, headAfter);
-		if (files.length === 0 && commits.length === 0) {
-			deleteRef(g.cwd, `${base}/before`);
-			deleteRef(g.cwd, `${base}/after`);
-			return;
+			const files = diffFiles(turn.cwd, turn.before, after);
+			const commits = newCommits(turn.cwd, turn.headBefore, headAfter);
+			if (files.length === 0 && commits.length === 0) return;
+			if (!pi.appendEntry) return;
+			const user = lastUser(ctx);
+			await pi.appendEntry(CHECKPOINT_TYPE, {
+				v: 1,
+				turnId: turn.turnId,
+				sessionId: turn.sid,
+				userItemId: user?.id ?? null,
+				prompt: user?.prompt ?? "",
+				before: turn.before,
+				after,
+				headBefore: turn.headBefore,
+				headAfter,
+				commits,
+				files,
+				endedAt: new Date().toISOString(),
+			});
+			recorded = true;
+			pruneTurns(turn.cwd, turn.sid);
+		} catch (e) {
+			note(`agent_end checkpoint failed: ${String(e).slice(0, 200)}`);
+		} finally {
+			if (!recorded) cleanupTurn(turn);
 		}
-		const user = lastUser(ctx);
-		appendEntry(CHECKPOINT_TYPE, {
-			v: 1,
-			turnId: turn.turnId,
-			sessionId: turn.sid,
-			userItemId: user?.id ?? null,
-			prompt: user?.prompt ?? "",
-			before: turn.before,
-			after,
-			headBefore: turn.headBefore,
-			headAfter,
-			commits,
-			files,
-			endedAt: new Date().toISOString(),
-		});
-		pruneTurns(g.cwd, turn.sid);
 	});
 }

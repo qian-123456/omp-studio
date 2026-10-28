@@ -22,7 +22,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
 	ExtensionItem,
@@ -32,13 +32,12 @@ import type {
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
 	extensionDelete,
-	ompConfigList,
-	ompConfigSet,
 	pluginsList,
 	pluginSetEnabled,
 	skillsList,
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { updateOmpListSetting } from "../skills/ompListSetting";
 import { Switch } from "./Switch";
 import { projectName } from "./mcpDraft";
 import { OmpSections } from "./OmpSettingsList";
@@ -55,22 +54,6 @@ function pluginSourceLabel(p: PluginItem, t: (k: string) => string): string {
 	return p.kind;
 }
 
-/** Write an OMP string-array setting via `omp config set` (same shape the
- * skills page uses for disabledExtensions). */
-async function updateOmpList(
-	key: string,
-	mutate: (current: string[]) => string[],
-): Promise<void> {
-	const list = await ompConfigList();
-	const entry = list.entries.find((e) => e.key === key);
-	const current =
-		entry && Array.isArray(entry.value)
-			? entry.value.filter((v): v is string => typeof v === "string")
-			: [];
-	const next = mutate(current);
-	if (next === current) return;
-	await ompConfigSet(key, JSON.stringify(next));
-}
 
 
 
@@ -87,26 +70,36 @@ export function PluginsSection({
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
+	const loadGeneration = useRef(0);
+	const currentCwd = useRef(cwd);
+	currentCwd.current = cwd;
 
 	const reload = useCallback(async () => {
+		if (currentCwd.current !== cwd) return;
+		const generation = ++loadGeneration.current;
 		setLoading(true);
 		try {
 			const [cat, skills] = await Promise.all([
 				pluginsList(cwd),
 				skillsList(cwd).catch(() => null),
 			]);
+			if (generation !== loadGeneration.current || currentCwd.current !== cwd) return;
 			setCatalog(cat);
 			setExtensions(skills?.extensions ?? []);
 			setLoadError(null);
 		} catch (e) {
-			setLoadError(errMsg(e));
+			if (generation === loadGeneration.current && currentCwd.current === cwd) setLoadError(errMsg(e));
 		} finally {
-			setLoading(false);
+			if (generation === loadGeneration.current && currentCwd.current === cwd) setLoading(false);
 		}
 	}, [cwd]);
 
 	useEffect(() => {
+		setCatalog(null);
+		setExtensions([]);
+		setLoadError(null);
 		void reload();
+		return () => { loadGeneration.current++; };
 	}, [reload]);
 
 	const q = query.trim().toLowerCase();
@@ -154,7 +147,7 @@ export function PluginsSection({
 		if (busy) return;
 		setBusy(`ext:${ext.path}`);
 		try {
-			await updateOmpList("disabledExtensions", (cur) =>
+			await updateOmpListSetting("disabledExtensions", (cur) =>
 				ext.enabled
 					? [...new Set([...cur, ext.name])]
 					: cur.filter(

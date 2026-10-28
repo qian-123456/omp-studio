@@ -45,16 +45,18 @@ export function isSideChatImagePath(path: string): boolean {
 
 /** Read pasted/dropped image bytes without relying on a webview File path. */
 export function imageFileToBase64(file: Blob): Promise<string> {
-	const { promise, resolve, reject } = Promise.withResolvers<string>();
-	const reader = new FileReader();
-	reader.onload = () => {
-		const result = typeof reader.result === "string" ? reader.result : "";
-		const comma = result.indexOf(",");
-		resolve(comma >= 0 ? result.slice(comma + 1) : result);
-	};
-	reader.onerror = () => reject(reader.error ?? new Error("unable to read image"));
-	reader.readAsDataURL(file);
-	return promise;
+	// The supported webview/TS target does not provide Promise.withResolvers.
+	// Keep the constructor here instead of raising the application's target.
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = typeof reader.result === "string" ? reader.result : "";
+			const comma = result.indexOf(",");
+			resolve(comma >= 0 ? result.slice(comma + 1) : result);
+		};
+		reader.onerror = () => reject(reader.error ?? new Error("unable to read image"));
+		reader.readAsDataURL(file);
+	});
 }
 
 /** Convert composer images into the attachment shape used by live user echoes. */

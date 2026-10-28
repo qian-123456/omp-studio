@@ -10,7 +10,7 @@ import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { useSettings } from "../settings/store";
 import { dropEchoesForTexts, isFlowBusy, restoreTextsToDraft, useLive } from "../../stores/live";
-import { type HeldItem, heldQueueItems, mergeHeldItems, useHeldQueue } from "./heldQueue";
+import { type HeldItem, heldQueueItems, isHeldAutoSendPaused, mergeHeldItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 
 const EMPTY_LIST: HeldItem[] = [];
@@ -75,7 +75,7 @@ useLive.subscribe((state, prev) => {
 	for (const sid of Object.keys(state.sessions)) {
 		const cur = state.sessions[sid];
 		const was = prev.sessions[sid];
-		if (!cur || !was || !autoSendEnabled()) continue;
+		if (!cur || !was || !autoSendEnabled() || isHeldAutoSendPaused(sid)) continue;
 		const turnEnded = was.streaming && cur.streaming === false;
 		// A compaction/handoff that ended while idle releases held items too.
 		const flowCleared = isFlowBusy(was) && !isFlowBusy(cur) && !cur.streaming && cur.alive === true;
@@ -94,7 +94,7 @@ export function useQueueAutoSend(sid: string, streaming: boolean): boolean {
 	const streamingRef = useRef(streaming);
 	streamingRef.current = streaming;
 	useEffect(() => {
-		if (!autoSend || streamingRef.current || useLive.getState().sessions[sid]?.alive !== true) return;
+		if (!autoSend || streamingRef.current || isHeldAutoSendPaused(sid) || useLive.getState().sessions[sid]?.alive !== true) return;
 		if (heldQueueItems(sid).length > 0) void drainNext(sid);
 	}, [sid, autoSend]);
 	return autoSend;

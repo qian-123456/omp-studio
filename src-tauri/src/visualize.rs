@@ -56,15 +56,26 @@ pub fn install() {
     }
 }
 
-/// The `--plugin-dir` argument for a spawn, or None when disabled or absent.
-/// Checking existence here keeps `build_command` from pointing omp at a
-/// directory that failed to install.
+/// The `--plugin-dir` argument for a spawn, or None when disabled or incomplete.
+/// Both embedded files must be installed together; a failed skill write must not
+/// leave the manifest advertising a missing or stale model-facing contract.
 pub fn spawn_plugin_dir(enabled: bool) -> Option<PathBuf> {
     if !enabled {
         return None;
     }
     let dir = plugin_dir();
-    dir.join("plugin.json").is_file().then_some(dir)
+    complete_bundle(&dir).then_some(dir)
+}
+
+fn complete_bundle(dir: &Path) -> bool {
+    [
+        ("plugin.json", PLUGIN_JSON),
+        ("skills/visualize/SKILL.md", SKILL_MD),
+    ]
+    .into_iter()
+    .all(|(rel, content)| {
+        std::fs::read_to_string(dir.join(rel)).is_ok_and(|current| current == content)
+    })
 }
 
 #[cfg(test)]
@@ -90,5 +101,36 @@ mod tests {
     #[test]
     fn spawn_plugin_dir_respects_enabled_flag() {
         assert!(spawn_plugin_dir(false).is_none());
+    }
+
+    #[test]
+    fn incomplete_or_stale_bundle_is_not_spawned() {
+        let dir = std::env::temp_dir().join(format!("ompws-viz-partial-{}", uuid::Uuid::new_v4()));
+        let manifest = dir.join("plugin.json");
+        let skill = dir.join("skills/visualize/SKILL.md");
+        assert!(!complete_bundle(&dir));
+        write_if_changed(&manifest, PLUGIN_JSON).unwrap();
+        assert!(
+            !complete_bundle(&dir),
+            "manifest alone cannot advertise the skill"
+        );
+
+        // Deterministic failed install: the skill path is occupied by a directory.
+        std::fs::create_dir_all(&skill).unwrap();
+        assert!(write_if_changed(&skill, SKILL_MD).is_err());
+        assert!(!complete_bundle(&dir));
+        std::fs::remove_dir(&skill).unwrap();
+        write_if_changed(&skill, SKILL_MD).unwrap();
+        assert!(complete_bundle(&dir));
+
+        std::fs::write(&skill, "stale guidance").unwrap();
+        assert!(
+            !complete_bundle(&dir),
+            "partial upgrades must not load old skill content"
+        );
+        write_if_changed(&skill, SKILL_MD).unwrap();
+        std::fs::write(&manifest, "{}").unwrap();
+        assert!(!complete_bundle(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

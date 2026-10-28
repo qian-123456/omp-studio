@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BacklogItem } from "../../lib/contracts";
 
-const backlogUpdate = vi.fn(async () => ({}));
+const backlogUpdate = vi.fn(async (_id: string, _patch: unknown) => ({}));
 vi.mock("../../lib/ipc", () => ({ backlogUpdate: (...a: unknown[]) => (backlogUpdate as (...x: unknown[]) => unknown)(...a) }));
 const load = vi.fn(async () => {});
 vi.mock("./backlogStore", () => ({ useBacklog: { getState: () => ({ load }) } }));
@@ -9,6 +9,7 @@ vi.mock("./backlogStore", () => ({ useBacklog: { getState: () => ({ load }) } })
 import { useComposer } from "../../stores/composer";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { fillIdeasIntoComposer, resetPendingFills } from "./fillComposer";
+import { useToasts } from "../../lib/toast";
 
 const item = (id: string, text: string): BacklogItem =>
 	({ id, text, kind: "idea", status: "inbox", refs: [], deletedAt: null }) as unknown as BacklogItem;
@@ -20,8 +21,9 @@ const flush = async () => {
 describe("fillIdeasIntoComposer", () => {
 	beforeEach(() => {
 		resetPendingFills();
-		backlogUpdate.mockClear();
-		load.mockClear();
+		backlogUpdate.mockReset().mockResolvedValue({});
+		load.mockReset().mockResolvedValue(undefined);
+		useToasts.setState({ items: [] });
 		useComposer.getState().clearDraft("s1");
 	});
 
@@ -74,5 +76,30 @@ describe("fillIdeasIntoComposer", () => {
 		emitPromptSend("sent", "s1", sent);
 		await flush();
 		expect(backlogUpdate).toHaveBeenCalledWith("a", { status: "dispatched", targetSessionId: "s1" });
+	});
+
+	it("keeps a persistent error and retries only failed delivery records without resending", async () => {
+		backlogUpdate.mockImplementation(async (id: unknown) => {
+			if (id === "b") throw new Error("database unavailable");
+			return {};
+		});
+		fillIdeasIntoComposer("s1", [item("a", "first idea"), item("b", "second idea")]);
+		const text = useComposer.getState().drafts.s1;
+		emitPromptSend("echoed", "s1", text);
+		useComposer.getState().clearDraft("s1");
+		emitPromptSend("sent", "s1", text);
+		await flush();
+		const failure = useToasts.getState().items.find((entry) => entry.action);
+		expect(failure?.kind).toBe("error");
+		expect(failure?.text).toContain("database unavailable");
+		expect(backlogUpdate).toHaveBeenCalledTimes(2);
+		backlogUpdate.mockResolvedValue({});
+		failure?.action?.onClick();
+		failure?.action?.onClick();
+		await flush();
+		expect(backlogUpdate).toHaveBeenCalledTimes(3);
+		expect(backlogUpdate).toHaveBeenLastCalledWith("b", { status: "dispatched", targetSessionId: "s1" });
+		expect(useComposer.getState().drafts.s1).toBeFalsy();
+		expect(useToasts.getState().items).toEqual([]);
 	});
 });

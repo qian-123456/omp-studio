@@ -595,10 +595,13 @@ export function Composer({
 	// Picker edit made during this plan-mode visit (a `plan` role value); wins over the status spec.
 	const [planEditState, setPlanEditState] = useState<{ sid: string; value: string } | null>(null);
 	const [planRolesState, setPlanRolesState] = useState<{ sid: string; snap: ModelRoleSnapshot } | null>(null);
+	const [planReadFailure, setPlanReadFailure] = useState<{ sid: string; error: string } | null>(null);
+	const [planReadAttempt, setPlanReadAttempt] = useState(0);
 	// State is keyed by session so the render right after a session switch never
 	// shows (or auto-applies) the previous session's edit or role layers.
 	const planEdit = planEditState?.sid === sessionId ? planEditState.value : null;
 	const planRoles = planRolesState?.sid === sessionId ? planRolesState.snap : null;
+	const planRoleError = planPreview && planReadFailure?.sid === sessionId ? planReadFailure.error : null;
 	// Bumps when the plan-mode visit (mode or session) changes: late async results of an old visit are dropped.
 	const planVisit = useRef(0);
 	// Bumps on every successful role write: an older role read must not overwrite it.
@@ -860,6 +863,7 @@ export function Composer({
 				: null,
 		[planPreview, planMode, planEdit, planStatusModel, planRoles, models],
 	);
+	const planChoiceUnknown = planPreview && !planChoice && (!planRoles || planRoleError !== null);
 	const currentThinking = planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel ?? "auto";
 
 	const draftDefaultModel = useDraftDefaultModel(isLocalDraft && !sessionMeta?.model, sessionMeta?.cwd, models);
@@ -885,13 +889,18 @@ export function Composer({
 		if (!planPreview) return;
 		let cancelled = false;
 		const write = planRolesWrite.current;
+		setPlanReadFailure(null);
 		ompModelRolesRead(sessionMeta?.cwd ?? null, sessionCurrent.value || null)
-			.then((snap) => !cancelled && planRolesWrite.current === write && setPlanRolesState({ sid: sessionId, snap }))
-			.catch(() => undefined);
+			.then((snap) => {
+				if (!cancelled && planRolesWrite.current === write) setPlanRolesState({ sid: sessionId, snap });
+			})
+			.catch((err) => {
+				if (!cancelled && planRolesWrite.current === write) setPlanReadFailure({ sid: sessionId, error: errMsg(err) });
+			});
 		return () => {
 			cancelled = true;
 		};
-	}, [planPreview, sessionId, sessionMeta?.cwd]);
+	}, [planPreview, sessionId, sessionMeta?.cwd, planReadAttempt]);
 
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
 	const currentModelOption = useMemo(
@@ -964,7 +973,10 @@ export function Composer({
 			const scope = planRoleScope(await ompModelRolesRead(cwd, sessionModel));
 			const snap = await ompModelRolesSet(cwd, scope, "modelRoles", PLAN_ROLE, value, sessionModel);
 			planRolesWrite.current += 1;
-			if (planVisit.current === visit) setPlanRolesState({ sid: sessionId, snap });
+			if (planVisit.current === visit) {
+				setPlanRolesState({ sid: sessionId, snap });
+				setPlanReadFailure(null);
+			}
 			useOmpConfigStore.getState().invalidate();
 			return true;
 		} catch (err) {
@@ -1082,7 +1094,9 @@ export function Composer({
 		ro.observe(el);
 		return () => ro.disconnect();
 	}, []);
-	const modelLabel = current.value ? current.label : models === null ? t("chat.loadingShort") : t("composer.selectModel");
+	const modelLabel = planChoiceUnknown
+		? t(planRoleError ? "composer.planModelReadFailed" : "composer.planModelLoading")
+		: current.value ? current.label : models === null ? t("chat.loadingShort") : t("composer.selectModel");
 	const thinkingKind = thinkingChipState(thinkingLevels, currentModelOption?.reasoning).kind;
 	const toolbarTier = pickToolbarTier({
 		width: toolbarWidth,
@@ -2719,6 +2733,12 @@ export function Composer({
 						{argHintLine}
 					</div>
 				)}
+				{planRoleError && (
+					<div role="alert" className="flex items-center gap-2 px-4 pb-1 text-[11px] text-[var(--text-60)]">
+						<span className="min-w-0" title={planRoleError}>{t("composer.planModelReadFailed")}</span>
+						<button type="button" className="shrink-0 whitespace-nowrap underline" onClick={() => setPlanReadAttempt((attempt) => attempt + 1)}>{t("common.retry")}</button>
+					</div>
+				)}
 
 				{/* Bottom toolbar: attach / model / thinking (left); held pill,
 				 * context ring and send/stop (right). */}
@@ -2798,7 +2818,7 @@ export function Composer({
 									if (!models || models.length === 0) void loadModels();
 								}}
 							title={
-								planChoice
+								planPreview
 									? t("composer.planModelTitle")
 									: toolbarTier >= TIER_MERGED && thinkingKind !== "unsupported"
 										? t("composer.modelThinkingTooltip", { model: modelLabel, level: currentThinking })
@@ -2811,7 +2831,7 @@ export function Composer({
 							)}
 						>
 							<span className={clsx("min-w-0 truncate", !compact && "max-w-36")}>{modelLabel}</span>
-							{toolbarTier >= TIER_MERGED && (
+							{toolbarTier >= TIER_MERGED && !planChoiceUnknown && (
 								<span className="shrink-0 whitespace-pre">
 									{mergedSuffix(thinkingKind, currentThinking, toolbarTier === TIER_BADGE)}
 								</span>
@@ -2831,7 +2851,7 @@ export function Composer({
 								>
 									<ModelMenuContent
 										models={models}
-										currentValue={current.value}
+										currentValue={planChoiceUnknown ? "" : current.value}
 										contextTokens={currentTokens}
 										onSelect={async (key) => {
 											if (compacting) {
@@ -2842,7 +2862,7 @@ export function Composer({
 											setModelOpen(false);
 										}}
 									/>
-									{toolbarTier >= TIER_MERGED && (
+									{toolbarTier >= TIER_MERGED && !planChoiceUnknown && (
 										<ThinkingLevelStrip
 											levels={thinkingLevels}
 											reasoning={currentModelOption?.reasoning}
@@ -2857,7 +2877,7 @@ export function Composer({
 						</div>
 
 						{/* Thinking chip: levels from the catalog, or a grey 未配置/不支持 chip; never hidden */}
-						{toolbarTier < TIER_MERGED && (
+						{toolbarTier < TIER_MERGED && !planChoiceUnknown && (
 							<ThinkingLevelPicker
 								levels={thinkingLevels}
 								reasoning={currentModelOption?.reasoning}

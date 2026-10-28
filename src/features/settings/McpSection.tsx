@@ -42,7 +42,7 @@ import { Button, IconButton, SectionHeader, SettingsCard } from "./ui";
 type Dialog =
 	| { kind: "add" }
 	| { kind: "import" }
-	| { kind: "edit"; name: string }
+	| { kind: "edit"; server: McpServerView }
 	| { kind: "scope"; name: string };
 
 type Filter = "all" | "current";
@@ -75,12 +75,16 @@ export function McpSection({
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const busyRef = useRef(false);
 	const [dialog, setDialog] = useState<Dialog | null>(null);
 	const [filter, setFilter] = useState<Filter>("all");
 	const [filesOpen, setFilesOpen] = useState(false);
 	const seq = useRef(0);
 	const pathsRef = useRef(paths);
 	pathsRef.current = paths;
+	const openDialog = (next: Dialog) => {
+		if (!busyRef.current) setDialog(next);
+	};
 
 	const reload = useCallback(async () => {
 		const mine = ++seq.current;
@@ -101,22 +105,25 @@ export function McpSection({
 		void reload();
 	}, [reload, pathsKey]);
 
-	/** Run one write; resolves to an error message (not toasted) or null. Reloads on success unless told not to. */
-	const write = async (fn: () => Promise<unknown>, reloadAfter = true): Promise<string | null> => {
+	/** The parent owns writes, even if their dialog is closed or replaced. */
+	const write = async (fn: () => Promise<unknown>): Promise<string | null> => {
+		if (busyRef.current) return t("mcp.writeInProgress");
+		busyRef.current = true;
 		setBusy(true);
 		try {
 			await fn();
-			if (reloadAfter) await reload();
+			await reload();
 			return null;
 		} catch (e) {
 			return errMsg(e);
 		} finally {
+			busyRef.current = false;
 			setBusy(false);
 		}
 	};
 	/** `write` + toast for the inline (non-dialog) actions. */
 	const act = async (fn: () => Promise<unknown>, okMsg: string): Promise<boolean> => {
-		if (busy) return false;
+		if (busyRef.current) return false;
 		const err = await write(fn);
 		if (err) toast.error(err);
 		else toast.success(okMsg);
@@ -192,6 +199,7 @@ export function McpSection({
 		patch: McpServerPatch,
 		scope: McpScope | null,
 	): Promise<string | null> => {
+		if (originalName && !allServers.some((s) => s.name === originalName)) return t("mcp.editorServerDeleted");
 		const err = await write(() => mcpServerSave(paths, originalName, name, patch, scope));
 		if (!err) {
 			toast.success(t("mcp.savedToast", { name }));
@@ -200,15 +208,29 @@ export function McpSection({
 		return err;
 	};
 
-	const importOne = (name: string, entry: ImportEntry, scope: McpScope) =>
-		write(() => mcpServerSave(paths, null, name, entry as McpServerPatch, scope), false);
-
-	const importFinished = (imported: number) => {
+	const importServers = async (
+		entries: { name: string; entry: ImportEntry }[],
+		scope: McpScope,
+	): Promise<Map<string, string>> => {
+		const failed = new Map<string, string>();
+		let imported = 0;
+		const err = await write(async () => {
+			for (const { name, entry } of entries) {
+				try {
+					await mcpServerSave(paths, null, name, entry as McpServerPatch, scope);
+					imported++;
+				} catch (e) {
+					failed.set(name, errMsg(e));
+				}
+			}
+		});
+		if (err) for (const { name } of entries) failed.set(name, err);
 		if (imported > 0) toast.success(t("mcp.importedToast", { count: imported }));
-		void reload();
+		return failed;
 	};
 
-	const editing = dialog?.kind === "edit" ? allServers.find((s) => s.name === dialog.name) : undefined;
+	// Keep the original editor mounted and its draft intact if a reload removes the server.
+	const editing = dialog?.kind === "edit" ? dialog.server : undefined;
 	const scoping = dialog?.kind === "scope" ? allServers.find((s) => s.name === dialog.name) : undefined;
 	const brokenFiles = (catalog?.files ?? []).filter((f) => f.parseError);
 
@@ -226,13 +248,13 @@ export function McpSection({
 							disabled={busy || loading}
 							className={loading ? "[&_svg]:animate-spin" : undefined}
 						/>
-						<Button icon={Upload} onClick={() => setDialog({ kind: "import" })} disabled={!catalog || busy}>
+						<Button icon={Upload} onClick={() => openDialog({ kind: "import" })} disabled={!catalog || busy}>
 							{t("mcp.importBtn")}
 						</Button>
 						<Button
 							variant="primary"
 							icon={Plus}
-							onClick={() => setDialog({ kind: "add" })}
+							onClick={() => openDialog({ kind: "add" })}
 							disabled={!catalog || busy}
 						>
 							{t("mcp.addServerBtn")}
@@ -305,10 +327,10 @@ export function McpSection({
 									description={t("mcp.noServersDesc")}
 									action={
 										<div className="flex items-center gap-2">
-											<Button variant="primary" icon={Plus} onClick={() => setDialog({ kind: "add" })}>
+											<Button variant="primary" icon={Plus} onClick={() => openDialog({ kind: "add" })} disabled={busy}>
 												{t("mcp.addServerBtn")}
 											</Button>
-											<Button icon={Upload} onClick={() => setDialog({ kind: "import" })}>
+											<Button icon={Upload} onClick={() => openDialog({ kind: "import" })} disabled={busy}>
 												{t("mcp.importBtn")}
 											</Button>
 										</div>
@@ -334,9 +356,9 @@ export function McpSection({
 									current={current}
 									busy={busy}
 									onToggle={(enabled) => toggle(s, enabled)}
-									onEdit={() => setDialog({ kind: "edit", name: s.name })}
+									onEdit={() => openDialog({ kind: "edit", server: s })}
 									onDelete={() => void remove(s)}
-									onPickProjects={() => setDialog({ kind: "scope", name: s.name })}
+									onPickProjects={() => openDialog({ kind: "scope", name: s.name })}
 									onAddToCurrent={() => addToCurrent(s)}
 								/>
 							))
@@ -400,6 +422,7 @@ export function McpSection({
 			{editing && (
 				<McpServerEditor
 					original={editing}
+					unavailable={!allServers.some((s) => s.name === editing.name)}
 					projects={pickerProjects}
 					current={current}
 					existingNames={existingNames}
@@ -422,8 +445,7 @@ export function McpSection({
 					projects={pickerProjects}
 					current={current}
 					existingNames={existingNames}
-					onImportOne={importOne}
-					onFinished={importFinished}
+					onImport={importServers}
 					onClose={() => setDialog(null)}
 				/>
 			)}

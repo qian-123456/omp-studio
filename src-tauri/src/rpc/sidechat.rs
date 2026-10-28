@@ -45,13 +45,7 @@ pub async fn create(
         child_count(state, parent_session_id).await + 1
     );
 
-    let trimmed_fork = forkcut::truncate_for_side_chat(
-        &parent_file,
-        forkcut::Cut::LastCompleteTurn,
-        "omp-sidechat-fork",
-    )
-    .ok()
-    .flatten();
+    let trimmed_fork = prepare_fork(&parent_file)?;
     let fork_file = trimmed_fork
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
@@ -108,6 +102,19 @@ pub async fn create(
     catalog::recompute_async(state, Some(vec![info.session_id.clone()])).await;
 
     Ok(info)
+}
+
+/// An empty parent has no transcript yet. A real transcript must be safely cut;
+/// reading/writing failures must never fall back to inheriting the original.
+fn prepare_fork(parent_file: &str) -> Result<Option<std::path::PathBuf>, String> {
+    if parent_file.is_empty() {
+        return Ok(None);
+    }
+    forkcut::truncate_for_side_chat(
+        parent_file,
+        forkcut::Cut::LastCompleteTurn,
+        "omp-sidechat-fork",
+    )
 }
 
 /// `side_chat_ask` command implementation: send the side chat's first message
@@ -311,6 +318,20 @@ fn parse_route(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn side_chat_fork_read_failure_is_an_error_not_original_file_fallback() {
+        let missing =
+            std::env::temp_dir().join(format!("missing-sidechat-{}.jsonl", uuid::Uuid::new_v4()));
+        let error = prepare_fork(missing.to_str().unwrap()).unwrap_err();
+        assert!(error.contains("无法读取会话文件"));
+        assert!(error.contains(missing.to_str().unwrap()));
+    }
+
+    #[test]
+    fn side_chat_without_parent_transcript_does_not_require_a_copy() {
+        assert!(prepare_fork("").unwrap().is_none());
+    }
 
     #[test]
     fn parse_route_accepts_valid() {

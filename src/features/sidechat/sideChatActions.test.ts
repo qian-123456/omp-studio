@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../../lib/contracts";
-import { useComposer } from "../../stores/composer";
+import type * as Ipc from "../../lib/ipc";
+import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { sendFirstMessage } from "./sideChatActions";
+import { useSideChatView } from "./viewStore";
+
+const firstAskRpc = vi.hoisted(() => ({ create: vi.fn(), ask: vi.fn() }));
+vi.mock("../../lib/ipc", async (importOriginal) => ({
+	...(await importOriginal<typeof Ipc>()),
+	createSideChat: firstAskRpc.create,
+	sideChatAsk: firstAskRpc.ask,
+}));
 
 vi.mock("../../lib/toast", () => ({
 	toast: {
@@ -48,10 +58,13 @@ function meta(overrides: Partial<SessionMeta> = {}): SessionMeta {
 describe("SideChat actions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		useComposer.setState({ annotations: {}, drafts: {} });
+		useComposer.setState({ annotations: {}, drafts: {}, images: {}, sideChatDrafts: {} });
 		useUi.setState({ selectedSessionId: null });
 		useLive.setState({ sessions: {} });
-		useSessions.setState({ sessions: {} });
+		useSessions.setState({ sessions: {}, load: vi.fn(async () => {}) });
+		useSideChatView.setState({ openChild: {}, openTabs: {}, pending: {} });
+		firstAskRpc.create.mockReset().mockResolvedValue({ sessionId: "retry-child" });
+		firstAskRpc.ask.mockReset().mockResolvedValue(undefined);
 	});
 
 	it("adds last assistant message as annotation to parent and selects parent session", () => {
@@ -161,5 +174,36 @@ describe("SideChat actions", () => {
 		useComposer.getState().clearSideChatDraft(p1);
 		expect(useComposer.getState().sideChatDrafts[p1]).toBe("");
 		expect(useComposer.getState().sideChatDrafts[p2]).toBe("Draft question for parent 2");
+	});
+
+	it("failed first asks leave no real pending echo and retry the same child with annotations and images", async () => {
+		const parentId = "retry-parent";
+		const tabId = useSideChatView.getState().openBlankTab(parentId);
+		useComposer.getState().addAnnotation(sideChatAnnKey(parentId), {
+			source: "message", text: "quoted source", comment: "keep annotation",
+		});
+		const annotations = useComposer.getState().annotations[sideChatAnnKey(parentId)];
+		const image = useComposer.getState().addImage(tabId, "/retry.png");
+		const input = { parentId, tabId, text: "question 🖼️#1", annotations, images: [image] };
+		firstAskRpc.ask.mockRejectedValueOnce(new Error("not accepted"));
+
+		await expect(sendFirstMessage(input)).rejects.toThrow("not accepted");
+		expect(useLive.getState().sessions["retry-child"]?.pendingUserEchoes ?? []).toEqual([]);
+		expect(useSideChatView.getState().openChild[parentId]).toBe(tabId);
+		expect(useSideChatView.getState().pending).toEqual({});
+		expect(useComposer.getState().annotations[sideChatAnnKey(parentId)]).toEqual(annotations);
+		expect(useComposer.getState().images[tabId]).toEqual([image]);
+
+		await sendFirstMessage(input);
+		expect(firstAskRpc.create).toHaveBeenCalledTimes(1);
+		expect(firstAskRpc.ask).toHaveBeenCalledTimes(2);
+		expect(firstAskRpc.ask.mock.calls[1]).toEqual(firstAskRpc.ask.mock.calls[0]);
+		expect(firstAskRpc.ask.mock.calls[1]?.[2]).toContain("keep annotation");
+		const echoes = useLive.getState().sessions["retry-child"]?.pendingUserEchoes;
+		expect(echoes).toHaveLength(1);
+		expect(echoes?.[0]?.images?.[0]?.path).toBe("/retry.png");
+		expect(useSideChatView.getState().openChild[parentId]).toBe("retry-child");
+		expect(useComposer.getState().images[tabId] ?? []).toEqual([]);
+		expect(useComposer.getState().annotations[sideChatAnnKey(parentId)] ?? []).toEqual([]);
 	});
 });

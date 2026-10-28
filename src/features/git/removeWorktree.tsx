@@ -143,9 +143,10 @@ export async function removeWorktreeFlow(
 	repo: string,
 	wt: WorktreeInfo,
 	choice?: { force: boolean; deleteBranch: boolean },
+	orphanOnly = false,
 ): Promise<boolean> {
 	const resolved = choice ?? (await promptRemoveWorktree(wt));
 	if (!resolved) return false;
-	await gitRemoveWorktree(repo, wt.path, resolved.deleteBranch, resolved.force);
+	await gitRemoveWorktree(repo, wt.path, resolved.deleteBranch, resolved.force, orphanOnly);
 	return true;
 }

@@ -84,7 +84,12 @@ export const useModelTemplatesStore = create<ModelTemplatesState>((set, get) => 
 		await Promise.all([get().load(true), get().loadStatus(true)]);
 	},
 
-	setSnapshot: (snapshot) => set({ snapshot, error: null }),
+	setSnapshot: (snapshot) => {
+		// A confirmed mutation supersedes any read started before it completed.
+		++snapshotGeneration;
+		snapshotInflight = null;
+		set({ snapshot, loading: false, error: null });
+	},
 
 	subscribe: () =>
 		onModelSwitchChanged(() => {

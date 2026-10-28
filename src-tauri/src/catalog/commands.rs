@@ -46,6 +46,7 @@ pub async fn update_session_meta(
     patch: SessionMetaPatch,
 ) -> Result<SessionMeta, String> {
     {
+        let _mutation = crate::catalog::session_mutation_lock().lock().await;
         let db = state.db.lock();
         store::apply_patch(&db, &session_id, &patch)
             .map_err(|e| format!("apply_patch {session_id}: {e}"))?;

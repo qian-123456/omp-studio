@@ -45,9 +45,9 @@ interface ProvidersState {
 	decrypt(id: string): Promise<ProviderRow>;
 	/** Encrypts every plaintext-key provider; reloads rows afterwards. */
 	encryptAll(): Promise<ProviderBulkResult[]>;
-	/** Create/update a custom provider; `apiKey` null keeps the current key. */
+	/** Null keeps key material, honoring keyMode for plaintext/managed encrypted keys; external references stay unchanged. */
 	upsert(input: ProviderUpsert, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
-	/** Create/update the override block of a built-in provider; `apiKey` null keeps the current key. */
+	/** Null keeps key material, honoring keyMode for plaintext/managed encrypted keys; external references stay unchanged. */
 	saveBuiltin(input: BuiltinOverride, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
 	setKey(id: string, apiKey: string, keyMode: KeyMode): Promise<ProviderRow>;
 	remove(id: string): Promise<void>;

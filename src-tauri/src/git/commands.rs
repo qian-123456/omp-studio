@@ -29,6 +29,31 @@ async fn session_cwds(state: &AppState) -> Vec<(String, String)> {
     crate::catalog::id_cwds(state).await
 }
 
+/// Must be read while the mutation gate prevents app/terminal startup and cwd
+/// reassignment. Explicit cleanup permits known idle associations; orphan
+/// reclamation must refuse every current association, not just live ones.
+async fn removal_session_cwds(state: &AppState, orphan_only: bool) -> Vec<(String, String)> {
+    let mut sessions: Vec<_> = crate::catalog::list(state)
+        .await
+        .into_iter()
+        .filter(|meta| {
+            orphan_only
+                || meta.live
+                || meta.external_pid.is_some()
+                || crate::terminal::commands::omp_terminal_open(&meta.id)
+        })
+        .map(|meta| (meta.id, meta.cwd))
+        .collect();
+    sessions.extend(
+        crate::rpc::registry()
+            .read()
+            .values()
+            .filter(|handle| handle.alive.load(std::sync::atomic::Ordering::SeqCst))
+            .map(|handle| (handle.session_id.read().clone(), handle.cwd.clone())),
+    );
+    sessions
+}
+
 /// Paths of registered project workspaces.
 fn workspace_paths(state: &AppState) -> Vec<String> {
     let db = state.db.lock();
@@ -122,18 +147,23 @@ pub async fn git_list_worktrees(
 
 #[tauri::command]
 pub async fn git_remove_worktree(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     repo: String,
     path: String,
     delete_branch: bool,
     force: bool,
+    orphan_only: Option<bool>,
 ) -> Result<(), String> {
+    let _mutation = crate::catalog::session_mutation_lock().lock().await;
+    // An orphan listing is only a preview: re-read ownership at mutation time.
+    let sessions = removal_session_cwds(&state, orphan_only.unwrap_or(false)).await;
     blocking(move || {
-        worktree::remove(
+        worktree::remove_checked(
             &PathBuf::from(repo),
             &PathBuf::from(path),
             delete_branch,
             force,
+            &sessions,
         )
     })
     .await
@@ -170,6 +200,7 @@ pub async fn tm_run(
     sha: String,
     command: Option<String>,
 ) -> Result<TmRun, String> {
+    let _mutation = crate::catalog::session_mutation_lock().lock().await;
     let app = state.app.clone();
     let sink: tm::LogSink = Arc::new(move |run_id: &str, line: &str| {
         let _ = app.emit(
@@ -187,10 +218,19 @@ pub async fn tm_list(_state: tauri::State<'_, AppState>) -> Result<Vec<TmRun>, S
 
 #[tauri::command]
 pub async fn tm_stop(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     run_id: String,
     remove_worktree: bool,
 ) -> Result<(), String> {
+    let _mutation = crate::catalog::session_mutation_lock().lock().await;
+    if remove_worktree {
+        let sessions = removal_session_cwds(&state, false).await;
+        if let Some(run) = tm::list().into_iter().find(|run| run.id == run_id) {
+            // Stopping this run is intentional, but never remove another
+            // session's directory as a side effect of stopping it.
+            worktree::ensure_unused(std::path::Path::new(&run.worktree), &sessions, &[])?;
+        }
+    }
     blocking(move || tm::stop(&run_id, remove_worktree)).await
 }
 

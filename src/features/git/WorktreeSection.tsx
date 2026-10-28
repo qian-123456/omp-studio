@@ -261,6 +261,9 @@ export function WorktreeSection({
 				}
 			} catch (e) {
 				toast.error(errMsg(e));
+			} finally {
+				void useWorktrees.getState().refresh();
+				onChanged();
 			}
 		});
 

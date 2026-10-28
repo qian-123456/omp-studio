@@ -72,9 +72,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [apiChoice, setApiChoice] = useState(isKnownApi ? initialApi : OTHER_API);
 	const [apiOther, setApiOther] = useState(isKnownApi ? "" : initialApi);
 	const [apiKey, setApiKey] = useState("");
-	const [keyMode, setKeyMode] = useState<KeyMode>(
-		editing?.key.kind === "encrypted" ? "encrypted" : "plaintext",
-	);
+	const initialKeyMode: KeyMode =
+		editing?.key.kind === "encrypted" || editing?.key.kind === "vaultMissing" ? "encrypted" : "plaintext";
+	const [keyMode, setKeyMode] = useState<KeyMode>(initialKeyMode);
 	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
 		const initial = modelEntriesToRows(initialModels);
 		return initial.length > 0 || isBuiltin ? initial : [blankModelRow()];
@@ -108,6 +108,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 				api !== (editing.api ?? "") ||
 				authNone !== editing.authNone ||
 				apiKey.length > 0 ||
+				(!authNone && keyMode !== initialKeyMode &&
+					(editing.key.kind === "plaintext" || editing.key.kind === "encrypted" || editing.key.kind === "vaultMissing")) ||
 				JSON.stringify(entries) !== JSON.stringify(initialModels)
 			);
 		}
@@ -119,7 +121,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			api !== "openai-completions" ||
 			entries.length > 0
 		);
-	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, modelRows, selectedPresetId]);
+	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, initialKeyMode, modelRows, selectedPresetId]);
 
 	const isClosingRef = useRef(false);
 	const handleDismiss = useCallback(async () => {

@@ -36,12 +36,15 @@ export interface DoctorSessionState {
 interface DoctorState {
 	bySession: Record<string, DoctorSessionState>;
 	history: DoctorHistoryEntry[];
+	/** Activity watermark attempted, including failures; auto mode waits for new activity. */
+	attemptedActivity: Record<string, number>;
 	runDiagnosis: (sessionId: string, lens: DiagnosticLens, question?: string) => Promise<void>;
 	askFollowUp: (sessionId: string, question: string) => Promise<void>;
 	clear: (sessionId: string) => void;
 }
 
 const HISTORY_KEY = "omp.doctor.history";
+const ATTEMPTS_KEY = "omp.doctor.attemptedActivity";
 const LAST_SCHEDULED_KEY = "omp.doctor.lastScheduledDay";
 const HISTORY_CAP = 200;
 
@@ -62,6 +65,16 @@ function loadHistory(): DoctorHistoryEntry[] {
 		return Array.isArray(parsed) ? (parsed as DoctorHistoryEntry[]) : [];
 	} catch {
 		return [];
+	}
+}
+
+function loadAttempts(): Record<string, number> {
+	try {
+		const parsed: unknown = JSON.parse(localStorage.getItem(ATTEMPTS_KEY) ?? "{}");
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		return Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "number" && Number.isFinite(value)));
+	} catch {
+		return {};
 	}
 }
 
@@ -95,9 +108,20 @@ export const useDoctor = create<DoctorState>((set, get) => {
 	return {
 		bySession: {},
 		history: loadHistory(),
+		attemptedActivity: loadAttempts(),
 
 		async runDiagnosis(sessionId, lens, question) {
 			if (get().bySession[sessionId]?.status === "running") return;
+			const activity = Date.parse(useSessions.getState().sessions[sessionId]?.updatedAt ?? "");
+			if (Number.isFinite(activity)) {
+				const attemptedActivity = { ...get().attemptedActivity, [sessionId]: activity };
+				set({ attemptedActivity });
+				try {
+					localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(attemptedActivity));
+				} catch {
+					// Keep the in-memory watermark if storage is unavailable.
+				}
+			}
 			patch(sessionId, { status: "running", error: null, lens });
 			try {
 				const skeleton = await getSkeleton(sessionId);
@@ -189,7 +213,8 @@ function pendingSessions(since: number, cutoff: number): string[] {
 			const updated = Date.parse(m.updatedAt);
 			if (!Number.isFinite(updated) || updated < since || updated > cutoff) return false;
 			if (live[m.id]?.streaming || m.status === "working" || m.attention === "running") return false;
-			return updated > lastDiagnosedAt(m.id);
+			return updated > lastDiagnosedAt(m.id)
+				&& updated > (useDoctor.getState().attemptedActivity[m.id] ?? 0);
 		})
 		.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
 		.map((m) => m.id);

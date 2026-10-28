@@ -11,9 +11,9 @@ use crate::contracts::{
 };
 use crate::schedules::runner::should_create_inbox_todo;
 use crate::schedules::store::{
-    advance_after_run, create_run, delete, derive_lifecycle, from_local_result, get,
+    advance_after_run, claim_run, create_run, delete, derive_lifecycle, from_local_result, get,
     has_active_run, last_run_session_file, list, list_runs, next_run, next_run_bounded,
-    record_run_start, recover_stale_runs, set_enabled, update_run, upsert,
+    now_rfc3339, record_run_start, recover_stale_runs, set_enabled, update_run, upsert,
 };
 
 fn make_local(year: i32, month: u32, day: u32, hour: u32, min: u32) -> DateTime<Local> {
@@ -600,11 +600,12 @@ fn test_derive_lifecycle_states() {
         derive_lifecycle(&paused, false, now),
         ScheduleLifecycle::Paused
     );
-    // once with a run row → completed even while still enabled.
+    // The current one-shot occurrence completed, regardless of old history.
     let once = Schedule {
         cadence: ScheduleCadence::Once {
             at: "2999-01-01T00:00:00Z".to_string(),
         },
+        last_run_at: Some(now.to_rfc3339()),
         ..base.clone()
     };
     assert_eq!(
@@ -1030,4 +1031,259 @@ fn test_due_compares_instants_across_offsets() {
         earliest.with_timezone(&chrono::Utc).to_rfc3339(),
         "2026-11-02T13:00:00+00:00"
     );
+}
+
+#[test]
+fn rescheduled_once_has_a_new_occurrence_and_preserves_history() {
+    let conn = setup_test_db();
+    let future = (chrono::Utc::now() + Duration::days(1)).to_rfc3339();
+    let mut draft = once_draft(&future, true);
+    let first = upsert(&conn, &draft).unwrap();
+    claim_run(&conn, &first.id, "first", None).unwrap();
+    update_run(
+        &conn,
+        "first",
+        None,
+        ScheduleRunStatus::Ok,
+        Some(&now_rfc3339()),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        get(&conn, &first.id).unwrap().unwrap().lifecycle,
+        ScheduleLifecycle::Completed
+    );
+
+    draft.id = Some(first.id.clone());
+    draft.cadence = ScheduleCadence::Once {
+        at: (chrono::Utc::now() + Duration::days(2)).to_rfc3339(),
+    };
+    // Saving a paused reschedule must not still derive Completed from old runs.
+    draft.enabled = false;
+    let paused = upsert(&conn, &draft).unwrap();
+    assert_eq!(paused.lifecycle, ScheduleLifecycle::Paused);
+    assert_eq!(paused.runs_done, 1);
+    assert!(paused.last_run_at.is_none());
+    let active = set_enabled(&conn, &first.id, true).unwrap();
+    assert_eq!(active.lifecycle, ScheduleLifecycle::Active);
+    assert!(active.next_run_at.is_some());
+    assert_eq!(list_runs(&conn, &first.id, 10).unwrap().len(), 1);
+    claim_run(&conn, &first.id, "second", None).unwrap();
+    assert_eq!(
+        get(&conn, &first.id).unwrap().unwrap().lifecycle,
+        ScheduleLifecycle::Completed
+    );
+}
+
+#[test]
+fn manual_claim_enforces_cap_and_rolls_back_failed_claims() {
+    let conn = setup_test_db();
+    let mut draft = daily_draft(None, true);
+    draft.max_runs = Some(1);
+    let schedule = upsert(&conn, &draft).unwrap();
+    claim_run(&conn, &schedule.id, "only", None).unwrap();
+    update_run(
+        &conn,
+        "only",
+        None,
+        ScheduleRunStatus::Ok,
+        Some(&now_rfc3339()),
+        None,
+    )
+    .unwrap();
+    assert!(claim_run(&conn, &schedule.id, "over-cap", None)
+        .unwrap_err()
+        .contains("上限"));
+    let capped = get(&conn, &schedule.id).unwrap().unwrap();
+    assert_eq!(capped.runs_done, 1);
+    assert!(!capped.enabled);
+    assert!(capped.next_run_at.is_none());
+    assert_eq!(list_runs(&conn, &schedule.id, 10).unwrap().len(), 1);
+
+    let other = upsert(&conn, &daily_draft(None, true)).unwrap();
+    // An insertion failure must not increment the counter or consume its time.
+    assert!(claim_run(&conn, &other.id, "only", None).is_err());
+    assert_eq!(get(&conn, &other.id).unwrap().unwrap().runs_done, 0);
+}
+
+#[test]
+fn automatic_claim_rechecks_occurrence_and_cannot_exceed_cap() {
+    let conn = setup_test_db();
+    let mut draft = daily_draft(None, true);
+    draft.max_runs = Some(1);
+    let schedule = upsert(&conn, &draft).unwrap();
+    let due = (chrono::Utc::now() - Duration::minutes(1)).to_rfc3339();
+    conn.execute(
+        "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+        params![schedule.id, due],
+    )
+    .unwrap();
+    claim_run(&conn, &schedule.id, "auto", Some(&due)).unwrap();
+    assert!(claim_run(&conn, &schedule.id, "stale", Some(&due)).is_err());
+    assert!(claim_run(&conn, &schedule.id, "manual", None).is_err());
+    let capped = get(&conn, &schedule.id).unwrap().unwrap();
+    assert_eq!(capped.runs_done, 1);
+    assert!(!capped.enabled);
+    assert!(capped.next_run_at.is_none());
+    assert_eq!(list_runs(&conn, &schedule.id, 10).unwrap().len(), 1);
+}
+
+#[test]
+fn manual_and_timer_claims_share_active_guard_without_counting_skips() {
+    let conn = setup_test_db();
+    let schedule = upsert(&conn, &daily_draft(None, true)).unwrap();
+    let due = (chrono::Utc::now() - Duration::minutes(1)).to_rfc3339();
+    conn.execute(
+        "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+        params![schedule.id, due],
+    )
+    .unwrap();
+    claim_run(&conn, &schedule.id, "manual", None).unwrap();
+    assert!(claim_run(&conn, &schedule.id, "timer", Some(&due)).is_err());
+    assert!(claim_run(&conn, &schedule.id, "manual-again", None).is_err());
+    let runs = list_runs(&conn, &schedule.id, 10).unwrap();
+    assert_eq!(
+        runs.iter()
+            .filter(|r| r.status == ScheduleRunStatus::Running)
+            .count(),
+        1
+    );
+    assert_eq!(
+        runs.iter()
+            .filter(|r| r.status == ScheduleRunStatus::Skipped)
+            .count(),
+        1
+    );
+    let current = get(&conn, &schedule.id).unwrap().unwrap();
+    assert_eq!(current.runs_done, 1);
+    assert_ne!(current.next_run_at.as_deref(), Some(due.as_str()));
+}
+
+#[test]
+fn deletion_cannot_outlive_an_active_claim_or_create_an_orphan() {
+    let conn = setup_test_db();
+    conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    let schedule = upsert(&conn, &daily_draft(None, true)).unwrap();
+    claim_run(&conn, &schedule.id, "active", None).unwrap();
+    assert!(delete(&conn, &schedule.id)
+        .unwrap_err()
+        .contains("仍在运行"));
+    assert!(get(&conn, &schedule.id).unwrap().is_some());
+    update_run(
+        &conn,
+        "active",
+        None,
+        ScheduleRunStatus::Ok,
+        Some(&now_rfc3339()),
+        None,
+    )
+    .unwrap();
+    delete(&conn, &schedule.id).unwrap();
+    assert!(claim_run(&conn, &schedule.id, "after-delete", None).is_err());
+    assert!(list_runs(&conn, &schedule.id, 10).unwrap().is_empty());
+}
+
+#[test]
+fn concurrent_manual_and_timer_dispatch_have_one_active_run() {
+    use std::sync::{Arc, Barrier, Mutex};
+    let conn = setup_test_db();
+    let schedule = upsert(&conn, &daily_draft(None, true)).unwrap();
+    let due = (chrono::Utc::now() - Duration::minutes(1)).to_rfc3339();
+    conn.execute(
+        "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+        params![schedule.id, due],
+    )
+    .unwrap();
+    // Same shared-connection lock as AppState, with both triggers released together.
+    let db = Arc::new(Mutex::new(conn));
+    let barrier = Arc::new(Barrier::new(2));
+    let handles: Vec<_> = [false, true]
+        .into_iter()
+        .map(|automatic| {
+            let db = Arc::clone(&db);
+            let barrier = Arc::clone(&barrier);
+            let id = schedule.id.clone();
+            let due = due.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let db = db.lock().unwrap();
+                claim_run(
+                    &db,
+                    &id,
+                    if automatic { "timer" } else { "manual" },
+                    if automatic { Some(due.as_str()) } else { None },
+                )
+                .is_ok()
+            })
+        })
+        .collect();
+    let claimed = handles
+        .into_iter()
+        .map(|h| h.join().unwrap())
+        .filter(|ok| *ok)
+        .count();
+    assert_eq!(claimed, 1);
+    let db = db.lock().unwrap();
+    assert_eq!(get(&db, &schedule.id).unwrap().unwrap().runs_done, 1);
+    assert_eq!(
+        list_runs(&db, &schedule.id, 10)
+            .unwrap()
+            .iter()
+            .filter(|r| r.status == ScheduleRunStatus::Running)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn active_one_shot_cannot_be_rescheduled_and_equivalent_instant_stays_completed() {
+    let conn = setup_test_db();
+    let future = chrono::Utc::now() + Duration::days(1);
+    let mut draft = once_draft(&future.to_rfc3339(), true);
+    let schedule = upsert(&conn, &draft).unwrap();
+    claim_run(&conn, &schedule.id, "active", None).unwrap();
+    draft.id = Some(schedule.id.clone());
+    draft.cadence = ScheduleCadence::Once {
+        at: (future + Duration::days(1)).to_rfc3339(),
+    };
+    assert!(upsert(&conn, &draft).unwrap_err().contains("仍在运行"));
+    update_run(
+        &conn,
+        "active",
+        None,
+        ScheduleRunStatus::Ok,
+        Some(&now_rfc3339()),
+        None,
+    )
+    .unwrap();
+    draft.cadence = ScheduleCadence::Once {
+        at: future
+            .with_timezone(&chrono::FixedOffset::east_opt(3600).unwrap())
+            .to_rfc3339(),
+    };
+    draft.enabled = false;
+    let unchanged = upsert(&conn, &draft).unwrap();
+    assert_eq!(unchanged.lifecycle, ScheduleLifecycle::Completed);
+    assert!(set_enabled(&conn, &schedule.id, true).is_err());
+}
+
+#[test]
+fn stale_timer_snapshot_cannot_claim_after_pause_or_delete() {
+    for deleted in [false, true] {
+        let conn = setup_test_db();
+        let schedule = upsert(&conn, &daily_draft(None, true)).unwrap();
+        let due = (chrono::Utc::now() - Duration::minutes(1)).to_rfc3339();
+        conn.execute(
+            "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+            params![schedule.id, due],
+        )
+        .unwrap();
+        if deleted {
+            delete(&conn, &schedule.id).unwrap();
+        } else {
+            set_enabled(&conn, &schedule.id, false).unwrap();
+        }
+        assert!(claim_run(&conn, &schedule.id, "stale-timer", Some(&due)).is_err());
+        assert!(list_runs(&conn, &schedule.id, 10).unwrap().is_empty());
+    }
 }

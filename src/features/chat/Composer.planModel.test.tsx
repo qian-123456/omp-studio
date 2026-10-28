@@ -85,8 +85,8 @@ vi.mock("../../stores/modelCatalog", () => ({
 	}),
 }));
 vi.mock("../../components/ModelSelect", () => ({
-	ModelMenuContent: ({ onSelect }: { onSelect: (key: string) => void }) => (
-		<div data-testid="model-menu">
+	ModelMenuContent: ({ onSelect, currentValue }: { onSelect: (key: string) => void; currentValue: string }) => (
+		<div data-testid="model-menu" data-current-value={currentValue}>
 			{MODELS.map((m) => (
 				<button key={m.id} type="button" data-pick={`p/${m.id}`} onClick={() => onSelect(`p/${m.id}`)}>
 					{`pick ${m.id}`}
@@ -411,6 +411,45 @@ describe("Composer plan preview before the command is sent", () => {
 		setSessions({ [DRAFT]: { ...emptySessionLive(), alive: true, state: {} } });
 	});
 
+	it("shows a recoverable role read failure instead of claiming the ordinary model is the plan model", async () => {
+		h.rolesRead.mockRejectedValueOnce(new Error("role config unavailable"));
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+		expect(document.body.textContent).toContain("正在读取规划模型");
+		await flush();
+		const alert = document.querySelector('[role="alert"]')!;
+		expect(alert.textContent).toContain("无法读取规划模型");
+		expect(thinkingText()).toBeUndefined();
+		expect(() => chip()).toThrow("model chip not rendered");
+		expect(usePendingSession.getState().drafts[DRAFT]).toMatchObject({ model: "p/model-a", thinking: "low" });
+		expectNoMutation();
+		const modelButton = document.querySelector<HTMLButtonElement>('button[title="规划用的模型，点这里更换"]')!;
+		fireEvent.click(modelButton);
+		expect(document.querySelector('[data-testid="model-menu"]')?.getAttribute("data-current-value")).toBe("");
+		fireEvent.click(modelButton);
+		fireEvent.click(alert.querySelector("button")!);
+		await flush();
+		expect(document.querySelector('[role="alert"]')).toBeNull();
+		expect(chipModel()).toBe("model-b");
+		expect(thinkingText()).toBe("high");
+		expectNoMutation();
+	});
+
+	it("ignores a failed role read after the pending plan chip is removed", async () => {
+		let reject!: (error: Error) => void;
+		h.rolesRead.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+		saveChip(DRAFT, PLAN_CHIP);
+		render(<Composer sessionId={DRAFT} />);
+		const ta = textarea(DRAFT);
+		ta.setSelectionRange(0, 0);
+		fireEvent.keyDown(ta, { key: "Backspace" });
+		reject(new Error("old preview failure"));
+		await flush();
+		expect(document.querySelector('[role="alert"]')).toBeNull();
+		expect(chipModel()).toBe("model-a");
+		expect(thinkingText()).toBe("low");
+		expectNoMutation();
+	});
 	it("shows the project plan model and thinking on a local draft with /plan selected, without sending", async () => {
 		render(<Composer sessionId={DRAFT} />);
 		expect(chipModel()).toBe("model-a");

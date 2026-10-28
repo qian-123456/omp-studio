@@ -8,6 +8,7 @@
  *
  * Every handler is wrapped so the extension never throws into the host.
  */
+import { execFileSync } from "node:child_process";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +29,11 @@ interface ExtensionApiLike {
 	on(event: string, handler: (event: unknown, ctx: ContextLike) => unknown): void;
 }
 
+
+// The kernel birth token disambiguates an old status file from a reused PID.
+const PROCESS_STARTED_AT = call(() => execFileSync("/bin/ps", ["-p", String(process.pid), "-o", "lstart="], {
+	encoding: "utf8", env: { ...process.env, LC_ALL: "C" }, timeout: 1_000,
+}).trim());
 const STATUS_DIR = join(homedir(), ".omp-workspace", "status");
 
 function call<T>(fn: (() => T) | undefined): T | undefined {
@@ -61,6 +67,7 @@ function writeStatus(id: string, file: string | undefined, state: StatusState): 
 			sessionFile: file ?? null,
 			pid: process.pid,
 			state,
+			processStartedAt: PROCESS_STARTED_AT ?? null,
 			updatedAt: new Date().toISOString(),
 		};
 		writeFileSync(tmp, JSON.stringify(body));
@@ -82,8 +89,8 @@ export default function ompWorkspaceStatus(pi: ExtensionApiLike): void {
 		if (!sid) return;
 		// Session switched inside the same process: close out the old file.
 		if (lastId && id && id !== lastId) writeStatus(lastId, lastFile, "exited");
+		lastFile = file ?? (id && id !== lastId ? undefined : lastFile);
 		lastId = sid;
-		lastFile = file ?? lastFile;
 		writeStatus(sid, lastFile, state);
 	};
 

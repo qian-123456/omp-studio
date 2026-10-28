@@ -88,14 +88,14 @@ function load(): SecretsFile | null {
 		if (raw && typeof raw === "object") {
 			const o = raw as Record<string, unknown>;
 			const entries: FileEntry[] = [];
-			if (Array.isArray(o.entries)) {
-				for (const e of o.entries) {
-					if (!isEntry(e)) continue;
-					const cutoffs = "cutoffs" in e ? parseCutoffs(e.cutoffs) : {};
-					entries.push({ ...e, cutoffs });
-				}
+			if (typeof o.nativeHash !== "string" || !Array.isArray(o.entries) || !o.entries.every(isEntry)) {
+				throw new Error("Invalid privacy snapshot");
 			}
-			data = { nativeHash: typeof o.nativeHash === "string" ? o.nativeHash : "", entries };
+			for (const e of o.entries) {
+				const cutoffs = "cutoffs" in e ? parseCutoffs(e.cutoffs) : {};
+				entries.push({ ...e, cutoffs });
+			}
+			data = { nativeHash: o.nativeHash, entries };
 		}
 	} catch {
 		data = null;
@@ -176,6 +176,8 @@ function masker(entries: FileEntry[]): (s: string) => string {
 }
 
 export default function (pi: Pi) {
+	// Immutable startup coverage, not the latest requested secrets snapshot.
+	const spawnNativeHash = process.env.OMPWS_PRIVACY_NATIVE_HASH ?? "";
 	pi.on("tool_call", async (event) => {
 		const data = load();
 		if (!data || data.entries.length === 0) return undefined;
@@ -222,8 +224,11 @@ export default function (pi: Pi) {
 	// entry carries a cutoff: such sessions do not auto-compact.
 	pi.on("session_before_compact", async () => {
 		const data = load();
-		if (!data) return undefined;
+		if (!data) return { cancel: true };
 		if (data.entries.some((e) => e.track && Object.keys(e.cutoffs).length > 0)) return { cancel: true };
-		return data.nativeHash !== (process.env.OMPWS_PRIVACY_NATIVE_HASH ?? "") ? { cancel: true } : undefined;
+		if (data.nativeHash.startsWith("unprotected:") || spawnNativeHash.startsWith("unprotected:")) {
+			return { cancel: true };
+		}
+		return data.nativeHash !== spawnNativeHash ? { cancel: true } : undefined;
 	});
 }

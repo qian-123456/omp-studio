@@ -149,11 +149,16 @@ function handoff(id: string): Promise<string> {
 			await applyLatestSettings(draft, sessionId);
 			const ui = useUi.getState();
 			const visible = usePendingSession.getState().selectedId === id &&
-				ui.selectedSessionId === null && ui.centerView === "session";
+				ui.selectedSessionId === null &&
+				(ui.centerView === "session" ||
+					(ui.centerView === "settings" && ui.previousCenterView === "session"));
 			transferDraft(id, sessionId);
 			// Select before dropping the draft so the center pane never flashes empty.
 			if (visible) {
 				ui.selectSession(sessionId);
+				if (ui.centerView === "settings") {
+					useUi.setState({ centerView: "settings", previousCenterView: "session" });
+				}
 				useComposer.getState().focusComposer(sessionId);
 			}
 			usePendingSession.getState().discard(id);

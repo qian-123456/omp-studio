@@ -6,7 +6,7 @@
 
 import { useT } from "../../stores/language";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
-import { useMemo, useState, type ClipboardEvent } from "react";
+import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { Modal } from "../../components/Modal";
 import { Segmented } from "../../components/Segmented";
 import type { McpKv, McpScope, McpServerPatch, McpServerView } from "../../lib/contracts";
@@ -129,6 +129,7 @@ function KvEditor({
 
 export function McpServerEditor({
 	original,
+	unavailable = false,
 	projects,
 	current,
 	existingNames,
@@ -137,6 +138,8 @@ export function McpServerEditor({
 }: {
 	/** Server being edited; null when adding. */
 	original: McpServerView | null;
+	/** A catalog refresh no longer contains this server; retain the draft without recreating it. */
+	unavailable?: boolean;
 	projects: PickerProject[];
 	current: string | null;
 	/** Every server name in the catalog. */
@@ -154,6 +157,7 @@ export function McpServerEditor({
 	const [scope, setScope] = useState<McpScope>(initialScope);
 	const [showErrors, setShowErrors] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const savingRef = useRef(false);
 	const [error, setError] = useState<string | null>(null);
 	const [splitNote, setSplitNote] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(
@@ -185,7 +189,7 @@ export function McpServerEditor({
 	};
 
 	const save = async () => {
-		if (saving) return;
+		if (savingRef.current || unavailable) return;
 		const d = splitDraftCommand(draft) ?? draft;
 		if (d !== draft) {
 			setDraft(d);
@@ -196,15 +200,20 @@ export function McpServerEditor({
 			setShowErrors(true);
 			return;
 		}
+		savingRef.current = true;
 		setSaving(true);
 		setError(null);
-		const message = await onSubmit(
-			d.name.trim(),
-			buildPatch(d),
-			adding || !sameScope(scope, initialScope) ? scope : null,
-		);
-		setSaving(false);
-		if (message) setError(message);
+		try {
+			const message = await onSubmit(
+				d.name.trim(),
+				buildPatch(d),
+				adding || !sameScope(scope, initialScope) ? scope : null,
+			);
+			if (message) setError(message);
+		} finally {
+			savingRef.current = false;
+			setSaving(false);
+		}
 	};
 
 	return (
@@ -223,6 +232,11 @@ export function McpServerEditor({
 					}
 				}}
 			>
+				{unavailable && (
+					<div role="alert" className="select-text text-xs text-[var(--status-error)]">
+						{t("mcp.editorServerDeleted")}
+					</div>
+				)}
 				<div className="grid grid-cols-2 gap-2">
 					<label className="space-y-1">
 						<span className={LABEL_CLASS}>{t("mcp.nameLabel")}</span>
@@ -410,7 +424,7 @@ export function McpServerEditor({
 					<Button variant="ghost" onClick={onClose}>
 						{t("common.cancel")}
 					</Button>
-					<Button variant="primary" loading={saving} disabled={scopeInvalid} onClick={() => void save()}>
+					<Button variant="primary" loading={saving} disabled={scopeInvalid || unavailable} onClick={() => void save()}>
 						{t("common.save")}
 					</Button>
 				</div>

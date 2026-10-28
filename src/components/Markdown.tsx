@@ -22,6 +22,7 @@ import { CopyButton } from "./CopyButton";
 import { errMsg } from "../lib/dialogs";
 import { toast } from "../lib/toast";
 import { useSessions } from "../stores/sessions";
+import { openFileLink } from "../stores/filePreview";
 import { useHomeDir } from "../lib/hooks";
 import { decodeFilePath, looksLikeFilePath } from "../lib/fileLinks";
 import { useSettings } from "../features/settings/store";

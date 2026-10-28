@@ -306,18 +306,46 @@ export default function App() {
 		terminalSetCurrentSession(selectedSessionId ? selectedSessionFile : null).catch(() => {});
 	}, [selectedSessionId, selectedSessionFile]);
 
+	// Follow selection at shell lifetime, including while the sidebar is unmounted.
+	const selectedMode = useSessions((s) =>
+		selectedSessionId ? s.sessions[selectedSessionId]?.mode : undefined,
+	);
+	useEffect(() => {
+		if (selectedMode && selectedMode !== useSidebarStore.getState().activeMode) {
+			useSidebarStore.getState().setActiveMode(selectedMode);
+		}
+	}, [selectedSessionId, selectedMode]);
+
+	// Startup restoration owns only the untouched launch page. Navigation away
+	// and back during loading still counts as user intent and cancels restoration.
+	const restoreCancelledRef = useRef(false);
+	useEffect(() => {
+		const stopUi = useUi.subscribe((state, prev) => {
+			if (state.centerView !== prev.centerView || state.selectedSessionId !== prev.selectedSessionId) {
+				restoreCancelledRef.current = true;
+			}
+		});
+		const stopMode = useSidebarStore.subscribe((state, prev) => {
+			if (state.activeMode !== prev.activeMode) restoreCancelledRef.current = true;
+		});
+		return () => { stopUi(); stopMode(); };
+	}, []);
+
 	// Restore last session once the session list finishes loading
 	const hasLoaded = useSessions((s) => s.hasLoaded);
 	const restoredRef = useRef(false);
 	useEffect(() => {
 		if (!hasLoaded || restoredRef.current) return;
 		restoredRef.current = true;
+		const ui = useUi.getState();
+		if (restoreCancelledRef.current || ui.centerView !== "home" || ui.selectedSessionId ||
+			usePendingSession.getState().selectedId || useForkDraft.getState().draft) return;
 		const last = useUi.getState().lastSessionId;
 		if (!last) return;
 		const exists = useSessions.getState().sessions[last];
 		// Modes are isolated: only restore a session that belongs to the active mode.
 		if (exists && exists.mode === useSidebarStore.getState().activeMode) {
-			useUi.setState({ selectedSessionId: last, centerView: "session" });
+			ui.selectSession(last);
 		} else {
 			useUi.getState().leaveSession();
 		}

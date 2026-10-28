@@ -31,107 +31,39 @@ pub(crate) fn should_create_inbox_todo(
     }
 }
 
-/// Execute a schedule run asynchronously in the background.
+/// Claim before spawning so stale scheduler snapshots cannot outlive deletion.
 pub fn spawn_run(state: AppState, schedule: Schedule) {
     let run_id = uuid::Uuid::new_v4().to_string();
-    tauri::async_runtime::spawn(async move {
-        execute_run(state, schedule, run_id).await;
-    });
+    let claimed = {
+        let db = state.db.lock();
+        match schedule.next_run_at.as_deref() {
+            Some(next) => store::claim_run(&db, &schedule.id, &run_id, Some(next)),
+            None => return,
+        }
+    };
+    let _ = state.app.emit("schedules:changed", ());
+    match claimed {
+        Ok((schedule, _)) => {
+            tauri::async_runtime::spawn(async move {
+                execute_run_with_existing_run(state, schedule, run_id).await;
+            });
+        }
+        Err(e) => tracing::debug!("Schedule {} not dispatched: {e}", schedule.id),
+    }
 }
 
-/// Run a schedule immediately (user clicked "立即运行").
+/// Manual and automatic runs share existence, cap and active-run guards.
 pub async fn run_now(state: AppState, id: String) -> Result<ScheduleRun, String> {
-    let schedule = {
-        let db = state.db.lock();
-        store::get(&db, &id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "定时任务不存在".to_string())?
-    };
-
-    let is_running = {
-        let db = state.db.lock();
-        store::has_active_run(&db, &schedule.id).map_err(|e| e.to_string())?
-    };
-
-    if is_running {
-        return Err("该任务上一次运行仍在进行中".to_string());
-    }
-
     let run_id = uuid::Uuid::new_v4().to_string();
-    let run = {
+    let (schedule, run) = {
         let db = state.db.lock();
-        store::create_run(
-            &db,
-            &run_id,
-            &schedule.id,
-            None,
-            ScheduleRunStatus::Running,
-            None,
-        )
-        .map_err(|e| e.to_string())?
+        store::claim_run(&db, &id, &run_id, None)?
     };
-
-    // A manual run counts toward `max_runs` like any started run (chosen
-    // semantics; skipped runs do not count). A manual run of a one-shot
-    // completes the schedule (enabled=0, next_run_at=NULL).
-    {
-        let db = state.db.lock();
-        let _ = store::record_run_start(&db, &schedule.id, &store::now_rfc3339());
-        if matches!(
-            schedule.cadence,
-            crate::contracts::ScheduleCadence::Once { .. }
-        ) {
-            let _ = store::advance_after_run(&db, &schedule, chrono::Local::now());
-        }
-    }
     let _ = state.app.emit("schedules:changed", ());
-
-    let run_clone = run.clone();
     tauri::async_runtime::spawn(async move {
         execute_run_with_existing_run(state, schedule, run_id).await;
     });
-
-    Ok(run_clone)
-}
-
-async fn execute_run(state: AppState, schedule: Schedule, run_id: String) {
-    let is_running = {
-        let db = state.db.lock();
-        store::has_active_run(&db, &schedule.id).unwrap_or(false)
-    };
-
-    if is_running {
-        {
-            let db = state.db.lock();
-            let _ = store::create_run(
-                &db,
-                &run_id,
-                &schedule.id,
-                None,
-                ScheduleRunStatus::Skipped,
-                Some("上一次运行仍在进行中，已跳过"),
-            );
-            let _ = store::advance_after_run(&db, &schedule, chrono::Local::now());
-        }
-        let _ = state.app.emit("schedules:changed", ());
-        return;
-    }
-
-    {
-        let db = state.db.lock();
-        let _ = store::create_run(
-            &db,
-            &run_id,
-            &schedule.id,
-            None,
-            ScheduleRunStatus::Running,
-            None,
-        );
-        let _ = store::record_run_start(&db, &schedule.id, &store::now_rfc3339());
-    }
-    let _ = state.app.emit("schedules:changed", ());
-
-    execute_run_with_existing_run(state, schedule, run_id).await;
+    Ok(run)
 }
 
 async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_id: String) {

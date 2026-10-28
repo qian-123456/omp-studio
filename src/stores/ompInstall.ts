@@ -49,6 +49,8 @@ interface OmpInstallState {
 }
 
 let startupHandled = false;
+/** Own cancellation before the backend has an installer slot to cancel. */
+let activeInstall: { id: string; started: boolean; cancelled: boolean } | null = null;
 
 export function _resetOmpInstallStartup(): void {
 	startupHandled = false;
@@ -72,6 +74,8 @@ export const useOmpInstall = create<OmpInstallState>((set, get) => ({
 
 	start: async () => {
 		if (get().phase === "running") return;
+		const run = { id: crypto.randomUUID(), started: false, cancelled: false };
+		activeInstall = run;
 		set({
 			open: true,
 			phase: "running",
@@ -86,6 +90,7 @@ export const useOmpInstall = create<OmpInstallState>((set, get) => ({
 		let unlisten: (() => void) | null = null;
 		try {
 			unlisten = await onOmpInstall((p) => {
+				if (activeInstall !== run || run.cancelled) return;
 				set((s) => ({
 					lines: p.line ? [...s.lines, p.line].slice(-MAX_LOG_LINES) : s.lines,
 					downloadedBytes: p.downloadedBytes ?? s.downloadedBytes,
@@ -95,7 +100,13 @@ export const useOmpInstall = create<OmpInstallState>((set, get) => ({
 			/* no event bus: the final result still carries the full log */
 		}
 		try {
-			const res = await ompInstallRun();
+			if (run.cancelled) {
+				set({ open: true, phase: "failed", cancelled: true });
+				return;
+			}
+			// The backend also owns this id if cancel overtakes command registration.
+			run.started = true;
+			const res = await ompInstallRun(run.id);
 			if (!res.success) {
 				set({ open: true, phase: "failed", result: res, cancelled: res.output.includes("已取消") });
 				return;
@@ -106,16 +117,23 @@ export const useOmpInstall = create<OmpInstallState>((set, get) => ({
 		} catch (e) {
 			set({ open: true, phase: "failed", error: errMsg(e) });
 		} finally {
+			if (activeInstall === run) activeInstall = null;
 			unlisten?.();
 		}
 	},
 
 	cancel: async () => {
-		if (get().phase !== "running") return;
+		const run = activeInstall;
+		if (get().phase !== "running" || !run) return;
+		if (!run.started) {
+			// No backend request exists yet; skip this run once setup settles instead.
+			run.cancelled = true;
+			return;
+		}
 		try {
-			await ompInstallCancel();
+			await ompInstallCancel(run.id);
 		} catch (e) {
-			set({ error: errMsg(e) });
+			if (activeInstall === run) set({ error: errMsg(e) });
 		}
 	},
 

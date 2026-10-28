@@ -520,6 +520,7 @@ async fn abort<B: Backend>(
 #[derive(Deserialize)]
 struct UiRespondAllBody {
     action: String,
+    ids: Vec<String>,
 }
 
 /// Option label of an `extension_ui_request` select (plain string or object).
@@ -571,9 +572,9 @@ fn batch_response(request: &Value, approve: bool) -> Option<Value> {
     }
 }
 
-/// `POST /sessions/{id}/ui-respond-all {action:"approve"|"deny"}` →
-/// `{handled, skipped}`. Ask-user questions (input/editor/other selects) are
-/// never answered; they count as skipped.
+/// `POST /sessions/{id}/ui-respond-all {action:"approve"|"deny",ids:[...]}` →
+/// `{handled, skipped, handledIds}`. Only explicitly seen IDs may be answered.
+/// A missing ID list is rejected by JSON extraction, never expanded to all current requests.
 async fn ui_respond_all<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
@@ -585,22 +586,39 @@ async fn ui_respond_all<B: Backend>(
         "deny" => false,
         _ => return Err(bad_request("action 必须是 approve 或 deny")),
     };
+    if body.ids.len() > 1000 || body.ids.iter().any(|id| id.is_empty() || id.len() > 256) {
+        return Err(bad_request("审批编号列表无效"));
+    }
     if super::draft::is_draft(&id) {
-        return Ok(Json(json!({"handled": 0, "skipped": 0})));
+        return Ok(Json(json!({"handled": 0, "skipped": 0, "handledIds": []})));
     }
     let (mut handled, mut skipped) = (0u32, 0u32);
+    let mut wanted: std::collections::HashSet<String> = body.ids.into_iter().collect();
+    let mut handled_ids = Vec::new();
     for p in ctx.backend.pending_ui(&id).await {
+        let Some(request_id) = p.request.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if !wanted.remove(request_id) {
+            continue;
+        }
         let Some(mut response) = batch_response(&p.request, approve) else {
             skipped += 1;
             continue;
         };
         response["type"] = json!("extension_ui_response");
         match ctx.backend.ui_respond(&id, response).await {
-            Ok(()) => handled += 1,
+            Ok(()) => {
+                handled += 1;
+                handled_ids.push(request_id.to_string());
+            }
             Err(_) => skipped += 1,
         }
     }
-    Ok(Json(json!({"handled": handled, "skipped": skipped})))
+    skipped += wanted.len() as u32;
+    Ok(Json(
+        json!({"handled": handled, "skipped": skipped, "handledIds": handled_ids}),
+    ))
 }
 
 // ------------------------------------------------------- slash commands

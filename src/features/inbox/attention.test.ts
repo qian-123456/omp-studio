@@ -149,4 +149,41 @@ describe("groupInbox", () => {
 		const g = groupInbox([meta("old", "unread", 5), meta("new", "unread", 1)], NOW, 24);
 		expect(g.byKind.unread.map((s) => s.id)).toEqual(["new", "old"]);
 	});
+
+	it.each(["unread", "error"] as const)("shows one result entry instead of duplicate %s session", (attention) => {
+		const result = { ...todo("result"), sessionId: "run-session", payload: { runId: "run-1" } };
+		const g = groupInbox([meta("run-session", attention, 2)], NOW, 24, [result]);
+		expect(g.all).toEqual([{ type: "schedule", kind: "schedule", todo: result }]);
+		expect(g.badge).toBe(1);
+	});
+
+	it("keeps new activity in a reused session separate from an older run result", () => {
+		const result = { ...todo("result", "schedule_run", "open", 2), sessionId: "reused", payload: { runId: "old-run" } };
+		const g = groupInbox([meta("reused", "unread", 1)], NOW, 24, [result]);
+		expect(g.byKind.unread.map((s) => s.id)).toEqual(["reused"]);
+		expect(g.badge).toBe(2);
+	});
+
+	it.each(["awaiting_approval", "awaiting_answer", "working"] as const)("does not hide actionable %s behind a result", (status) => {
+		const result = { ...todo("result"), sessionId: "reused", payload: { runId: "old-run" } };
+		const attention = status === "working" ? "running" : "awaiting";
+		const g = groupInbox([meta("reused", attention, 2, false, status)], NOW, 24, [result]);
+		expect(g.all.filter((e) => e.type === "session")).toHaveLength(1);
+	});
+
+	it("result-only notification policies do not suppress independent session attention", () => {
+		// None/quiet Important runs emit no result todo, not a session mute.
+		const g = groupInbox([meta("approval", "awaiting", 1, false, "awaiting_approval"), meta("quiet", "unread", 1)], NOW, 24, []);
+		expect(g.byKind.approval).toHaveLength(1);
+		expect(g.byKind.unread).toHaveLength(1);
+		expect(g.badge).toBe(2);
+	});
+
+	it("closed results and todos without a run identity never hide sessions", () => {
+		const g = groupInbox([meta("s", "unread", 2)], NOW, 24, [
+			{ ...todo("closed", "schedule_run", "done"), sessionId: "s", payload: { runId: "r" } },
+			{ ...todo("unknown"), sessionId: "s" },
+		]);
+		expect(g.byKind.unread).toHaveLength(1);
+	});
 });

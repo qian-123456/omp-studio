@@ -6,7 +6,6 @@ import clsx from "clsx";
 import { FileText, MessageSquarePlus, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "../../components/Markdown";
-import { confirmDialog } from "../../lib/dialogs";
 import { isComposing, useEscapeKey, useShortPath } from "../../lib/hooks";
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
@@ -67,30 +66,13 @@ export function DocView({ path }: { path: string }) {
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [save]);
-	const handleClose = async () => {
-		if (
-			dirty &&
-			!(await confirmDialog(
-				t("editor.discardConfirm"),
-				{
-					danger: true,
-					title: t("editor.discardTitle"),
-					okLabel: t("editor.discardAndExit"),
-				},
-			))
-		) {
-			return;
-		}
-		setCenter(sessionId ? "session" : "home");
-	};
+	// Closing a view retains its shared draft; only Reload can discard it.
+	const handleClose = () => setCenter(sessionId ? "session" : "home");
 
 	useEscapeKey(handleClose);
 
 
-	const reload = async () => {
-		if (dirty && !(await confirmDialog(t("editor.discardAndReloadConfirm"), { danger: true }))) return;
-		await buffer.reload();
-	};
+	const reload = buffer.reload;
 
 	const captureSelection = () => {
 		const s = window.getSelection();

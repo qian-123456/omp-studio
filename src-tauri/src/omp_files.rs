@@ -80,6 +80,10 @@ fn write_checked(
     expected: Option<&str>,
     create_parents: bool,
 ) -> Result<Option<String>, String> {
+    // Share the ordinary file writer's lock: the stamp comparison and the
+    // returned stamp must describe this write, not another in-process writer.
+    let lock = files::write_lock(path);
+    let _guard = lock.lock();
     let current = stamp_of(path);
     if current.as_deref() != expected {
         return Err(format!("{CONFLICT_PREFIX}文件已被 omp 或其他程序更新"));
@@ -89,7 +93,7 @@ fn write_checked(
             std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败：{e}"))?;
         }
     }
-    files::write_text(path, content)?;
+    files::write_text_unlocked(path, content)?;
     Ok(stamp_of(path))
 }
 
@@ -470,6 +474,81 @@ mod tests {
             .unwrap_err()
             .starts_with(CONFLICT_PREFIX));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn concurrent_creates_accept_only_one_missing_stamp() {
+        let d = tmp("concurrent-create");
+        let f = d.join("rules/nested.md");
+        let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let writers: Vec<_> = (0..8)
+            .map(|index| {
+                let path = f.clone();
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    let content = format!("created by writer {index}");
+                    (content.clone(), write_checked(&path, &content, None, true))
+                })
+            })
+            .collect();
+        let results: Vec<_> = writers
+            .into_iter()
+            .map(|writer| writer.join().unwrap())
+            .collect();
+        let successes: Vec<_> = results
+            .iter()
+            .filter(|(_, result)| result.is_ok())
+            .collect();
+        assert_eq!(successes.len(), 1);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), successes[0].0);
+        assert_eq!(successes[0].1.as_ref().unwrap(), &stamp_of(&f));
+        for (_, result) in results.iter().filter(|(_, result)| result.is_err()) {
+            assert!(result.as_ref().unwrap_err().starts_with(CONFLICT_PREFIX));
+        }
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn stamp_check_waits_for_the_shared_file_writer_lock() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let d = tmp("shared-write-lock");
+        let f = d.join("RULES.md");
+        let original = write_checked(&f, "original", None, true).unwrap();
+        let lock = files::write_lock(&f);
+        let guard = lock.lock();
+        let path = f.clone();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            done_tx
+                .send(write_checked(
+                    &path,
+                    "stale edit",
+                    original.as_deref(),
+                    true,
+                ))
+                .unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(matches!(
+            done_rx.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        // Simulate the regular writer finishing while it owns the shared lock.
+        files::write_text_unlocked(&f, "new ordinary writer contents").unwrap();
+        drop(guard);
+        let result = done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        writer.join().unwrap();
+        assert!(result.unwrap_err().starts_with(CONFLICT_PREFIX));
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "new ordinary writer contents"
+        );
+        let _ = std::fs::remove_dir_all(d);
     }
 
     #[test]

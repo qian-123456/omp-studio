@@ -6,6 +6,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ModelRoleLayer, ModelRoleSnapshot } from "../../lib/contracts";
 
 const { rolesRead, rolesSet } = vi.hoisted(() => ({ rolesRead: vi.fn(), rolesSet: vi.fn() }));
 
@@ -81,7 +82,7 @@ describe("模型角色 scope row", () => {
 	});
 
 	it("clears a project role override when inheriting, then reflects later global changes", async () => {
-		const initialSnapshot = {
+		const initialSnapshot: ModelRoleSnapshot & { project: ModelRoleLayer } = {
 			...SNAPSHOT,
 			global: {
 				...SNAPSHOT.global,

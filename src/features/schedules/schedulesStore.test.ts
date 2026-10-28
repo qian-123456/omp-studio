@@ -16,12 +16,14 @@ vi.mock("../../lib/ipc", () => ({
 	setScheduleEnabled: vi.fn(),
 }));
 
+import { toast } from "../../lib/toast";
 import { useSchedulesStore } from "./schedulesStore";
 
 describe("schedulesStore", () => {
 	beforeEach(() => {
 		listSchedules.mockReset();
 		deleteSchedule.mockReset();
+		vi.mocked(toast.error).mockClear();
 		useSchedulesStore.setState({ schedules: [], runs: {}, loadError: null });
 	});
 
@@ -44,5 +46,16 @@ describe("schedulesStore", () => {
 		deleteSchedule.mockResolvedValue(undefined);
 		await useSchedulesStore.getState().removeSchedule("a");
 		expect(Object.keys(useSchedulesStore.getState().runs)).toEqual(["b"]);
+	});
+
+	it("keeps an active schedule and history when deletion is refused, showing the reason", async () => {
+		const schedules = [{ id: "active" }] as never;
+		const runs = { active: [] };
+		useSchedulesStore.setState({ schedules, runs });
+		deleteSchedule.mockRejectedValueOnce("任务仍在运行，请结束后再删除");
+		await useSchedulesStore.getState().removeSchedule("active");
+		expect(useSchedulesStore.getState().schedules).toBe(schedules);
+		expect(useSchedulesStore.getState().runs).toBe(runs);
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("任务仍在运行，请结束后再删除"));
 	});
 });

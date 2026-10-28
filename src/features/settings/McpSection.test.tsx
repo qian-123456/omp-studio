@@ -3,7 +3,7 @@
  * Settings ▸ MCP 服务器: catalog-driven list, per-server project placement, editor,
  * scope dialog and import dialog.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpCatalog, McpServerItem, McpServerView } from "../../lib/contracts";
 
@@ -426,5 +426,123 @@ describe("McpSection delete", () => {
 	it("renders the mcp omp sections", async () => {
 		render(<McpSection cwd={DEMO} />);
 		expect((await screen.findByTestId("omp-sections")).getAttribute("data-page")).toBe("mcp");
+	});
+});
+
+function pending<T>() {
+	// The project's ES2021 lib does not expose Promise.withResolvers.
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+	return { promise, resolve, reject };
+}
+
+describe("MCP editor and parent write ownership", () => {
+	it("preserves the open editor and draft with an explanation after external deletion", async () => {
+		render(<McpSection cwd={DEMO} />);
+		await screen.findByText("rea");
+		fireEvent.click(within(row("rea")).getByRole("button", { name: "编辑 rea" }));
+		const editor = await screen.findByRole("dialog");
+		const command = within(editor).getByPlaceholderText("npx") as HTMLInputElement;
+		fireEvent.change(command, { target: { value: "my-unsaved-command" } });
+		ipc.mcpCatalog.mockResolvedValueOnce({ ...CATALOG, servers: CATALOG.servers.filter((s) => s.name !== "rea") });
+		fireEvent.click(screen.getByRole("button", { name: "重新读取配置文件" }));
+		expect((await within(editor).findByRole("alert")).textContent).toContain("此服务器已被外部删除");
+		expect(screen.getByRole("dialog")).toBe(editor);
+		expect(command.value).toBe("my-unsaved-command");
+		expect((within(editor).getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+		fireEvent.keyDown(command, { key: "Enter", ctrlKey: true });
+		expect(ipc.mcpServerSave).not.toHaveBeenCalled();
+
+		// Reappearing data does not silently replace the draft or remount the editor.
+		fireEvent.click(screen.getByRole("button", { name: "重新读取配置文件" }));
+		await waitFor(() => expect(within(editor).queryByRole("alert")).toBeNull());
+		expect(command.value).toBe("my-unsaved-command");
+		expect((within(editor).getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(false);
+		fireEvent.click(within(editor).getByRole("button", { name: "取消" }));
+		fireEvent.click(screen.getByRole("button", { name: "重新读取配置文件" }));
+		await waitFor(() => expect(ipc.mcpCatalog).toHaveBeenCalledTimes(4));
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("keeps empty-list add and import disabled after closing a saving editor until its reload finishes", async () => {
+		const empty = { ...CATALOG, servers: [] };
+		ipc.mcpCatalog.mockResolvedValue(empty);
+		const save = pending<void>();
+		const reload = pending<McpCatalog>();
+		ipc.mcpServerSave.mockReturnValueOnce(save.promise);
+		render(<McpSection cwd={DEMO} />);
+		await screen.findByText("还没有配置 MCP 服务器");
+		fireEvent.click(screen.getAllByRole("button", { name: "添加服务器" })[1]!);
+		const editor = await screen.findByRole("dialog");
+		fireEvent.change(within(editor).getByPlaceholderText("例如 filesystem"), { target: { value: "first" } });
+		fireEvent.change(within(editor).getByPlaceholderText("npx"), { target: { value: "node" } });
+		fireEvent.click(within(editor).getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.mcpServerSave).toHaveBeenCalledTimes(1));
+		fireEvent.click(within(editor).getByRole("button", { name: "关闭" }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		const assertLocked = () => {
+			for (const name of ["添加服务器", "导入配置"]) {
+				for (const button of screen.getAllByRole("button", { name })) {
+					expect((button as HTMLButtonElement).disabled).toBe(true);
+					fireEvent.click(button);
+				}
+			}
+			expect(screen.queryByRole("dialog")).toBeNull();
+			expect(ipc.mcpServerSave).toHaveBeenCalledTimes(1);
+		};
+		assertLocked();
+		ipc.mcpCatalog.mockReturnValueOnce(reload.promise);
+		await act(async () => save.resolve());
+		assertLocked();
+		await act(async () => reload.resolve(empty));
+		await waitFor(() => expect((screen.getAllByRole("button", { name: "添加服务器" })[1] as HTMLButtonElement).disabled).toBe(false));
+		fireEvent.click(screen.getAllByRole("button", { name: "添加服务器" })[1]!);
+		expect(await screen.findByRole("dialog")).toBeDefined();
+	});
+
+	it("holds parent ownership across every import entry and closing the import dialog", async () => {
+		ipc.mcpCatalog.mockResolvedValue({ ...CATALOG, servers: [] });
+		const first = pending<void>();
+		const second = pending<void>();
+		ipc.mcpServerSave.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+		render(<McpSection cwd={DEMO} />);
+		await screen.findByText("还没有配置 MCP 服务器");
+		fireEvent.click(screen.getAllByRole("button", { name: "导入配置" })[1]!);
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: '{"mcpServers":{"one":{"command":"node"},"two":{"command":"node"}}}' } });
+		fireEvent.click(within(dialog).getByRole("button", { name: "导入 2 个" }));
+		await waitFor(() => expect(ipc.mcpServerSave).toHaveBeenCalledTimes(1));
+		fireEvent.click(within(dialog).getAllByRole("button", { name: "关闭" })[0]!);
+		for (const button of screen.getAllByRole("button", { name: "添加服务器" })) expect((button as HTMLButtonElement).disabled).toBe(true);
+		await act(async () => first.resolve());
+		await waitFor(() => expect(ipc.mcpServerSave).toHaveBeenCalledTimes(2));
+		for (const name of ["添加服务器", "导入配置"]) {
+			for (const button of screen.getAllByRole("button", { name })) {
+				expect((button as HTMLButtonElement).disabled).toBe(true);
+				fireEvent.click(button);
+			}
+		}
+		expect(screen.queryByRole("dialog")).toBeNull();
+		await act(async () => second.resolve());
+		await waitFor(() => expect((screen.getAllByRole("button", { name: "导入配置" })[1] as HTMLButtonElement).disabled).toBe(false));
+	});
+
+	it("does not issue duplicate writes for same-batch keyboard submits", async () => {
+		const save = pending<void>();
+		ipc.mcpServerSave.mockReturnValueOnce(save.promise);
+		render(<McpSection cwd={DEMO} />);
+		await screen.findByText("rea");
+		fireEvent.click(within(row("rea")).getByRole("button", { name: "编辑 rea" }));
+		const dialog = await screen.findByRole("dialog");
+		const command = within(dialog).getByPlaceholderText("npx");
+		act(() => {
+			fireEvent.keyDown(command, { key: "Enter", ctrlKey: true });
+			fireEvent.keyDown(command, { key: "Enter", ctrlKey: true });
+		});
+		expect(ipc.mcpServerSave).toHaveBeenCalledTimes(1);
+		expect((within(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+		await act(async () => save.resolve());
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 	});
 });

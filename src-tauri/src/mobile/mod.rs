@@ -31,11 +31,27 @@ struct Ipv6Running {
     shutdown: watch::Sender<bool>,
     /// Fingerprint of the certificate this listener is actually serving.
     cert_sha256: String,
+    /// Hostname covered when this listener's certificate was loaded.
+    cert_hostname: Option<String>,
 }
 
 static SERVER: Mutex<Option<Running>> = Mutex::new(None);
 static IPV6_SERVER: Mutex<Option<Ipv6Running>> = Mutex::new(None);
 static LIFECYCLE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(super) fn tunnel_origin() -> Result<(u16, watch::Receiver<bool>), String> {
+    SERVER
+        .lock()
+        .as_ref()
+        .map(|r| (r.port, r.shutdown.subscribe()))
+        .ok_or_else(|| "手机服务已停止".into())
+}
+
+fn covered_ddns_host<'a>(advertised: Option<&'a str>, served: Option<&str>) -> Option<&'a str> {
+    advertised.filter(|host| {
+        served.is_some_and(|cert_host| cert_host.trim().eq_ignore_ascii_case(host.trim()))
+    })
+}
 
 /// Autostart when settings.mobile_enabled (and settings.mobile_ipv6_enabled).
 pub fn init(state: AppState) {
@@ -73,7 +89,7 @@ fn lan_ip() -> String {
 
 pub fn status(state: &AppState) -> MobileStatus {
     let port = SERVER.lock().as_ref().map(|r| r.port);
-    let (ipv6_running, ipv6_port, cert_sha256) = {
+    let (ipv6_running, ipv6_port, cert_sha256, cert_hostname) = {
         let ipv6 = IPV6_SERVER.lock();
         (
             ipv6.is_some(),
@@ -83,6 +99,7 @@ pub fn status(state: &AppState) -> MobileStatus {
             // Fingerprint of the cert being served; never regenerated here
             // (that only happens in ipv6_start).
             ipv6.as_ref().map(|r| r.cert_sha256.clone()),
+            ipv6.as_ref().and_then(|r| r.cert_hostname.clone()),
         )
     };
     let current_v6 = ipv6::current_address();
@@ -93,7 +110,8 @@ pub fn status(state: &AppState) -> MobileStatus {
             let addr_str = addr.to_string();
             let ddns_synced = ddns_st.enabled
                 && ddns_st.last_ip.as_deref() == Some(&addr_str)
-                && ddns_st.hostname.is_some();
+                && covered_ddns_host(ddns_st.hostname.as_deref(), cert_hostname.as_deref())
+                    .is_some();
             if ddns_synced {
                 let host = ddns_st.hostname.as_deref().unwrap_or(&addr_str);
                 format!("https://{host}:{ipv6_port}")
@@ -235,6 +253,7 @@ pub async fn ipv6_start(state: &AppState) -> Result<MobileStatus, String> {
         port,
         shutdown: tx,
         cert_sha256,
+        cert_hostname: ddns_host,
     });
 
     let ctx = Arc::new(server::Ctx {
@@ -294,3 +313,30 @@ pub async fn create_pairing(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod infra_tests {
+    use super::*;
+
+    #[test]
+    fn changed_ddns_hostname_is_not_advertised_under_old_certificate() {
+        assert_eq!(
+            covered_ddns_host(Some("old.example"), Some("old.example")),
+            Some("old.example")
+        );
+        assert_eq!(
+            covered_ddns_host(Some("new.example"), Some("old.example")),
+            None
+        );
+        assert_eq!(covered_ddns_host(Some("new.example"), None), None);
+        // Only a new listener with the new certificate may advertise this name.
+        assert_eq!(
+            covered_ddns_host(Some("new.example"), Some("new.example")),
+            Some("new.example")
+        );
+        assert_eq!(
+            covered_ddns_host(Some("OLD.example"), Some(" old.example ")),
+            Some("OLD.example")
+        );
+    }
+}

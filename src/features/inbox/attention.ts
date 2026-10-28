@@ -54,8 +54,8 @@ export function sessionKind(s: SessionMeta, attention: Attention): InboxSessionK
  * Applies the inbox time window to the backend-derived `attention` kinds.
  * Archived and plain-CLI (`createdByApp === false`) sessions never show; approval/question and running never expire;
  * other kinds drop out once `updatedAt` is older than `now - windowHours`.
- * Open `schedule_run` todos are not windowed and ignore session attention.
- * Mirrors `inbox_badge_count` on the Rust side for the session part.
+ * Open result todos supersede only the corresponding finished session attention.
+ * Awaiting/running and later activity in a reused session remain independent.
  */
 export function groupInbox(
 	sessions: Iterable<SessionMeta>,
@@ -64,6 +64,19 @@ export function groupInbox(
 	todos: Iterable<Todo> = [],
 ): InboxGroups {
 	const cutoff = now - windowHours * HOUR_MS;
+	const schedule = [...todos]
+		.filter((t) => t.kind === "schedule_run" && t.status === "open")
+		.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+	const resultTimes = new Map<string, number>();
+	for (const todo of schedule) {
+		// A session link alone is not evidence that this is a run result.
+		const payload = todo.payload as { runId?: unknown } | null;
+		if (!todo.sessionId || typeof payload?.runId !== "string" || !payload.runId) continue;
+		const at = Date.parse(todo.createdAt);
+		if (Number.isFinite(at)) {
+			resultTimes.set(todo.sessionId, Math.max(resultTimes.get(todo.sessionId) ?? -Infinity, at));
+		}
+	}
 	const byKind: Record<InboxSessionKind, SessionMeta[]> = {
 		approval: [],
 		question: [],
@@ -78,15 +91,13 @@ export function groupInbox(
 		if (attention !== "awaiting" && attention !== "running") {
 			const t = Date.parse(s.updatedAt);
 			if (Number.isFinite(t) && t < cutoff) continue;
+			if (t <= (resultTimes.get(s.id) ?? -Infinity)) continue;
 		}
 		byKind[sessionKind(s, attention)].push(s);
 	}
 	for (const list of Object.values(byKind)) {
 		list.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 	}
-	const schedule = [...todos]
-		.filter((t) => t.kind === "schedule_run" && t.status === "open")
-		.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
 	const entries = {} as Record<InboxKind, InboxEntry[]>;
 	for (const k of Object.keys(byKind) as InboxSessionKind[]) {

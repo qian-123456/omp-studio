@@ -103,7 +103,7 @@ pub fn update(conn: &Connection, id: &str, patch: &BacklogPatch) -> Result<Backl
     }
     item.updated_at = now();
     conn.execute(
-        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6, refs = ?7, project_dir = ?8 WHERE id = ?1",
+        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6, refs = ?7, project_dir = ?8, restored_at = CASE WHEN ?9 THEN NULL ELSE restored_at END WHERE id = ?1",
         params![
             id,
             item.text,
@@ -112,7 +112,8 @@ pub fn update(conn: &Connection, id: &str, patch: &BacklogPatch) -> Result<Backl
             item.target_session_id,
             item.updated_at,
             serde_json::to_string(&item.refs).unwrap_or_else(|_| "[]".into()),
-            item.project_dir
+            item.project_dir,
+            patch.status.is_some()
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -134,10 +135,11 @@ pub fn delete(conn: &Connection, ids: &[String]) -> Result<(), String> {
 
 /// Take rows out of the trash.
 pub fn restore(conn: &Connection, ids: &[String]) -> Result<(), String> {
+    let ts = now();
     for id in ids {
         conn.execute(
-            "UPDATE backlog SET deleted_at = NULL WHERE id = ?1",
-            params![id],
+            "UPDATE backlog SET deleted_at = NULL, updated_at = ?2, restored_at = ?2 WHERE id = ?1 AND deleted_at IS NOT NULL",
+            params![id, ts],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -182,7 +184,7 @@ pub fn archive_finished(
     let cutoff = (now - chrono::Duration::days(FINISHED_RETENTION_DAYS)).to_rfc3339();
     conn.execute(
         "UPDATE backlog SET deleted_at = ?1
-         WHERE status IN ('done', 'closed') AND deleted_at IS NULL AND updated_at < ?2",
+         WHERE status IN ('done', 'closed') AND deleted_at IS NULL AND restored_at IS NULL AND updated_at < ?2",
         params![now.to_rfc3339(), cutoff],
     )
 }
@@ -290,5 +292,65 @@ mod tests {
         assert_eq!(archive_finished(&c, now).unwrap(), 0);
         // The trash purge only removes them after their own 7 days.
         assert_eq!(purge_expired(&c, now).unwrap(), 0);
+    }
+
+    #[test]
+    fn restored_finished_items_survive_restarts_until_explicit_status_change() {
+        let c = test_conn();
+        let now = chrono::Utc::now();
+        for status in [BacklogStatus::Done, BacklogStatus::Closed] {
+            let item = add(&c, "restored", BacklogKind::Idea, &[], None).unwrap();
+            update(
+                &c,
+                &item.id,
+                &BacklogPatch {
+                    status: Some(status),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let old = (now - chrono::Duration::days(60)).to_rfc3339();
+            c.execute(
+                "UPDATE backlog SET updated_at = ?2 WHERE id = ?1",
+                params![item.id, old],
+            )
+            .unwrap();
+            assert_eq!(archive_finished(&c, now).unwrap(), 1);
+            restore(&c, std::slice::from_ref(&item.id)).unwrap();
+            assert_eq!(get(&c, &item.id).unwrap().unwrap().status, status);
+            for days in [0, 31, 90] {
+                let later = now + chrono::Duration::days(days);
+                assert_eq!(archive_finished(&c, later).unwrap(), 0);
+                assert_eq!(purge_expired(&c, later).unwrap(), 0);
+                assert!(get(&c, &item.id).unwrap().unwrap().deleted_at.is_none());
+            }
+            update(
+                &c,
+                &item.id,
+                &BacklogPatch {
+                    text: Some("edited".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                archive_finished(&c, now + chrono::Duration::days(90)).unwrap(),
+                0
+            );
+            update(
+                &c,
+                &item.id,
+                &BacklogPatch {
+                    status: Some(status),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                archive_finished(&c, now + chrono::Duration::days(90)).unwrap(),
+                1
+            );
+            purge(&c, &[item.id]).unwrap();
+        }
     }
 }

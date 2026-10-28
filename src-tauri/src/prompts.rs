@@ -37,10 +37,24 @@ pub fn render(template: &str, vars: &HashMap<&str, String>) -> String {
         rest = &body_start[end + 7..];
     }
     out.push_str(rest);
-    let mut text = out;
-    for (k, v) in vars {
-        text = text.replace(&format!("{{{{{k}}}}}"), v);
+    // Parse placeholders only from the template, never from inserted user text.
+    let mut text = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(start) = rest.find("{{") {
+        text.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            rest = &rest[start..];
+            break;
+        };
+        if let Some(value) = vars.get(&after[..end]) {
+            text.push_str(value);
+        } else {
+            text.push_str(&rest[start..start + 2 + end + 2]);
+        }
+        rest = &after[end + 2..];
     }
+    text.push_str(rest);
     text
 }
 
@@ -56,6 +70,33 @@ mod tests {
         v.insert("y", "2".to_string());
         v.insert("z", "  ".to_string());
         assert_eq!(render(t, &v), "A 1 Y=2 end");
+    }
+
+    #[test]
+    fn inserted_user_tokens_are_literal_independent_of_variable_order() {
+        for reverse in [false, true] {
+            let mut vars = HashMap::new();
+            let mut pairs = [
+                ("text", "idea {{refs}} {{#if refs}}literal{{/if}}"),
+                ("refs", "actual refs"),
+            ];
+            if reverse {
+                pairs.reverse();
+            }
+            for (key, value) in pairs {
+                vars.insert(key, value.to_string());
+            }
+            assert_eq!(render("{{text}} / {{refs}}{{#if refs}} / {{text}}{{/if}}", &vars),
+                "idea {{refs}} {{#if refs}}literal{{/if}} / actual refs / idea {{refs}} {{#if refs}}literal{{/if}}");
+        }
+    }
+
+    #[test]
+    fn unknown_and_unclosed_placeholders_remain_literal() {
+        assert_eq!(
+            render("{{unknown}} {{open", &HashMap::new()),
+            "{{unknown}} {{open"
+        );
     }
 
     #[test]

@@ -213,6 +213,8 @@ export interface SessionLive {
 	tailId?: string | null;
 	/** rpc:process liveness. */
 	alive: boolean;
+	/** Explicit transport exit; unlike initial alive=false, rejects late frames. */
+	processExited?: boolean;
 	/** Message scroll request queued for virtual list scrollToItem + highlight. */
 	scrollRequest?: { itemId: string; timestamp: number; quote?: string } | null;
 	/** Thinking timing for live turn: start/end epoch ms */
@@ -344,6 +346,8 @@ const SUB_STATUSES = new Set<SubagentStatus>([
 	"aborted",
 ]);
 function subStatus(v: unknown, fallback: SubagentStatus): SubagentStatus {
+	// Agent ids identify one run: late progress/snapshots cannot restart it.
+	if (fallback === "completed" || fallback === "failed" || fallback === "aborted") return fallback;
 	if (v === "started") return "running";
 	return SUB_STATUSES.has(v as SubagentStatus)
 		? (v as SubagentStatus)
@@ -360,6 +364,7 @@ function slimSubagent(info: SubagentInfo): SubagentInfo {
 		...info,
 		progress: {
 			...p,
+			status: info.status,
 			recentOutput: [],
 			recentTools: Array.isArray(p.recentTools) ? p.recentTools.slice(-8) : [],
 			currentToolArgs: undefined,
@@ -742,6 +747,7 @@ function reduce(
 	frame: Frame,
 	sessionId: string,
 ): SessionLive {
+	if (live.processExited) return live;
 	switch (frame.type) {
 		case "agent_start":
 		case "turn_start":
@@ -939,6 +945,7 @@ function reduce(
 				return {
 					...live,
 					streaming: false,
+					pendingUi: [],
 					streamingMessage: null,
 					tools: {},
 					liveRequests: [],
@@ -954,6 +961,7 @@ function reduce(
 				...live,
 				pendingUserEchoes,
 				streaming: false,
+				pendingUi: [],
 				streamingMessage: null,
 				tools: {},
 				liveRequests: [],
@@ -1162,6 +1170,7 @@ function reduce(
 			return {
 				...live,
 				streaming: false,
+				pendingUi: [],
 				streamingMessage: null,
 				tools: {},
 				liveRequests: [],
@@ -1526,10 +1535,11 @@ export const useLive = create<LiveState>((set) => ({
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const next = running
-				? { ...live, alive: true }
+				? { ...live, alive: true, processExited: false }
 				: {
 						...live,
 						alive: false,
+						processExited: true,
 						streaming: false,
 						turnStartedAt: null,
 						streamingMessage: null,
@@ -1560,6 +1570,7 @@ export const useLive = create<LiveState>((set) => ({
 	setPendingUi: (sessionId, list) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
+			if (live.processExited) return s;
 			return {
 				sessions: {
 					...s.sessions,

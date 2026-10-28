@@ -1,19 +1,30 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
+vi.mock("../features/chat/mermaidRender", () => ({
+	currentMermaidMode: () => "dark",
+	renderMermaidSvg: vi.fn(async () => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"><text>A to B</text></svg>'),
+	svgViewBoxSize: () => ({ width: 100, height: 40 }),
+}));
 
 import { Markdown } from "./Markdown";
 import { pendingMarkdownAssets } from "../features/chat/markdownAssets";
 import { suppressWebViewContextMenu } from "../lib/webviewContextMenu";
+import { tNow } from "../stores/language";
+
+afterEach(cleanup);
 
 const html = (text: string) => renderToStaticMarkup(<Markdown text={text} />);
 
 function dispatchContextMenu(target: Element, beforeSuppress?: (e: MouseEvent) => void): MouseEvent {
 	const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-	if (beforeSuppress) target.addEventListener("contextmenu", beforeSuppress, { once: true });
+	if (beforeSuppress) target.addEventListener("contextmenu", (e) => {
+		if (e instanceof MouseEvent) beforeSuppress(e);
+	}, { once: true });
 	document.addEventListener("contextmenu", suppressWebViewContextMenu, { once: true });
 	try {
 		target.dispatchEvent(event);
@@ -89,7 +100,12 @@ describe("Markdown inline HTML", () => {
 		);
 		expect(out).toContain('href="/Users/me/.omp/agent/AGENTS.md"');
 		expect(out).toContain('href="~/CodingWiki/wiki/rules.md"');
-		expect(out).toContain("在右侧预览");
+		const root = document.createElement("div");
+		root.innerHTML = out;
+		const links = root.querySelectorAll("a");
+		expect(links).toHaveLength(2);
+		for (const link of links) expect(link.title).toContain(link.getAttribute("href"));
+		expect(links[1].textContent).toBe("~/CodingWiki/wiki/rules.md");
 		// A directory is not a file link.
 		expect(out).not.toContain('href="/Users/me"');
 	});
@@ -147,18 +163,21 @@ describe("Markdown links and finished visualize fences", () => {
 });
 
 describe("Markdown images", () => {
-	it("never fetches a remote image on render", () => {
-		const out = html("![p](https://tracker.example/pixel.png)");
-		expect(out).not.toContain("<img");
-		expect(out).not.toContain("src=");
-		expect(out).toContain("远程图片");
-		expect(out).toContain("https://tracker.example/pixel.png");
+	it("never fetches a remote image until the reader explicitly loads it", () => {
+		const view = render(<Markdown text="![p](https://tracker.example/pixel.png)" />);
+		expect(view.queryByRole("img")).toBeNull();
+		const load = view.getByRole("button");
+		expect(load.title).toContain("https://tracker.example/pixel.png");
+		fireEvent.click(load);
+		const image = view.getByRole("img", { name: "p" });
+		expect(image.getAttribute("src")).toBe("https://tracker.example/pixel.png");
+		expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
 	});
 
 	it("still renders a local absolute image immediately", () => {
 		const out = html("![p](/Users/me/pic.png)");
 		expect(out).toContain('src="/Users/me/pic.png"');
-		expect(out).not.toContain("远程图片");
+		expect(out).not.toContain("<button");
 	});
 
 	it("still renders a data: image", () => {
@@ -168,17 +187,23 @@ describe("Markdown images", () => {
 });
 
 describe("Markdown mermaid fences", () => {
-	it("hands a closed mermaid fence to the diagram block", () => {
-		const out = html("```mermaid\ngraph TD\n  A-->B\n```");
-		expect(out).toContain("正在渲染图表");
+	it("hands a closed mermaid fence to an interactive diagram and source switch", async () => {
+		const view = render(<Markdown text={"```mermaid\ngraph TD\n  A-->B\n```"} />);
+		await waitFor(() => expect(view.getByRole("img").getAttribute("src")).toContain("data:image/svg+xml"));
+		fireEvent.click(view.getByRole("button", { name: tNow("chat.mermaid.source") }));
+		expect(view.container.querySelector("pre code")?.textContent).toContain("A-->B");
+		expect(view.queryByRole("img")).toBeNull();
+		fireEvent.click(view.getByRole("button", { name: tNow("chat.mermaid.diagram") }));
+		expect(view.getByRole("img")).toBeTruthy();
 	});
 	it("keeps an unclosed fence a plain code block while streaming", () => {
 		const out = renderToStaticMarkup(<Markdown text={"```mermaid\ngraph TD\n  A-->B"} streaming />);
-		expect(out).not.toContain("正在渲染图表");
+		expect(out).not.toContain("<img");
 		expect(out).toContain("A--&gt;B");
 	});
 	it("leaves mermaid as code in static image export", () => {
 		const out = renderToStaticMarkup(<Markdown text={"```mermaid\ngraph TD\n  A-->B\n```"} exportMode />);
-		expect(out).not.toContain("正在渲染图表");
+		expect(out).not.toContain("<img");
+		expect(out).toContain("A--&gt;B");
 	});
 });

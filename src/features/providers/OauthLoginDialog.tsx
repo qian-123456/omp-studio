@@ -74,6 +74,31 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 	const isClosingRef = useRef(false);
 	/** Bumped on every flow start / back-to-list so late async results of an abandoned flow are ignored. */
 	const flowIdRef = useRef(0);
+	const startRequestRef = useRef<Promise<void> | null>(null);
+	const cancelRequestRef = useRef<Promise<void> | null>(null);
+
+	// IPC start and cancel can be scheduled out of order. Cancel only once the
+	// owned start has settled, and reconcile credentials even if success raced it.
+	const cancelFlow = useCallback((): Promise<void> => {
+		if (cancelRequestRef.current) return cancelRequestRef.current;
+		flowIdRef.current++;
+		if (!isFlowActiveRef.current) return Promise.resolve();
+		const start = startRequestRef.current;
+		const request = (async () => {
+			try {
+				await start?.catch(() => {});
+				await oauthLoginCancel();
+				isFlowActiveRef.current = false;
+			} finally {
+				await reloadProviders();
+			}
+		})();
+		cancelRequestRef.current = request;
+		void request.finally(() => {
+			if (cancelRequestRef.current === request) cancelRequestRef.current = null;
+		}).catch(() => {});
+		return request;
+	}, [reloadProviders]);
 
 	const loadProviders = useCallback(async () => {
 		setListLoading(true);
@@ -95,6 +120,10 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 	const handleEvent = useCallback(
 		(event: OauthUiEvent, targetProviderId: string) => {
 			if (event.providerId !== targetProviderId) return;
+			if (event.kind === "completed") {
+				isFlowActiveRef.current = false;
+				if (event.ok) void reloadProviders();
+			}
 
 			setFlowState((prev) => {
 				if (!prev) return prev;
@@ -145,24 +174,20 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						}
 						break;
 					case "completed":
-						isFlowActiveRef.current = false;
 						next.completed = {
 							ok: Boolean(event.ok),
 							error: event.error ?? null,
 						};
-						if (event.ok) {
-							void reloadProviders();
-						}
 						break;
 				}
 				return next;
 			});
 		},
-		[reloadProviders],
+		[reloadProviders, t],
 	);
 
 	const startFlow = async (provider: OauthLoginProvider) => {
-		if (!provider.available) return;
+		if (!provider.available || isFlowActiveRef.current || cancelRequestRef.current) return;
 
 		const initialFlow: FlowState = {
 			provider,
@@ -187,7 +212,12 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 		try {
 			// 1. Subscribe to events FIRST
 			const unlisten = await onProvidersOauth((event) => {
-				handleEvent(event, provider.id);
+				if (flowIdRef.current === flowId) {
+					handleEvent(event, provider.id);
+				} else if (event.providerId === provider.id && event.kind === "completed" && event.ok) {
+					// Credentials are global even after this flow's UI is abandoned.
+					void reloadProviders();
+				}
 			});
 			if (isClosingRef.current || flowIdRef.current !== flowId) {
 				// Dialog closed (or flow abandoned) while subscribing: don't leak the listener.
@@ -197,11 +227,23 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 			unlistenRef.current = unlisten;
 
 			// 2. Start login process
-			await oauthLoginStart(provider.id);
+			const start = oauthLoginStart(provider.id);
+			startRequestRef.current = start;
+			try {
+				await start;
+			} finally {
+				if (startRequestRef.current === start) startRequestRef.current = null;
+			}
 			if (flowIdRef.current !== flowId) return;
 
 			// 3. Hydrate any early event
-			const status = await oauthLoginStatus();
+			const status = await oauthLoginStatus().catch((err: unknown) => {
+				// A failed snapshot read does not mean the started process exited.
+				if (flowIdRef.current === flowId) {
+					setFlowState((prev) => prev ? { ...prev, notifications: [...prev.notifications, errMsg(err)] } : prev);
+				}
+				return null;
+			});
 			if (flowIdRef.current !== flowId) return;
 			if (status && status.providerId === provider.id) {
 				if (status.url) {
@@ -303,11 +345,11 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 			});
 			if (!confirmed) return;
 			try {
-				await oauthLoginCancel();
-			} catch {
-				// Ignore cancel error
+				await cancelFlow();
+			} catch (err) {
+				setFlowState((prev) => prev ? { ...prev, notifications: [...prev.notifications, errMsg(err)] } : prev);
+				return;
 			}
-			isFlowActiveRef.current = false;
 		}
 
 		isClosingRef.current = true;
@@ -316,24 +358,22 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 			unlistenRef.current = null;
 		}
 		onClose();
-	}, [phase, flowState, onClose]);
+	}, [phase, flowState, onClose, cancelFlow, t]);
 
 	// Escape is handled by <Modal onClose={handleDismiss}>.
 
 	/** 上一步: abandon the in-flight flow and return to the provider list. */
 	const handleBack = async () => {
-		flowIdRef.current++;
+		try {
+			await cancelFlow();
+		} catch (err) {
+			setFlowState((prev) => prev ? { ...prev, notifications: [...prev.notifications, errMsg(err)] } : prev);
+			return;
+		}
+		if (isClosingRef.current) return;
 		if (unlistenRef.current) {
 			unlistenRef.current();
 			unlistenRef.current = null;
-		}
-		if (isFlowActiveRef.current) {
-			isFlowActiveRef.current = false;
-			try {
-				await oauthLoginCancel();
-			} catch {
-				// Ignore cancel error
-			}
 		}
 		setInputValue("");
 		setFlowState(null);
@@ -349,12 +389,9 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 				unlistenRef.current();
 				unlistenRef.current = null;
 			}
-			if (isFlowActiveRef.current) {
-				void oauthLoginCancel();
-				isFlowActiveRef.current = false;
-			}
+			void cancelFlow().catch(() => {});
 		};
-	}, []);
+	}, [cancelFlow]);
 
 	const isTerminalHint =
 		Boolean(flowState?.completed?.error) &&

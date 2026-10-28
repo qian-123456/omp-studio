@@ -15,6 +15,26 @@ beforeEach(() => {
 });
 
 describe("live reducer — streaming lifecycle", () => {
+	it.each([
+		{ type: "agent_end", isTerminal: true },
+		{ type: "agent_end", isTerminal: false, awaitingAsyncWork: true },
+	])("settling $type clears dialog cards", (end) => {
+		frame({ type: "agent_start" });
+		frame({ type: "extension_ui_request", id: "dialog", method: "confirm" });
+		expect(live().pendingUi).toHaveLength(1);
+		frame(end);
+		expect(live().pendingUi).toEqual([]);
+		expect(live().streaming).toBe(false);
+	});
+
+	it.each(["completed", "failed", "aborted"])("late subagent progress cannot reverse %s", (status) => {
+		frame({ type: "subagent_lifecycle", payload: { id: "child", status } });
+		frame({ type: "subagent_progress", payload: { progress: { id: "child", status: "running", recentOutput: ["late"] } } });
+		frame({ type: "subagent_lifecycle", payload: { id: "child", status: "started" } });
+		frame({ type: "response", command: "get_subagents", success: true, data: { subagents: [{ id: "child", status: "running" }] } });
+		expect(live().subagents.child.progress?.status).toBe(status);
+		expect(live().subagents.child.status).toBe(status);
+	});
 	it("agent_start / turn_start set streaming", () => {
 		frame({ type: "agent_start" });
 		expect(live().streaming).toBe(true);
@@ -523,6 +543,23 @@ describe("live reducer — subagents + commands + tools", () => {
 });
 
 describe("live reducer — process events", () => {
+	it("exit rejects late start, UI request and pending snapshots until explicit process restart", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().reduceProcess({ sessionId: SID, running: false, exitCode: 0 });
+		for (const late of [
+			{ type: "agent_start" }, { type: "turn_start" },
+			{ type: "extension_ui_request", id: "late", method: "confirm" },
+			{ type: "response", command: "get_state", success: true, data: { isStreaming: true } },
+		]) frame(late);
+		useLive.getState().setPendingUi(SID, [{ sessionId: SID, request: { id: "snapshot", method: "confirm" }, receivedAt: "now" }]);
+		expect(live().alive).toBe(false);
+		expect(live().streaming).toBe(false);
+		expect(live().pendingUi).toEqual([]);
+		useLive.getState().reduceProcess({ sessionId: SID, running: true, exitCode: null });
+		frame({ type: "agent_start" });
+		expect(live().alive).toBe(true);
+		expect(live().streaming).toBe(true);
+	});
 	it("rpc:process running=false clears streaming + pending", () => {
 		frame({ type: "agent_start" });
 		frame({ type: "extension_ui_request", id: "u1", method: "confirm" });

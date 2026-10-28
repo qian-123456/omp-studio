@@ -454,6 +454,7 @@ function ApprovalDock({
 	);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const approving = useRef(false);
 	const optRef = useRef<HTMLButtonElement>(null);
 	const effective = effectiveExecMode(mode, plan);
 	const single = plan.tiers.length <= 1;
@@ -469,6 +470,8 @@ function ApprovalDock({
 	};
 
 	const approve = async () => {
+		if (disabled || approving.current) return;
+		approving.current = true;
 		setBusy(true);
 		try {
 			await approvePlan(sessionId, plan, effective, single ? null : role);
@@ -476,6 +479,7 @@ function ApprovalDock({
 		} catch (err) {
 			toast.error(t("chatView.plan.approveFailed", { error: errMsg(err) }));
 		} finally {
+			approving.current = false;
 			setBusy(false);
 		}
 	};

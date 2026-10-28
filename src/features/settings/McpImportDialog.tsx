@@ -1,7 +1,7 @@
 /** 「导入配置」 dialog: paste an MCP config from another tool, preview it, save each server. */
 
 import { useT } from "../../stores/language";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
 import type { McpScope } from "../../lib/contracts";
 import { McpScopePicker, type PickerProject } from "./McpScopePicker";
@@ -15,18 +15,15 @@ export function McpImportDialog({
 	projects,
 	current,
 	existingNames,
-	onImportOne,
-	onFinished,
+	onImport,
 	onClose,
 }: {
 	projects: PickerProject[];
 	current: string | null;
 	/** Every server name in the catalog. */
 	existingNames: string[];
-	/** Save one server; resolves to an error message or null. Must not reload the catalog. */
-	onImportOne: (name: string, entry: ImportEntry, scope: McpScope) => Promise<string | null>;
-	/** Called once after a run with the number of servers imported (reloads + toasts). */
-	onFinished: (imported: number) => void;
+	/** The parent owns the entire batch, including the final catalog reload. Returns errors by server name. */
+	onImport: (entries: { name: string; entry: ImportEntry }[], scope: McpScope) => Promise<Map<string, string>>;
 	onClose: () => void;
 }) {
 	const { t } = useT();
@@ -39,6 +36,7 @@ export function McpImportDialog({
 		),
 	);
 	const [running, setRunning] = useState(false);
+	const runningRef = useRef(false);
 	const [done, setDone] = useState<Set<string>>(() => new Set());
 	const [failed, setFailed] = useState<Map<string, string>>(() => new Map());
 
@@ -67,23 +65,20 @@ export function McpImportDialog({
 	const invalid = scopeError(scope) !== null;
 
 	const run = async () => {
+		if (runningRef.current || pending.length === 0 || invalid) return;
+		runningRef.current = true;
 		setRunning(true);
-		const nextDone = new Set(done);
-		const nextFailed = new Map<string, string>();
-		let ok = 0;
-		for (const r of pending) {
-			const err = await onImportOne(r.name, r.entry, scope);
-			if (err) nextFailed.set(r.name, err);
-			else {
-				nextDone.add(r.name);
-				ok++;
-			}
+		try {
+			const nextFailed = await onImport(pending, scope);
+			const nextDone = new Set(done);
+			for (const r of pending) if (!nextFailed.has(r.name)) nextDone.add(r.name);
+			setDone(nextDone);
+			setFailed(nextFailed);
+			if (nextFailed.size === 0) onClose();
+		} finally {
+			runningRef.current = false;
+			setRunning(false);
 		}
-		setDone(nextDone);
-		setFailed(nextFailed);
-		setRunning(false);
-		onFinished(ok);
-		if (nextFailed.size === 0 && ok > 0) onClose();
 	};
 
 	return (

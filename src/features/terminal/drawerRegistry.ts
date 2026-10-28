@@ -40,31 +40,73 @@ export function decodeBase64(b64: string): Uint8Array {
 	return bytes;
 }
 
-let bridgeStarted = false;
+type EarlyEvent = { data: string } | { code: number | null };
+const earlyEvents = new Map<string, EarlyEvent[]>();
+let pendingStarts = 0;
+let bridgeReady: Promise<void> | undefined;
 
-/** Subscribe once to terminal:data/exit and fan events out to all entries. */
-export function ensureDrawerEventBridge(): void {
-	if (bridgeStarted) return;
-	bridgeStarted = true;
-	void onTerminalData((p) => {
-		for (const entry of drawerRegistry.values()) {
-			if (entry.termId === p.termId) {
-				entry.term.write(decodeBase64(p.data));
-			}
-		}
-	}).catch(() => {
-		bridgeStarted = false;
-	});
-	void onTerminalExit((p) => {
-		for (const [tabId, entry] of drawerRegistry) {
-			if (entry.termId !== p.termId) continue;
-			entry.phase = "exited";
-			entry.exitCode = p.code;
-			useDrawerStore.getState().updateTab(tabId, { status: "exited", exitCode: p.code });
-		}
-	}).catch(() => {
-		bridgeStarted = false;
-	});
+function deliver(tabId: string, entry: DrawerTerminalEntry, event: EarlyEvent): void {
+    if ("data" in event) entry.term.write(decodeBase64(event.data));
+    else {
+        entry.phase = "exited";
+        entry.exitCode = event.code;
+        useDrawerStore.getState().updateTab(tabId, { status: "exited", exitCode: event.code });
+    }
+}
+
+function receive(termId: string, event: EarlyEvent): void {
+    for (const [tabId, entry] of drawerRegistry) {
+        if (entry.termId !== termId) continue;
+        deliver(tabId, entry, event);
+        return;
+    }
+    // Only retain unmatched events during a start handshake, never indefinitely.
+    if (pendingStarts > 0) {
+        const queued = earlyEvents.get(termId) ?? [];
+        queued.push(event);
+        earlyEvents.set(termId, queued);
+    }
+}
+
+/** Await both subscriptions before spawning so even immediate output is observed. */
+export function ensureDrawerEventBridge(): Promise<void> {
+    if (!bridgeReady) {
+        bridgeReady = (async () => {
+            const subscriptions = await Promise.allSettled([
+                onTerminalData((p) => receive(p.termId, { data: p.data })),
+                onTerminalExit((p) => receive(p.termId, { code: p.code })),
+            ]);
+            const failure = subscriptions.find((s) => s.status === "rejected");
+            if (failure?.status === "rejected") {
+                for (const s of subscriptions) if (s.status === "fulfilled") s.value();
+                bridgeReady = undefined;
+                throw failure.reason;
+            }
+        })();
+    }
+    return bridgeReady;
+}
+
+/** Complete the response/event handshake without overwriting an early exit. */
+export async function startDrawerTerminal(tabId: string, entry: DrawerTerminalEntry, open: () => Promise<string>): Promise<void> {
+    await ensureDrawerEventBridge();
+    if (drawerRegistry.get(tabId) !== entry) return;
+    pendingStarts++;
+    try {
+        const id = await open();
+        if (drawerRegistry.get(tabId) !== entry) {
+            void termClose(id).catch(() => {});
+            earlyEvents.delete(id);
+            return;
+        }
+        entry.termId = id;
+        entry.phase = "ready";
+        useDrawerStore.getState().updateTab(tabId, { status: "ready", exitCode: null });
+        for (const event of earlyEvents.get(id) ?? []) deliver(tabId, entry, event);
+        earlyEvents.delete(id);
+    } finally {
+        if (--pendingStarts === 0) earlyEvents.clear();
+    }
 }
 
 /**

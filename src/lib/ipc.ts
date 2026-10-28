@@ -37,6 +37,7 @@ import type {
 	OauthLoginProvider,
 	OauthLoginStatus,
 	OmpConfigListResult,
+	OmpInstallResult,
 	OmpProjectConfigFile,
 	PromptComposition,
 	ModelRoleSnapshot,
@@ -324,8 +325,9 @@ export const gitRemoveWorktree = (
 	path: string,
 	deleteBranch: boolean,
 	force: boolean,
+	orphanOnly = false,
 ) =>
-	invoke<void>("git_remove_worktree", { repo, path, deleteBranch, force });
+	invoke<void>("git_remove_worktree", { repo, path, deleteBranch, force, orphanOnly });
 
 export const gitScanOrphans = () =>
 	invoke<WorktreeInfo[]>("git_scan_orphans");
@@ -430,8 +432,8 @@ export const servicesStop = (pid: number) =>
 export const readTextFile = (path: string) =>
 	invoke<string>("read_text_file", { path });
 
-export const writeTextFile = (path: string, content: string) =>
-	invoke<void>("write_text_file", { path, content });
+export const writeTextFile = (path: string, content: string, expectedContent?: string) =>
+	invoke<void>("write_text_file", { path, content, expectedContent });
 
 /** Text plus the on-disk stamp used for conflict detection; null content = file missing. */
 export interface StampedText {
@@ -974,10 +976,11 @@ export const ompUpdateCheck = () =>
 	invoke<import("./contracts").OmpUpdateStatus>("omp_update_check");
 /** Run `omp update` (300s timeout) and re-probe `omp --version`. */
 export const ompUpdateRun = () => invoke<import("./contracts").OmpUpdateResult>("omp_update_run");
-/** Run the official omp installer (`--binary`, 30 min timeout); progress arrives via the `omp:install` event. */
-export const ompInstallRun = () => invoke<import("./contracts").OmpInstallResult>("omp_install_run");
-/** Kill the running installer; the pending `omp_install_run` resolves with success=false. */
-export const ompInstallCancel = () => invoke<void>("omp_install_cancel");
+/** Run the official installer; runId correlates cancellation even before backend registration. */
+export const ompInstallRun = (runId: string) =>
+	invoke<OmpInstallResult>("omp_install_run", { runId });
+/** Cancel only this installation attempt, including before backend registration. */
+export const ompInstallCancel = (runId: string) => invoke<void>("omp_install_cancel", { runId });
 /** Stat-only check: current omp binary fingerprint and live sessions spawned from an older one. */
 export const rpcOmpStaleness = () => invoke<import("./contracts").OmpStaleness>("rpc_omp_staleness");
 

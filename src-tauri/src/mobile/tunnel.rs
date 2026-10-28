@@ -6,18 +6,40 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use crate::terminal::env;
 
 struct Active {
     gen: u64,
-    url: String,
+    url: Option<String>,
     kill: Option<oneshot::Sender<()>>,
 }
 
 static ACTIVE: Mutex<Option<Active>> = Mutex::new(None);
 static GEN: AtomicU64 = AtomicU64::new(0);
+static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
+static START_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+struct StartLease(u64);
+
+impl Drop for StartLease {
+    fn drop(&mut self) {
+        let mut active = ACTIVE.lock();
+        if active.as_ref().is_some_and(|a| a.gen == self.0) {
+            active.take();
+        }
+    }
+}
+
+fn publish(gen: u64, public: &str) -> bool {
+    let mut active = ACTIVE.lock();
+    let Some(entry) = active.as_mut().filter(|a| a.gen == gen) else {
+        return false;
+    };
+    entry.url = Some(public.to_string());
+    true
+}
 
 pub const MISSING_MSG: &str =
     "未找到 cloudflared。请先安装：brew install cloudflared（安装后重试）";
@@ -109,7 +131,7 @@ pub async fn ensure_tunnel_and_route(name: &str, hostname: &str) -> Result<(), S
 }
 
 pub fn url() -> Option<String> {
-    ACTIVE.lock().as_ref().map(|a| a.url.clone())
+    ACTIVE.lock().as_ref().and_then(|a| a.url.clone())
 }
 
 /// Extract the first `https://<sub>.trycloudflare.com` URL from a log line.
@@ -147,16 +169,64 @@ pub fn args(mode: &str, port: u16, name: Option<&str>) -> Result<Vec<String>, St
     }
 }
 
-/// Start (or return the running) tunnel. Returns the public URL.
+/// Own startup before the first await so stop also cancels unready tunnels.
 pub async fn start(
     mode: &str,
     port: u16,
     name: Option<String>,
     hostname: Option<String>,
+    mut shutdown: watch::Receiver<bool>,
 ) -> Result<String, String> {
+    let epoch = GEN.load(Ordering::SeqCst);
+    let _serial = START_LOCK.lock().await;
+    if *shutdown.borrow() || GEN.load(Ordering::SeqCst) != epoch {
+        return Err("隧道启动已取消".into());
+    }
     if let Some(u) = url() {
         return Ok(u);
     }
+    let (kill_tx, mut kill_rx) = oneshot::channel();
+    let gen = {
+        let mut active = ACTIVE.lock();
+        if GEN.load(Ordering::SeqCst) != epoch {
+            return Err("隧道启动已取消".into());
+        }
+        let gen = NEXT_OWNER.fetch_add(1, Ordering::SeqCst) + 1;
+        *active = Some(Active {
+            gen,
+            url: None,
+            kill: Some(kill_tx),
+        });
+        gen
+    };
+    let lease = StartLease(gen);
+    let (mut child, public) = tokio::select! {
+        biased;
+        _ = shutdown.changed() => return Err("手机服务已停止".into()),
+        _ = &mut kill_rx => return Err("隧道启动已取消".into()),
+        result = prepare(mode, port, name, hostname) => result?,
+    };
+    if *shutdown.borrow() || !publish(gen, &public) {
+        return Err("隧道启动已取消".into());
+    }
+    tokio::spawn(async move {
+        let _lease = lease;
+        tokio::select! {
+            _ = child.wait() => {}
+            _ = shutdown.changed() => { let _ = child.kill().await; }
+            _ = kill_rx => { let _ = child.kill().await; }
+        }
+        let _ = child.wait().await;
+    });
+    Ok(public)
+}
+
+async fn prepare(
+    mode: &str,
+    port: u16,
+    name: Option<String>,
+    hostname: Option<String>,
+) -> Result<(tokio::process::Child, String), String> {
     let name = if mode == "named" {
         Some(
             name.as_deref()
@@ -244,32 +314,14 @@ pub async fn start(
         },
     };
 
-    let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    let (kill_tx, kill_rx) = oneshot::channel::<()>();
-    *ACTIVE.lock() = Some(Active {
-        gen,
-        url: public.clone(),
-        kill: Some(kill_tx),
-    });
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = child.wait() => {}
-            _ = kill_rx => {
-                let _ = child.kill().await;
-                // Reap the child so it does not linger as a zombie.
-                let _ = child.wait().await;
-            }
-        }
-        let mut active = ACTIVE.lock();
-        if active.as_ref().is_some_and(|a| a.gen == gen) {
-            *active = None;
-        }
-    });
-    Ok(public)
+    Ok((child, public))
 }
 
 pub fn stop() {
-    if let Some(mut a) = ACTIVE.lock().take() {
+    // Invalidate starts already queued behind START_LOCK as well.
+    let mut active = ACTIVE.lock();
+    GEN.fetch_add(1, Ordering::SeqCst);
+    if let Some(mut a) = active.take() {
         if let Some(k) = a.kill.take() {
             let _ = k.send(());
         }
@@ -279,6 +331,95 @@ pub fn stop() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    #[tokio::test]
+    async fn stop_cancels_pending_owner_and_rejects_late_publication() {
+        let _test = TEST_LOCK.lock().await;
+        let _serial = START_LOCK.lock().await;
+        let gen = NEXT_OWNER.fetch_add(1, Ordering::SeqCst) + 1;
+        let (tx, rx) = oneshot::channel();
+        *ACTIVE.lock() = Some(Active {
+            gen,
+            url: None,
+            kill: Some(tx),
+        });
+        let lease = StartLease(gen);
+        assert_eq!(url(), None);
+        stop();
+        assert!(rx.await.is_ok(), "pending startup receives cancellation");
+        assert!(!publish(gen, "https://late.trycloudflare.com"));
+        drop(lease);
+        assert_eq!(url(), None);
+    }
+
+    #[tokio::test]
+    async fn stale_owner_cannot_replace_or_clear_new_tunnel() {
+        let _test = TEST_LOCK.lock().await;
+        let _serial = START_LOCK.lock().await;
+        let old = NEXT_OWNER.fetch_add(1, Ordering::SeqCst) + 1;
+        let stale = StartLease(old);
+        let gen = NEXT_OWNER.fetch_add(1, Ordering::SeqCst) + 1;
+        *ACTIVE.lock() = Some(Active {
+            gen,
+            url: None,
+            kill: None,
+        });
+        assert!(publish(gen, "https://new.trycloudflare.com"));
+        assert!(!publish(old, "https://old.trycloudflare.com"));
+        drop(stale);
+        assert_eq!(url().as_deref(), Some("https://new.trycloudflare.com"));
+        stop();
+    }
+
+    #[tokio::test]
+    async fn stop_invalidates_start_waiting_for_the_start_lock() {
+        let _test = TEST_LOCK.lock().await;
+        let serial = START_LOCK.lock().await;
+        let (_tx, rx) = watch::channel(false);
+        let start = start("off", 1, None, None, rx);
+        tokio::pin!(start);
+        assert!(futures_util::poll!(&mut start).is_pending());
+        stop();
+        drop(serial);
+        assert_eq!(start.await.unwrap_err(), "隧道启动已取消");
+        assert!(url().is_none());
+    }
+
+    #[tokio::test]
+    async fn concurrent_starts_return_the_same_owned_tunnel() {
+        let _test = TEST_LOCK.lock().await;
+        let serial = START_LOCK.lock().await;
+        let gen = NEXT_OWNER.fetch_add(1, Ordering::SeqCst) + 1;
+        *ACTIVE.lock() = Some(Active {
+            gen,
+            url: Some("https://one.trycloudflare.com".into()),
+            kill: None,
+        });
+        let (_tx, rx) = watch::channel(false);
+        let first = start("off", 1, None, None, rx.clone());
+        let second = start("off", 1, None, None, rx);
+        tokio::pin!(first, second);
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        drop(serial);
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first.unwrap(), "https://one.trycloudflare.com");
+        assert_eq!(second.unwrap(), "https://one.trycloudflare.com");
+        stop();
+    }
+
+    #[tokio::test]
+    async fn stopped_origin_cannot_start_a_tunnel() {
+        let _test = TEST_LOCK.lock().await;
+        let (tx, rx) = watch::channel(false);
+        tx.send(true).unwrap();
+        // Invalid mode would produce a different error if prepare were reached.
+        assert_eq!(
+            start("off", 1, None, None, rx).await.unwrap_err(),
+            "隧道启动已取消"
+        );
+    }
 
     #[test]
     fn parses_quick_url_from_banner() {

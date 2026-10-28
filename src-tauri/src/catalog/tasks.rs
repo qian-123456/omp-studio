@@ -172,7 +172,8 @@ async fn run_external_loop(state: AppState) {
             .unwrap_or_default();
 
         let status_files = external::read_status_files(&status_dir);
-        let new_ext = external::external_map(holders, &status_files, external::pid_alive, own_pid);
+        let status_alive = external::status_validator(external::process_birth);
+        let new_ext = external::external_map(holders, &status_files, &status_alive, own_pid);
 
         // Terminal squeezes GUI offline: an external holder on a file we also
         // hold via an app-owned RPC child means a single-writer conflict; step
@@ -211,13 +212,12 @@ async fn run_external_loop(state: AppState) {
             .map(|h| h.pid)
             .collect();
         own_pids.push(own_pid);
-        let forks =
-            external::detect_forks(&live, &status_files, external::pid_alive, &own_pids, |f| {
-                super::parse::read_head(std::path::Path::new(f))
-                    .ok()
-                    .flatten()
-                    .and_then(|h| h.parent_session)
-            });
+        let forks = external::detect_forks(&live, &status_files, &status_alive, &own_pids, |f| {
+            super::parse::read_head(std::path::Path::new(f))
+                .ok()
+                .flatten()
+                .and_then(|h| h.parent_session)
+        });
         for fork in forks {
             let handle = crate::rpc::get_handle(&fork.live_session_id);
             if let Some(handle) = handle {

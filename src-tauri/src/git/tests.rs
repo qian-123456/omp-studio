@@ -608,3 +608,81 @@ fn parse_commit_draft_validates_model_reply() {
         format!("fix: {long}")
     );
 }
+
+#[test]
+fn orphan_cleanup_revalidates_session_ownership_after_scan() {
+    let (repo, wt) = repo_with_worktree("orphan-recheck");
+    let root = repo.to_string_lossy().to_string();
+    assert!(worktree::orphans(&[root], &[])
+        .iter()
+        .any(|w| Path::new(&w.path) == wt));
+    std::fs::create_dir_all(wt.join("nested")).unwrap();
+    let latest = vec![(
+        "new-session".into(),
+        wt.join("nested").to_string_lossy().to_string(),
+    )];
+    assert!(worktree::remove_checked(&repo, &wt, true, true, &latest).is_err());
+    assert!(wt.join("a.txt").exists());
+    // Explicit cleanup of a known idle session supplies only active ownership.
+    worktree::remove_checked(&repo, &wt, false, false, &[]).unwrap();
+    assert!(!wt.exists());
+    std::fs::remove_dir_all(repo).unwrap();
+}
+
+#[test]
+fn running_time_machine_worktree_cannot_be_reclaimed_even_with_force() {
+    let repo = temp_repo("tm-protected");
+    let sha = commit(&repo, "a.txt", "keep\n", "init");
+    let sink: tm::LogSink = Arc::new(|_, _| {});
+    let run = tm::run(&repo, &sha, Some("sleep 30"), sink).unwrap();
+    let wt = Path::new(&run.worktree);
+    assert!(
+        !worktree::orphans(&[repo.to_string_lossy().to_string()], &[])
+            .iter()
+            .any(|entry| Path::new(&entry.path) == wt)
+    );
+    let result = worktree::remove_checked(&repo, wt, false, true, &[]);
+    assert!(result.is_err());
+    assert!(wt.join("a.txt").exists());
+    assert!(tm::list().iter().any(|r| r.id == run.id && r.pid.is_some()));
+    tm::stop(&run.id, true).unwrap();
+    assert!(!wt.exists());
+    std::fs::remove_dir_all(repo).unwrap();
+}
+
+#[test]
+fn guarded_remove_rejects_alias_owner_but_not_path_prefix_neighbor() {
+    let (repo, wt) = repo_with_worktree("owner-alias");
+    let alias = repo.join("alias");
+    std::os::unix::fs::symlink(&wt, &alias).unwrap();
+    let alias_owner = vec![("s".into(), alias.to_string_lossy().to_string())];
+    assert!(worktree::remove_checked(&repo, &wt, false, true, &alias_owner).is_err());
+    let neighbor = vec![("s".into(), format!("{}-neighbor", wt.display()))];
+    worktree::remove_checked(&repo, &wt, false, false, &neighbor).unwrap();
+    assert!(!wt.exists());
+    std::fs::remove_dir_all(repo).unwrap();
+}
+
+#[test]
+fn branch_cleanup_failure_leaves_disk_listing_reconciliable() {
+    let (repo, wt) = repo_with_worktree("partial-clean");
+    let branch = git_ok(&wt, &["branch", "--show-current"]).unwrap();
+    commit(&wt, "unmerged.txt", "work\n", "unmerged work");
+    let error = worktree::remove_checked(&repo, &wt, true, false, &[]).unwrap_err();
+    assert!(error.contains("worktree 已删除"), "{error}");
+    assert!(!wt.exists());
+    assert!(!worktree::list(&repo, &[])
+        .unwrap()
+        .iter()
+        .any(|entry| Path::new(&entry.path) == wt));
+    assert!(git_ok(
+        &repo,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{}", branch.trim())
+        ]
+    )
+    .is_ok());
+    std::fs::remove_dir_all(repo).unwrap();
+}

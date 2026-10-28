@@ -57,7 +57,7 @@ beforeEach(() => {
 	usePendingSession.setState({ drafts: {}, selectedId: null });
 	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {} });
 	useSessions.setState({ sessions: {} });
-	useUi.setState({ selectedSessionId: null, centerView: "session" });
+	useUi.setState({ selectedSessionId: null, centerView: "session", previousCenterView: null });
 	useModelCatalog.setState({
 		models: [
 			{ provider: "a", id: "m1", name: "m1", thinking: ["low", "high"] },
@@ -143,6 +143,41 @@ describe("sendFromDraft", () => {
 		expect(usePendingSession.getState().drafts[id]).toBeUndefined();
 		expect(useUi.getState().selectedSessionId).toBe("real-1");
 		expect(rpcRelease).toHaveBeenCalledWith("real-1");
+	});
+
+	it("73: first-send handoff keeps settings open and returns to the created session", async () => {
+		const created = deferred<Created>();
+		createSession.mockReturnValue(created.promise);
+		const id = open();
+		useComposer.getState().setDraft(id, "keep this prompt");
+		const send = vi.fn(async () => {});
+		const pending = sendFromDraft(id, send);
+		useUi.getState().openSettings();
+		created.resolve({ sessionId: "real-1", stub });
+		await pending;
+		expect(send).toHaveBeenCalledWith("real-1");
+		expect(useUi.getState().centerView).toBe("settings");
+		expect(useUi.getState().previousCenterView).toBe("session");
+		expect(useUi.getState().selectedSessionId).toBe("real-1");
+		expect(usePendingSession.getState().drafts[id]).toBeUndefined();
+		useUi.getState().closeSettings();
+		expect(useUi.getState().centerView).toBe("session");
+		expect(useUi.getState().selectedSessionId).toBe("real-1");
+	});
+
+	it("73: a first-send completion cannot take over a different page under settings", async () => {
+		const created = deferred<Created>();
+		createSession.mockReturnValue(created.promise);
+		const id = open();
+		const pending = sendFromDraft(id, async () => {});
+		useUi.getState().setCenter("inbox");
+		useUi.getState().openSettings();
+		created.resolve({ sessionId: "real-1", stub });
+		await pending;
+		expect(useUi.getState().centerView).toBe("settings");
+		useUi.getState().closeSettings();
+		expect(useUi.getState().centerView).toBe("inbox");
+		expect(useUi.getState().selectedSessionId).toBeNull();
 	});
 
 	it("rejects with the draft intact when no process can start", async () => {

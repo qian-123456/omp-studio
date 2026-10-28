@@ -53,7 +53,13 @@ pub fn session_resume_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
 
 pub fn remove_resume_lock(session_id: &str) {
     if let Some(m) = RESUME_LOCKS.get() {
-        m.lock().remove(session_id);
+        let mut locks = m.lock();
+        if locks
+            .get(session_id)
+            .is_some_and(|lock| Arc::strong_count(lock) == 1)
+        {
+            locks.remove(session_id);
+        }
     }
     autotitle::forget(session_id);
 }
@@ -204,25 +210,24 @@ async fn schedule_idle_suspend(state: AppState, session_id: String, delay: Optio
     }
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(delay).await;
-        let should_stop = {
+        {
             let resume = session_resume_lock(&session_id);
             let _resume_guard = resume.lock().await;
-            if !get_handle(&session_id).is_some_and(|current| Arc::ptr_eq(&current, &handle)) {
-                false
-            } else {
+            if get_handle(&session_id).is_some_and(|current| Arc::ptr_eq(&current, &handle)) {
                 let threshold =
                     Duration::from_secs(u64::from(state.settings.read().idle_suspend_minutes) * 60);
-                idle_suspendable(&handle, threshold) && suspend_if_idle(&handle, version).await
+                let suspended =
+                    idle_suspendable(&handle, threshold) && suspend_if_idle(&handle, version).await;
+                if suspended {
+                    set_suspended(&state, &session_id, true);
+                }
             }
-        };
+        }
         let mut timers = IDLE_TIMERS.lock();
         if timers.get(&session_id) == Some(&version) {
             timers.remove(&session_id);
         }
         drop(timers);
-        if should_stop {
-            set_suspended(&state, &session_id, true);
-        }
     });
 }
 
@@ -301,7 +306,11 @@ pub async fn shutdown() {
 /// `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta`
 /// after the child reports its sessionId; a group requires the 通用对话 (`chat`) mode.
 pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo, String> {
+    let _mutation = catalog::session_mutation_lock().lock().await;
     if let Some(file) = &opts.resume_file {
+        if !std::path::Path::new(file).is_file() {
+            return Err(format!("session file no longer exists: {file}"));
+        }
         ensure_not_held(file).await?;
     }
     let mode = opts.mode.unwrap_or_default();
@@ -349,20 +358,31 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
             let _ = process::stop_handle(&old).await;
         }
     }
-    registry()
-        .write()
-        .insert(session_id.clone(), handle.clone());
     let info = handle.info();
-    let _ = state.app.emit(
-        "rpc:process",
-        json!({ "sessionId": session_id, "running": true, "exitCode": null }),
-    );
-    state.emit(AppEvent::RpcProcess {
-        session_id,
-        running: true,
-        exit_code: None,
-    });
+    register_started(&handle, || {
+        let _ = state.app.emit(
+            "rpc:process",
+            json!({ "sessionId": session_id, "running": true, "exitCode": null }),
+        );
+        state.emit(AppEvent::RpcProcess {
+            session_id,
+            running: true,
+            exit_code: None,
+        });
+    })?;
     Ok(info)
+}
+
+fn register_started(handle: &Arc<SessionHandle>, publish: impl FnOnce()) -> Result<(), String> {
+    let id = handle.session_id.read().clone();
+    let mut reg = registry().write();
+    if !handle.alive.load(Ordering::SeqCst) {
+        return Err("omp exited before session registration".into());
+    }
+    reg.insert(id, handle.clone());
+    // Same registry boundary as publish_exit: a start cannot overtake its exit.
+    publish();
+    Ok(())
 }
 
 /// Error prefix the frontend recognizes to pop the "missing cwd" resume dialog.
@@ -386,7 +406,7 @@ pub const SESSION_HELD_PREFIX: &str = "SESSION_HELD:";
 fn session_held_err(
     holders: HashMap<String, catalog::external::Holder>,
     status: &[catalog::external::StatusFile],
-    alive: impl Fn(u32) -> bool,
+    alive: impl Fn(&catalog::external::StatusFile) -> bool,
     own_pid: u32,
     file: &str,
 ) -> Option<String> {
@@ -405,7 +425,7 @@ async fn ensure_not_held(file: &str) -> Result<(), String> {
         session_held_err(
             holders,
             &status,
-            catalog::external::pid_alive,
+            catalog::external::status_validator(catalog::external::process_birth),
             std::process::id(),
             &file,
         )
@@ -455,6 +475,7 @@ pub async fn ensure_live(
         .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
     let cwd = match cwd {
         Some(dir) => {
+            let _mutation = catalog::session_mutation_lock().lock().await;
             if !std::path::Path::new(&dir).is_dir() {
                 return Err(format!("目录不存在: {dir}"));
             }
@@ -471,12 +492,8 @@ pub async fn ensure_live(
     };
     // Single-writer takeover: an external omp holding the file must exit (and
     // flush its session_exit record) before our RPC child loads it.
-    if let Some(pid) = catalog::get(state, session_id)
-        .await
-        .and_then(|m| m.external_pid)
-        .filter(|&pid| pid_alive(pid))
-    {
-        terminate_pid(pid).await;
+    if let Some(meta) = catalog::get(state, session_id).await {
+        terminate_session_holder(&meta).await;
     }
     let info = start(
         state,
@@ -533,7 +550,6 @@ pub async fn refresh_privacy(
 /// Write an `extension_ui_response`, emit `UiResponded`.
 pub async fn ui_respond(state: &AppState, session_id: &str, response: Value) -> Result<(), String> {
     let handle = get_handle(session_id).ok_or("session is not live")?;
-    handle.touch();
     let mut frame = json!({});
     if let Value::Object(map) = response {
         for (k, v) in map {
@@ -547,11 +563,8 @@ pub async fn ui_respond(state: &AppState, session_id: &str, response: Value) -> 
         .unwrap_or("")
         .to_string();
     process::send_raw(&handle, frame).await?;
+    handle.touch();
     if !request_id.is_empty() {
-        handle
-            .pending_ui
-            .lock()
-            .retain(|r| r.request.get("id").and_then(Value::as_str) != Some(request_id.as_str()));
         state.emit(AppEvent::UiResponded {
             session_id: session_id.to_string(),
             request_id,
@@ -620,10 +633,34 @@ pub async fn takeover_external(
     session_id: &str,
 ) -> Result<LiveSessionInfo, String> {
     let meta: Option<SessionMeta> = catalog::get(state, session_id).await;
-    if let Some(pid) = meta.as_ref().and_then(|m| m.external_pid) {
-        terminate_pid(pid).await;
+    if let Some(meta) = meta.as_ref() {
+        terminate_session_holder(meta).await;
     }
     ensure_live(state, session_id, None).await
+}
+
+async fn terminate_session_holder(meta: &SessionMeta) {
+    if let Some(pid) = meta.external_pid {
+        let file = meta.file.clone();
+        let still_owned = tokio::task::spawn_blocking(move || {
+            let holders = catalog::external::lsof_holders(&paths::omp_sessions_dir());
+            let statuses = catalog::external::read_status_files(&paths::status_dir());
+            catalog::external::external_map(
+                holders,
+                &statuses,
+                catalog::external::status_validator(catalog::external::process_birth),
+                std::process::id(),
+            )
+            .get(&file)
+            .copied()
+                == Some(pid)
+        })
+        .await
+        .unwrap_or(false);
+        if still_owned {
+            terminate_pid(pid).await;
+        }
+    }
 }
 
 /// SIGTERM then SIGKILL after the grace window.
@@ -631,6 +668,9 @@ async fn terminate_pid(pid: u32) {
     if pid <= 1 || !pid_looks_like_omp(pid) {
         return;
     }
+    let Some(birth) = catalog::external::process_birth(pid) else {
+        return;
+    };
     // SAFETY: send SIGTERM to external process.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGTERM);
@@ -641,23 +681,39 @@ async fn terminate_pid(pid: u32) {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    if catalog::external::process_birth(pid).as_ref() != Some(&birth) || !pid_looks_like_omp(pid) {
+        return;
+    }
     // SAFETY: send SIGKILL after grace period.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGKILL);
     }
 }
 
-/// Guard against PID reuse: only signal a process whose command line mentions omp.
+/// Only exact executable/script tokens identify omp, never substring matches.
 fn pid_looks_like_omp(pid: u32) -> bool {
     std::process::Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "comm=,args="])
+        .args(["-p", &pid.to_string(), "-o", "args="])
         .output()
         .map(|o| o.status.success() && ps_line_looks_like_omp(&String::from_utf8_lossy(&o.stdout)))
         .unwrap_or(false)
 }
 
 fn ps_line_looks_like_omp(line: &str) -> bool {
-    line.to_ascii_lowercase().contains("omp")
+    let mut tokens = line.split_whitespace();
+    let executable = tokens
+        .next()
+        .and_then(|token| std::path::Path::new(token).file_name())
+        .and_then(|name| name.to_str());
+    match executable {
+        Some("omp" | "omp.exe") => true,
+        Some("bun" | "node" | "nodejs") => tokens
+            .next()
+            .and_then(|token| std::path::Path::new(token).file_name())
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| matches!(name, "omp" | "omp.exe")),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -665,11 +721,78 @@ mod pid_guard_tests {
     use super::*;
 
     #[test]
+    fn process_exited_before_registration_never_publishes_started() {
+        let handle = Arc::new(SessionHandle::for_test());
+        let id = format!("dead-before-register-{}", uuid::Uuid::new_v4());
+        *handle.session_id.write() = id.clone();
+        handle.alive.store(false, Ordering::SeqCst);
+        assert!(register_started(&handle, || panic!("dead process published running")).is_err());
+        assert!(!registry().read().contains_key(&id));
+    }
+
+    #[test]
+    fn suspension_publishes_after_exit_even_without_watcher() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE session_meta(session_id TEXT PRIMARY KEY, suspended INTEGER); INSERT INTO session_meta VALUES('s', 0);").unwrap();
+        let statuses = std::cell::RefCell::new(Vec::new());
+        for suspended in [true, false] {
+            persist_suspension(&db, "s", suspended, || {
+                let stored: bool = db
+                    .query_row(
+                        "SELECT suspended FROM session_meta WHERE session_id='s'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                statuses.borrow_mut().push(
+                    catalog::status::derive(&catalog::status::DeriveInput {
+                        suspended: stored,
+                        ..Default::default()
+                    })
+                    .0,
+                );
+            })
+            .unwrap();
+        }
+        assert_eq!(
+            *statuses.borrow(),
+            vec![
+                crate::contracts::SessionStatus::Suspended,
+                crate::contracts::SessionStatus::Idle
+            ]
+        );
+        persist_suspension(&db, "missing", true, || {
+            panic!("deleted session must not republish")
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn deleting_session_retains_resume_lock_with_waiters() {
+        let id = format!("resume-lock-{}", uuid::Uuid::new_v4());
+        let first = session_resume_lock(&id);
+        let held = first.lock().await;
+        let waiting = session_resume_lock(&id);
+        remove_resume_lock(&id);
+        let next = session_resume_lock(&id);
+        assert!(Arc::ptr_eq(&first, &next));
+        assert!(waiting.try_lock().is_err());
+        drop(held);
+        drop(first);
+        drop(waiting);
+        drop(next);
+        remove_resume_lock(&id);
+    }
+
+    #[test]
     fn ps_line_matching() {
         assert!(ps_line_looks_like_omp(
             "bun /home/u/.bun/bin/omp --mode rpc"
         ));
         assert!(!ps_line_looks_like_omp("firefox /Applications/Firefox.app"));
+        assert!(!ps_line_looks_like_omp("/usr/bin/compile"));
+        assert!(!ps_line_looks_like_omp("/bin/echo omp"));
+        assert!(!ps_line_looks_like_omp("node /tmp/omp-imposter.js"));
         assert!(!ps_line_looks_like_omp(""));
     }
 }
@@ -686,11 +809,32 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 pub(crate) fn set_suspended(state: &AppState, session_id: &str, suspended: bool) {
+    let publish_state = state.clone();
+    let id = session_id.to_string();
     let db = state.db.lock();
-    let _ = db.execute(
+    let _ = persist_suspension(&db, session_id, suspended, move || {
+        tauri::async_runtime::spawn(async move {
+            catalog::recompute_async(&publish_state, Some(vec![id])).await;
+        });
+    });
+}
+
+/// Publish every changed suspension fact after persistence, including when the
+/// exit event has already recomputed the session as Idle.
+fn persist_suspension(
+    db: &rusqlite::Connection,
+    session_id: &str,
+    suspended: bool,
+    publish: impl FnOnce(),
+) -> rusqlite::Result<()> {
+    let changed = db.execute(
         "UPDATE session_meta SET suspended = ?1 WHERE session_id = ?2",
         rusqlite::params![suspended as i32, session_id],
-    );
+    )?;
+    if changed > 0 {
+        publish();
+    }
+    Ok(())
 }
 
 /// Locate the session jsonl + cwd for resume: catalog first, then a filename
@@ -804,6 +948,7 @@ mod tests {
             session_file: file.into(),
             pid: 42,
             state: "idle".into(),
+            process_started_at: None,
         }];
         assert_eq!(
             session_held_err(HashMap::new(), &status, |_| true, own, file),

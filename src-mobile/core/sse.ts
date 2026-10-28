@@ -104,6 +104,8 @@ export class SseClient {
 			this.close();
 			clearTimeout(this.timer);
 			void this.probeAndConnect();
+		} else if (this.es.readyState === 1) {
+			useConnection.getState().setPhase("open");
 		}
 		this.deps.bus.emit("resync", { reason });
 	}
@@ -135,7 +137,7 @@ export class SseClient {
 			this.scheduleReconnect();
 			return;
 		}
-		if (this.started && !this.es) this.connect();
+		if (this.started && !isUnauthorized() && !this.es) this.connect();
 	}
 
 	private connect(): void {
@@ -150,6 +152,7 @@ export class SseClient {
 		this.es = src;
 		for (const name of NAMES) {
 			src.addEventListener(name, (e) => {
+				if (this.es !== src || isUnauthorized()) return;
 				let data: unknown = {};
 				try {
 					data = e.data ? JSON.parse(e.data) : {};

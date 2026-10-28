@@ -29,7 +29,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import {
 	appPaths,
-	termClose,
 	termOpen,
 	termResize,
 	termWrite,
@@ -48,6 +47,7 @@ import {
 	destroyDrawerTerminal,
 	drawerRegistry,
 	ensureDrawerEventBridge,
+	startDrawerTerminal,
 	type DrawerTerminalEntry,
 } from "./drawerRegistry";
 import { bindXtermTheme, currentXtermTheme, getSearchDecorations } from "./terminalTheme";
@@ -115,7 +115,7 @@ export function CommandTerminalPanel() {
 	// Start the shared event bridge; showing the panel with no visible tabs
 	// spawns the first shell (StrictMode-safe: re-checks the store).
 	useEffect(() => {
-		ensureDrawerEventBridge();
+		void ensureDrawerEventBridge().catch(() => {});
 		if (!useDrawerStore.getState().tabs.some((t) => !t.detached)) addTerminalTab();
 	}, []);
 
@@ -245,18 +245,11 @@ export function CommandTerminalPanel() {
 				if (cwd !== tab.cwd) {
 					useDrawerStore.getState().updateTab(tab.id, { cwd });
 				}
-				const id = await termOpen(cwd, [], term.cols || 80, term.rows || 24);
-				// Tab closed or reconnected while the spawn was in flight
-				if (drawerRegistry.get(tab.id) !== entry) {
-					void termClose(id).catch(() => {});
-					return;
+				await startDrawerTerminal(tab.id, entry, () => termOpen(cwd, [], term.cols || 80, term.rows || 24));
+				if (drawerRegistry.get(tab.id) !== entry) return;
+				if (entry.phase === "ready" && entry.termId && term.cols > 2 && term.rows > 1) {
+					void termResize(entry.termId, term.cols, term.rows).catch(() => {});
 				}
-				entry.termId = id;
-				entry.phase = "ready";
-				if (term.cols > 2 && term.rows > 1) {
-					void termResize(id, term.cols, term.rows).catch(() => {});
-				}
-				useDrawerStore.getState().updateTab(tab.id, { status: "ready", exitCode: null });
 				term.focus();
 			} catch (e) {
 				if (drawerRegistry.get(tab.id) !== entry) return;
@@ -314,8 +307,11 @@ export function CommandTerminalPanel() {
 		(tabId: string) => {
 			destroyDrawerTerminal(tabId);
 			updateTab(tabId, { status: "opening", exitCode: null });
+			const tab = useDrawerStore.getState().tabs.find((t) => t.id === tabId);
+			const host = hostRefs.current.get(tabId);
+			if (tab && host) createTerminal(tab, host);
 		},
-		[updateTab],
+		[updateTab, createTerminal],
 	);
 
 	// Search actions on the active tab's entry

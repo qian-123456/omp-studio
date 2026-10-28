@@ -78,6 +78,9 @@ export function FileEditor({
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [restored, setRestored] = useState(false);
+	const revision = useRef(0);
+	const operation = useRef(0);
+	const pending = useRef(false);
 
 	const tooLarge = loaded !== null && isTooLargeToEdit(loaded);
 	const readOnly = forcedReadOnly || tooLarge;
@@ -93,7 +96,9 @@ export function FileEditor({
 		[fileKey],
 	);
 
-	const apply = useCallback((res: StampedText) => {
+	const apply = useCallback((res: StampedText, startedRevision: number) => {
+		// Text typed against the old snapshot must keep its old conflict stamp too.
+		if (revision.current !== startedRevision) return;
 		setLoaded(res.content);
 		setStamp(res.stamp);
 		setDraft(res.content ?? "");
@@ -102,9 +107,13 @@ export function FileEditor({
 
 	const load = useCallback(
 		async (useCache: boolean) => {
+			const id = ++operation.current;
+			const startedRevision = revision.current;
+			pending.current = true;
 			setLoading(true);
 			try {
 				const res = await loadFile();
+				if (operation.current !== id) return;
 				const cached = draftCache.get(fileKey);
 				draftCache.delete(fileKey);
 				if (useCache && cached && res.content !== null && cached.loaded === res.content) {
@@ -114,17 +123,19 @@ export function FileEditor({
 					setRestored(true);
 				} else {
 					if (useCache && cached) toast.info(t("settingsCore.fileEditor.draftDiscarded"));
-					apply(res);
+					apply(res, startedRevision);
 				}
 				setLoadError(null);
 			} catch (e) {
-				setLoaded(null);
-				setStamp(null);
-				setDraft("");
-				setLoadError(errMsg(e));
+				if (operation.current !== id) return;
+				if (bufRef.current.loaded === null) setLoadError(errMsg(e));
+				else toast.error(errMsg(e));
 			} finally {
-				setReady(true);
-				setLoading(false);
+				if (operation.current === id) {
+					pending.current = false;
+					setReady(true);
+					setLoading(false);
+				}
 			}
 		},
 		[loadFile, fileKey, apply],
@@ -134,10 +145,13 @@ export function FileEditor({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional single load per mount
 	useEffect(() => {
 		void load(true);
+		return () => { operation.current++; };
 	}, []);
 
 	const save = useCallback(async () => {
-		if (!dirty || saving) return;
+		if (!dirty || pending.current) return;
+		pending.current = true;
+		const id = ++operation.current;
 		setSaving(true);
 		const text = draft;
 		try {
@@ -145,52 +159,78 @@ export function FileEditor({
 			for (;;) {
 				try {
 					const next = await saveFile(text, useStamp);
+					if (operation.current !== id) return;
 					setLoaded(text);
 					setStamp(next);
-					setDraft(text);
+					// The persisted snapshot advances, but any newer typing stays dirty.
 					setRestored(false);
 					toast.success(effectiveSavedToast);
 					onChanged?.();
 					return;
 				} catch (e) {
 					if (!isConflictError(e)) throw e;
+					if (operation.current !== id) return;
 					const overwrite = await confirmDialog(
 						t("settingsCore.fileEditor.conflictConfirm"),
 						{ title: t("settingsCore.fileEditor.conflictTitle"), danger: true, okLabel: t("settingsCore.fileEditor.overwrite"), cancelLabel: t("settingsCore.fileEditor.reload") },
 					);
+					if (operation.current !== id) return;
 					if (!overwrite) {
+						const startedRevision = revision.current;
 						const fresh = await loadFile();
-						apply(fresh);
+						if (operation.current !== id) return;
+						apply(fresh, startedRevision);
 						onChanged?.();
 						return;
 					}
 					// Overwrite: adopt the current on-disk stamp and retry once more.
 					useStamp = (await loadFile()).stamp;
+					if (operation.current !== id) return;
 				}
 			}
 		} catch (e) {
-			toast.error(t("settingsCore.fileEditor.saveError", { error: errMsg(e) }));
+			if (operation.current === id) toast.error(t("settingsCore.fileEditor.saveError", { error: errMsg(e) }));
 		} finally {
-			setSaving(false);
+			if (operation.current === id) {
+				pending.current = false;
+				setSaving(false);
+			}
 		}
 	}, [dirty, saving, draft, stamp, saveFile, loadFile, apply, onChanged, savedToast]);
 
 	const create = async () => {
-		if (createContent === undefined) return;
+		if (createContent === undefined || pending.current) return;
+		pending.current = true;
+		const id = ++operation.current;
+		setSaving(true);
 		try {
 			const next = await saveFile(createContent, null);
+			if (operation.current !== id) return;
 			setLoaded(createContent);
 			setStamp(next);
 			setDraft(createContent);
 			setTab("edit");
 			onChanged?.();
 		} catch (e) {
+			if (operation.current !== id) return;
 			if (isConflictError(e)) {
 				toast.info(t("settingsCore.fileEditor.fileAlreadyExists"));
-				await load(false);
-				onChanged?.();
+				try {
+					const startedRevision = revision.current;
+					const fresh = await loadFile();
+					if (operation.current !== id) return;
+					apply(fresh, startedRevision);
+					onChanged?.();
+				} catch (readError) {
+					if (operation.current === id) toast.error(t("settingsCore.fileEditor.createError", { error: errMsg(readError) }));
+				}
 			} else {
 				toast.error(t("settingsCore.fileEditor.createError", { error: errMsg(e) }));
+			}
+		} finally {
+			if (operation.current === id) {
+				pending.current = false;
+				setSaving(false);
 			}
 		}
 	};
@@ -209,6 +249,7 @@ export function FileEditor({
 	};
 
 	const reload = async () => {
+		if (pending.current) return;
 		if (dirty) {
 			const ok = await confirmDialog(t("settingsCore.fileEditor.reloadConfirm"), {
 				title: t("settingsCore.fileEditor.reloadConfirmTitle"),
@@ -216,6 +257,7 @@ export function FileEditor({
 				okLabel: t("settingsCore.fileEditor.discardLabel"),
 			});
 			if (!ok) return;
+			if (pending.current) return;
 		}
 		draftCache.delete(fileKey);
 		await load(false);
@@ -271,7 +313,7 @@ export function FileEditor({
 				<Button
 					icon={RefreshCw}
 					onClick={() => void reload()}
-					disabled={loading}
+					disabled={loading || saving}
 					title={t("settingsCore.fileEditor.reloadFromDisk")}
 					aria-label={t("settingsCore.fileEditor.reloadFromDisk")}
 				>
@@ -285,7 +327,7 @@ export function FileEditor({
 				<div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
 					<p className="text-xs text-neutral-400">{t("settingsCore.fileEditor.notCreated")}</p>
 					{createContent !== undefined && (
-						<Button icon={FilePlus2} onClick={() => void create()}>
+						<Button icon={FilePlus2} onClick={() => void create()} disabled={loading || saving} loading={saving}>
 							{t("settingsCore.fileEditor.createFile")}
 						</Button>
 					)}
@@ -320,14 +362,14 @@ export function FileEditor({
 						/>
 						{!forcedReadOnly && (
 							<div className="flex items-center gap-2">
-								<Button icon={RotateCcw} onClick={() => void discard()} disabled={!dirty || saving}>
+								<Button icon={RotateCcw} onClick={() => void discard()} disabled={!dirty || saving || loading}>
 									{t("settingsCore.fileEditor.discardLabel")}
 								</Button>
 								<Button
 									variant="primary"
 									icon={Save}
 									onClick={() => void save()}
-									disabled={!dirty || saving}
+									disabled={!dirty || saving || loading}
 									loading={saving}
 									title={`${t("settingsCore.fileEditor.saveButton")} (⌘S)`}
 								>
@@ -340,7 +382,7 @@ export function FileEditor({
 						<div className="max-h-[60vh] min-h-[240px] overflow-auto font-mono text-xs">
 							<CodeMirror
 								value={draft}
-								onChange={setDraft}
+								onChange={(text) => { revision.current++; setDraft(text); }}
 								extensions={extensions}
 								theme={dark ? "dark" : "light"}
 								editable={!readOnly}

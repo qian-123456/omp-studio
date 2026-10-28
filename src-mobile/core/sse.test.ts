@@ -138,4 +138,54 @@ describe("SseClient", () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(FakeES.all).toHaveLength(2);
 	});
+
+	it("restores the banner when the still-open stream survives offline", async () => {
+		client.start();
+		await vi.advanceTimersByTimeAsync(0);
+		const stream = FakeES.all[0];
+		stream.readyState = 1;
+		stream.emit("hello", {});
+		useConnection.getState().setPhase("closed", "网络已断开");
+		client.resume("online");
+		expect(useConnection.getState()).toMatchObject({ phase: "open", error: null });
+		expect(FakeES.all).toHaveLength(1);
+	});
+
+	it("keeps unauthorized terminal through offline, late hello and successful probes", async () => {
+		client.start();
+		await vi.advanceTimersByTimeAsync(0);
+		useConnection.getState().setPhase("unauthorized", "pair again");
+		useConnection.getState().setPhase("closed", "offline");
+		useConnection.getState().setError(null);
+		FakeES.all[0].emit("hello", {});
+		client.resume("online");
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(useConnection.getState()).toMatchObject({ phase: "unauthorized", error: "pair again" });
+		expect(probe).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores frames from a retired stream after reconnect", async () => {
+		const hello = vi.fn();
+		bus.on("hello", hello);
+		client.start();
+		await vi.advanceTimersByTimeAsync(0);
+		const old = FakeES.all[0];
+		old.readyState = 2;
+		client.resume("online");
+		await vi.advanceTimersByTimeAsync(0);
+		old.emit("hello", {});
+		expect(hello).not.toHaveBeenCalled();
+		expect(useConnection.getState().phase).toBe("connecting");
+	});
+
+	it("does not connect when a successful in-flight probe returns after revocation", async () => {
+		let finish!: () => void;
+		probe.mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+		client.start();
+		useConnection.getState().setPhase("unauthorized", "revoked");
+		finish();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(FakeES.all).toHaveLength(0);
+		expect(useConnection.getState().phase).toBe("unauthorized");
+	});
 });

@@ -427,11 +427,47 @@ pub fn create_detached(repo: &Path, dir_name: &str, sha: &str) -> Result<PathBuf
     Ok(canon(&target))
 }
 
+/// Refuse removal even with `force` when a session or a running time-machine
+/// process owns the directory. Canonical paths also cover symlink aliases.
+pub(super) fn ensure_unused(
+    path: &Path,
+    sessions: &[(String, String)],
+    runs: &[crate::contracts::TmRun],
+) -> Result<(), String> {
+    let target = canon(path);
+    if sessions
+        .iter()
+        .any(|(_, cwd)| canon(Path::new(cwd)).starts_with(&target))
+    {
+        return Err("工作树仍被会话使用，已拒绝删除".into());
+    }
+    if runs
+        .iter()
+        .any(|run| run.pid.is_some() && canon(Path::new(&run.worktree)) == target)
+    {
+        return Err("时光机仍在此工作树运行，请先停止".into());
+    }
+    Ok(())
+}
+
+/// Caller supplies ownership freshly while holding the session mutation gate.
+pub(super) fn remove_checked(
+    repo: &Path,
+    path: &Path,
+    delete_branch: bool,
+    force: bool,
+    sessions: &[(String, String)],
+) -> Result<(), String> {
+    ensure_unused(path, sessions, &super::tm::list())?;
+    remove(repo, path, delete_branch, force)
+}
+
 /// Remove a linked worktree; refuses when dirty unless `force`.
 pub fn remove(repo: &Path, path: &Path, delete_branch: bool, force: bool) -> Result<(), String> {
     let info = repo_info(repo).ok_or("不是 git 仓库")?;
     let root = info.main_root();
     let target = canon(path);
+    ensure_unused(&target, &[], &super::tm::list())?;
     let entries = list_entries(&root)?;
     let main_path = entries.first().map(|e| canon(Path::new(&e.path)));
     if main_path.as_deref() == Some(target.as_path()) {
@@ -473,16 +509,18 @@ pub fn orphans(workspace_paths: &[String], sessions: &[(String, String)]) -> Vec
         .collect();
     roots.sort();
     roots.dedup();
+    let active = super::tm::list();
     let mut out = Vec::new();
     for root in roots {
         let dir = root.join(WORKTREES_DIR);
         let Ok(list) = list(&root, sessions) else {
             continue;
         };
-        out.extend(
-            list.into_iter()
-                .filter(|w| Path::new(&w.path).starts_with(&dir) && w.session_ids.is_empty()),
-        );
+        out.extend(list.into_iter().filter(|w| {
+            Path::new(&w.path).starts_with(&dir)
+                && w.session_ids.is_empty()
+                && ensure_unused(Path::new(&w.path), sessions, &active).is_ok()
+        }));
     }
     out
 }

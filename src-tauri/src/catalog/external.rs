@@ -64,6 +64,8 @@ pub struct StatusFile {
     pub session_file: String,
     pub pid: u32,
     pub state: String,
+    /// OS process birth token; legacy status files need lsof corroboration.
+    pub process_started_at: Option<String>,
 }
 
 pub fn parse_status_file(text: &str) -> Option<StatusFile> {
@@ -81,6 +83,10 @@ pub fn parse_status_file(text: &str) -> Option<StatusFile> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
+        process_started_at: v
+            .get("processStartedAt")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 
@@ -105,12 +111,42 @@ pub fn pid_alive(pid: u32) -> bool {
     rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+/// Cache kernel identity once per PID within one ownership sweep. Never retain
+/// this cache across sweeps: a later sweep must observe PID reuse or exit.
+pub fn status_validator(lookup: impl Fn(u32) -> Option<String>) -> impl Fn(&StatusFile) -> bool {
+    let births = std::cell::RefCell::new(HashMap::<u32, Option<String>>::new());
+    move |status| {
+        let Some(expected) = status.process_started_at.as_deref() else {
+            return false;
+        };
+        births
+            .borrow_mut()
+            .entry(status.pid)
+            .or_insert_with(|| lookup(status.pid))
+            .as_deref()
+            == Some(expected)
+    }
+}
+
+pub(crate) fn process_birth(pid: u32) -> Option<String> {
+    if !pid_alive(pid) {
+        return None;
+    }
+    let out = Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    let token = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !token.is_empty()).then_some(token)
+}
+
 /// Combine lsof holders and live status files into `file -> external pid`,
 /// excluding processes owned by this app (direct children).
 pub fn external_map(
     holders: HashMap<String, Holder>,
     status: &[StatusFile],
-    alive: impl Fn(u32) -> bool,
+    alive: impl Fn(&StatusFile) -> bool,
     own_pid: u32,
 ) -> HashMap<String, u32> {
     let owned: Vec<u32> = holders
@@ -124,13 +160,15 @@ pub fn external_map(
         .map(|(f, h)| (f, h.pid))
         .collect();
     for s in status {
-        if s.session_file.is_empty() || s.state == "exited" || owned.contains(&s.pid) {
+        if s.session_file.is_empty()
+            || s.state == "exited"
+            || s.pid == own_pid
+            || owned.contains(&s.pid)
+        {
             continue;
         }
-        if alive(s.pid) {
+        if alive(s) {
             map.entry(s.session_file.clone()).or_insert(s.pid);
-        } else if map.get(&s.session_file) == Some(&s.pid) {
-            map.remove(&s.session_file);
         }
     }
     map
@@ -155,7 +193,7 @@ pub struct ExternalFork {
 pub fn detect_forks(
     live: &[(String, String)],
     status: &[StatusFile],
-    alive: impl Fn(u32) -> bool,
+    alive: impl Fn(&StatusFile) -> bool,
     own_pids: &[u32],
     parent_of: impl Fn(&str) -> Option<String>,
 ) -> Vec<ExternalFork> {
@@ -164,7 +202,7 @@ pub fn detect_forks(
         if s.session_file.is_empty()
             || s.state == "exited"
             || own_pids.contains(&s.pid)
-            || !alive(s.pid)
+            || !alive(s)
         {
             continue;
         }
@@ -192,6 +230,86 @@ mod tests {
     const LSOF: &str = "p100\nR1\nfcwd\nn/work\nf23\nn/h/.omp/agent/sessions/b/a.jsonl\nf24\nn/h/.omp/agent/sessions/b/a/sub.txt\np200\nR999\nf5\nn/h/.omp/agent/sessions/b/c.jsonl\np300\nR1\nf5\nn/elsewhere/x.jsonl\n";
 
     #[test]
+    fn status_validation_samples_pid_once_per_sweep_and_rechecks_next_sweep() {
+        let calls = std::cell::Cell::new(0);
+        let birth = std::cell::RefCell::new("birth-a".to_string());
+        let lookup = |pid| {
+            calls.set(calls.get() + 1);
+            (pid == 9 || pid == 10).then(|| birth.borrow().clone())
+        };
+        let status = |id: &str, pid, token: &str| StatusFile {
+            session_id: id.into(),
+            session_file: format!("/{id}.jsonl"),
+            pid,
+            state: "working".into(),
+            process_started_at: Some(token.into()),
+        };
+        let statuses = vec![
+            status("current", 9, "birth-a"),
+            status("stale", 9, "old-birth"),
+            status("other", 10, "birth-a"),
+            status("dead", 11, "old-birth"),
+            status("dead-copy", 11, "old-birth"),
+        ];
+        let validate = status_validator(&lookup);
+        let map = external_map(HashMap::new(), &statuses, &validate, 1);
+        assert_eq!(map.len(), 2);
+        assert!(!map.contains_key("/stale.jsonl"));
+        let forks = detect_forks(
+            &[("parent".into(), "/parent.jsonl".into())],
+            &statuses,
+            &validate,
+            &[1],
+            |_| Some("parent".into()),
+        );
+        assert_eq!(forks.len(), 2);
+        assert_eq!(calls.get(), 3);
+        *birth.borrow_mut() = "birth-b".into();
+        let next_sweep = status_validator(&lookup);
+        assert!(external_map(HashMap::new(), &statuses, next_sweep, 1).is_empty());
+        assert_eq!(calls.get(), 6);
+    }
+
+    #[test]
+    fn reused_pid_and_legacy_status_do_not_claim_ownership() {
+        let status_pid_alive = status_validator(process_birth);
+        let mut status = parse_status_file(&format!(r#"{{"sessionId":"stale","sessionFile":"/stale.jsonl","pid":{},"state":"working","processStartedAt":"old-birth"}}"#, std::process::id())).unwrap();
+        assert!(external_map(HashMap::new(), &[status.clone()], &status_pid_alive, 1).is_empty());
+        status.process_started_at = None;
+        assert!(external_map(HashMap::new(), &[status.clone()], &status_pid_alive, 1).is_empty());
+        let holders = HashMap::from([(
+            status.session_file.clone(),
+            Holder {
+                pid: status.pid,
+                ppid: Some(2),
+            },
+        )]);
+        assert_eq!(
+            external_map(holders, &[status.clone()], &status_pid_alive, 1)
+                .get(&status.session_file),
+            Some(&status.pid)
+        );
+        status.process_started_at = process_birth(status.pid);
+        assert!(status_pid_alive(&status));
+        assert_eq!(
+            external_map(HashMap::new(), &[status.clone()], &status_pid_alive, 1)
+                .get(&status.session_file),
+            Some(&status.pid)
+        );
+        assert!(detect_forks(
+            &[("parent".into(), "/parent.jsonl".into())],
+            &[StatusFile {
+                process_started_at: Some("stale".into()),
+                ..status
+            }],
+            status_pid_alive,
+            &[1],
+            |_| Some("parent".into())
+        )
+        .is_empty());
+    }
+
+    #[test]
     fn parses_lsof_output() {
         let m = parse_lsof(LSOF, "/h/.omp/agent/sessions");
         assert_eq!(m.len(), 2);
@@ -214,18 +332,21 @@ mod tests {
                 session_file: "/s/d.jsonl".into(),
                 pid: 42,
                 state: "working".into(),
+                process_started_at: None,
             },
             StatusFile {
                 session_id: "e".into(),
                 session_file: "/s/e.jsonl".into(),
                 pid: 43,
                 state: "idle".into(),
+                process_started_at: None,
             },
             StatusFile {
                 session_id: "f".into(),
                 session_file: "/s/f.jsonl".into(),
                 pid: 44,
                 state: "exited".into(),
+                process_started_at: None,
             },
             // App-owned pid reported by a status file stays non-external.
             StatusFile {
@@ -233,9 +354,10 @@ mod tests {
                 session_file: "/s/c2.jsonl".into(),
                 pid: 200,
                 state: "working".into(),
+                process_started_at: None,
             },
         ];
-        let m = external_map(holders, &status, |pid| pid == 42 || pid == 200, 999);
+        let m = external_map(holders, &status, |s| s.pid == 42 || s.pid == 200, 999);
         assert_eq!(m.get("/h/.omp/agent/sessions/b/a.jsonl"), Some(&100));
         assert!(!m.contains_key("/h/.omp/agent/sessions/b/c.jsonl"));
         assert_eq!(m.get("/s/d.jsonl"), Some(&42));
@@ -265,6 +387,7 @@ mod tests {
             session_id: id.into(),
             session_file: file.into(),
             pid,
+            process_started_at: None,
             state: "idle".into(),
         };
         let status = vec![sf("b", "/b.jsonl", 9), sf("a", "/a.jsonl", 5)];

@@ -41,20 +41,32 @@ export function ServicesPanel() {
 	const reattachTab = useDrawerStore((s) => s.reattachTab);
 	const removeTab = useDrawerStore((s) => s.removeTab);
 	const allRef = useRef(all);
+	const request = useRef(0);
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => { mounted.current = false; request.current++; };
+	}, []);
 	allRef.current = all;
 	const refresh = useCallback(async () => {
+		const generation = ++request.current;
+		const filter = allRef.current;
+		const current = () => mounted.current && generation === request.current && filter === allRef.current;
 		setLoading(true);
 		try {
-			setRows(await servicesList(allRef.current));
+			const list = await servicesList(filter);
+			if (!current()) return;
+			setRows(list);
 			setError(null);
 		} catch (e) {
+			if (!current()) return;
 			const msg = errMsg(e);
 			setError(msg);
 			toast.error(t("services.getListFailed", { error: msg }));
 		} finally {
-			setLoading(false);
+			if (current()) setLoading(false);
 		}
-	}, []);
+	}, [t]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refetch when the filter flips
 	useEffect(() => {
@@ -63,11 +75,18 @@ export function ServicesPanel() {
 
 	useEffect(() => {
 		// Payload is the default (dev-only) list; "all" mode refetches.
-		const un = onServicesChanged((list) =>
-			allRef.current ? refresh() : setRows(list),
-		);
+		const un = onServicesChanged((list) => {
+			if (!mounted.current) return;
+			if (allRef.current) void refresh();
+			else {
+				request.current++;
+				setRows(list);
+				setError(null);
+				setLoading(false);
+			}
+		});
 		return () => {
-			un.then((f) => f());
+			un.then((f) => f()).catch(() => {});
 		};
 	}, [refresh]);
 

@@ -11,10 +11,10 @@ import { events } from "../../core/sse";
 import { useSessions } from "../../core/stores/sessions";
 import type { Item, PendingEntry, RpcFrame, TranscriptPage } from "../../core/types";
 import { isDraftId } from "../../core/types";
-import { toast } from "../../ui";
+import { confirm, toast } from "../../ui";
 import { attention } from "./lib/attention";
 import { isFinalReply, matchRequest, resolveRequest, type AskAnswer, type AskDriverState, type AskSpec } from "./lib/askDriver";
-import { showApproveAll } from "./lib/approvals";
+import { isBatchApprovable, showApproveAll } from "./lib/approvals";
 import { createDebounce, DRAFT_ACTIVITY_DEBOUNCE_MS, draftActivityBody, draftBook } from "./lib/drafts";
 import { attachmentBlocker, buildPrompt, buildPromptBody, sendIntent, type StreamBehavior } from "./lib/prompt";
 import { loadSlashCommands, parseSlashInput, type SlashCmd } from "./lib/slash";
@@ -57,6 +57,25 @@ export interface ForkFrom {
 	preview: string;
 }
 
+interface PromptDeliveryState {
+	text: string;
+	prompt: string;
+	atts: Attachment[];
+	phase: "sending" | "unknown";
+}
+
+const deliveryKey = (id: string) => `omp.mobile.delivery.${id}`;
+function loadDelivery(id: string): PromptDeliveryState | null {
+	try {
+		const v = JSON.parse(localStorage.getItem(deliveryKey(id)) ?? "null");
+		return v && typeof v.text === "string" && typeof v.prompt === "string" && Array.isArray(v.atts)
+			? { ...v, phase: "unknown" } : null;
+	} catch { return null; }
+}
+
+// Process restarts may reuse request IDs; a new arrival must not inherit an old tombstone.
+const pendingIdentity = (entry: PendingEntry): string => JSON.stringify([entry.request?.id ?? "", entry.receivedAt ?? ""]);
+
 export interface ChatState {
 	loaded: boolean;
 	transcript: TranscriptState;
@@ -70,6 +89,7 @@ export interface ChatState {
 	atts: Attachment[];
 	forkFrom: ForkFrom | null;
 	compacting: boolean;
+	delivery: PromptDeliveryState | null;
 }
 
 // Promise.withResolvers is missing on older iOS Safari, which this bundle targets.
@@ -129,6 +149,8 @@ export class ChatController {
 	private offs: Array<() => void> = [];
 	private touchDraft: ReturnType<typeof createDebounce>;
 	private askProgress = new Map<string, AskReplayProgress>();
+	private pendingSequence = 0;
+	private answered = new Set<string>();
 
 	constructor(readonly id: string) {
 		const handoff = draftBook.takeHandoff(id);
@@ -155,6 +177,7 @@ export class ChatController {
 			atts: (stash?.atts as Attachment[] | undefined) ?? [],
 			forkFrom: null,
 			compacting: false,
+			delivery: loadDelivery(id),
 		}));
 		this.touchDraft = createDebounce(() => this.draftActivity(true), DRAFT_ACTIVITY_DEBOUNCE_MS);
 	}
@@ -377,6 +400,7 @@ export class ChatController {
 
 	async loadPendings(): Promise<void> {
 		if (isDraftId(this.id)) return;
+		const sequence = ++this.pendingSequence;
 		const s = useSessions.getState().byId[this.id];
 		if (!s || !s.pending) {
 			if (this.state.pendings.length) this.set({ pendings: [] });
@@ -384,8 +408,8 @@ export class ChatController {
 		}
 		try {
 			const list = await api<PendingEntry[]>("GET", `/sessions/${this.id}/pending-ui`);
-			if (this.disposed) return;
-			const arr = Array.isArray(list) ? list : [];
+			if (this.disposed || sequence !== this.pendingSequence) return;
+			const arr = (Array.isArray(list) ? list : []).filter((p) => !this.answered.has(pendingIdentity(p)));
 			const before = this.state.pendings.length;
 			this.set({ pendings: arr });
 			if (arr.length > before) attention("approval");
@@ -398,6 +422,7 @@ export class ChatController {
 		try {
 			const body = buildPendingResponse(entry, answer);
 			await api("POST", `/sessions/${this.id}/ui-respond`, { response: { ...body, type: "extension_ui_response" } });
+			this.consumePending([entry]);
 			await useSessions.getState().refresh().catch(() => []);
 			await this.loadPendings();
 		} catch (e) {
@@ -417,6 +442,7 @@ export class ChatController {
 				await api("POST", `/sessions/${this.id}/ui-respond`, {
 					response: { ...buildPendingResponse(cur, { value: n.value }), type: "extension_ui_response" },
 				});
+				this.consumePending([cur]);
 				toggled = n.toggled;
 				const nextEntry = await this.waitNextPending(cur);
 				if (!nextEntry) throw new Error("等待下一步超时");
@@ -427,6 +453,7 @@ export class ChatController {
 			await api("POST", `/sessions/${this.id}/ui-respond`, {
 				response: { ...buildPendingResponse(cur, { value: done }), type: "extension_ui_response" },
 			});
+			this.consumePending([cur]);
 			await useSessions.getState().refresh().catch(() => []);
 			await this.loadPendings();
 		} catch (e) {
@@ -485,6 +512,8 @@ export class ChatController {
 				await api("POST", `/sessions/${this.id}/ui-respond`, {
 					response: { ...buildPendingResponse(cur, { value: res.value }), type: "extension_ui_response" },
 				});
+				// Keep the ask card mounted until replay settles so busy/error state survives each reply.
+				this.consumePending([cur], true);
 				progress.attempt = undefined;
 				if (st) progress.states[m.qIndex] = { ...st, toggled: res.toggled };
 				if (isFinalReply(q, m, res.value) && m.qIndex === spec.questions.length - 1) break;
@@ -519,10 +548,18 @@ export class ChatController {
 		return null;
 	}
 
-	async approveAll(action: "approve" | "deny"): Promise<void> {
-		if (!showApproveAll(this.state.pendings)) return;
+	private consumePending(entries: readonly PendingEntry[], keepVisible = false): void {
+		++this.pendingSequence;
+		for (const entry of entries) if (entry.request?.id) this.answered.add(pendingIdentity(entry));
+		if (!keepVisible) this.set({ pendings: this.state.pendings.filter((p) => !this.answered.has(pendingIdentity(p))) });
+	}
+
+	async approveAll(action: "approve" | "deny", seen = this.state.pendings): Promise<void> {
+		if (!showApproveAll(seen)) return;
+		const ids = seen.filter(isBatchApprovable).flatMap((p) => p.request?.id ? [p.request.id] : []);
 		try {
-			const r = await api<{ handled?: number; skipped?: number }>("POST", `/sessions/${this.id}/ui-respond-all`, { action });
+			const r = await api<{ handled?: number; skipped?: number; handledIds?: string[] }>("POST", `/sessions/${this.id}/ui-respond-all`, { action, ids });
+			this.consumePending(seen.filter((p) => r.handledIds?.includes(p.request?.id ?? "")));
 			toast(`${action === "approve" ? "已允许" : "已拒绝"} ${r.handled ?? 0} 项${r.skipped ? `，${r.skipped} 项需手动处理` : ""}`, { kind: "success" });
 			await useSessions.getState().refresh().catch(() => []);
 			await this.loadPendings();
@@ -545,6 +582,10 @@ export class ChatController {
 
 	/** Returns true when the text was consumed (composer should already have been cleared by the caller on true). */
 	async send(text: string, behavior: StreamBehavior): Promise<boolean> {
+		if (this.state.delivery) {
+			toast("上一条消息送达状态待确认，请先核对记录或恢复输入，勿直接重发", { kind: "error" });
+			return false;
+		}
 		const s = this.state;
 		const intent = sendIntent(text, s.atts.length, s.working);
 		if (intent === "none") return false;
@@ -576,40 +617,66 @@ export class ChatController {
 		return this.sendPrompt(trimmed, behavior);
 	}
 
+	/** Explicit recovery is not proof of non-delivery; never resends automatically. */
+	async resolveDelivery(restore: boolean): Promise<void> {
+		const pending = this.state.delivery;
+		if (!pending || pending.phase !== "unknown") return;
+		if (!await confirm({ title: restore ? "恢复消息到输入框" : "已核对送达状态", message: "电脑可能已经收到此消息。请先核对会话记录；恢复后再次发送可能重复执行。", confirmText: restore ? "知晓风险，恢复输入" : "已核对，继续" })) return;
+		if (this.disposed || this.state.delivery !== pending) return;
+		// Keep the durable payload after restore until a new dispatch succeeds or the user acknowledges it.
+		// Otherwise reloading immediately after recovery could lose attached file paths.
+		if (!restore) {
+			try { localStorage.removeItem(deliveryKey(this.id)); }
+			catch { toast("无法保存恢复状态，请检查浏览器存储", { kind: "error" }); return; }
+		}
+		if (restore) {
+			if (!this.composer) { toast("请等待输入框准备完成后重试", { kind: "error" }); return; }
+			const cur = this.composer?.get() ?? this.lastText;
+			this.composer?.set(cur ? `${pending.text}\n${cur}` : pending.text);
+			this.set({ atts: [...pending.atts.map((a) => ({ ...a, id: ++this.attSeq })), ...this.state.atts] });
+		} else {
+			for (const a of pending.atts) if (a.url) URL.revokeObjectURL(a.url);
+		}
+		this.set({ delivery: null });
+	}
+
 	private async sendPrompt(text: string, behavior: StreamBehavior): Promise<boolean> {
 		const id = this.id;
 		const wasWorking = this.state.working;
 		const prompt = buildPrompt(text, this.state.atts);
 		const savedAtts = this.state.atts;
+		const delivery: PromptDeliveryState = { text, prompt, atts: savedAtts, phase: "sending" };
+		// Persist before dispatch: a reload while awaiting HTTP is ambiguous too.
+		try { localStorage.setItem(deliveryKey(id), JSON.stringify({ ...delivery, atts: savedAtts.map((a) => ({ ...a, url: "" })) })); }
+		catch { toast("无法保存发送状态，消息尚未发送，请检查浏览器存储", { kind: "error" }); return false; }
+		this.set({ delivery });
 		const opt: OptimisticMsg = { id: `o${++this.optSeq}`, text: prompt, imageUrls: savedAtts.filter((a) => a.isImage && a.url).map((a) => a.url) };
 		this.composer?.set("");
 		clearUnsent(id);
 		this.lastSend = Date.now();
 		this.stream = { ...this.stream, working: true };
 		this.set({ atts: [], optimistic: [...this.state.optimistic, opt], working: true });
+		let r: { sessionId?: string };
 		try {
-			const r = await api<{ sessionId?: string }>("POST", `/sessions/${id}/prompt-ex`, buildPromptBody(prompt, wasWorking, behavior));
-			if (r && r.sessionId && r.sessionId !== id) {
-				// Draft handed off: follow the real session omp created for it.
-				draftBook.handoff(id, r.sessionId, prompt);
-				useSessions.getState().refresh().catch(() => {});
-				if (!this.disposed) nav.replace(paths.chat(r.sessionId));
-				return true;
-			}
-			for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
-			this.scheduleFetch(300);
+			r = await api<{ sessionId?: string }>("POST", `/sessions/${id}/prompt-ex`, buildPromptBody(prompt, wasWorking, behavior));
 		} catch (e) {
+			// HTTP failure is ambiguous even when the server reports a validation-like error.
 			this.stream = { ...this.stream, working: wasWorking };
-			this.set({ optimistic: this.state.optimistic.filter((o) => o.id !== opt.id), working: wasWorking });
-			if (!this.disposed) {
-				const cur = this.composer?.get() ?? "";
-				this.composer?.set(cur ? `${text}\n${cur}` : text);
-				this.set({ atts: savedAtts });
-			} else {
-				for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
-			}
-			toast(`发送失败：${errorMessage(e)}`, { kind: "error" });
+			this.set({ delivery: { ...delivery, phase: "unknown" }, optimistic: this.state.optimistic.filter((o) => o.id !== opt.id), working: wasWorking });
+			toast(`送达状态未知：${errorMessage(e)}。请核对记录后再决定是否重发`, { kind: "error" });
+			return true;
 		}
+		try { localStorage.removeItem(deliveryKey(id)); }
+		catch { toast("消息已送达，但无法清理本地发送记录。刷新后请先核对，勿盲目重发", { kind: "error" }); }
+		this.set({ delivery: null });
+		if (r && r.sessionId && r.sessionId !== id) {
+			draftBook.handoff(id, r.sessionId, prompt);
+			useSessions.getState().refresh().catch(() => {});
+			if (!this.disposed) nav.replace(paths.chat(r.sessionId));
+			return true;
+		}
+		for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
+		this.scheduleFetch(300);
 		return true;
 	}
 

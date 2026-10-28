@@ -191,16 +191,122 @@ fn post(uri: &str, cookie: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
+fn pair_request(code: &str) -> Request<Body> {
+    Request::post("/pair")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(format!("code={code}")))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn pairing_get_and_head_do_not_consume_code() {
+    let h = harness();
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let uri = format!("/pair?code={code}");
+    for req in [
+        get(&uri, None),
+        Request::head(&uri).body(Body::empty()).unwrap(),
+    ] {
+        let (status, headers, _) = call(&h, req).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!headers.contains_key(header::SET_COOKIE));
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    }
+    assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
+    assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn pairing_json_result_is_for_this_code_not_an_existing_cookie() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    assert_eq!(
+        call(&h, post("/pair", &cookie, json!({"code":"invalid"})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let (status, headers, _) = call(&h, post("/pair", &cookie, json!({"code":code}))).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(headers.contains_key(header::SET_COOKIE));
+}
+
+#[tokio::test]
+async fn pairing_post_rejects_cross_site_without_consuming_code() {
+    let h = harness();
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let mut req = pair_request(&code);
+    req.headers_mut()
+        .insert("sec-fetch-site", "cross-site".parse().unwrap());
+    assert_eq!(call(&h, req).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn foreground_presence_endpoint_tracks_viewing_and_background() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    let token = cookie.split_once('=').unwrap().1;
+    let device = auth::hash_token(token);
+    let _stream = super::push::SseGuard::new(device.clone());
+    assert!(!super::push::is_viewing_session(&device, "a"));
+    assert_eq!(
+        call(
+            &h,
+            post(
+                "/api/presence",
+                &cookie,
+                json!({"sessionId":"a", "visible":true})
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(super::push::is_viewing_session(&device, "a"));
+    assert!(!super::push::is_viewing_session(&device, "b"));
+    assert_eq!(
+        call(
+            &h,
+            post(
+                "/api/presence",
+                &cookie,
+                json!({"sessionId":"a", "visible":false})
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(!super::push::is_viewing_session(&device, "a"));
+    assert_eq!(
+        call(
+            &h,
+            post(
+                "/api/presence",
+                &cookie,
+                json!({"sessionId":null, "visible":true})
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(!super::push::is_viewing_session(&device, "a"));
+    super::push::clear_presence(&device);
+}
+
 /// Pair via /pair and return the `name=value` cookie pair.
 async fn pair(h: &Harness) -> String {
     let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
-    let (status, headers, _) = call(h, get(&format!("/pair?code={code}"), None)).await;
+    let (status, headers, _) = call(h, pair_request(&code)).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(headers[header::LOCATION], "/");
     let set = headers[header::SET_COOKIE].to_str().unwrap().to_string();
     assert!(set.contains("HttpOnly"));
     // Code is one-time.
-    let (again, _, _) = call(h, get(&format!("/pair?code={code}"), None)).await;
+    let (again, _, _) = call(h, pair_request(&code)).await;
     assert_eq!(again, StatusCode::FORBIDDEN);
     set.split(';').next().unwrap().to_string()
 }
@@ -216,7 +322,7 @@ async fn index_is_public_and_api_requires_auth() {
     assert_eq!(s, StatusCode::UNAUTHORIZED);
     let (s, _, _) = call(&h, get("/api/sessions", Some("ompws_token=bogus"))).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
-    let (s, _, _) = call(&h, get("/pair?code=nope", None)).await;
+    let (s, _, _) = call(&h, pair_request("nope")).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
 }
 
@@ -402,7 +508,9 @@ async fn curl_end_to_end() {
         "/dev/null".into(),
         "-w".into(),
         "%{http_code} %{url_effective}".into(),
-        format!("{base}/pair?code={code}"),
+        "-d".into(),
+        format!("code={code}"),
+        format!("{base}/pair"),
     ])
     .await;
     let summary = String::from_utf8_lossy(&out.stdout).to_string();
@@ -775,7 +883,7 @@ async fn test_tls_pairing_sets_secure_cookie() {
 
     // Plain HTTP pairing does NOT set Secure
     let (code1, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
-    let (status, headers, _) = call(&h, get(&format!("/pair?code={code1}"), None)).await;
+    let (status, headers, _) = call(&h, pair_request(&code1)).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     let cookie = headers[header::SET_COOKIE].to_str().unwrap();
     assert!(!cookie.contains("Secure"));
@@ -783,20 +891,16 @@ async fn test_tls_pairing_sets_secure_cookie() {
     // Pairing over TLS (via TlsConnection extension layer) sets Secure
     let (code2, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
     let tls_router = server::router(h.ctx.clone()).layer(axum::Extension(server::TlsConnection));
-    let res = tls_router
-        .oneshot(get(&format!("/pair?code={code2}"), None))
-        .await
-        .unwrap();
+    let res = tls_router.oneshot(pair_request(&code2)).await.unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
     assert!(cookie.contains("; Secure"));
 
     // Pairing behind reverse proxy with x-forwarded-proto: https also sets Secure
     let (code3, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
-    let req = Request::get(format!("/pair?code={code3}"))
-        .header("x-forwarded-proto", "https")
-        .body(Body::empty())
-        .unwrap();
+    let mut req = pair_request(&code3);
+    req.headers_mut()
+        .insert("x-forwarded-proto", "https".parse().unwrap());
     let res = server::router(h.ctx.clone()).oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
@@ -909,14 +1013,17 @@ async fn batch_approve_answers_only_tool_approvals() {
         post(
             "/api/sessions/a/ui-respond-all",
             &cookie,
-            json!({"action": "approve"}),
+            json!({"action": "approve", "ids": ["r1", "t1", "t2", "q1", "t3"]}),
         ),
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{body}");
     // t1 + t2 handled; r1 (input), q1 (question), t3 (no exact labels) skipped.
     let v: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(v, json!({"handled": 2, "skipped": 3}));
+    assert_eq!(
+        v,
+        json!({"handled": 2, "skipped": 3, "handledIds": ["t1", "t2"]})
+    );
     let calls = h.ctx.backend.calls.lock().clone();
     assert_eq!(calls.len(), 2);
     assert!(
@@ -933,14 +1040,14 @@ async fn batch_approve_answers_only_tool_approvals() {
         post(
             "/api/sessions/a/ui-respond-all",
             &cookie,
-            json!({"action": "deny"}),
+            json!({"action": "deny", "ids": ["r1", "t4"]}),
         ),
     )
     .await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap(),
-        json!({"handled": 1, "skipped": 1})
+        json!({"handled": 1, "skipped": 1, "handledIds": ["t4"]})
     );
     let last = h.ctx.backend.calls.lock().last().cloned().unwrap();
     assert!(last.contains("\"value\":\"Deny\"") && last.contains("\"cancelled\":true"));
@@ -950,7 +1057,7 @@ async fn batch_approve_answers_only_tool_approvals() {
         post(
             "/api/sessions/a/ui-respond-all",
             &cookie,
-            json!({"action": "nuke"}),
+            json!({"action": "nuke", "ids": []}),
         ),
     )
     .await;
@@ -960,7 +1067,7 @@ async fn batch_approve_answers_only_tool_approvals() {
         post(
             "/api/sessions/z/ui-respond-all",
             &cookie,
-            json!({"action": "approve"}),
+            json!({"action": "approve", "ids": []}),
         ),
     )
     .await;
@@ -970,11 +1077,59 @@ async fn batch_approve_answers_only_tool_approvals() {
         post(
             "/api/sessions/nope/ui-respond-all",
             &cookie,
-            json!({"action": "approve"}),
+            json!({"action": "approve", "ids": []}),
         ),
     )
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn batch_approval_requires_seen_ids_and_never_answers_new_arrivals() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    *h.ctx.backend.extra_pending.lock() = vec![
+        json!({"id":"seen", "method":"confirm"}),
+        json!({"id":"arrived-later", "method":"confirm"}),
+    ];
+    let (s, _, _) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action":"approve"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(h.ctx.backend.calls.lock().is_empty());
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action":"approve", "ids":["seen", "seen", "gone"]}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"handled":1,"skipped":1,"handledIds":["seen"]})
+    );
+    assert_eq!(h.ctx.backend.calls.lock().len(), 1);
+    assert_eq!(h.ctx.backend.extra_pending.lock()[0]["id"], "arrived-later");
+    let (_, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/a/ui-respond-all",
+            &cookie,
+            json!({"action":"deny", "ids":[]}),
+        ),
+    )
+    .await;
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["handled"], 0);
+    assert_eq!(h.ctx.backend.calls.lock().len(), 1);
 }
 
 #[tokio::test]

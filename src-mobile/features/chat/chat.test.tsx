@@ -141,7 +141,7 @@ describe("controller send", () => {
 		expect(apiMock).toHaveBeenLastCalledWith("POST", "/sessions/s1/prompt-ex", { text: "later", images: [], streamingBehavior: "followUp" });
 	});
 
-	it("rolls back the optimistic bubble and restores the text on failure", async () => {
+	it("marks failed delivery unknown without restoring an apparently unsent draft", async () => {
 		const c = new ChatController("s1");
 		const set = vi.fn();
 		c.composer = { get: () => "", set };
@@ -149,7 +149,8 @@ describe("controller send", () => {
 		await c.send("lost?", "followUp");
 		expect(c.state.optimistic).toEqual([]);
 		expect(c.state.working).toBe(false);
-		expect(set).toHaveBeenLastCalledWith("lost?");
+		expect(set).toHaveBeenLastCalledWith("");
+		expect(c.state.delivery).toMatchObject({ text: "lost?", phase: "unknown" });
 	});
 
 	it("runs a slash command, shows its output locally and ignores the prompt path", async () => {
@@ -191,7 +192,7 @@ describe("PendingCards", () => {
 		await act(async () => c.store.setState({ pendings: [confirm("a"), confirm("b")] }));
 		apiMock.mockResolvedValue({ handled: 2, skipped: 0 });
 		await act(async () => fireEvent.click(screen.getByText("全部允许")));
-		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/s1/ui-respond-all", { action: "approve" });
+		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/s1/ui-respond-all", { action: "approve", ids: ["a", "b"] });
 	});
 });
 
@@ -226,5 +227,16 @@ describe("MessageList", () => {
 		expect(screen.getByText("streaming…")).toBeTruthy();
 		expect(screen.getByText("answer 120")).toBe(earlier);
 		expect(container.contains(earlier)).toBe(true);
+	});
+
+	it("shows an explicit unknown-delivery notice with original text, files and recovery actions", () => {
+		const c = new ChatController("s1");
+		c.store.setState({ loaded: true, delivery: { text: "original message", prompt: "original message", phase: "unknown", atts: [{ id: 1, name: "notes.txt", path: "/uploads/notes.txt", isImage: false, status: "ok", url: "" }] } });
+		render(wrap(c, <MessageList sessionId="s1" />));
+		expect(screen.getByRole("alert").textContent).toContain("电脑可能已经收到");
+		expect(screen.getByText("original message")).toBeTruthy();
+		expect(screen.getByText("notes.txt")).toBeTruthy();
+		expect(screen.getByText("恢复输入")).toBeTruthy();
+		expect(screen.getByText("已核对，不再重发")).toBeTruthy();
 	});
 });

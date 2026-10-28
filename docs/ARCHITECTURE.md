@@ -311,7 +311,7 @@ pub struct DdnsStatus { pub enabled: bool, pub token_set: bool, pub hostname: Op
   pub last_sync_at: Option<String>, pub last_error: Option<String>, pub halted: bool /* 401/403/429 or 3 failures; manual sync clears */ }
 pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<String>, pub tunnel_url: Option<String>, pub cloudflared_installed: bool,
   pub ipv6_running: bool, pub ipv6_port: u16, pub ipv6_address: Option<String>,
-  pub ipv6_url: Option<String> /* https://<ddns host>:<port> when DDNS synced to current addr, else https://[addr]:<port> */,
+  pub ipv6_url: Option<String> /* https://<ddns host>:<port> when DDNS is synced to the current addr AND the active listener certificate covers that hostname, else https://[addr]:<port> */,
   pub cert_sha256: Option<String> /* self-signed cert fingerprint, AA:BB:… */, pub ddns: DdnsStatus }
 
 pub struct UsageSummary { pub available: bool, pub tokens: u64, pub cost: f64, pub source: String /* "token-tracker" | "transcript" */ }
@@ -515,7 +515,7 @@ CREATE TABLE todos(id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL
   title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL, refs TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
-  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);  -- later migrations add: backlog.project_dir TEXT, backlog.deleted_at TEXT (soft delete / trash)
+  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);  -- later migrations add: backlog.project_dir TEXT, backlog.deleted_at TEXT (soft delete / trash), backlog.restored_at TEXT (v22, explicit restoration exempts automatic archive until a status action)
 CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
@@ -563,7 +563,7 @@ CREATE TABLE model_switch_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, rul
   edits TEXT NOT NULL, previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);
 -- v18: each of the three tables above gained `scope TEXT NOT NULL DEFAULT 'global'` ('global' or an absolute project directory)
 ```
-Use a `user_version` pragma for migrations (current: v20; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`; v20 adds `idx_session_meta_parent` on `session_meta(parent_session_id)` for side-chat child lookups). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v22; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`; v20 adds `idx_session_meta_parent` on `session_meta(parent_session_id)` for side-chat child lookups; v22 adds nullable `backlog.restored_at`, preserving explicit restoration across startup and age-based archiving). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -599,7 +599,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `rpc_start(opts: StartOpts) -> LiveSessionInfo` — `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta` after the child reports its sessionId; the group must exist in the same mode (else `会话分组不存在或与空间不匹配`), and the mode's global workspace row/dir is created lazily before spawn
 - `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`). Any `--resume` spawn (`rpc_start` with `resumeFile`, `rpc_ensure_live`, restart) first checks lsof holders + status files (§8, excluding this app's children) and returns `Err("SESSION_HELD:<pid>")` without spawning when another process holds the file (two writers corrupt the JSONL); `errMsg` (`src/lib/dialogs.ts`) renders it in Chinese. ensure_live/restart also refuse while this session's `omp` terminal (`term_open_session`) is open.
 - `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
-- `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`
+- `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`. Unknown, settled or already consumed request IDs are refused before writing; only an accepted current response can emit the event.
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
 - `rpc_stop(session_id)` — close stdin, wait ≤5s, then kill
 - `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
@@ -620,7 +620,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> GitHistory` (commits + `fork_point`/`base` for the timeline's "inherited from base" divider), `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
 - `git_create_worktree(repo, name, branch: Option<String>, base: Option<String>) -> WorktreeInfo` — `name` becomes the
   `.worktrees/<slug>` directory; `branch` (default `omp/<slug>`) is checked out when it exists, else created from `base`
-  (default: current HEAD), `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
+  (default: current HEAD), `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool, orphan_only?: bool)`. Orphan reclamation passes `orphan_only=true` and rechecks current session references; all removal paths reject active RPC/time-machine worktrees.
 - `git_scan_orphans() -> Vec<WorktreeInfo>` — `.worktrees/*` in registered workspaces with no session whose cwd is inside
 - Local base-branch ops (base = local `main`, else `master`, same resolver as `git_log`; never touch remotes):
   `git_diff_base(cwd) -> String` (committed patch `base...HEAD`), `git_rebase_onto_base(cwd) -> String`,
@@ -644,7 +644,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `checkpoints_rule() -> String` — auto-commit rule text the checkpoints extension injects (consent card / settings)
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
-- `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
+- `read_text_file(path) -> String`, `write_text_file(path, content, expected_content?: String)` (for the md editor; reject paths > 5 MB). The optional expected content enables compare-and-replace: a mismatch returns `CONFLICT:` without changing the file. In-app writes to the same canonical path are serialized through comparison and atomic replacement with independent temporary files; external writers are rechecked before replacement, but the filesystem provides no cross-process compare-and-swap guarantee.
 - `omp_files.rs` — confined, conflict-checked editing of omp-owned files (settings 「记忆文件」 / 「规则文件」). A *stamp* (`<mtime_ns>-<len>`) accompanies every read; writers pass it back and a mismatch is refused with an error starting `CONFLICT:` (nothing written). `StampedText { content: Option<String>, stamp: Option<String> }` (None = missing).
   - Memory (root `~/.omp/agent/memories/<slug>/`, slug = single path component, symlink-escape checked): `omp_memory_projects() -> Vec<String>`, `omp_memory_files(slug) -> Vec<{rel, editable}>`, `omp_memory_read(slug, rel) -> StampedText`, `omp_memory_write(slug, rel, content, expected_stamp) -> Option<String>` (editable + existing files only: `memory_summary.md`, `MEMORY.md`, `skills/<n>/SKILL.md`; never creates), `omp_memory_delete_skill(slug, name)`. `raw_memories.md` and `rollout_summaries/*.md` are read-only.
   - Rules: `omp_rule_read(path) -> StampedText`, `omp_rule_write(path, content, expected_stamp) -> Option<String>` (creates parent dirs; `expected_stamp = None` means "must not exist"). Path must be `AGENTS.md`, `RULES.md`, `APPEND_SYSTEM.md` or `<dir>/rules/*.md|.mdc`. Wrappers in `src/lib/ipc.ts` (`ompMemory*`, `ompRule*`).
@@ -662,7 +662,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `local_rows_get(session_id) -> JSON array` (opaque to Rust; `[]` when none), `local_rows_set(session_id, rows: JSON array)` (empty array deletes the row; > 2 MiB rejected)
 - `diagnose_build_prompt(target_session_id) -> String`
-- `backlog_list() -> Vec<BacklogItem>` (ALL rows, including trashed ones with `deletedAt` set; the UI filters), `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(ids: Vec<String>)` (soft delete: sets `deleted_at`), `backlog_restore(ids)` (clears `deleted_at`), `backlog_purge(ids)` (hard delete); each emits `backlog:changed` once. `backlog::init` first moves finished (done|closed) rows last updated more than 30 days ago into the trash, then hard-deletes rows trashed more than 7 days ago. Trashed rows stay in the table, so the storage image GC still protects their images. `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
+- `backlog_list() -> Vec<BacklogItem>` (ALL rows, including trashed ones with `deletedAt` set; the UI filters), `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(ids: Vec<String>)` (soft delete: sets `deleted_at`), `backlog_restore(ids)` (clears `deleted_at`, records `restored_at` and refreshes `updated_at`), `backlog_purge(ids)` (hard delete); each emits `backlog:changed` once. `backlog::init` first moves finished (done|closed) rows last updated more than 30 days ago into the trash, except explicitly restored rows until a later status action, then hard-deletes rows trashed more than 7 days ago. Trashed rows stay in the table, so the storage image GC still protects their images. `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
 - `notify_test()`
 
 **E — mobile / terminal:**
@@ -741,9 +741,9 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `omp_update_check() -> OmpUpdateStatus { current, latest, updateAvailable, output }` — runs `omp update --check` (30s timeout, neutral cwd, augmented PATH, ANSI stripped); parses `Current version:` / `New version available:` / `Already up to date`; non-zero exit → Err with output (GitHub rate-limit hint appended when applicable); used by Settings ▸ 版本与更新 and the BottomBar omp chip
 - `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog, and `stores/ompUpdateSessions.beginSwitch` moves sessions live at that moment to the new binary via `rpc_restart` (idle ones immediately, busy ones as soon as they go idle; one aggregate toast). `settings.ompAutoUpdate` (null = off) runs the update automatically when a check finds a new version. Settings ▸ 版本与更新 「立即重启所有会话」 force-restarts every live session.
   Check timing (`stores/ompUpdate.ts`): the startup check runs only when `settings.ompCheckIntervalHours` (default 24) has elapsed since the last completed check, and a periodic check (`watchOmpUpdateChecks`, 60 s tick) applies the same interval while the app is open. The last completed check time is persisted in localStorage key `ompws:omp-update-last-check`; failed checks count as checks. Auto-install behaviour is unchanged.
-- `omp_install_run() -> OmpInstallResult { success, output, info: OmpInfo }` (`omp_install.rs`, macOS/Linux only) — installs the omp CLI: fetches `https://omp.sh/install` with curl and runs it with `sh -s -- --binary` (augmented PATH, neutral cwd, own process group, 30 min timeout). Streams stdout+stderr as `omp:install` events (`line`) and polls `$PI_INSTALL_DIR` (default `~/.local/bin`) for `.omp.download.*` to emit `downloadedBytes`. `output` is the ANSI-stripped log; failure/cancel/timeout appends a plain Chinese hint. `info` is re-probed through the same helper as `omp_info` (`settings::probe_omp_info`), so the freshly installed binary is found without restart (resolution happens per call). Single-flight: a second call → Err 「omp 正在安装中」; Windows → Err with the manual `irm https://omp.sh/install.ps1 | iex` command. Only cannot-start cases are `Err`; installer failures resolve `success: false`.
-- `omp_install_cancel() -> ()` — SIGKILLs the installer's process group (curl included); the pending `omp_install_run` resolves with `success: false` and output containing 「已取消」. No-op when nothing runs.
-- Privacy (`privacy/commands.rs`, [P]): `privacy_list() -> PrivacySnapshot`, `privacy_classify(session_id: Option<String>, value) -> SecretClassification` (sessionOccurrences = whole-word hits in the session jsonl strings; > 0 means the value was already sent upstream), `privacy_mark(session_id: Option<String>, value, label: Option<String>, track, scope: Option<PrivacyMarkScope> = all) -> SecretEntry` (re-marking an existing value links the session and returns it; `scope` `future` records `since_ms` = now(ms) on a NEW link only — an existing link always wins, `all` never clears a cutoff; the label is replaced by a new non-empty label but the placeholder never changes; reject levels error with `TOO_SHORT`/`INVALID_VALUE`/`LABEL_CONTAINS_VALUE`), `privacy_update(id, patch: SecretEntryPatch) -> SecretEntry` (label change only edits the display label, placeholder is immutable), `privacy_delete(id)`, `privacy_session_entry_ids(session_id) -> Vec<String>`. `SecretEntry.sessionCount` = number of linked sessions (UI confirms delete/untrack when > 0: later requests of those sessions lose protection and their request prefix changes). Every mutation rewrites the §3 privacy files and emits `privacy_changed`.
+- `omp_install_run(run_id: String) -> OmpInstallResult { success, output, info: OmpInfo }` (`omp_install.rs`, macOS/Linux only) — installs the omp CLI: fetches `https://omp.sh/install` with curl and runs it with `sh -s -- --binary` (augmented PATH, neutral cwd, own process group, 30 min timeout). Streams stdout+stderr as `omp:install` events (`line`) and polls `$PI_INSTALL_DIR` (default `~/.local/bin`) for `.omp.download.*` to emit `downloadedBytes`. `output` is the ANSI-stripped log; failure/cancel/timeout appends a plain Chinese hint. `info` is re-probed through the same helper as `omp_info` (`settings::probe_omp_info`), so the freshly installed binary is found without restart (resolution happens per call). Single-flight: a second call → Err 「omp 正在安装中」; Windows → Err with the manual `irm https://omp.sh/install.ps1 | iex` command. Only cannot-start cases are `Err`; installer failures resolve `success: false`. Every attempt uses a fresh frontend `runId`; recently finished IDs cannot be reused.
+- `omp_install_cancel(run_id: String) -> ()` — cancels only the matching installation process group (curl included). A bounded pending cancellation is consumed if it arrives before that run registers; a late or mismatched cancellation cannot stop a newer attempt. The matching run resolves with `success: false` and output containing 「已取消」. The frontend waits for listener setup cancellation to settle before allowing retry; installer result and progress-event shapes are unchanged.
+- Privacy (`privacy/commands.rs`, [P]): `privacy_list() -> PrivacySnapshot`, `privacy_classify(session_id: Option<String>, value) -> SecretClassification` (sessionOccurrences = whole-word hits in the session jsonl strings; > 0 means the value was already sent upstream), `privacy_mark(session_id: Option<String>, value, label: Option<String>, track, scope: Option<PrivacyMarkScope> = all) -> SecretEntry` (re-marking an existing value applies the requested tracking and scope, links the session and returns it; `scope` `future` records `since_ms` = now(ms) on a NEW link only — an existing link always wins, an explicit `all` clears the current session link cutoff and replaces that scope; the label is replaced by a new non-empty label but the placeholder never changes; reject levels error with `TOO_SHORT`/`INVALID_VALUE`/`LABEL_CONTAINS_VALUE`), `privacy_update(id, patch: SecretEntryPatch) -> SecretEntry` (label change only edits the display label, placeholder is immutable), `privacy_delete(id)`, `privacy_session_entry_ids(session_id) -> Vec<String>`. `SecretEntry.sessionCount` = number of linked sessions (UI confirms delete/untrack when > 0: later requests of those sessions lose protection and their request prefix changes). Every mutation rewrites the §3 privacy files and emits `privacy_changed`.
 - Storage (`storage/`, settings ▸ 存储空间): `storage_overview() -> {images:{count,bytes}, webCacheBytes, status:{count,bytes,expiredCount,expiredBytes}, dbBytes, imageDirs}`, `storage_images_preview(drafts: Vec<String>) / storage_images_clean(drafts) -> {count,bytes}` (GC of the two image dirs `~/.omp-workspace/images/` + `<app-cache>/ompws-clip`: only files older than 30 days whose file name appears in no backlog/idea row, schedule prompt, settings value, `drafts` (unsent composer text, passed by the UI because drafts live in localStorage) or any omp `*.jsonl`), `storage_image_gc_auto(drafts) -> Option<{count,bytes}>` (same GC, throttled to once per 24h via `settings` row `image_gc_last_run`; the UI calls it ~60s after launch, `None` = skipped), `storage_clear_web_cache() -> bytes` (empties only `~/Library/Caches/<exe-or-identifier>/WebKit/NetworkCache`; never `~/Library/WebKit/*/WebsiteData` = LocalStorage/IndexedDB/cookies), `storage_clean_status_records() -> {count,bytes}` (status files (§8) whose pid is dead and mtime > 1 day), `storage_compact_db() -> {beforeBytes,afterBytes}` (`wal_checkpoint(TRUNCATE)` + `VACUUM`), `storage_sessions_overview() -> {root,totalBytes,sessionCount,projects:[{dir,name,cwd,bytes,sessions:[{id,title,updatedAt,bytes,pinned,skipReason}]}]}` (session bytes = transcript + lock + `<stem>/` dir; sessions sorted by size), `storage_stale_sessions_preview(days) -> {count,bytes,ids}`, `storage_trash_sessions(ids) -> {trashed,freedBytes,skipped:[{id,reason}]}` (moves transcript + `.<name>.lock.os` + `<stem>/` to the macOS Trash, removes the DB row/catalog entry, emits `sessions:removed`; running, pinned and externally held sessions are skipped). `delete_session` (sidebar, permanent) now also removes the lock file and `<stem>/` dir. Destructive paths are confined to the roots above and never follow symlinks.
 
 ## 8. Status extension file format
@@ -752,11 +752,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 `session_start`, `agent_start`, `agent_end`, `tool_approval_requested`, `tool_approval_resolved`,
 `session_shutdown`. Writes atomically (`write tmp + rename`) to `~/.omp-workspace/status/<sessionId>.json`:
 ```json
-{ "sessionId": "...", "sessionFile": "...", "pid": 123, "state": "working|idle|awaiting_approval|exited", "updatedAt": "ISO" }
+{ "sessionId": "...", "sessionFile": "...", "pid": 123, "processStartedAt": "<LC_ALL=C ps lstart>", "state": "working|idle|awaiting_approval|exited", "updatedAt": "ISO" }
 ```
 Session id/file come from `ctx.sessionManager` (probe `getSessionId?.()`/`getSessionFile?.()`/`getHeader?.()`
 defensively; see `~/.omp/agent/extensions/session-autoname.ts` for the API style). Never throws.
-Catalog (A) treats a status file as authoritative for External sessions when its `pid` is alive.
+Catalog (A) accepts a status-file owner only when its process identity matches the current PID start time; legacy files without `processStartedAt` require lsof corroboration. A live but reused PID is not ownership evidence.
 
 ### 8.1 Turn checkpoints extension
 
@@ -784,10 +784,10 @@ and the OMP terminal. Mapping file: `$OMPWS_PRIVACY_FILE` (set by `privacy::spaw
   risky). This also covers persisted tool calls/outputs and raw values sent unmarked (e.g. from mobile).
 - LLM compaction summaries bypass extension hooks; OMP's native secrets layer covers them (managed `secrets.yml` block in `replace`
   mode + overlay `secrets.enabled`), which OMP reads only at process start. `session_before_compact` therefore cancels compaction when
-  `secrets.json.nativeHash != $OMPWS_PRIVACY_NATIVE_HASH`; `rpc::refresh_privacy` restarts an idle session whose spawn hash is stale
+  the confirmed spawn token is `unprotected:` or differs from `secrets.json.nativeHash`; `rpc::refresh_privacy` restarts an idle session whose spawn hash is stale
   before writing a `prompt` frame.
 - Fail closed: if the native block could not be written (`conflict`, `error`, or an isolated `OMPWS_DATA_DIR` instance, which never
-  touches the global file), `secrets.json.nativeHash` is `unprotected:<hash>` so compaction stays cancelled.
+  touches the global file), `secrets.json.nativeHash` is `unprotected:<hash>` and the confirmed spawn token stays unprotected, so equality of failed hashes cannot authorize compaction.
 - Cutoffs (future-only marks): an entry may carry `cutoffs: { [sessionId]: epochMs }` in `secrets.json` (omitted when empty). In that
   session, messages older than the cutoff are never rewritten (their bytes keep matching the already-sent, cached prefix; a value
   already sent cannot be un-sent); messages at/after the cutoff are masked as usual. A message with a missing/unparseable
@@ -796,7 +796,7 @@ and the OMP terminal. Mapping file: `$OMPWS_PRIVACY_FILE` (set by `privacy::spaw
   from the managed block and from `nativeHash`/the overlay's tracked count. Compaction summaries bypass extension hooks, so the
   extension cancels compaction (`session_before_compact` → `{cancel:true}`) in EVERY session while any tracked entry has a cutoff in any
   session (the entry is missing from the global native block, so other sessions lose native coverage too), in addition to the
-  stale/unprotected hash guard. Tradeoff: no session auto-compacts until the cutoff entry is deleted (re-marking with `all` never clears a cutoff).
+  stale/unprotected hash guard. Tradeoff: no session auto-compacts until every cutoff is removed (deleting the entry or explicitly re-marking the corresponding session with `all`).
 - Placeholders are immutable once generated: editing a label changes only `SecretEntry.label`; no alias is created (existing `secret_aliases`
   rows stay readable and are still restored by `tool_call`).
 
@@ -818,7 +818,7 @@ Previewing a pending command does not submit the command, activate backend plan 
 - Commands (sent as ordinary prompts): bare `/plan` only ENABLES plan mode (never turns it off; already on = notify, no change); `/plan <task>` enters plan mode (if off) and sends the task. Mobile
   `POST /sessions/{id}/plan-mode` sends `/plan-action enable` or `/plan-action disable` (skipped when `{on}` already matches) and returns the new `{on}`.
 - `/plan-action <sub>`: `enable` / `disable` (explicit, idempotent switches; there is no toggle and no `exit`; the app's chip X, + menu, plan-panel 「启用」 button and mobile switch send these as silent host commands with no user echo bubble), `status` (re-publish state), `save` (persist the plan file),
-  `approve <execute|compact|keep> [role]` (`execute` = the app opens a NEW session in the same cwd and sends `/plan-action run [@role] <planFile>`;
+  `approve <execute|compact|keep> [role]` (`execute` = the app opens a NEW session in the same cwd and waits for acceptance of `/plan-action run [@role] <planFile>` before exiting the source plan; failed retries reuse the destination without resending an accepted execution;
   `compact` = compact context, then execute in the same session; `keep` = execute in the same session with history kept, refused above 95%
   context (`keepDisabled`); the mobile 「执行计划」 button sends `/plan-action approve keep`), and `run [@role] <file>` (run the plan file,
   optionally switching to the tier role's model).
@@ -833,6 +833,7 @@ pub async fn catalog::set_pending(state: &AppState, session_id: &str, pending: O
 pub fn catalog::init(state: AppState);   // spawn scanner/watcher/status tasks
 pub fn catalog::status::agent_end_settles(frame: &serde_json::Value) -> bool; // shared catalog/RPC idle boundary: terminal or awaitingAsyncWork; turn_end never settles
 pub async fn catalog::set_cwd_override(state: &AppState, session_id: &str, cwd: &str); // persist cwd_override + recompute meta
+pub(crate) fn catalog::session_mutation_lock() -> &'static tokio::sync::Mutex<()>; // startup, pin updates, deletion and session-terminal registration; order resume -> mutation -> scan -> DB/cache
 // rpc (B)
 pub async fn rpc::send_prompt(state: &AppState, session_id: &str, text: &str) -> Result<(), String>; // ensure_live + prompt (followUp when streaming)
 pub async fn rpc::ensure_live(state: &AppState, session_id: &str, cwd: Option<String>) -> Result<LiveSessionInfo, String>; // cwd=Some: persist as cwd_override + resume there
@@ -845,6 +846,9 @@ pub fn git::badge(cwd: &Path) -> Option<GitBadge>;                   // fast (ca
 pub fn git::repo_root(cwd: &Path) -> Option<String>;                 // main repo root, resolves worktrees via git-common-dir
 pub fn services::init(state: AppState);
 pub async fn services::list(all: bool) -> Vec<ServiceInfo>;
+// shared file writer guard (C; also used by confined omp-owned editors)
+pub(crate) fn services::files::write_lock(path: &Path) -> Arc<parking_lot::Mutex<()>>;
+pub(crate) fn services::files::write_text_unlocked(path: &Path, content: &str) -> Result<(), String>; // caller must hold write_lock; never recursively call a locking writer
 // todos (D)
 pub async fn todos::list(state: &AppState, include_closed: bool) -> Vec<Todo>;
 pub async fn todos::act(state: &AppState, id: &str, action: &str) -> Result<(), String>;
@@ -865,7 +869,7 @@ pub(crate) fn settings_plugins::scan_plugins(user_root: &Path, cwd: Option<&Path
 pub fn settings::apply_window_title(state: &AppState); // sets/restores main window title per `window_worktree_title` (never errors)
 // privacy (P)
 pub fn privacy::spawn_env() -> Vec<(String, String)>; // OMPWS_PRIVACY_NATIVE_HASH=<hash>, OMPWS_PRIVACY_FILE=<secrets.json>; + PI_CONFIG_FILES=<overlay> (':'-appended) when ≥1 natively tracked (tracked, cutoff-free) entry
-pub fn privacy::native_hash() -> String;             // in-memory, updated on every file sync
+pub fn privacy::native_hash() -> String;             // confirmed native coverage token: <hash> on success, unprotected:<hash> on failure; recovery with unchanged entries changes this token
 pub fn privacy::inherit_session(db: &rusqlite::Connection, parent_session_id: &str, child_session_id: &str) -> Result<(), String>; // copy session_secrets links incl. since_ms cutoffs (absolute timestamps; existing child links win); re-syncs secrets.json when the child has a cutoff
 ```
 (`catalog::set_pending` is internal to A; listed only so nobody else writes `pending_kind`.)
@@ -987,8 +991,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - External detection: every 5 s run `lsof -c omp -F pn` (names ending `.jsonl` under sessions dir) → pid per file.
   Files held by an app-owned pid are not External.
 - Status derivation (live sessions, from bus): `agent_start`→Working; dialog `extension_ui_request` (`select|confirm|input|editor`)
-  → AwaitingApproval if `title` starts with `Allow tool` else AwaitingAnswer (pending Approval/Question); `UiResponded`→Working;
-  `agent_end` with `isTerminal !== false` → Review (pending Review, unread if not selected); last assistant `stopReason:"error"` → Error;
+  → AwaitingApproval if `title` starts with `Allow tool` else AwaitingAnswer (pending Approval/Question); a valid `UiResponded` resumes only an active turn;
+  `agent_end` with `isTerminal !== false` → Review (pending Review, unread if not selected); last assistant `stopReason:"error"` → Error; Settlement clears outstanding dialog cards; late frames after process exit cannot revive the run.
   `RpcProcess running=false` with exit≠0 → Error; exit 0 while pending Review keeps Review. `PromptSent` clears pending Review/Question.
   `SessionAccepted` → Idle. Suspended flag from `session_meta.suspended` when not live.
 - Non-live, non-external: Interrupted when transcript tail is non-terminal (last message is user / toolResult / assistant with toolCalls,
@@ -1154,9 +1158,10 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   localStorage per session); `interrupt` = `abortTurn`, then wait until `live.streaming` is false (≤15 s, `interruptAndWait` in `send.ts`), then send normally;
   on timeout the message goes to the held queue with an error toast. Alternate: steer↔queue, interrupt→queue. The round button shows Stop (`abort`) while
   streaming; when the composer has text or quotes, a send button sits beside it performing the default follow-up (引导当前回合 / 本回合结束后发送 / 打断并发送; its title names the ⌥ chord).
+  Explicit Stop persists a per-session pause on held automatic delivery across remount/reload. Only a later successful explicit prompt can clear that pause; an acknowledgement from before the latest Stop cannot clear it. Internal interrupt does not pause held delivery.
   During manual or automatic compaction, real-session thinking-level changes are staged per session; only the latest selection is applied after compaction ends, with a second busy check after resume. Local drafts remain local.
   Codex-style popover list above the composer (text + image count, × remove; no reorder). When the turn ends and `settings.queueAutoSend`
-  is on (default; `undefined` = on), all ready items auto-send as one prompt in queue order. An ordinary typed send reserves those items and puts the typed prompt first, renumbering image markers across the combined message. In-flight individual sends are excluded; failed combined sends restore only the reserved items, once, at their original positions.
+  is on (default; `undefined` = on), unless explicitly paused by Stop, all ready items auto-send as one prompt in queue order. An ordinary typed send reserves those items and puts the typed prompt first, renumbering image markers across the combined message. In-flight individual sends are excluded; failed combined sends restore only the reserved items, once, at their original positions.
   With auto-send off, show the manual bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (↑↓).
   External sessions: composer disabled with "只读观察 — 接管后可操作".
 - Pending dialogs: render approval card (Approve/Deny, show title body), select (options + optionDetails), confirm, input/editor
@@ -1279,8 +1284,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
-  (5 min, one-time) → URL `http://<lan-ip>:<port>/pair?code=…`, QR as SVG (`qrcode` crate). `/pair` exchanges the code for a device token
-  (random, stored hashed in `mobile_devices`), sets an HttpOnly cookie, redirects to `/`. All `/api/*` require the cookie or `Authorization: Bearer`.
+  (5 min, one-time) → URL `http://<lan-ip>:<port>/pair?code=…`, QR as SVG (`qrcode` crate). GET/HEAD display a non-consuming confirmation page.
+  CSRF-checked POST `/pair` exchanges the code for a random device token (stored hashed in `mobile_devices`) and sets an HttpOnly cookie; JSON `{code}` returns 204, form submission redirects to `/`. Invalid/expired/used codes return 403 even if an old cookie is valid. All `/api/*` require the cookie or `Authorization: Bearer`.
   API: `GET /api/sessions` (id,label,title,status,pending,updatedAt,cwd), `GET /api/todos`, `POST /api/todos/:id/act {action}`,
   `GET /api/sessions/:id/pending-ui`, `POST /api/sessions/:id/ui-respond {response}`, `POST /api/sessions/:id/prompt {text}`,
   `POST /api/sessions/:id/resume`, `GET /api/sessions/:id/last` (last assistant text), `GET /api/events` (SSE: todos changed, session status changed).
@@ -1292,7 +1297,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
     (`[]`/null), actions needing a process return 409, and the first prompt starts the real process and returns `{ok, sessionId}`.
   - `POST /left/sessions {cwd, model?:{provider,modelId}, thinking?}` creates a draft with the selection applied; handoff keeps it.
   - `GET /sessions/:id/composer-state` includes `contextTokens/contextWindow/contextPercent` (null for drafts / unknown).
-  - `POST /sessions/:id/ui-respond-all {action: approve|deny}` → `{handled, skipped}`: answers only tool-approval selects/confirms.
+  - `POST /sessions/:id/ui-respond-all {action: approve|deny, ids: string[]}` → `{handled, skipped, handledIds: string[]}`: answers only selected tool-approval requests from the displayed snapshot; missing IDs are refused, new unselected arrivals are untouched.
+  - `POST /presence {sessionId, visible}` records receipt time. Chat views send a 15-second foreground heartbeat and clear presence on hide/unmount; push suppression expires after 45 seconds. Approval notifications are deduplicated by request identity, not only session.
+  - Before prompt dispatch, the client persists the original payload and attachment paths. Any ambiguous HTTP failure is shown as delivery-unknown, never automatically restored/retried as unsent; a deliberate risk confirmation is required to recover it. This is not a server exactly-once guarantee.
   - `GET /left/settings/desktop` → `{defaultApprovalMode, capsuleVisible}`; `POST /left/settings/approval-mode {mode: always-ask|write|yolo}`.
   - `GET /sessions/:id/git/diff?path=&staged=&commit=<hex sha>`; `POST /sessions/:id/slash {name:"fork", args?, entryId?}` → `{sessionId}`.
   - Images: `GET /sessions/:id/image?path=` (attachment/upload/blob dirs) and `GET /ideas/image?path=` (png/jpeg/gif/webp, ≤20MiB, magic-byte checked);
@@ -1323,7 +1330,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   DDNS (`mobile/ddns.rs`): Cloudflare API v4 AAAA upsert, `proxied=false`, called only when the address or configured host/zone changes
   (loop ~5 min) or on manual sync; single in-flight API call (token verify included); 401/403/429 or 3 consecutive failures → `halted`
   until `mobile_ddns_sync`. Token never logged or returned.
-- Terminal: `portable-pty`, reader thread → `terminal:data` (base64); multi-tab command terminal runs in `RightAside` as RightTab `"terminal"` (`CommandTerminalPanel`). Processes persist when panel/tab is hidden.
+- Terminal: `portable-pty`, reader thread → `terminal:data` (base64); multi-tab command terminal runs in `RightAside` as RightTab `"terminal"` (`CommandTerminalPanel`). Processes persist when panel/tab is hidden. Event subscriptions are ready before spawn, and pre-response output/exit is replayed after binding the terminal ID; a failed start can be retried.
   Quote capture: Cmd+Shift+A (and floating/context buttons) adds the current selection as an Annotation `{source:"terminal"}` to the composer, or sends to side chat.
 - Extension (§8) + install at startup to `extension_path()` (overwrite when content differs) + `install_status_extension_globally`.
 

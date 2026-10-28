@@ -305,6 +305,66 @@ describe("edit dialog", () => {
 		return screen.findByRole("dialog", { name: /编辑供应商/ });
 	}
 
+	it.each([
+		["custom", "encrypted", "plaintext"],
+		["custom", "plaintext", "encrypted"],
+		["builtin", "encrypted", "plaintext"],
+		["builtin", "plaintext", "encrypted"],
+	] as const)("saves %s blank-key mode change from %s to %s", async (origin, kind, mode) => {
+		const r = row("synthetic", kind, { origin, models: ["m1"] });
+		useProviders.setState({ rows: [r], loaded: true });
+		const onClose = vi.fn();
+		const save = origin === "builtin" ? ipc.providerSaveBuiltin : ipc.providerUpsert;
+		save.mockResolvedValueOnce({ ...r, key: { ...r.key, kind: mode } });
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
+		fireEvent.click(screen.getByLabelText(mode === "encrypted" ? /加密保存/ : /明文写入 OMP 配置/));
+		expect((screen.getByLabelText("API 密钥") as HTMLInputElement).value).toBe("");
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+		expect(save).toHaveBeenCalledWith(expect.objectContaining({ id: r.id }), null, mode);
+	});
+
+	it("treats a blank-key storage-mode change as unsaved work", async () => {
+		const r = row("synthetic", "encrypted", { models: ["m1"] });
+		const onClose = vi.fn();
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
+		confirmDialog.mockResolvedValueOnce(false);
+		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		await waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1));
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("does not mark the original storage-mode selection as unsaved work", async () => {
+		const r = row("synthetic", "encrypted", { models: ["m1"] });
+		const onClose = vi.fn();
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
+		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
+		fireEvent.click(screen.getByLabelText(/加密保存/));
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+		expect(confirmDialog).not.toHaveBeenCalled();
+	});
+
+	it("keeps missing-vault references in encrypted mode initially", () => {
+		const r = row("synthetic", "vaultMissing", { models: ["m1"] });
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={vi.fn()} />);
+		expect((screen.getByLabelText(/加密保存/) as HTMLInputElement).checked).toBe(true);
+	});
+
+	it("keeps the dialog open when blank-key mode conversion fails", async () => {
+		const r = row("synthetic", "encrypted", { models: ["m1"] });
+		useProviders.setState({ rows: [r], loaded: true });
+		const onClose = vi.fn();
+		ipc.providerUpsert.mockRejectedValueOnce("injected vault cleanup failure");
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
+		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		expect((await screen.findByRole("alert")).textContent).toContain("injected vault cleanup failure");
+		expect(onClose).not.toHaveBeenCalled();
+		expect(toast.success).not.toHaveBeenCalled();
+	});
+
 	it("shows the 无密钥 badge for authNone rows", async () => {
 		await renderPanel([builtin()]);
 		expect(screen.getByText("无密钥")).toBeTruthy();

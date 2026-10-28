@@ -156,8 +156,8 @@ fn new_placeholder(conn: &Connection, label: Option<&str>) -> Result<String, Str
     Err("无法生成唯一占位符".into())
 }
 
-/// Link `id` to the session. An existing link always wins (it must never change
-/// the already-sent prefix); a new `future` link records the cutoff (epoch ms).
+/// Link `id` to the session. Future-only re-marks preserve the existing prefix;
+/// explicitly selecting `all` removes this session's previous cutoff.
 fn link_session(
     conn: &Connection,
     session_id: Option<&str>,
@@ -168,7 +168,9 @@ fn link_session(
         let since_ms =
             (scope == PrivacyMarkScope::Future).then(|| chrono::Utc::now().timestamp_millis());
         conn.execute(
-            "INSERT OR IGNORE INTO session_secrets(session_id, entry_id, since_ms) VALUES(?1, ?2, ?3)",
+            "INSERT INTO session_secrets(session_id, entry_id, since_ms) VALUES(?1, ?2, ?3)
+             ON CONFLICT(session_id, entry_id) DO UPDATE SET since_ms = NULL
+             WHERE excluded.since_ms IS NULL",
             params![sid, id, since_ms],
         )
         .map_err(db_err)?;
@@ -205,6 +207,13 @@ pub fn mark(
         let existing = get(conn, &id)?;
         if label.is_some() && label != existing.label {
             set_label(conn, &id, label.as_deref())?;
+        }
+        if track != existing.track {
+            conn.execute(
+                "UPDATE secret_entries SET track = ?1 WHERE id = ?2",
+                params![track, id],
+            )
+            .map_err(db_err)?;
         }
         link_session(conn, session_id, &id, scope)?;
         return get(conn, &id);
@@ -454,15 +463,16 @@ mod tests {
     }
 
     #[test]
-    fn future_scope_records_cutoff_once_and_all_never_clears() {
+    fn future_scope_preserves_prefix_until_all_explicitly_clears_it() {
         let c = conn();
         let v = "longsecretvalue";
         let a = mark(&c, Some("s1"), v, None, true, PrivacyMarkScope::Future).unwrap();
         let first = since(&c, "s1", &a.id).expect("cutoff recorded");
         assert!(first > 1_600_000_000_000);
-        // `all` never clears the cutoff.
-        mark(&c, Some("s1"), v, None, true, PrivacyMarkScope::All).unwrap();
-        assert_eq!(since(&c, "s1", &a.id), Some(first));
+        // Explicit `all` protects the old history too.
+        let all = mark(&c, Some("s1"), v, None, true, PrivacyMarkScope::All).unwrap();
+        assert_eq!(since(&c, "s1", &a.id), None);
+        assert!(all.cutoffs.is_empty());
         // `future` never overwrites an existing earlier link.
         c.execute(
             "UPDATE session_secrets SET since_ms = 5 WHERE session_id = 's1'",
@@ -479,6 +489,23 @@ mod tests {
         assert_eq!(e.session_count, 2);
         assert_eq!(e.cutoffs.len(), 1);
         assert_eq!(e.cutoffs["s1"], 5);
+    }
+
+    #[test]
+    fn remark_applies_requested_tracking_without_changing_placeholder() {
+        let c = conn();
+        let value = "synthetic-secret-value-0001";
+        let original = mark(&c, Some("s1"), value, None, false, PrivacyMarkScope::Future).unwrap();
+        mark(&c, Some("s2"), value, None, false, PrivacyMarkScope::Future).unwrap();
+        let other_cutoff = since(&c, "s2", &original.id);
+        let restored = mark(&c, Some("s1"), value, None, true, PrivacyMarkScope::All).unwrap();
+        assert!(restored.track);
+        assert_eq!(restored.placeholder, original.placeholder);
+        assert_eq!(since(&c, "s1", &original.id), None);
+        assert_eq!(since(&c, "s2", &original.id), other_cutoff);
+        assert!(!super::super::files::native_tracked(&restored));
+        let untracked = mark(&c, Some("s1"), value, None, false, PrivacyMarkScope::All).unwrap();
+        assert!(!untracked.track);
     }
 
     #[test]

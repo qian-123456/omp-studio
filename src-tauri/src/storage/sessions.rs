@@ -101,6 +101,22 @@ pub fn skip_reason(live: bool, pinned: bool, external_pid: Option<u32>) -> Optio
     }
 }
 
+/// Final cleanup admission; callers hold the app mutation gate until disposal
+/// completes and obtain these facts freshly rather than reusing preview rows.
+pub(crate) fn remove_files_if_unused(
+    file: &Path,
+    sessions_dir: &Path,
+    disposal: Disposal,
+    live: bool,
+    pinned: bool,
+    external_pid: Option<u32>,
+) -> Result<(), String> {
+    if let Some(reason) = skip_reason(live, pinned, external_pid) {
+        return Err(reason.into());
+    }
+    remove_files(file, sessions_dir, disposal)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionRow {
@@ -327,6 +343,41 @@ mod tests {
         assert!(skip_reason(false, false, Some(1)).is_some());
         assert!(skip_reason(false, true, None).is_some());
         assert!(skip_reason(false, false, None).is_none());
+    }
+
+    #[test]
+    fn cleanup_revalidates_pin_live_and_terminal_changes_after_preview() {
+        for (tag, live, pinned, external) in [
+            ("pin", false, true, None),
+            ("live", true, false, None),
+            ("terminal", false, false, Some(123)),
+        ] {
+            let root = scratch_dir(&format!("cleanup-{tag}"));
+            let file = make_session(&root, "-p", "old");
+            let old = meta("old", &file, "2026-01-01T00:00:00Z");
+            let now = chrono::DateTime::parse_from_rfc3339("2026-10-21T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            assert_eq!(stale_preview(&[old], &root, now, 90).count, 1);
+            let result =
+                remove_files_if_unused(&file, &root, Disposal::Permanent, live, pinned, external);
+            assert!(result.is_err(), "new {tag} ownership must refuse cleanup");
+            assert!(file.exists());
+            assert!(root.join("-p/old/0.bash.log").exists());
+            assert!(root.join("-p/.old.jsonl.lock.os").exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn cleanup_removes_still_unused_session_and_all_companions() {
+        let root = scratch_dir("cleanup-unused");
+        let file = make_session(&root, "-p", "old");
+        remove_files_if_unused(&file, &root, Disposal::Permanent, false, false, None).unwrap();
+        assert!(!file.exists());
+        assert!(!root.join("-p/old").exists());
+        assert!(!root.join("-p/.old.jsonl.lock.os").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

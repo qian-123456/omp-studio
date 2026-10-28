@@ -252,6 +252,10 @@ pub(crate) fn plan_status_from_frame(frame: &Value) -> Option<Value> {
 /// Testable without a running process.
 pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
     let ty = frame.get("type").and_then(Value::as_str).unwrap_or("");
+    // Drain final command responses after OS exit, never reopen live activity.
+    if ty != "response" && !handle.alive.load(Ordering::SeqCst) {
+        return;
+    }
     // Responses to the reaper's own probes do not represent session activity.
     if ty != "response" {
         handle.touch();
@@ -295,6 +299,7 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
             handle.settled.store(false, Ordering::SeqCst);
         }
         "agent_end" if crate::catalog::status::agent_end_settles(frame) => {
+            handle.pending_ui.lock().clear();
             handle.streaming.store(false, Ordering::SeqCst);
             handle.awaiting_async_work.store(
                 frame.get("awaitingAsyncWork").and_then(Value::as_bool) == Some(true),
@@ -303,6 +308,7 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
             handle.refresh_settled();
         }
         "session_settled" => {
+            handle.pending_ui.lock().clear();
             handle.streaming.store(false, Ordering::SeqCst);
             handle.awaiting_async_work.store(false, Ordering::SeqCst);
             handle.settled.store(true, Ordering::SeqCst);
@@ -372,6 +378,9 @@ pub(crate) fn sink_from_state(state: &AppState) -> OutSink {
 
 /// Emit a frame to the frontend (`rpc:frame`) and the bus (`AppEvent::RpcFrame`).
 fn emit_frame(sink: &OutSink, handle: &SessionHandle, frame: &Value) {
+    if !handle.alive.load(Ordering::SeqCst) {
+        return;
+    }
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
         let mut guard = handle.pending_frames.lock();
@@ -719,10 +728,26 @@ pub async fn send_raw(handle: &Arc<SessionHandle>, frame: Value) -> Result<(), S
     if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
         return Err("session process is not running".into());
     }
+    let mut requests = handle.pending_ui.lock();
+    let response_id = (frame.get("type").and_then(Value::as_str) == Some("extension_ui_response"))
+        .then(|| frame.get("id").and_then(Value::as_str).unwrap_or(""));
+    if let Some(id) = response_id {
+        if id.is_empty()
+            || !requests
+                .iter()
+                .any(|r| r.request.get("id").and_then(Value::as_str) == Some(id))
+        {
+            return Err("UI request is no longer pending".into());
+        }
+    }
     handle
         .stdin_tx
         .send(frame.to_string())
-        .map_err(|_| "session stdin closed".to_string())
+        .map_err(|_| "session stdin closed".to_string())?;
+    if let Some(id) = response_id {
+        requests.retain(|r| r.request.get("id").and_then(Value::as_str) != Some(id));
+    }
+    Ok(())
 }
 
 /// Spawn + handshake (ready → negotiate v2 → get_state → subagent sub →
@@ -855,12 +880,12 @@ pub async fn spawn_with_sink(
         fn drop(&mut self) {
             if self.armed {
                 let _ = self.handle.shutdown.send(true);
-                self.handle.alive.store(false, Ordering::SeqCst);
+                let was_alive = self.handle.alive.swap(false, Ordering::SeqCst);
                 self.handle.pending.fail_all("spawn aborted");
                 self.stdin_task.abort();
                 self.reader_task.abort();
                 let pid = self.handle.pid;
-                if pid > 1 {
+                if pid > 1 && was_alive {
                     // SAFETY: best-effort kill of child process if spawn failed before completion.
                     unsafe {
                         libc::kill(pid as libc::pid_t, libc::SIGKILL);
@@ -988,25 +1013,32 @@ async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
     // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
     let _ = handle.shutdown.send(true);
     let code = status.ok().and_then(|s| s.code());
-    handle.pending_ui.lock().clear();
-    let session_id = handle.session_id.read().clone();
-    if !session_id.is_empty() {
-        sink(OutEvent::Process {
-            session_id: session_id.clone(),
-            running: false,
-            exit_code: code,
-        });
-        let mut reg = rpc::registry().write();
-        if let Some(existing) = reg.get(&session_id) {
-            if Arc::ptr_eq(existing, &handle) {
-                reg.remove(&session_id);
-            }
-        }
-    }
-    // Settle outstanding requests only after the reader drained stdout: a
-    // response printed immediately before exit must resolve its caller rather
-    // than lose the race to `fail_all`.
+    // Resolve buffered command responses before publishing the exit boundary.
+    // A reader that outlives this bounded drain cannot reopen live activity.
     handle.fail_pending_after_drain("omp process exited").await;
+    handle.streaming.store(false, Ordering::SeqCst);
+    handle.pending_ui.lock().clear();
+    publish_exit(&sink, &handle, code);
+}
+
+fn publish_exit(sink: &OutSink, handle: &Arc<SessionHandle>, code: Option<i32>) {
+    let session_id = handle.session_id.read().clone();
+    if session_id.is_empty() {
+        return;
+    }
+    let mut reg = rpc::registry().write();
+    if reg
+        .get(&session_id)
+        .is_some_and(|existing| !Arc::ptr_eq(existing, handle))
+    {
+        return; // A replacement process already owns this session.
+    }
+    reg.remove(&session_id);
+    sink(OutEvent::Process {
+        session_id,
+        running: false,
+        exit_code: code,
+    });
 }
 
 /// Close stdin, wait ≤5s for exit, then SIGKILL.
@@ -1044,6 +1076,91 @@ pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_process_exit_does_not_revoke_replacement_registration() {
+        let old = test_handle();
+        let replacement = test_handle();
+        let id = format!("replacement-{}", uuid::Uuid::new_v4());
+        *old.session_id.write() = id.clone();
+        *replacement.session_id.write() = id.clone();
+        rpc::registry()
+            .write()
+            .insert(id.clone(), replacement.clone());
+        let output = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let capture = output.clone();
+        let sink: OutSink = Arc::new(move |event| capture.lock().push(event));
+        publish_exit(&sink, &old, Some(0));
+        assert!(output.lock().is_empty());
+        assert!(Arc::ptr_eq(&rpc::registry().read()[&id], &replacement));
+        publish_exit(&sink, &replacement, Some(0));
+        assert_eq!(output.lock().len(), 1);
+        assert!(!rpc::registry().read().contains_key(&id));
+    }
+
+    #[tokio::test]
+    async fn dead_handle_drops_activity_but_resolves_final_responses() {
+        let h = test_handle();
+        let rx = h.pending.insert("final".into());
+        h.alive.store(false, Ordering::SeqCst);
+        apply_frame(&h, &json!({"type":"agent_start"}));
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"late","method":"confirm"}),
+        );
+        apply_frame(&h, &json!({"type":"response","id":"final","success":true}));
+        assert!(!h.streaming.load(Ordering::SeqCst));
+        assert!(h.pending_ui.lock().is_empty());
+        assert_eq!(rx.await.unwrap()["success"], json!(true));
+        let emitted = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let output = emitted.clone();
+        let sink: OutSink = Arc::new(move |event| output.lock().push(event));
+        emit_frame(&sink, &h, &json!({"type":"agent_start"}));
+        assert!(emitted.lock().is_empty());
+    }
+
+    #[tokio::test]
+    async fn settled_dialog_cannot_be_answered_or_sent_twice() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let h = Arc::new(SessionHandle {
+            stdin_tx: tx,
+            ..SessionHandle::for_test()
+        });
+        apply_frame(
+            &h,
+            &json!({"type":"extension_ui_request","id":"dialog","method":"confirm"}),
+        );
+        send_raw(
+            &h,
+            json!({"type":"extension_ui_response","id":"dialog","value":true}),
+        )
+        .await
+        .unwrap();
+        assert!(rx.try_recv().is_ok());
+        assert!(
+            send_raw(&h, json!({"type":"extension_ui_response","id":"dialog"}))
+                .await
+                .is_err()
+        );
+        for end in [
+            json!({"type":"agent_end"}),
+            json!({"type":"agent_end","isTerminal":false,"awaitingAsyncWork":true}),
+        ] {
+            apply_frame(
+                &h,
+                &json!({"type":"extension_ui_request","id":"dialog","method":"confirm"}),
+            );
+            apply_frame(&h, &end);
+            assert!(h.pending_ui.lock().is_empty());
+            assert_eq!(
+                send_raw(&h, json!({"type":"extension_ui_response","id":"dialog"}))
+                    .await
+                    .unwrap_err(),
+                "UI request is no longer pending"
+            );
+            assert!(rx.try_recv().is_err());
+        }
+    }
 
     #[test]
     fn stale_ids_compare_known_fingerprints_only() {

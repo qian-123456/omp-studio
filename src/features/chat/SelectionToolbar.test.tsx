@@ -20,6 +20,7 @@ vi.mock("../../stores/sessions", () => ({
 vi.mock("../sidechat/viewStore", () => ({
 	useSideChatView: {
 		getState: () => ({ openChild: h.openChild, setOpenChild: h.setOpenChild }),
+		subscribe: () => () => {},
 	},
 	isBlankTab: (id: string) => id.startsWith("new:"),
 	openNewSideChat: h.openNewSideChat,

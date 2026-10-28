@@ -453,7 +453,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 		setBusy(true);
 		setError(null);
 		// The input empties at once (the message shows as a pending bubble);
-		// the draft comes back if the chat cannot be created.
+		// the draft comes back if creation or the first ask fails.
 		clearSideChatDraft(tabId);
 		if (textareaRef.current) textareaRef.current.style.height = "auto";
 		try {
@@ -467,9 +467,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 			});
 		} catch (err) {
 			const msg = errMsg(err);
-			setSideChatDraft(tabId, q);
+			// The request may settle after the user has started another draft.
+			if (!useComposer.getState().sideChatDrafts[tabId]) setSideChatDraft(tabId, question);
 			setError(msg);
-			toast.error(t("sidechat.createSideChatFailed", { error: msg }));
+			toast.error(t("sidechat.sendSideChatMessageFailed", { error: msg }));
 		} finally {
 			setBusy(false);
 		}

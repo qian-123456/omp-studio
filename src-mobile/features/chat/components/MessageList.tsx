@@ -44,6 +44,7 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 	const loaded = useChat((s) => s.loaded);
 	const working = useChat((s) => s.working);
 	const live = useChat((s) => s.live);
+	const delivery = useChat((s) => s.delivery);
 	const [limit, setLimit] = useState(WINDOW_STEP);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
@@ -115,6 +116,19 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 				<SubagentCapsule sessionId={sessionId} />
 			</div>
 			<SelectionToolbar containerRef={contentRef} sessionId={sessionId} />
+			{delivery?.phase === "unknown" && (
+				<section role="alert" className="mx-4 mb-2 max-h-[40%] shrink-0 space-y-2 overflow-y-auto rounded-m-lg bg-m-danger-bg p-3 text-m-sm">
+					<p className="font-medium">消息送达状态未知</p>
+					<p>电脑可能已经收到，系统不会自动重发。请先核对会话记录，再决定是否恢复输入。</p>
+					<p className="whitespace-pre-wrap break-words">{delivery.text}</p>
+					{delivery.atts.map((a) => <p key={a.id}>{a.name}</p>)}
+					<div className="flex flex-wrap gap-2">
+						<Button size="sm" onClick={() => void controller.refresh()}>核对记录</Button>
+						<Button size="sm" onClick={() => void controller.resolveDelivery(true)}>恢复输入</Button>
+						<Button size="sm" onClick={() => void controller.resolveDelivery(false)}>已核对，不再重发</Button>
+					</div>
+				</section>
+			)}
 			<PullToRefresh ref={scrollRef} onRefresh={() => controller.refresh()}>
 				<div ref={contentRef} className="pt-1 pb-4">
 					{hidden > 0 && (

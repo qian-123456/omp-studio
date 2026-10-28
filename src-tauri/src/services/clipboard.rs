@@ -225,9 +225,17 @@ pub fn save_clipboard_file_internal(
         .map_err(|e| format!("Base64 解码失败：{e}"))?;
 
     let name = sanitize_file_name(file_name.unwrap_or("pasted-file"));
-    let ts = chrono::Utc::now().timestamp_millis();
-    let file_path = clip_dir.join(format!("{ts}-{name}"));
-    std::fs::write(&file_path, bytes).map_err(|e| format!("保存文件失败：{e}"))?;
+    let file_path = clip_dir.join(format!("{}-{name}", uuid::Uuid::new_v4()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file_path)
+        .map_err(|e| format!("保存文件失败：{e}"))?;
+    if let Err(e) = std::io::Write::write_all(&mut file, &bytes) {
+        drop(file);
+        let _ = std::fs::remove_file(&file_path);
+        return Err(format!("保存文件失败：{e}"));
+    }
     Ok(file_path.to_string_lossy().into_owned())
 }
 
@@ -276,6 +284,32 @@ mod tests {
         assert_eq!(sanitize_file_name(".."), "pasted-file");
         assert_eq!(sanitize_file_name(""), "pasted-file");
         assert_eq!(sanitize_file_name("a\u{0}b.txt"), "ab.txt");
+    }
+
+    #[test]
+    fn same_name_concurrent_attachments_retain_independent_bytes() {
+        let dir = std::env::temp_dir().join(format!("ompws-clip-{}", uuid::Uuid::new_v4()));
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let threads: Vec<_> = (0..16)
+            .map(|n| {
+                let dir = dir.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let bytes = format!("attachment-{n}").into_bytes();
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    barrier.wait();
+                    let path = save_clipboard_file_internal(&dir, &b64, Some("same.txt")).unwrap();
+                    (path, bytes)
+                })
+            })
+            .collect();
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        let paths: std::collections::HashSet<_> = results.iter().map(|(p, _)| p).collect();
+        assert_eq!(paths.len(), results.len());
+        for (path, bytes) in results {
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

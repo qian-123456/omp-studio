@@ -38,12 +38,16 @@ pub async fn write_text_file(
     _state: tauri::State<'_, AppState>,
     path: String,
     content: String,
+    expected_content: Option<String>,
 ) -> Result<(), String> {
     let p = files::resolve(&path)?;
     files::ensure_not_protected(&p)?;
-    tokio::task::spawn_blocking(move || files::write_text(&p, &content))
-        .await
-        .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || match expected_content.as_deref() {
+        Some(expected) => files::write_text_checked(&p, &content, Some(expected)),
+        None => files::write_text(&p, &content),
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -137,21 +141,17 @@ pub fn save_clipboard_image_internal(
         .decode(&clean_b64)
         .map_err(|e| format!("Base64 解码失败：{e}"))?;
 
-    let ts = chrono::Utc::now().timestamp_millis();
-    let mut n = 0u32;
-    let file_path = loop {
-        let name = if n == 0 {
-            format!("{ts}.png")
-        } else {
-            format!("{ts}-{n}.png")
-        };
-        let candidate = images_dir.join(name);
-        if !candidate.exists() {
-            break candidate;
-        }
-        n += 1;
-    };
-    std::fs::write(&file_path, bytes).map_err(|e| format!("保存图片失败：{e}"))?;
+    let file_path = images_dir.join(format!("{}.png", uuid::Uuid::new_v4()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file_path)
+        .map_err(|e| format!("保存图片失败：{e}"))?;
+    if let Err(e) = std::io::Write::write_all(&mut file, &bytes) {
+        drop(file);
+        let _ = std::fs::remove_file(&file_path);
+        return Err(format!("保存图片失败：{e}"));
+    }
 
     Ok(file_path.to_string_lossy().into_owned())
 }
@@ -181,21 +181,18 @@ pub fn import_image_file_internal(
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
         .unwrap_or_else(|| "png".to_string());
-    let ts = chrono::Utc::now().timestamp_millis();
-    let mut n = 0u32;
-    let dest = loop {
-        let name = if n == 0 {
-            format!("{ts}.{ext}")
-        } else {
-            format!("{ts}-{n}.{ext}")
-        };
-        let candidate = clip_dir.join(name);
-        if !candidate.exists() {
-            break candidate;
-        }
-        n += 1;
-    };
-    std::fs::copy(src_path, &dest).map_err(|e| format!("复制图片失败：{e}"))?;
+    let dest = clip_dir.join(format!("{}.{ext}", uuid::Uuid::new_v4()));
+    let mut source = std::fs::File::open(src_path).map_err(|e| format!("读取图片失败：{e}"))?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&dest)
+        .map_err(|e| format!("复制图片失败：{e}"))?;
+    if let Err(e) = std::io::copy(&mut source, &mut file) {
+        drop(file);
+        let _ = std::fs::remove_file(&dest);
+        return Err(format!("复制图片失败：{e}"));
+    }
     Ok(dest.to_string_lossy().into_owned())
 }
 
@@ -593,6 +590,53 @@ pub async fn perf_breakdown() -> Result<PerfBreakdown, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_image_attachments_keep_their_bytes() {
+        let base = std::env::temp_dir().join(format!("ompws-images-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&base).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(12));
+        let threads: Vec<_> = (0..12)
+            .map(|n| {
+                let base = base.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let bytes = format!("image-{n}").into_bytes();
+                    let source = base.join(format!("source-{n}.png"));
+                    std::fs::write(&source, &bytes).unwrap();
+                    barrier.wait();
+                    let path = if n % 2 == 0 {
+                        save_clipboard_image_internal(
+                            &base.join("images"),
+                            &base64::engine::general_purpose::STANDARD.encode(&bytes),
+                        )
+                        .unwrap()
+                    } else {
+                        import_image_file_internal(
+                            &base.join("cache"),
+                            &base.join("images"),
+                            source.to_str().unwrap(),
+                        )
+                        .unwrap()
+                    };
+                    (path, bytes)
+                })
+            })
+            .collect();
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(
+            results
+                .iter()
+                .map(|(p, _)| p)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            results.len()
+        );
+        for (path, bytes) in results {
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
 
     #[test]
     fn import_image_file_copies_into_images_dir() {

@@ -10,7 +10,6 @@ import {
 	extensionEnableFile,
 	ompConfigList,
 	ompProjectConfigRead,
-	ompConfigSet,
 	skillsList,
 	skillsTrash,
 	skillsUsage,
@@ -27,6 +26,7 @@ import {
 } from "../../lib/skillEnablement";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
 import { tNow } from "../../stores/language";
+import { OmpListRollbackError, updateOmpListSetting } from "./ompListSetting";
 
 
 /** Usage scan window surfaced in the UI (触发列标题、吃灰统计). */
@@ -112,32 +112,6 @@ export interface SkillStats {
 
 
 
-let configWriteChain: Promise<unknown> = Promise.resolve();
-
-/**
- * Read-modify-write helper for OMP config keys holding string lists.
- * `mutate` returns the next array; returning the same array skips the write.
- * Serialized: concurrent toggles must not lose each other's writes.
- */
-export function updateOmpListSetting(
-	key: string,
-	mutate: (current: string[]) => string[],
-): Promise<void> {
-	const run = async () => {
-		const list = await ompConfigList();
-		const entry = list.entries.find((e) => e.key === key);
-		const current =
-			entry && Array.isArray(entry.value)
-				? entry.value.filter((v): v is string => typeof v === "string")
-				: [];
-		const next = mutate(current);
-		if (next === current) return;
-		await ompConfigSet(key, JSON.stringify(next));
-	};
-	const result = configWriteChain.then(run, run);
-	configWriteChain = result.catch(() => undefined);
-	return result;
-}
 /** Pure stats used by the stat cards; exported for tests. */
 export function computeSkillStats(
 	skills: SkillItem[],
@@ -469,12 +443,15 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 		get().updateExtensionEnabled(ext.path, enabled);
 		try {
 			try {
-				await updateOmpListSetting("disabledExtensions", nextList);
+				await updateOmpListSetting(
+					"disabledExtensions",
+					nextList,
+					needsRename ? () => extensionEnableFile(ext.path, cwd) : undefined,
+				);
 			} finally {
 				useOmpConfigStore.getState().invalidate();
 			}
 			if (needsRename) {
-				await extensionEnableFile(ext.path, cwd);
 				// The file path changed: pull the new catalog.
 				await get().revalidateCatalog(cwd);
 			}
@@ -486,6 +463,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 		} catch (err) {
 			set({ skillConfig: prevConfig });
 			get().updateExtensionEnabled(ext.path, prevEnabled);
+			if (err instanceof OmpListRollbackError) {
+				// Compensation failed: display the actual catalog/config, not the
+				// pre-toggle snapshot that no longer describes persisted state.
+				await get().revalidateCatalog(cwd);
+			}
 			toast.error(
 				tNow("skills.updateExtensionFailed", {
 					error: err instanceof Error ? err.message : String(err),

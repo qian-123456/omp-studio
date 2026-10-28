@@ -19,6 +19,24 @@ export function generateHeldId(): string {
 
 const KEY = (sid: string) => `ompws-held:${sid}`;
 
+/** Stop pauses automatic delivery until an explicit prompt succeeds, even after remount/reload. */
+const pausedAutoSend = new Map<string, symbol>();
+/** A successful send may only clear the stop it started after, never a newer one. */
+export const heldAutoSendStopToken = (sid: string): symbol | undefined => pausedAutoSend.get(sid);
+const PAUSED_KEY = (sid: string) => `${KEY(sid)}:paused`;
+export function pauseHeldAutoSend(sid: string): void {
+	pausedAutoSend.set(sid, Symbol(sid));
+	try { globalThis.localStorage?.setItem(PAUSED_KEY(sid), "1"); } catch { /* memory latch remains */ }
+}
+export function resumeHeldAutoSend(sid: string): void {
+	pausedAutoSend.delete(sid);
+	try { globalThis.localStorage?.removeItem(PAUSED_KEY(sid)); } catch { /* storage unavailable */ }
+}
+export function isHeldAutoSendPaused(sid: string): boolean {
+	if (pausedAutoSend.has(sid)) return true;
+	try { return globalThis.localStorage?.getItem(PAUSED_KEY(sid)) === "1"; } catch { return false; }
+}
+
 const storage = {
 	load(sid: string): HeldItem[] {
 		try {
@@ -169,6 +187,7 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 			set((s) => ({ dismissed: { ...s.dismissed, [sid]: dismissed } })),
 		pruneSessions: (ids) => {
 			for (const sid of ids) {
+				resumeHeldAutoSend(sid);
 				try {
 					globalThis.localStorage?.removeItem(KEY(sid));
 				} catch {

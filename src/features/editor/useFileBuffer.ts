@@ -4,9 +4,10 @@
  * edits and show the external-change banner instead).
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { errMsg } from "../../lib/dialogs";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { readTextFile, writeTextFile } from "../../lib/ipc";
+import { tNow } from "../../stores/language";
 
 export interface FileBuffer {
 	saved: string | null;
@@ -23,89 +24,154 @@ export interface FileBuffer {
 	save: () => Promise<boolean>;
 }
 
-export function useFileBuffer(path: string): FileBuffer {
-	const [saved, setSaved] = useState<string | null>(null);
-	const [draft, setDraft] = useState("");
-	const [error, setError] = useState<string | null>(null);
-	const [external, setExternal] = useState(false);
-	const [saving, setSaving] = useState(false);
+interface BufferState {
+	saved: string | null;
+	draft: string;
+	error: string | null;
+	external: boolean;
+	saving: boolean;
+}
 
-	const dirty = saved !== null && draft !== saved;
+/** One live buffer per path, shared by both consumers. Dirty entries deliberately
+ * survive unmount/closing a tab; closing a view is not a discard operation. */
+const buffers = new Map<string, BufferEntry>();
 
-	const load = useCallback(async () => {
-		try {
-			const text = await readTextFile(path);
-			setSaved(text);
-			setDraft(text);
-			setError(null);
-			setExternal(false);
-		} catch (e) {
-			setError(errMsg(e));
-			setSaved(null);
-		}
-	}, [path]);
+class BufferEntry {
+	state: BufferState = { saved: null, draft: "", error: null, external: false, saving: false };
+	private listeners = new Set<() => void>();
+	private revision = 0;
+	private request = 0;
+	private reading = false;
+	private confirming = false;
 
-	useEffect(() => {
-		setSaved(null);
-		setDraft("");
-		setExternal(false);
-		void load();
-	}, [load]);
+	constructor(private path: string) {}
 
-	// Re-read on window focus. A clean buffer updates silently; a dirty buffer
-	// keeps the user's edits and surfaces the conflict instead.
-	useEffect(() => {
-		const onFocus = async () => {
-			if (saved === null) return;
-			try {
-				const text = await readTextFile(path);
-				if (text === saved) return;
-				if (dirty) {
-					setExternal(true);
-				} else {
-					setSaved(text);
-					setDraft(text);
-				}
-			} catch {
-				// File may be gone; leave the buffer alone.
+	private publish(patch: Partial<BufferState>) {
+		this.state = { ...this.state, ...patch };
+		for (const notify of this.listeners) notify();
+		this.releaseClean();
+	}
+
+	private releaseClean() {
+		queueMicrotask(() => {
+			if (!this.listeners.size && !this.state.saving && !this.reading &&
+				this.state.draft === (this.state.saved ?? "") && buffers.get(this.path) === this) {
+				buffers.delete(this.path);
 			}
-		};
-		window.addEventListener("focus", onFocus);
-		return () => window.removeEventListener("focus", onFocus);
-	}, [path, saved, dirty]);
+		});
+	}
 
-	const save = useCallback(async () => {
-		if (saved === null || !dirty || saving) return false;
-		setSaving(true);
+	subscribe = (notify: () => void) => {
+		this.listeners.add(notify);
+		return () => {
+			this.listeners.delete(notify);
+			this.releaseClean();
+		};
+	};
+	getSnapshot = () => this.state;
+	setDraft = (draft: string) => {
+		if (draft === this.state.draft) return;
+		this.revision++;
+		this.publish({ draft });
+	};
+	setError = (error: string | null) => this.publish({ error });
+	dismissExternal = () => this.publish({ external: false });
+
+	/** Check the state at read completion, never the state captured on focus. */
+	refresh = async () => {
+		if (this.reading || this.state.saving) return;
+		this.reading = true;
+		const request = ++this.request;
+		const revision = this.revision;
 		try {
-			await writeTextFile(path, draft);
-			setSaved(draft);
-			setExternal(false);
-			setError(null);
+			const text = await readTextFile(this.path);
+			if (request !== this.request) return;
+			const { saved, draft } = this.state;
+			if (this.revision !== revision || (saved !== null && draft !== saved)) {
+				// Establish an initial baseline without overwriting any early typing.
+				this.publish({ ...(saved === null ? { saved: text } : {}), external: saved !== null && text !== saved });
+			} else {
+				this.publish({ saved: text, draft: text, error: null, external: false });
+			}
+		} catch (e) {
+			if (request === this.request && this.state.saved === null) this.publish({ error: errMsg(e) });
+		} finally {
+			this.reading = false;
+			this.releaseClean();
+		}
+	};
+
+	save = async () => {
+		const { saved, draft, saving } = this.state;
+		if (saved === null || draft === saved || saving || this.confirming) return false;
+		// Invalidate older focus reads and capture exactly what this write saves.
+		this.request++;
+		this.publish({ saving: true });
+		try {
+			await writeTextFile(this.path, draft, saved);
+			this.publish({ saved: draft, external: false, error: null });
 			return true;
 		} catch (e) {
-			setError(errMsg(e));
+			const error = errMsg(e);
+			this.publish({ error, ...(error.startsWith("CONFLICT:") ? { external: true } : {}) });
 			return false;
 		} finally {
-			setSaving(false);
+			this.request++;
+			this.publish({ saving: false });
 		}
-	}, [path, draft, saved, dirty, saving]);
+	};
 
-	const reload = useCallback(async () => {
-		await load();
-	}, [load]);
+	reload = async () => {
+		if (this.state.saving || this.confirming) return;
+		const revision = this.revision;
+		if (this.state.saved !== null && this.state.draft !== this.state.saved) {
+			this.confirming = true;
+			try {
+				if (!(await confirmDialog(tNow("editor.discardAndReloadConfirm"), { danger: true }))) return;
+			} finally {
+				this.confirming = false;
+			}
+		}
+		// The confirmation did not authorize discarding edits typed after it opened.
+		if (revision !== this.revision) return;
+		const request = ++this.request;
+		try {
+			const text = await readTextFile(this.path);
+			if (request !== this.request) return;
+			if (revision !== this.revision) {
+				this.publish({ external: text !== this.state.saved });
+				return;
+			}
+			this.publish({ saved: text, draft: text, external: false, error: null });
+		} catch (e) {
+			if (request === this.request) this.publish({ error: errMsg(e) });
+		}
+	};
+}
 
+export function useFileBuffer(path: string): FileBuffer {
+	const entry = useMemo(() => {
+		let buffer = buffers.get(path);
+		if (!buffer) {
+			buffer = new BufferEntry(path);
+			buffers.set(path, buffer);
+		}
+		return buffer;
+	}, [path]);
+	const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot);
+	useEffect(() => {
+		void entry.refresh();
+		const onFocus = () => void entry.refresh();
+		window.addEventListener("focus", onFocus);
+		return () => window.removeEventListener("focus", onFocus);
+	}, [entry]);
 	return {
-		saved,
-		draft,
-		setDraft,
-		error,
-		setError,
-		external,
-		dismissExternal: () => setExternal(false),
-		saving,
-		dirty,
-		reload,
-		save,
+		...state,
+		dirty: state.saved !== null && state.draft !== state.saved,
+		setDraft: entry.setDraft,
+		setError: entry.setError,
+		dismissExternal: entry.dismissExternal,
+		reload: entry.reload,
+		save: entry.save,
 	};
 }

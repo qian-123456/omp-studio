@@ -209,13 +209,11 @@ pub fn next_run_bounded(
     }
 }
 
-/// Derive the display lifecycle (not stored): `completed` = a `once` schedule
-/// that already ran (a run row exists or `last_run_at` is set), or a recurring
-/// one past `end_at` (end reached or the next occurrence lands after it) or at
-/// its `max_runs` cap; `paused` = disabled but not completed; otherwise `active`.
-pub fn derive_lifecycle(s: &Schedule, has_run: bool, now: DateTime<Local>) -> ScheduleLifecycle {
+/// Derive lifecycle from the current occurrence. Run history survives a
+/// reschedule; `last_run_at` is cleared when a one-shot gets a new instant.
+pub fn derive_lifecycle(s: &Schedule, _has_run: bool, now: DateTime<Local>) -> ScheduleLifecycle {
     let completed = match &s.cadence {
-        ScheduleCadence::Once { .. } => has_run || s.last_run_at.is_some(),
+        ScheduleCadence::Once { .. } => s.last_run_at.is_some(),
         _ => {
             let capped = s.max_runs.is_some_and(|max| s.runs_done >= max);
             capped
@@ -462,6 +460,16 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
     };
 
     if let (Some(id), Some(prev)) = (draft.id.as_ref(), prev) {
+        let rescheduled_once = match (&prev.cadence, &cadence) {
+            (ScheduleCadence::Once { at: old }, ScheduleCadence::Once { at: new }) => {
+                DateTime::parse_from_rfc3339(old).ok() != DateTime::parse_from_rfc3339(new).ok()
+            }
+            (_, ScheduleCadence::Once { .. }) => true,
+            _ => false,
+        };
+        if rescheduled_once && has_active_run(conn, id).map_err(|e| e.to_string())? {
+            return Err("任务仍在运行，请结束后再改期".to_string());
+        }
         if draft.enabled && !prev.enabled {
             // Re-enabling a completed once is refused unless `at` moved to a
             // new (future) instant — that is a reschedule, not a re-enable.
@@ -470,7 +478,7 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
                     ScheduleCadence::Once { at: prev_at }
                         if DateTime::parse_from_rfc3339(prev_at).ok()
                             == DateTime::parse_from_rfc3339(at).ok());
-                let ran = prev.last_run_at.is_some() || prev.last_run_status.is_some();
+                let ran = prev.last_run_at.is_some();
                 if ran && same_instant {
                     return Err("一次性任务已执行，请复制或重新创建".to_string());
                 }
@@ -503,7 +511,8 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
              SET name = ?2, prompt = ?3, cwd = ?4, run_mode = ?5, cadence = ?6,
                  model = ?7, thinking = ?8, approval_mode = ?9, enabled = ?10,
                  next_run_at = ?11, end_at = ?12, updated_at = ?13,
-                 notify = ?14, new_chat_each_run = ?15, max_runs = ?16
+                 notify = ?14, new_chat_each_run = ?15, max_runs = ?16,
+                 last_run_at = CASE WHEN ?17 THEN NULL ELSE last_run_at END
              WHERE id = ?1",
             params![
                 id,
@@ -522,6 +531,7 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
                 notify_str,
                 draft.new_chat_each_run as i32,
                 max_runs,
+                rescheduled_once,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -573,8 +583,14 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
         .ok_or_else(|| "定时任务不存在".to_string())
 }
 
-pub fn delete(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
-    conn.execute("DELETE FROM schedules WHERE id = ?1", params![id])?;
+pub fn delete(conn: &Connection, id: &str) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    if has_active_run(&tx, id).map_err(|e| e.to_string())? {
+        return Err("任务仍在运行，请结束后再删除".to_string());
+    }
+    tx.execute("DELETE FROM schedules WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -583,9 +599,7 @@ pub fn set_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<Schedul
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "定时任务不存在".to_string())?;
     let next_run_at = if enabled {
-        if matches!(prev.cadence, ScheduleCadence::Once { .. })
-            && (prev.last_run_at.is_some() || prev.last_run_status.is_some())
-        {
+        if matches!(prev.cadence, ScheduleCadence::Once { .. }) && prev.last_run_at.is_some() {
             return Err("一次性任务已执行，请复制或重新创建".to_string());
         }
         // A schedule that already reached its run cap stays completed; raising
@@ -672,6 +686,69 @@ pub fn record_run_start(conn: &Connection, id: &str, at: &str) -> Result<(), rus
         params![id, ts],
     )?;
     Ok(())
+}
+
+/// Claim and count a run in one transaction while the caller holds the DB lock.
+/// Automatic dispatch also checks the exact due occurrence, not its old snapshot.
+pub fn claim_run(
+    conn: &Connection,
+    schedule_id: &str,
+    run_id: &str,
+    expected_next: Option<&str>,
+) -> Result<(Schedule, ScheduleRun), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let schedule = get(&tx, schedule_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "定时任务不存在".to_string())?;
+    let now = Local::now();
+    if let Some(expected) = expected_next {
+        let due = DateTime::parse_from_rfc3339(expected)
+            .map(|at| at <= now)
+            .unwrap_or(false);
+        if !schedule.enabled || schedule.next_run_at.as_deref() != Some(expected) || !due {
+            return Err("任务的计划时间已改变".to_string());
+        }
+    }
+    if schedule
+        .max_runs
+        .is_some_and(|max| schedule.runs_done >= max)
+    {
+        return Err("已达到运行次数上限，请先编辑任务".to_string());
+    }
+    if matches!(schedule.cadence, ScheduleCadence::Once { .. }) && schedule.last_run_at.is_some() {
+        return Err("一次性任务已执行，请先改期或复制任务".to_string());
+    }
+    if has_active_run(&tx, schedule_id).map_err(|e| e.to_string())? {
+        if expected_next.is_some() {
+            create_run(
+                &tx,
+                run_id,
+                schedule_id,
+                None,
+                ScheduleRunStatus::Skipped,
+                Some("上一次运行仍在进行中，已跳过"),
+            )
+            .map_err(|e| e.to_string())?;
+            advance_after_run(&tx, &schedule, now).map_err(|e| e.to_string())?;
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+        return Err("该任务上一次运行仍在进行中".to_string());
+    }
+    let run = create_run(
+        &tx,
+        run_id,
+        schedule_id,
+        None,
+        ScheduleRunStatus::Running,
+        None,
+    )
+    .map_err(|e| e.to_string())?;
+    if expected_next.is_some() || matches!(schedule.cadence, ScheduleCadence::Once { .. }) {
+        advance_after_run(&tx, &schedule, now).map_err(|e| e.to_string())?;
+    }
+    record_run_start(&tx, schedule_id, &run.started_at).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok((schedule, run))
 }
 /// Due = parsed instant of `next_run_at` <= `before`. Compared as instants in Rust:
 /// stored strings carry local UTC offsets that differ across DST / timezone changes,

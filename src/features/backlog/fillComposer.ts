@@ -5,6 +5,9 @@ import { onPromptSend, type PromptSendPhase } from "../../stores/promptSendEvent
 import { useBacklog } from "./backlogStore";
 import { refImagePaths, storedImagePaths, toComposerText } from "./ideaTokens";
 import { appendToDraft, buildBatchFillText } from "./ideasLogic";
+import { errMsg } from "../../lib/dialogs";
+import { useToasts } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 
 /**
  * 「放进输入框」: filling never changes an item's status. A pending fill (in memory only, so a
@@ -68,12 +71,28 @@ function onSend(phase: PromptSendPhase, sessionId: string, text: string): void {
 }
 
 async function markDispatched(ids: string[], sessionId: string): Promise<void> {
-	try {
-		await Promise.all(ids.map((id) => backlogUpdate(id, { status: "dispatched", targetSessionId: sessionId })));
-	} catch {
-		// Best effort: the items simply stay inbox.
+	const results = await Promise.allSettled(ids.map((id) => backlogUpdate(id, { status: "dispatched", targetSessionId: sessionId })));
+	const failed = ids.filter((_, index) => results[index].status === "rejected");
+	if (failed.length > 0) {
+		let retrying = false;
+		const retry = () => {
+			if (retrying) return;
+			retrying = true;
+			for (const item of useToasts.getState().items) {
+				if (item.action?.onClick === retry) useToasts.getState().dismiss(item.id);
+			}
+			void markDispatched(failed, sessionId).finally(() => { retrying = false; });
+		};
+		const errors = results.flatMap((result) => result.status === "rejected" ? [errMsg(result.reason)] : []);
+		useToasts.getState().push("error", tNow("backlog.deliveryRecordFailed", { count: failed.length, error: errors.join("; ") }), 0, {
+			label: tNow("common.retry"), onClick: retry,
+		});
 	}
-	await useBacklog.getState().load();
+	try {
+		await useBacklog.getState().load();
+	} catch (error) {
+		useToasts.getState().push("error", tNow("backlog.saveFailed", { error: errMsg(error) }), 0);
+	}
 }
 
 function attach(): void {

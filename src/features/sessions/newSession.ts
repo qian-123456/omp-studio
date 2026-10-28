@@ -16,6 +16,7 @@ import { useSettings } from "../settings/store";
 import { resolveNewSessionTargetWorkspace } from "./modes";
 import { findBlankDraft, usePendingSession } from "./pendingSession";
 import { releaseBlankDraft } from "./draftSession";
+import { closeForkDraft } from "./forkDraft";
 import { tNow } from "../../stores/language";
 
 let creationInFlight = false;
@@ -52,6 +53,7 @@ function adoptStub(stub: SessionMeta, regroup: string | null | undefined): void 
  * else create a new local draft. `regroup` re-files an adopted empty session.
  */
 function openDraft(opts: CreateSessionOpts, regroup?: string | null): void {
+	closeForkDraft();
 	if (!findBlankDraft(opts)) {
 		const stub = findReusableStub(opts.cwd, opts.mode ?? "code");
 		if (stub) {
@@ -135,7 +137,9 @@ export async function startNewSession(): Promise<void> {
 		workspaces,
 	);
 	if (!ws) {
-		useUi.getState().selectSession(null);
+		closeForkDraft();
+		usePendingSession.getState().select(null);
+		useUi.getState().leaveSession();
 		return;
 	}
 	await startSessionInDir(ws, false);

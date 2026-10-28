@@ -21,6 +21,8 @@ pub enum Phase {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Runtime {
     pub live: bool,
+    /// A process-exit boundary rejects buffered activity until an explicit start.
+    pub exited: bool,
     pub phase: Phase,
     /// Outstanding dialog requests: (request id, is tool approval).
     pub dialogs: Vec<(String, bool)>,
@@ -83,6 +85,7 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
     let mut new_pending = pending;
     let mut unread = None;
     match ev {
+        LiveEvent::Frame(_) if rt.exited => {}
         LiveEvent::Frame(frame) => match frame.get("type").and_then(Value::as_str) {
             Some("agent_start") => {
                 rt.live = true;
@@ -139,9 +142,7 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
         },
         LiveEvent::UiResponded { request_id } => {
             rt.dialogs.retain(|(d, _)| d != request_id);
-            if rt.phase == Phase::Settled && rt.live {
-                rt.phase = Phase::Working;
-            }
+            // A response closes a dialog; only agent_start begins agent work.
             new_pending = after_dialog_closed(rt, pending);
         }
         LiveEvent::PromptSent => {
@@ -151,6 +152,7 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
         }
         LiveEvent::Process { running: true, .. } => {
             rt.live = true;
+            rt.exited = false;
             // Resuming is the action that clears Interrupted / Error.
             if matches!(pending, Some(PendingKind::Interrupted | PendingKind::Error)) {
                 new_pending = None;
@@ -161,6 +163,7 @@ pub fn apply(rt: &mut Runtime, pending: Option<PendingKind>, ev: &LiveEvent) -> 
             exit_code,
         } => {
             rt.live = false;
+            rt.exited = true;
             rt.phase = Phase::Settled;
             rt.dialogs.clear();
             if matches!(exit_code, Some(c) if *c != 0) {
@@ -246,7 +249,7 @@ pub struct DeriveInput {
 pub fn derive(i: &DeriveInput) -> (SessionStatus, Option<PendingKind>) {
     use PendingKind as P;
     use SessionStatus as S;
-    if i.live {
+    if i.live && !i.runtime.exited {
         match i.runtime.dialog_kind() {
             Some(true) => return (S::AwaitingApproval, Some(P::Approval)),
             Some(false) => return (S::AwaitingAnswer, Some(P::Question)),
@@ -324,6 +327,87 @@ mod tests {
     use serde_json::json;
     use PendingKind as P;
     use SessionStatus as S;
+
+    #[test]
+    fn process_exit_rejects_late_start_dialog_and_end_until_restart() {
+        let (rt, pending, unread) = run(&[
+            LiveEvent::Process {
+                running: true,
+                exit_code: None,
+            },
+            frame(json!({"type":"agent_start"})),
+            LiveEvent::Process {
+                running: false,
+                exit_code: Some(0),
+            },
+            frame(json!({"type":"agent_start"})),
+            frame(json!({"type":"extension_ui_request","id":"late","method":"confirm"})),
+            frame(json!({"type":"agent_end"})),
+        ]);
+        assert!(!rt.live);
+        assert_eq!(rt.phase, Phase::Settled);
+        assert!(rt.dialogs.is_empty());
+        assert_eq!(pending, None);
+        assert!(!unread);
+        assert_eq!(live(&rt, pending), (S::Idle, None));
+        assert_eq!(
+            derive(&DeriveInput {
+                live: true,
+                runtime: rt.clone(),
+                ..Default::default()
+            }),
+            (S::Idle, None)
+        );
+        let mut rt = rt;
+        apply(
+            &mut rt,
+            pending,
+            &LiveEvent::Process {
+                running: true,
+                exit_code: None,
+            },
+        );
+        apply(&mut rt, pending, &frame(json!({"type":"agent_start"})));
+        assert_eq!(live(&rt, pending), (S::Working, None));
+    }
+
+    #[test]
+    fn response_to_settled_dialog_cannot_restart_work() {
+        for end in [
+            json!({"type":"agent_end"}),
+            json!({"type":"agent_end","isTerminal":false,"awaitingAsyncWork":true}),
+        ] {
+            let (rt, pending, _) = run(&[
+                LiveEvent::Process {
+                    running: true,
+                    exit_code: None,
+                },
+                frame(json!({"type":"agent_start"})),
+                frame(json!({"type":"extension_ui_request","id":"old","method":"confirm"})),
+                frame(end),
+                LiveEvent::UiResponded {
+                    request_id: "old".into(),
+                },
+            ]);
+            assert!(rt.dialogs.is_empty());
+            assert_eq!(live(&rt, pending), (S::Review, Some(P::Review)));
+        }
+    }
+
+    #[test]
+    fn idle_command_dialog_response_does_not_invent_agent_work() {
+        let (rt, pending, _) = run(&[
+            LiveEvent::Process {
+                running: true,
+                exit_code: None,
+            },
+            frame(json!({"type":"extension_ui_request","id":"cmd","method":"input"})),
+            LiveEvent::UiResponded {
+                request_id: "cmd".into(),
+            },
+        ]);
+        assert_eq!(live(&rt, pending), (S::Idle, None));
+    }
 
     #[test]
     fn attention_precedence_and_seen() {

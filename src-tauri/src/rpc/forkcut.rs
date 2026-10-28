@@ -10,8 +10,9 @@ pub(crate) enum Cut<'a> {
     /// no tool call. An in-flight turn (a trailing unanswered user message, an
     /// assistant message with a dangling tool call, tool results awaiting the
     /// next assistant step) is dropped entirely so the fork never inherits
-    /// unfinished work. With no complete turn only the pre-message header
-    /// entries are kept.
+    /// unfinished work. Tail plan-state custom entries are retained for full
+    /// forks, but never the unfinished messages they followed. With no complete
+    /// turn only the pre-message header and that plan state are kept.
     LastCompleteTurn,
     /// Exactly after the entry with this id (an explicitly chosen answer).
     AfterEntry(&'a str),
@@ -76,7 +77,7 @@ fn cut_copy(
         Cut::AfterEntry(id) => prefix_len_after_entry(&lines, id)
             .ok_or_else(|| format!("在会话文件中找不到所选回复（条目 {id}）"))?,
     };
-    let kept: Vec<std::borrow::Cow<'_, str>> = lines[..keep]
+    let mut kept: Vec<std::borrow::Cow<'_, str>> = lines[..keep]
         .iter()
         .map(
             |l| match drop_plan_mode.then(|| disable_plan_state(l)).flatten() {
@@ -85,6 +86,33 @@ fn cut_copy(
             },
         )
         .collect();
+    // Plan toggles/review updates can be persisted after the last answer (even
+    // while the next turn is unfinished). A full fork must restore that state,
+    // not the older snapshot in the completed prefix. Pinned forks stay exact.
+    if !drop_plan_mode && matches!(cut, Cut::LastCompleteTurn) {
+        let mut parent_id = lines[..keep].iter().rev().find_map(|line| {
+            let v = serde_json::from_str::<Value>(line).ok()?;
+            (v.get("type").and_then(Value::as_str) != Some("session"))
+                .then(|| v.get("id").cloned())
+                .flatten()
+        });
+        for line in &lines[keep..] {
+            let Ok(mut v) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            if v.get("type").and_then(Value::as_str) != Some("custom")
+                || v.get("customType").and_then(Value::as_str) != Some(PLAN_STATE_ENTRY)
+            {
+                continue;
+            }
+            // Do not leave a dangling link to an excluded user/tool message.
+            v["parentId"] = parent_id.clone().unwrap_or(Value::Null);
+            parent_id = v.get("id").cloned().or(parent_id);
+            kept.push(std::borrow::Cow::Owned(
+                serde_json::to_string(&v).map_err(|e| format!("无法保存分支计划状态：{e}"))?,
+            ));
+        }
+    }
     let rewritten = kept.iter().any(|l| matches!(l, std::borrow::Cow::Owned(_)));
     if keep == lines.len() && !rewritten {
         return Ok(None);
@@ -298,5 +326,114 @@ mod tests {
         .is_err());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(out);
+    }
+    const PLAN_OFF: &str = r#"{"type":"custom","id":"ps-off","parentId":"a1","customType":"ompws-plan-state","data":{"enabled":false,"version":3,"phase":"review","lastContent":"saved plan"}}"#;
+    const TAIL_PLAN_ON: &str = r#"{"type":"custom","id":"ps-tail","parentId":"tr","customType":"ompws-plan-state","data":{"enabled":true,"version":4,"phase":"review","lastContent":"new plan"}}"#;
+
+    #[test]
+    fn full_fork_keeps_plan_disable_after_last_complete_answer() {
+        let (dir, src) = tmp_file(&[HEAD, PLAN_ON, U1, A1, PLAN_OFF]);
+        let out = last_turn(&src).unwrap().unwrap();
+        assert_eq!(plan_enabled_in(&out), vec![true, false]);
+        let body = std::fs::read_to_string(&out).unwrap();
+        let tail: Value = serde_json::from_str(body.lines().last().unwrap()).unwrap();
+        let original: Value = serde_json::from_str(PLAN_OFF).unwrap();
+        assert_eq!(tail["data"], original["data"]);
+        assert_eq!(tail["parentId"], "a1");
+        assert_eq!(body.lines().count(), 5);
+        assert_eq!(plan_enabled_in(&src), vec![true, false]);
+        std::fs::remove_file(out).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn full_fork_keeps_tail_plan_snapshots_but_not_unfinished_messages() {
+        let unrelated = r#"{"type":"custom_message","id":"unfinished-context","customType":"ompws-plan-context","content":"unfinished prompt"}"#;
+        let (dir, src) = tmp_file(&[
+            HEAD,
+            U1,
+            A1,
+            U2,
+            A_TOOL,
+            TR,
+            PLAN_OFF,
+            unrelated,
+            TAIL_PLAN_ON,
+        ]);
+        let out = last_turn(&src).unwrap().unwrap();
+        let body = std::fs::read_to_string(&out).unwrap();
+        let entries: Vec<Value> = body
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(entries.len(), 5);
+        assert_eq!(entries[3]["id"], "ps-off");
+        assert_eq!(entries[3]["parentId"], "a1");
+        assert_eq!(entries[4]["id"], "ps-tail");
+        assert_eq!(entries[4]["parentId"], "ps-off");
+        assert_eq!(entries[4]["data"]["version"], 4);
+        assert_eq!(entries[4]["data"]["lastContent"], "new plan");
+        assert_eq!(plan_enabled_in(&out), vec![false, true]);
+        assert!(!body.contains("second"));
+        assert!(!body.contains("mid-turn"));
+        assert!(!body.contains("unfinished-context"));
+        assert!(!body.contains("toolResult"));
+        std::fs::remove_file(out).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn full_fork_without_complete_turn_keeps_only_header_and_tail_plan_state() {
+        let (dir, src) = tmp_file(&[HEAD, U2, A_TOOL, TR, TAIL_PLAN_ON]);
+        let out = last_turn(&src).unwrap().unwrap();
+        let body = std::fs::read_to_string(&out).unwrap();
+        let entries: Vec<Value> = body
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[1]["id"], "ps-tail");
+        assert!(entries[1]["parentId"].is_null());
+        assert_eq!(plan_enabled_in(&out), vec![true]);
+        std::fs::remove_file(out).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn pinned_fork_and_side_chat_do_not_import_tail_plan_state() {
+        let (dir, src) = tmp_file(&[HEAD, PLAN_ON, U1, A1, U2, TAIL_PLAN_ON]);
+        let pinned = truncate(src.to_str().unwrap(), Cut::AfterEntry("a1"), "omp-cut-test")
+            .unwrap()
+            .unwrap();
+        let side =
+            truncate_for_side_chat(src.to_str().unwrap(), Cut::LastCompleteTurn, "omp-cut-test")
+                .unwrap()
+                .unwrap();
+        assert_eq!(plan_enabled_in(&pinned), vec![true]);
+        assert_eq!(plan_enabled_in(&side), vec![false]);
+        for file in [&pinned, &side] {
+            let body = std::fs::read_to_string(file).unwrap();
+            assert!(!body.contains("ps-tail"));
+            assert!(!body.contains("second"));
+            std::fs::remove_file(file).unwrap();
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn side_chat_copy_write_failure_is_propagated() {
+        let (dir, src) = tmp_file(&[HEAD, PLAN_ON, U1, A1]);
+        // A nested prefix with a nonexistent directory deterministically fails
+        // the write without permissions tricks or global environment changes.
+        let prefix = dir.join("missing").join("fork");
+        let error = truncate_for_side_chat(
+            src.to_str().unwrap(),
+            Cut::LastCompleteTurn,
+            prefix.to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.contains("无法写入分支临时文件"));
+        assert_eq!(plan_enabled_in(&src), vec![true]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

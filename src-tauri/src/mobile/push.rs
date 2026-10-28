@@ -374,7 +374,12 @@ pub struct DevicePresence {
     pub visible: bool,
 }
 
-static PRESENCE: LazyLock<Mutex<HashMap<String, DevicePresence>>> =
+struct PresenceRecord {
+    presence: DevicePresence,
+    updated_at: std::time::Instant,
+}
+
+static PRESENCE: LazyLock<Mutex<HashMap<String, PresenceRecord>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Marks a device as having a live `/api/events` stream while it is alive.
@@ -407,9 +412,12 @@ pub fn has_sse_client(token_hash: &str) -> bool {
 pub fn update_presence(token_hash: &str, current_session: Option<String>, visible: bool) {
     PRESENCE.lock().insert(
         token_hash.to_string(),
-        DevicePresence {
-            current_session,
-            visible,
+        PresenceRecord {
+            presence: DevicePresence {
+                current_session,
+                visible,
+            },
+            updated_at: std::time::Instant::now(),
         },
     );
 }
@@ -423,7 +431,10 @@ pub fn clear_presence(token_hash: &str) {
 /// Read current presence state for a device.
 #[allow(dead_code)]
 pub fn get_presence(token_hash: &str) -> Option<DevicePresence> {
-    PRESENCE.lock().get(token_hash).cloned()
+    PRESENCE
+        .lock()
+        .get(token_hash)
+        .map(|record| record.presence.clone())
 }
 
 /// Whether a device is currently connected via SSE AND actively in the foreground
@@ -436,7 +447,9 @@ pub fn is_viewing_session(token_hash: &str, session_id: &str) -> bool {
     let Some(presence) = map.get(token_hash) else {
         return false;
     };
-    presence.visible && presence.current_session.as_deref() == Some(session_id)
+    presence.updated_at.elapsed() < Duration::from_secs(45)
+        && presence.presence.visible
+        && presence.presence.current_session.as_deref() == Some(session_id)
 }
 // ------------------------------------------------------------- delivery
 
@@ -599,15 +612,43 @@ fn first_line(s: &str) -> &str {
     s.lines().find(|l| !l.trim().is_empty()).unwrap_or("")
 }
 
-async fn push_session_event(state: &AppState, session_id: &str, kind: Kind) {
+/// A distinct dialog must never share the rate-limit key of its predecessor.
+fn notification_identity(kind: Kind, pending: &[crate::contracts::PendingUiRequest]) -> String {
+    if matches!(kind, Kind::Approval | Kind::Question) {
+        let mut keys: Vec<String> = pending
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}:{}",
+                    p.request.get("id").unwrap_or(&Value::Null),
+                    p.received_at
+                )
+            })
+            .collect();
+        keys.sort();
+        if !keys.is_empty() {
+            let encoded = serde_json::to_vec(&keys).expect("string list serializes");
+            return B64.encode(ring::digest::digest(&ring::digest::SHA256, &encoded).as_ref());
+        }
+        // A missing snapshot is not evidence that two requests are identical.
+        return uuid::Uuid::new_v4().to_string();
+    }
+    String::new()
+}
+async fn push_session_event(
+    state: &AppState,
+    session_id: &str,
+    kind: Kind,
+    identity: &str,
+    pending: Vec<crate::contracts::PendingUiRequest>,
+) {
     let meta = crate::catalog::get(state, session_id).await;
     let name = meta
         .as_ref()
         .map(crate::todos::sessions::display_name)
         .unwrap_or_else(|| "会话".to_string());
     let detail = match kind {
-        Kind::Approval | Kind::Question => crate::rpc::pending_ui(state, session_id)
-            .await
+        Kind::Approval | Kind::Question => pending
             .first()
             .and_then(|p| {
                 p.request
@@ -624,15 +665,18 @@ async fn push_session_event(state: &AppState, session_id: &str, kind: Kind) {
             .unwrap_or_default(),
         Kind::Error => String::new(),
     };
-    let body = payload(kind, session_id, &name, &detail);
+    let mut body = payload(kind, session_id, &name, &detail);
+    if !identity.is_empty() {
+        body["tag"] = json!(format!("{session_id}:{identity}"));
+    }
     notify(&state.db, None, true, &body, http_post).await;
 }
 
 /// Bus listener; runs until `shutdown` flips (mobile server stop).
 pub async fn run(state: AppState, mut shutdown: watch::Receiver<bool>) {
     let mut rx = state.bus.subscribe();
-    // The same (session, kind) is not pushed twice within this window.
-    let mut recent: HashMap<(String, Kind), std::time::Instant> = HashMap::new();
+    // Only identical requests share a rate-limit window, never an entire session.
+    let mut recent: HashMap<(String, Kind, String), std::time::Instant> = HashMap::new();
     loop {
         tokio::select! {
             changed = shutdown.changed() => {
@@ -643,13 +687,17 @@ pub async fn run(state: AppState, mut shutdown: watch::Receiver<bool>) {
             ev = rx.recv() => match ev {
                 Ok(AppEvent::SessionStatusChanged { session_id, old, new }) => {
                     let Some(kind) = classify(old, new) else { continue };
+                    let pending = if matches!(kind, Kind::Approval | Kind::Question) {
+                        crate::rpc::pending_ui(&state, &session_id).await
+                    } else { Vec::new() };
+                    let identity = notification_identity(kind, &pending);
                     let now = std::time::Instant::now();
                     recent.retain(|_, t| now.duration_since(*t) < Duration::from_secs(30));
-                    if recent.insert((session_id.clone(), kind), now).is_some() {
+                    if recent.insert((session_id.clone(), kind, identity.clone()), now).is_some() {
                         continue;
                     }
                     let state = state.clone();
-                    tokio::spawn(async move { push_session_event(&state, &session_id, kind).await });
+                    tokio::spawn(async move { push_session_event(&state, &session_id, kind, &identity, pending).await });
                 }
                 Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
@@ -671,6 +719,41 @@ pub fn test_payload() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distinct_approval_requests_are_not_rate_limited_together() {
+        let pending = |id: &str| {
+            vec![crate::contracts::PendingUiRequest {
+                session_id: "s".into(),
+                request: json!({"id": id}),
+                received_at: "same-instant".into(),
+            }]
+        };
+        let first = notification_identity(Kind::Approval, &pending("first"));
+        let second = notification_identity(Kind::Approval, &pending("second"));
+        let mut recent = HashMap::new();
+        assert!(recent
+            .insert(("s", Kind::Approval, first.clone()), ())
+            .is_none());
+        assert!(recent.insert(("s", Kind::Approval, second), ()).is_none());
+        assert!(recent.insert(("s", Kind::Approval, first), ()).is_some());
+        assert_ne!(
+            notification_identity(Kind::Approval, &[]),
+            notification_identity(Kind::Approval, &[])
+        );
+    }
+
+    #[test]
+    fn stale_foreground_presence_does_not_suppress_notifications() {
+        let device = "stale-presence-regression";
+        let _guard = SseGuard::new(device.into());
+        update_presence(device, Some("s".into()), true);
+        assert!(is_viewing_session(device, "s"));
+        PRESENCE.lock().get_mut(device).unwrap().updated_at =
+            std::time::Instant::now() - Duration::from_secs(46);
+        assert!(!is_viewing_session(device, "s"));
+        clear_presence(device);
+    }
     use ring::signature::{UnparsedPublicKey, ECDSA_P256_SHA256_FIXED};
 
     fn b64(s: &str) -> Vec<u8> {

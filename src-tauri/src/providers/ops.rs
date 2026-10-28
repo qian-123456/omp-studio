@@ -170,6 +170,94 @@ fn check_api_key(written: &str, id: &str, raw: &str) -> Result<(), String> {
     }
 }
 
+/// Apply all vault changes before committing YAML, restoring prior entries on
+/// failure. In particular, failed cleanup must never commit a plaintext,
+/// deleted or renamed block while its old vault entry remains behind.
+fn with_vault_changes<T>(
+    env: &Env,
+    changes: &[(String, Option<String>)],
+    commit: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let previous = changes
+        .iter()
+        .map(|(slug, _)| env.store.get(slug))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut attempted = Vec::new();
+    let result = (|| {
+        for (index, (slug, next)) in changes.iter().enumerate() {
+            if *next == previous[index] {
+                continue;
+            }
+            attempted.push(index);
+            match next {
+                Some(key) => env.store.put(slug, key)?,
+                None => env.store.remove(slug)?,
+            }
+        }
+        commit()
+    })();
+    if let Err(error) = result {
+        let mut rollback_failed = false;
+        for index in attempted.into_iter().rev() {
+            let slug = &changes[index].0;
+            // A failed atomic vault operation usually left the entry intact.
+            if env.store.get(slug).ok().as_ref() == Some(&previous[index]) {
+                continue;
+            }
+            let restored = match &previous[index] {
+                Some(key) => env.store.put(slug, key),
+                None => env.store.remove(slug),
+            };
+            rollback_failed |= restored.is_err();
+        }
+        return Err(if rollback_failed {
+            format!("{error}；密钥库回滚失败，请检查供应商密钥状态")
+        } else {
+            error
+        });
+    }
+    result
+}
+
+/// An empty key retains its material, not an explicitly changed storage mode.
+/// External commands and environment-variable references are not materialized.
+fn key_for_save(
+    env: &Env,
+    old: Option<&YmlProvider>,
+    new_key: Option<&str>,
+    mode: KeyMode,
+    renaming: bool,
+) -> Result<Option<String>, String> {
+    if let Some(key) = new_key {
+        return Ok(Some(key.to_string()));
+    }
+    let Some(old) = old else {
+        return Ok(None);
+    };
+    if env.is_own_ref(old) && (mode == KeyMode::Plaintext || renaming) {
+        let key = env
+            .store
+            .get(&key_ref::vault_slug(&old.id))?
+            .ok_or_else(|| "密钥库中找不到原供应商的密钥，请先重新设置密钥".to_string())?;
+        let key = validate_key(&key)?;
+        if mode == KeyMode::Plaintext && key.starts_with('!') {
+            return Err(
+                "明文密钥不能以 ! 开头（OMP 会把它当作命令执行），请改用加密保存".to_string(),
+            );
+        }
+        return Ok(Some(key.to_string()));
+    }
+    if mode == KeyMode::Encrypted && env.kind_of(old) == ProviderKeyKind::Plaintext {
+        return old
+            .api_key
+            .as_deref()
+            .map(validate_key)
+            .transpose()
+            .map(|key| key.map(str::to_string));
+    }
+    Ok(None)
+}
+
 /// Store `key` for `id` in `mode`; creates an override block for a built-in.
 pub fn apply_key(env: &Env, id: &str, key: &str, mode: KeyMode) -> Result<(), String> {
     let key = validate_key(key)?;
@@ -177,29 +265,15 @@ pub fn apply_key(env: &Env, id: &str, key: &str, mode: KeyMode) -> Result<(), St
         return Err("明文密钥不能以 ! 开头（OMP 会把它当作命令执行），请改用加密保存".to_string());
     }
     let slug = key_ref::vault_slug(id);
-    let prev = env.store.get(&slug).ok().flatten();
-    if mode == KeyMode::Encrypted {
-        env.store.put(&slug, key)?;
-    }
+    let changes = [(slug, (mode == KeyMode::Encrypted).then(|| key.to_string()))];
     let (raw, rendered) = key_value(env, id, key, mode);
-    let result = edit_file(
-        env.models_yml,
-        &|t| set_api_key_text(t, id, &rendered),
-        &|w| check_api_key(w, id, &raw),
-    );
-    if let Err(e) = result {
-        if mode == KeyMode::Encrypted {
-            let _ = match &prev {
-                Some(p) => env.store.put(&slug, p),
-                None => env.store.remove(&slug),
-            };
-        }
-        return Err(e);
-    }
-    if mode == KeyMode::Plaintext {
-        env.store.remove(&slug)?;
-    }
-    Ok(())
+    with_vault_changes(env, &changes, || {
+        edit_file(
+            env.models_yml,
+            &|t| set_api_key_text(t, id, &rendered),
+            &|w| check_api_key(w, id, &raw),
+        )
+    })
 }
 
 /// Move a plaintext `apiKey` into the vault and leave a command reference.
@@ -274,7 +348,6 @@ pub fn upsert(
     }
     let renaming = orig.is_some_and(|o| o != id);
     let old = orig.and_then(|o| all.iter().find(|p| p.id == o));
-    let old_was_ref = old.is_some_and(|p| env.is_own_ref(p)) && !input.auth_none;
     let old_slug = old.map(|p| key_ref::vault_slug(&p.id));
     let slug = key_ref::vault_slug(id);
     let creating = orig.is_none();
@@ -289,90 +362,61 @@ pub fn upsert(
         auth_none,
     };
 
-    let prev = env.store.get(&slug).ok().flatten();
-    let mut wrote_vault = false;
-    if let Some(k) = new_key {
-        if mode == KeyMode::Encrypted {
-            env.store.put(&slug, k)?;
-            wrote_vault = true;
-        }
-    } else if renaming && old_was_ref {
-        let old_slug = old_slug.as_deref().unwrap_or_default();
-        let v = env
-            .store
-            .get(old_slug)?
-            .ok_or_else(|| "密钥库中找不到原供应商的密钥，请先重新设置密钥".to_string())?;
-        env.store.put(&slug, &v)?;
-        wrote_vault = true;
-    }
-
-    let key_edit = new_key.map(|k| key_value(env, id, k, mode));
-    let carry_ref = renaming && old_was_ref && new_key.is_none();
-    let carried = key_ref::command_ref(env.shim, id);
-    let result = edit_file(
-        env.models_yml,
-        &|t| {
-            let mut t = t.to_string();
-            if let (true, Some(o)) = (renaming, orig) {
-                t = yml::rename_provider(&t, o, id)?;
-            }
-            t = yml::upsert_block_text(&t, &spec)?;
-            if input.auth_none {
-                t = yml::set_field(&t, id, "apiKey", None)?;
-            } else if !auth_none {
-                t = yml::set_field(&t, id, "auth", None)?;
-            }
-            if let Some((_, rendered)) = &key_edit {
-                t = set_api_key_text(&t, id, rendered)?;
-            } else if carry_ref {
-                t = yml::set_field(
-                    &t,
-                    id,
-                    "apiKey",
-                    Some(&key_ref::command_ref_yaml(env.shim, id)),
-                )?;
-            }
-            Ok(t)
-        },
-        &|w| {
-            yml::verify_block(w, &spec)?;
-            let got = yml::parse_providers(w)?;
-            if got.iter().any(|p| p.id == id && p.auth_none != auth_none) {
-                return Err(format!("写入后校验失败: {id}"));
-            }
-            if let Some((raw, _)) = &key_edit {
-                check_api_key(w, id, raw)?;
-            } else if carry_ref {
-                check_api_key(w, id, &carried)?;
-            }
-            Ok(())
-        },
-    );
-    if let Err(e) = result {
-        if wrote_vault {
-            let _ = match &prev {
-                Some(p) => env.store.put(&slug, p),
-                None => env.store.remove(&slug),
-            };
-        }
-        return Err(e);
-    }
+    let saved_key = if input.auth_none {
+        None
+    } else {
+        key_for_save(env, old, new_key, mode, renaming)?
+    };
+    let key_edit = saved_key.as_deref().map(|k| key_value(env, id, k, mode));
+    let mut changes = Vec::new();
     if renaming {
         if let Some(old_slug) = &old_slug {
             if *old_slug != slug {
-                env.store.remove(old_slug)?;
+                changes.push((old_slug.clone(), None));
             }
         }
     }
-    if (new_key.is_some() && mode == KeyMode::Plaintext) || input.auth_none {
-        env.store.remove(&slug)?;
+    if saved_key.is_some() || input.auth_none {
+        changes.push((slug, saved_key.filter(|_| mode == KeyMode::Encrypted)));
     }
+    with_vault_changes(env, &changes, || {
+        edit_file(
+            env.models_yml,
+            &|t| {
+                let mut t = t.to_string();
+                if let (true, Some(o)) = (renaming, orig) {
+                    t = yml::rename_provider(&t, o, id)?;
+                }
+                t = yml::upsert_block_text(&t, &spec)?;
+                if input.auth_none {
+                    t = yml::set_field(&t, id, "apiKey", None)?;
+                } else if !auth_none {
+                    t = yml::set_field(&t, id, "auth", None)?;
+                }
+                if let Some((_, rendered)) = &key_edit {
+                    t = set_api_key_text(&t, id, rendered)?;
+                }
+                Ok(t)
+            },
+            &|w| {
+                yml::verify_block(w, &spec)?;
+                let got = yml::parse_providers(w)?;
+                if got.iter().any(|p| p.id == id && p.auth_none != auth_none) {
+                    return Err(format!("写入后校验失败: {id}"));
+                }
+                if let Some((raw, _)) = &key_edit {
+                    check_api_key(w, id, raw)?;
+                }
+                Ok(())
+            },
+        )
+    })?;
     Ok(id.to_string())
 }
 
 /// Create / update / drop the override block of a built-in provider. Keeps the
 /// fields it does not manage (`modelOverrides`, `headers`, `name`, ...). `api_key`
-/// `None` keeps the current key; `auth_none` wins over a key. An empty result
+/// `None` keeps the key material while honoring `mode`; `auth_none` wins. An empty result
 /// deletes the block. `default_base_url` is the built-in endpoint, used when
 /// extra models need an address and none was typed.
 pub fn save_builtin(
@@ -406,59 +450,53 @@ pub fn save_builtin(
         return Err("明文密钥不能以 ! 开头（OMP 会把它当作命令执行），请改用加密保存".to_string());
     }
     let slug = key_ref::vault_slug(id);
-    let prev = env.store.get(&slug).ok().flatten();
-    let mut wrote_vault = false;
-    if let (Some(k), KeyMode::Encrypted) = (new_key, mode) {
-        env.store.put(&slug, k)?;
-        wrote_vault = true;
-    }
-    let key_edit = new_key.map(|k| key_value(env, id, k, mode));
+    let old = env.provider(id)?;
+    let saved_key = if input.auth_none {
+        None
+    } else {
+        key_for_save(env, old.as_ref(), new_key, mode, false)?
+    };
+    let key_edit = saved_key.as_deref().map(|k| key_value(env, id, k, mode));
+    let changes = if saved_key.is_some() || input.auth_none {
+        vec![(slug, saved_key.filter(|_| mode == KeyMode::Encrypted))]
+    } else {
+        Vec::new()
+    };
     let auth_none = input.auth_none;
-    let result = edit_file(
-        env.models_yml,
-        &|t| {
-            let mut t = yml::ensure_provider(t, id)?;
-            if let Some((_, rendered)) = &key_edit {
-                t = set_api_key_text(&t, id, rendered)?;
-            }
-            let url = base_url.map(yml::yaml_scalar);
-            t = yml::set_field(&t, id, "baseUrl", url.as_deref())?;
-            t = yml::set_models_text(&t, id, &input.extra_models)?;
-            if auth_none {
-                t = yml::set_field(&t, id, "apiKey", None)?;
-                t = yml::set_field(&t, id, "auth", Some("none"))?;
-            } else {
-                t = yml::set_field(&t, id, "auth", None)?;
-            }
-            if yml::block_is_empty(&t, id)? == Some(true) {
-                return yml::remove_provider(&t, id);
-            }
-            yml::ensure_discovery_text(&t, id)
-        },
-        &|w| {
-            if yml::block_is_empty(w, id)?.is_none() {
-                return Ok(());
-            }
-            yml::verify_override(w, id, base_url, auth_none, &input.extra_models)?;
-            if let Some((raw, _)) = &key_edit {
-                check_api_key(w, id, raw)?;
-            }
-            Ok(())
-        },
-    );
-    if let Err(e) = result {
-        if wrote_vault {
-            let _ = match &prev {
-                Some(p) => env.store.put(&slug, p),
-                None => env.store.remove(&slug),
-            };
-        }
-        return Err(e);
-    }
-    if (new_key.is_some() && mode == KeyMode::Plaintext) || auth_none {
-        env.store.remove(&slug)?;
-    }
-    Ok(())
+    with_vault_changes(env, &changes, || {
+        edit_file(
+            env.models_yml,
+            &|t| {
+                let mut t = yml::ensure_provider(t, id)?;
+                if let Some((_, rendered)) = &key_edit {
+                    t = set_api_key_text(&t, id, rendered)?;
+                }
+                let url = base_url.map(yml::yaml_scalar);
+                t = yml::set_field(&t, id, "baseUrl", url.as_deref())?;
+                t = yml::set_models_text(&t, id, &input.extra_models)?;
+                if auth_none {
+                    t = yml::set_field(&t, id, "apiKey", None)?;
+                    t = yml::set_field(&t, id, "auth", Some("none"))?;
+                } else {
+                    t = yml::set_field(&t, id, "auth", None)?;
+                }
+                if yml::block_is_empty(&t, id)? == Some(true) {
+                    return yml::remove_provider(&t, id);
+                }
+                yml::ensure_discovery_text(&t, id)
+            },
+            &|w| {
+                if yml::block_is_empty(w, id)?.is_none() {
+                    return Ok(());
+                }
+                yml::verify_override(w, id, base_url, auth_none, &input.extra_models)?;
+                if let Some((raw, _)) = &key_edit {
+                    check_api_key(w, id, raw)?;
+                }
+                Ok(())
+            },
+        )
+    })
 }
 
 /// Delete the `providers.<id>` block and its vault entry.
@@ -466,14 +504,15 @@ pub fn delete(env: &Env, id: &str) -> Result<(), String> {
     if env.provider(id)?.is_none() {
         return Err("该供应商是 OMP 内置供应商，没有可删除的配置".to_string());
     }
-    edit_file(env.models_yml, &|t| yml::remove_provider(t, id), &|w| {
-        if yml::ids_in(w).contains(id) {
-            Err(format!("写入后校验失败: {id}"))
-        } else {
-            Ok(())
-        }
-    })?;
-    env.store.remove(&key_ref::vault_slug(id))
+    with_vault_changes(env, &[(key_ref::vault_slug(id), None)], || {
+        edit_file(env.models_yml, &|t| yml::remove_provider(t, id), &|w| {
+            if yml::ids_in(w).contains(id) {
+                Err(format!("写入后校验失败: {id}"))
+            } else {
+                Ok(())
+            }
+        })
+    })
 }
 
 /// The usable key of `id`: vault (encrypted), literal (plaintext) or a set env
@@ -699,7 +738,7 @@ pub(super) mod tests {
         // update: no key → key kept, other blocks identical
         input.original_id = Some("brand new".into());
         input.base_url = "https://n2.example/v1".into();
-        upsert(&env, &input, None, KeyMode::Plaintext).unwrap();
+        upsert(&env, &input, None, KeyMode::Encrypted).unwrap();
         let t2 = fx.text();
         let p = env.provider("brand new").unwrap().unwrap();
         assert_eq!(p.base_url.as_deref(), Some("https://n2.example/v1"));
@@ -714,7 +753,7 @@ pub(super) mod tests {
 
         // rename carries the encrypted key
         input.id = "renamed".into();
-        upsert(&env, &input, None, KeyMode::Plaintext).unwrap();
+        upsert(&env, &input, None, KeyMode::Encrypted).unwrap();
         assert!(env.provider("brand new").unwrap().is_none());
         let r = env.provider("renamed").unwrap().unwrap();
         assert!(key_ref::is_ref_for(
@@ -1001,5 +1040,316 @@ pub(super) mod tests {
         let fx = Fx::new("");
         apply_key(&fx.env(), "openai", "sk-x", KeyMode::Plaintext).unwrap();
         assert!(!fx.text().contains("discovery"));
+    }
+    /// Synthetic, atomic failures: never reads the real vault or credentials.
+    struct FaultStore<'a> {
+        inner: &'a MemStore,
+        failures: RefCell<Vec<(&'static str, String)>>,
+    }
+
+    impl FaultStore<'_> {
+        fn check(&self, operation: &str, slug: &str) -> Result<(), String> {
+            let mut failures = self.failures.borrow_mut();
+            if failures
+                .first()
+                .is_some_and(|(op, id)| *op == operation && id == slug)
+            {
+                failures.remove(0);
+                return Err(format!("injected {operation} failure"));
+            }
+            Ok(())
+        }
+    }
+
+    impl KeyStore for FaultStore<'_> {
+        fn has(&self, slug: &str) -> bool {
+            self.inner.has(slug)
+        }
+        fn get(&self, slug: &str) -> Result<Option<String>, String> {
+            self.check("get", slug)?;
+            self.inner.get(slug)
+        }
+        fn put(&self, slug: &str, key: &str) -> Result<(), String> {
+            self.check("put", slug)?;
+            self.inner.put(slug, key)
+        }
+        fn remove(&self, slug: &str) -> Result<(), String> {
+            self.check("remove", slug)?;
+            self.inner.remove(slug)
+        }
+    }
+
+    fn edit_plain() -> ProviderUpsert {
+        ProviderUpsert {
+            original_id: Some("plain".into()),
+            id: "plain".into(),
+            display_name: None,
+            base_url: "https://p.example/v1".into(),
+            api: "openai-completions".into(),
+            models: vec![ModelEntry::Id("m1".into())],
+            auth_none: false,
+        }
+    }
+
+    #[test]
+    fn blank_key_upsert_honors_storage_mode_in_both_directions() {
+        let fx = Fx::new(BASE);
+        let env = fx.env();
+        upsert(&env, &edit_plain(), None, KeyMode::Encrypted).unwrap();
+        assert_eq!(
+            env.kind_of(&env.provider("plain").unwrap().unwrap()),
+            ProviderKeyKind::Encrypted
+        );
+        assert_eq!(
+            fx.store.get("plain").unwrap().as_deref(),
+            Some("sk-plain-123")
+        );
+        upsert(&env, &edit_plain(), Some("  "), KeyMode::Plaintext).unwrap();
+        assert_eq!(
+            env.provider("plain").unwrap().unwrap().api_key.as_deref(),
+            Some("sk-plain-123")
+        );
+        assert!(!fx.store.has("plain"));
+        assert_eq!(block_of(&fx.text(), "other"), block_of(BASE, "other"));
+    }
+
+    #[test]
+    fn blank_key_builtin_honors_storage_mode_in_both_directions() {
+        let fx = Fx::new(BASE);
+        let env = fx.env();
+        let input = ov("plain", Some("https://p.example/v1"), false, &["m1"]);
+        save_builtin(&env, &input, None, None, KeyMode::Encrypted).unwrap();
+        assert_eq!(
+            env.kind_of(&env.provider("plain").unwrap().unwrap()),
+            ProviderKeyKind::Encrypted
+        );
+        save_builtin(&env, &input, None, Some("  "), KeyMode::Plaintext).unwrap();
+        assert_eq!(
+            env.provider("plain").unwrap().unwrap().api_key.as_deref(),
+            Some("sk-plain-123")
+        );
+        assert!(!fx.store.has("plain"));
+    }
+
+    #[test]
+    fn blank_key_mode_preserves_external_references() {
+        for key in ["MY_API_KEY", "!external-key-command"] {
+            for mode in [KeyMode::Encrypted, KeyMode::Plaintext] {
+                let fx = Fx::new(&BASE.replace("sk-plain-123", &yml::yaml_scalar(key)));
+                let env = fx.env();
+                upsert(&env, &edit_plain(), None, mode).unwrap();
+                assert_eq!(
+                    env.provider("plain").unwrap().unwrap().api_key.as_deref(),
+                    Some(key)
+                );
+                save_builtin(
+                    &env,
+                    &ov("plain", Some("https://p.example/v1"), false, &["m1"]),
+                    None,
+                    None,
+                    mode,
+                )
+                .unwrap();
+                assert_eq!(
+                    env.provider("plain").unwrap().unwrap().api_key.as_deref(),
+                    Some(key)
+                );
+                assert!(fx.store.0.borrow().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn rename_and_blank_key_can_convert_encrypted_key_to_plaintext() {
+        let fx = Fx::new(BASE);
+        let env = fx.env();
+        encrypt(&env, "plain").unwrap();
+        let mut input = edit_plain();
+        input.id = "renamed".into();
+        upsert(&env, &input, None, KeyMode::Plaintext).unwrap();
+        assert!(env.provider("plain").unwrap().is_none());
+        assert_eq!(
+            env.provider("renamed").unwrap().unwrap().api_key.as_deref(),
+            Some("sk-plain-123")
+        );
+        assert!(fx.store.0.borrow().is_empty());
+    }
+
+    #[test]
+    fn missing_vault_or_command_like_secret_cannot_be_saved_as_plaintext() {
+        for key in [None, Some("!synthetic-command-like-secret")] {
+            let fx = Fx::new(BASE);
+            let env = fx.env();
+            encrypt(&env, "plain").unwrap();
+            match key {
+                Some(key) => fx.store.put("plain", key).unwrap(),
+                None => fx.store.remove("plain").unwrap(),
+            }
+            let before = fx.text();
+            assert!(upsert(&env, &edit_plain(), None, KeyMode::Plaintext).is_err());
+            assert!(save_builtin(
+                &env,
+                &ov("plain", None, false, &[]),
+                None,
+                None,
+                KeyMode::Plaintext
+            )
+            .is_err());
+            assert_eq!(fx.text(), before);
+            assert_eq!(fx.store.get("plain").unwrap().as_deref(), key);
+        }
+    }
+
+    #[test]
+    fn cleanup_failure_keeps_config_and_original_encrypted_key() {
+        for operation in [
+            "decrypt",
+            "set-key",
+            "upsert",
+            "upsert-auth-none",
+            "builtin",
+            "builtin-auth-none",
+            "delete",
+            "rename",
+        ] {
+            let fx = Fx::new(BASE);
+            encrypt(&fx.env(), "plain").unwrap();
+            let before = fx.text();
+            let store = FaultStore {
+                inner: &fx.store,
+                failures: RefCell::new(vec![("remove", "plain".into())]),
+            };
+            let env = Env {
+                store: &store,
+                ..fx.env()
+            };
+            let mut input = edit_plain();
+            let result = match operation {
+                "decrypt" => decrypt(&env, "plain"),
+                "set-key" => apply_key(&env, "plain", "sk-replacement", KeyMode::Plaintext),
+                "upsert" => upsert(&env, &input, None, KeyMode::Plaintext).map(|_| ()),
+                "upsert-auth-none" => {
+                    input.auth_none = true;
+                    upsert(&env, &input, None, KeyMode::Encrypted).map(|_| ())
+                }
+                "builtin" => save_builtin(
+                    &env,
+                    &ov("plain", None, false, &[]),
+                    None,
+                    None,
+                    KeyMode::Plaintext,
+                ),
+                "builtin-auth-none" => save_builtin(
+                    &env,
+                    &ov("plain", None, true, &[]),
+                    None,
+                    None,
+                    KeyMode::Encrypted,
+                ),
+                "delete" => delete(&env, "plain"),
+                "rename" => {
+                    input.id = "renamed".into();
+                    upsert(&env, &input, None, KeyMode::Encrypted).map(|_| ())
+                }
+                _ => unreachable!(),
+            };
+            assert!(
+                result.unwrap_err().contains("injected remove failure"),
+                "{operation}"
+            );
+            assert_eq!(fx.text(), before, "{operation}");
+            assert_eq!(
+                fx.store.get("plain").unwrap().as_deref(),
+                Some("sk-plain-123")
+            );
+            assert!(!fx.store.has("renamed"));
+        }
+    }
+
+    #[test]
+    fn rename_destination_write_failure_restores_original_vault_entry() {
+        let fx = Fx::new(BASE);
+        encrypt(&fx.env(), "plain").unwrap();
+        let before = fx.text();
+        let store = FaultStore {
+            inner: &fx.store,
+            failures: RefCell::new(vec![("put", "renamed".into())]),
+        };
+        let env = Env {
+            store: &store,
+            ..fx.env()
+        };
+        let mut input = edit_plain();
+        input.id = "renamed".into();
+        assert!(upsert(&env, &input, None, KeyMode::Encrypted)
+            .unwrap_err()
+            .contains("injected put failure"));
+        assert_eq!(fx.text(), before);
+        assert_eq!(
+            fx.store.get("plain").unwrap().as_deref(),
+            Some("sk-plain-123")
+        );
+        assert!(!fx.store.has("renamed"));
+    }
+
+    #[test]
+    fn vault_snapshot_read_failure_does_not_modify_config_or_key() {
+        let fx = Fx::new(BASE);
+        encrypt(&fx.env(), "plain").unwrap();
+        let before = fx.text();
+        let store = FaultStore {
+            inner: &fx.store,
+            failures: RefCell::new(vec![("get", "plain".into())]),
+        };
+        let env = Env {
+            store: &store,
+            ..fx.env()
+        };
+        assert!(apply_key(&env, "plain", "sk-new", KeyMode::Plaintext)
+            .unwrap_err()
+            .contains("injected get failure"));
+        assert_eq!(fx.text(), before);
+        assert_eq!(
+            fx.store.get("plain").unwrap().as_deref(),
+            Some("sk-plain-123")
+        );
+    }
+
+    #[test]
+    fn yaml_failure_restores_vault_changes() {
+        for previous in [None, Some("sk-previous")] {
+            let fx = Fx::new("providers: [invalid\n");
+            if let Some(key) = previous {
+                fx.store.put("plain", key).unwrap();
+            }
+            for mode in [KeyMode::Encrypted, KeyMode::Plaintext] {
+                assert!(apply_key(&fx.env(), "plain", "sk-new", mode).is_err());
+                assert_eq!(fx.text(), "providers: [invalid\n");
+                assert_eq!(fx.store.get("plain").unwrap().as_deref(), previous);
+            }
+        }
+    }
+
+    #[test]
+    fn rollback_failure_is_reported_instead_of_hidden() {
+        let fx = Fx::new(BASE);
+        let store = FaultStore {
+            inner: &fx.store,
+            failures: RefCell::new(vec![("remove", "plain".into())]),
+        };
+        let env = Env {
+            store: &store,
+            ..fx.env()
+        };
+        let result: Result<(), String> = with_vault_changes(
+            &env,
+            &[("plain".into(), Some("sk-synthetic".into()))],
+            || Err("injected YAML failure".into()),
+        );
+        let error = result.unwrap_err();
+        assert!(error.contains("injected YAML failure"));
+        assert!(error.contains("密钥库回滚失败"));
+        assert!(!error.contains("sk-synthetic"));
+        assert_eq!(fx.text(), BASE);
     }
 }

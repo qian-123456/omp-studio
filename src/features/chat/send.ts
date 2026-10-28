@@ -17,6 +17,7 @@ import { isLocalDraftId } from "../sessions/pendingSession";
 import { sendFromDraft } from "../sessions/draftSession";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { tNow } from "../../stores/language";
+import { heldAutoSendStopToken, pauseHeldAutoSend, resumeHeldAutoSend } from "./heldQueue";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -55,6 +56,7 @@ export async function sendPrompt(
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	const stopToken = heldAutoSendStopToken(sessionId);
 	// Local draft: no process exists yet. Spawn/join the prewarm, apply the
 	// chosen model and thinking level, then send once on the real session
 	// (its own echo releases the composer, keyed by the real id).
@@ -116,6 +118,7 @@ export async function sendPrompt(
 			});
 		}
 		emitPromptSend("sent", sessionId, trimmed);
+		if (heldAutoSendStopToken(sessionId) === stopToken) resumeHeldAutoSend(sessionId);
 	} catch (err) {
 		// Not sent: drop the bubble so a retry doesn't duplicate it.
 		emitPromptSend("failed", sessionId, trimmed);
@@ -198,6 +201,13 @@ export function restoredQueueTexts(resp: unknown): string[] {
 
 /** Abort the running turn with stopping transition state. */
 export async function abortTurn(sessionId: string): Promise<void> {
+	// Set before RPC: its terminal frame can arrive before the response resolves.
+	pauseHeldAutoSend(sessionId);
+	return abortAndRestoreQueue(sessionId);
+}
+
+/** Internal interrupt sends intentionally continue; only an explicit stop pauses local held items. */
+async function abortAndRestoreQueue(sessionId: string): Promise<void> {
 	clearAbortTimer(sessionId);
 	useAbortState.getState().setAborting(sessionId, true);
 
@@ -236,7 +246,7 @@ export async function abortTurn(sessionId: string): Promise<void> {
  */
 export async function interruptAndWait(sessionId: string, timeoutMs: number): Promise<boolean> {
 	if (useLive.getState().sessions[sessionId]?.streaming !== true) return true;
-	await abortTurn(sessionId);
+	await abortAndRestoreQueue(sessionId);
 	return new Promise<boolean>((resolve) => {
 		let timer: number | undefined;
 		const finish = (idle: boolean) => {

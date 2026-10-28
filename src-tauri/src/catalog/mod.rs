@@ -67,6 +67,15 @@ fn scan_lock() -> &'static tokio::sync::Mutex<()> {
     LOCK.get_or_init(Default::default)
 }
 
+/// Serialize app session creation, pin changes and destructive cleanup. Lock
+/// order: RPC resume lock -> mutation gate -> scan lock -> DB/catalog locks.
+/// Never acquire this from process-exit or catalog event callbacks.
+pub(crate) fn session_mutation_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
+    &LOCK
+}
+
 /// Spawn scanner/watcher/status tasks.
 pub fn init(state: AppState) {
     search::init(&state);
@@ -492,7 +501,7 @@ fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
             let git = c.git.get(&eff_cwd).map(|g| g.1.clone()).unwrap_or_default();
             let mut meta = scan::build_meta(s, &row, &git, &workspaces, parent_id);
             let rt = c.runtime.get(id).cloned().unwrap_or_default();
-            let is_live = rt.live || live.contains(id);
+            let is_live = !rt.exited && (rt.live || live.contains(id));
             let path = s.path.to_string_lossy();
             let external_pid = if is_live {
                 None
@@ -632,6 +641,36 @@ pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), Str
     delete_with(state, session_id, Disposal::Permanent).await
 }
 
+/// Cleanup is destructive: unlike periodic discovery, a failed ownership
+/// probe is not evidence that no terminal owns the transcript.
+fn cleanup_holders_from_output(
+    output: std::process::Output,
+    sessions_dir: &std::path::Path,
+) -> Result<HashMap<String, external::Holder>, String> {
+    if !output.stderr.is_empty() || (!output.status.success() && output.status.code() != Some(1)) {
+        return Err(format!(
+            "无法核验终端会话占用，已跳过清理：{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    // lsof exit 1 with no diagnostic means no matching open files.
+    Ok(external::parse_lsof(
+        &String::from_utf8_lossy(&output.stdout),
+        &sessions_dir.to_string_lossy(),
+    ))
+}
+
+fn cleanup_external_holders(
+    sessions_dir: &std::path::Path,
+) -> Result<HashMap<String, external::Holder>, String> {
+    let output = std::process::Command::new("/usr/sbin/lsof")
+        .args(["-w", "-n", "-P", "-c", "omp", "-F", "pRn"])
+        .env("PATH", "/usr/sbin:/usr/bin:/bin:/sbin")
+        .output()
+        .map_err(|e| format!("无法核验终端会话占用，已跳过清理：{e}"))?;
+    cleanup_holders_from_output(output, sessions_dir)
+}
+
 /// [`delete`] with a choice of disposal. Besides the transcript it removes the
 /// session's lock file and artifacts dir (`<stem>/`: subagent logs, tool
 /// output); `Disposal::Trash` moves them to the macOS Trash instead.
@@ -643,6 +682,7 @@ pub(crate) async fn delete_with(
     if !cat().lock().ready {
         rebuild(state).await;
     }
+    let _mutation = session_mutation_lock().lock().await;
 
     // A live process mid-turn or waiting on a dialog owns state we cannot
     // silently drop; anything else is safe to stop and delete.
@@ -650,6 +690,9 @@ pub(crate) async fn delete_with(
     let mut handle_file = None;
     if let Some(handle) = crate::rpc::get_handle(session_id) {
         if handle.alive.load(std::sync::atomic::Ordering::SeqCst) {
+            if disposal == Disposal::Trash {
+                return Err("正在运行".into());
+            }
             let busy = cat()
                 .lock()
                 .runtime
@@ -669,7 +712,13 @@ pub(crate) async fn delete_with(
     }
 
     // Close any PTY terminal opened for this session before its files go.
-    crate::terminal::commands::close_session_term(session_id);
+    if disposal == Disposal::Trash {
+        if crate::terminal::commands::omp_terminal_open(session_id) {
+            return Err("正被终端里的 omp 使用".into());
+        }
+    } else {
+        crate::terminal::commands::close_session_term(session_id);
+    }
 
     // Serialize the file/row/cache mutation against scans: a scan that read
     // `c.files` before the deletion would otherwise commit the removed session
@@ -694,6 +743,37 @@ pub(crate) async fn delete_with(
         return Err(format!("session not found: {session_id}"));
     }
     let sessions_dir = paths::omp_sessions_dir();
+    let cleanup_facts =
+        if disposal == Disposal::Trash {
+            // Recheck under the mutation/scan gates, not the stale preview meta.
+            // Pin mutations and app/terminal starts share the mutation gate.
+            let pinned: bool = state.db.lock().query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_meta WHERE session_id = ?1 AND pinned != 0)",
+            [session_id], |row| row.get(0),
+        ).map_err(|e| format!("读取置顶状态失败: {e}"))?;
+            let holders = cleanup_external_holders(&sessions_dir)?;
+            let status = external::read_status_files(&paths::status_dir());
+            let external_pid = paths.iter().chain(meta_file.iter()).find_map(|path| {
+                let file = path.to_string_lossy();
+                holders
+                    .get(file.as_ref())
+                    .map(|holder| holder.pid)
+                    .or_else(|| {
+                        status
+                            .iter()
+                            .find(|s| {
+                                s.session_file.as_str() == file.as_ref()
+                                    && s.state != "exited"
+                                    && external::pid_alive(s.pid)
+                            })
+                            .map(|s| s.pid)
+                    })
+            });
+            let live = crate::rpc::get_handle(session_id).is_some();
+            Some((live, pinned, external_pid))
+        } else {
+            None
+        };
     let mut gone = std::collections::HashSet::new();
     for path in paths
         .iter()
@@ -701,7 +781,18 @@ pub(crate) async fn delete_with(
         .chain(handle_file.iter())
     {
         // Missing files are fine (NotFound tolerated by the remover).
-        sessions::remove_files(path, &sessions_dir, disposal)?;
+        if let Some((live, pinned, external_pid)) = cleanup_facts {
+            sessions::remove_files_if_unused(
+                path,
+                &sessions_dir,
+                disposal,
+                live,
+                pinned,
+                external_pid,
+            )?;
+        } else {
+            sessions::remove_files(path, &sessions_dir, disposal)?;
+        }
         gone.insert(path.to_string_lossy().to_string());
     }
     {
@@ -740,5 +831,63 @@ mod refresh_tests {
         assert!(!git_needs_refresh(Some(now), false));
         assert!(git_needs_refresh(Some(now), true));
         assert!(git_needs_refresh(Some(now - GIT_TTL), false));
+    }
+    #[tokio::test]
+    async fn cleanup_gate_blocks_start_and_pin_until_disposal_finishes() {
+        let cleanup = session_mutation_lock().lock().await;
+        let mutations = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let mut pending = Vec::new();
+        let mut started = Vec::new();
+        for _ in ["start", "pin"] {
+            let mutations = mutations.clone();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            started.push(rx);
+            pending.push(tokio::spawn(async move {
+                let _ = tx.send(());
+                let _mutation = session_mutation_lock().lock().await;
+                mutations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }));
+        }
+        for ready in started {
+            ready.await.unwrap();
+        }
+        assert_eq!(mutations.load(std::sync::atomic::Ordering::SeqCst), 0);
+        drop(cleanup);
+        for task in pending {
+            task.await.unwrap();
+        }
+        assert_eq!(mutations.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+    #[cfg(unix)]
+    fn lsof_output(code: i32, stdout: &str, stderr: &str) -> std::process::Output {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::Output {
+            status: std::process::ExitStatus::from_raw(code << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_external_probe_refuses_failure_or_partial_observation() {
+        let dir = std::path::Path::new("/sessions");
+        assert!(cleanup_holders_from_output(lsof_output(2, "", "permission denied"), dir).is_err());
+        assert!(cleanup_holders_from_output(lsof_output(0, "", "partial results"), dir).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_external_probe_accepts_confirmed_empty_or_current_holder() {
+        let dir = std::path::Path::new("/sessions");
+        assert!(cleanup_holders_from_output(lsof_output(1, "", ""), dir)
+            .unwrap()
+            .is_empty());
+        let current = cleanup_holders_from_output(
+            lsof_output(0, "p123\nR1\nn/sessions/project/s.jsonl\n", ""),
+            dir,
+        )
+        .unwrap();
+        assert_eq!(current["/sessions/project/s.jsonl"].pid, 123);
     }
 }

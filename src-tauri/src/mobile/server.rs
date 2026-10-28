@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{Form, FromRequest, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -68,7 +68,7 @@ pub fn router<B: Backend>(ctx: Arc<Ctx<B>>) -> Router {
         ));
     Router::new()
         .route("/", get(index))
-        .route("/pair", get(pair::<B>))
+        .route("/pair", get(pair_page).post(pair::<B>))
         .route("/static/{*path}", get(static_asset))
         .route("/sw.js", get(service_worker))
         .nest("/api", api)
@@ -238,6 +238,26 @@ struct PairQuery {
     code: Option<String>,
 }
 
+/// Link previews and prefetchers may GET this URL, but cannot consume a code.
+async fn pair_page(Query(q): Query<PairQuery>) -> Response {
+    let Some(code) = q.code.filter(|c| {
+        !c.is_empty()
+            && c.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    }) else {
+        return pair_failed_page();
+    };
+    let body = format!("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>配对</title><h3>连接此设备</h3><form method=post action=/pair><input type=hidden name=code value='{code}'><button type=submit>确认配对</button></form>");
+    (
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::REFERRER_POLICY, "no-referrer"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
+
 fn pair_failed_page() -> Response {
     let body = "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>\
         <body style='background:#0a0a0a;color:#e5e5e5;font-family:system-ui;padding:2em'>\
@@ -251,8 +271,26 @@ async fn pair<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     headers: HeaderMap,
     tls_ext: Option<axum::Extension<TlsConnection>>,
-    Query(q): Query<PairQuery>,
+    req: Request,
 ) -> Response {
+    if let Err(err) = verify_csrf(&headers, tls_ext.is_some()) {
+        return err.into_response();
+    }
+    let json = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    let q = if json {
+        match Json::<PairQuery>::from_request(req, &ctx).await {
+            Ok(Json(q)) => q,
+            Err(err) => return err.into_response(),
+        }
+    } else {
+        match Form::<PairQuery>::from_request(req, &ctx).await {
+            Ok(Form(q)) => q,
+            Err(err) => return err.into_response(),
+        }
+    };
     let Some(code) = q.code.filter(|c| !c.is_empty()) else {
         return pair_failed_page();
     };
@@ -275,14 +313,18 @@ async fn pair<B: Backend>(
         auth::COOKIE,
         if https { "; Secure" } else { "" }
     );
-    (
-        StatusCode::SEE_OTHER,
-        [
-            (header::SET_COOKIE, cookie),
-            (header::LOCATION, "/".to_string()),
-        ],
-    )
-        .into_response()
+    if json {
+        (StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response()
+    } else {
+        (
+            StatusCode::SEE_OTHER,
+            [
+                (header::SET_COOKIE, cookie),
+                (header::LOCATION, "/".to_string()),
+            ],
+        )
+            .into_response()
+    }
 }
 
 #[derive(Serialize)]

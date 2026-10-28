@@ -35,7 +35,8 @@ pub fn install() {
 }
 
 /// A session spawned with `spawn_hash` must be restarted before the next prompt
-/// when the native secrets snapshot changed and no turn is in flight.
+/// when the coverage token changed and no turn is in flight. Failed syncs carry
+/// `unprotected:<hash>`: recovery to the same requested bytes still needs restart.
 pub fn needs_restart(spawn_hash: &str, current_hash: &str, streaming: bool) -> bool {
     !streaming && spawn_hash != current_hash
 }
@@ -63,5 +64,9 @@ mod tests {
         assert!(needs_restart("a", "b", false));
         assert!(needs_restart("", "b", false));
         assert!(!needs_restart("a", "b", true));
+        assert!(!needs_restart("unprotected:a", "unprotected:a", false));
+        assert!(needs_restart("unprotected:a", "a", false));
+        assert!(!needs_restart("unprotected:a", "a", true));
+        assert!(needs_restart("a", "unprotected:a", false));
     }
 }

@@ -269,7 +269,6 @@ export function SessionSidebar() {
 	const trafficLightsVisible = useTrafficLightsVisible();
 	// Persistent sidebar store state (survives Cmd+B)
 	const activeMode = useSidebarStore((s) => s.activeMode);
-	const setActiveMode = useSidebarStore((s) => s.setActiveMode);
 	const modeActivity = useModeActivity();
 	const otherActivity = useMemo(() => {
 		let badge = 0;
@@ -373,22 +372,6 @@ export function SessionSidebar() {
 		[sessionGroups, activeMode],
 	);
 
-	// Auto-follow: selecting a session of another space switches the mode so
-	// the picked row is always visible (replaces the old ws-scope autofollow).
-	const prevSelectedIdRef = useRef<string | null>(
-		useUi.getState().selectedSessionId ?? useUi.getState().lastSessionId ?? null,
-	);
-	useEffect(() => {
-		if (selectedSessionId && selectedSessionId !== prevSelectedIdRef.current) {
-			prevSelectedIdRef.current = selectedSessionId;
-			const current = sessions[selectedSessionId];
-			if (current && current.mode !== activeMode) {
-				setActiveMode(current.mode);
-			}
-		} else {
-			prevSelectedIdRef.current = selectedSessionId;
-		}
-	}, [selectedSessionId, sessions, activeMode, setActiveMode]);
 
 	// Each space shows one list: 通用对话 → global sessions + groups; project
 	// modes → project directories. Search stays scoped to the active space.

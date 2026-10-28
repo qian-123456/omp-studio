@@ -52,10 +52,6 @@ pub fn start(state: AppState) {
                 missed_schedules.len()
             );
             for s in missed_schedules {
-                {
-                    let db = state.db.lock();
-                    let _ = store::advance_after_run(&db, &s, now);
-                }
                 runner::spawn_run(state.clone(), s);
             }
             let _ = state.app.emit("schedules:changed", ());
@@ -78,10 +74,6 @@ pub fn start(state: AppState) {
                         };
 
                         for s in due_schedules {
-                            {
-                                let db = state.db.lock();
-                                let _ = store::advance_after_run(&db, &s, now);
-                            }
                             runner::spawn_run(state.clone(), s);
                         }
 

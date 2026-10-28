@@ -24,7 +24,7 @@ vi.mock("../settings/store", () => {
 });
 
 import { useLive } from "../../stores/live";
-import { heldQueueItems, useHeldItems, useHeldQueue } from "./heldQueue";
+import { heldQueueItems, isHeldAutoSendPaused, pauseHeldAutoSend, resumeHeldAutoSend, useHeldItems, useHeldQueue } from "./heldQueue";
 import { drainNext, useQueueAutoSend } from "./QueuedBar";
 
 const SID = "s1";
@@ -45,6 +45,7 @@ function setSession(patch: {
 }
 
 beforeEach(() => {
+	resumeHeldAutoSend(SID);
 	mem.clear();
 	sendPrompt.mockClear();
 	useHeldQueue.setState({ queues: {}, dismissed: {} });
@@ -68,6 +69,29 @@ describe("held queue hydration", () => {
 });
 
 describe("held queue drain", () => {
+	it("keeps stopped held items on remount and resume transitions", async () => {
+		mem.set(`ompws-held:${SID}`, persisted);
+		pauseHeldAutoSend(SID);
+		setSession({ streaming: false, alive: true });
+		const C = () => { useQueueAutoSend(SID, false); return null; };
+		const root = createRoot(document.createElement("div"));
+		await act(async () => root.render(createElement(C)));
+		setSession({ alive: false });
+		setSession({ alive: true });
+		setSession({ state: { isCompacting: true } });
+		setSession({ state: { isCompacting: false } });
+		expect(sendPrompt).not.toHaveBeenCalled();
+		expect(heldQueueItems(SID)).toHaveLength(1);
+		act(() => root.unmount());
+	});
+
+	it("restores the paused latch from storage and clears it when a session is pruned", () => {
+		mem.set(`ompws-held:${SID}:paused`, "1");
+		expect(isHeldAutoSendPaused(SID)).toBe(true);
+		useHeldQueue.getState().pruneSessions([SID]);
+		expect(isHeldAutoSendPaused(SID)).toBe(false);
+		expect(mem.has(`ompws-held:${SID}:paused`)).toBe(false);
+	});
 	it("drains for an unmounted session when its turn ends", async () => {
 		mem.set(`ompws-held:${SID}`, persisted);
 		setSession({ streaming: true, alive: true });

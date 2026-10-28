@@ -15,10 +15,12 @@ export const useConnection = create<ConnectionState>((set, get) => ({
 	error: null,
 	setPhase: (phase, error = null) => {
 		const cur = get();
+		if (cur.phase === "unauthorized" && phase !== "unauthorized") return;
 		if (cur.phase === phase && cur.error === error) return;
 		set({ phase, error: phase === "open" ? null : error });
 	},
 	setError: (error) => {
+		if (get().phase === "unauthorized") return;
 		if (get().error !== error) set({ error });
 	},
 }));

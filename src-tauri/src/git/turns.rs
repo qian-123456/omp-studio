@@ -472,7 +472,24 @@ pub fn undo_turn(
         })
         .map(|(path, _)| (*path).to_string())
         .collect();
+    // A mixed HEAD reset rewrites the whole index, including staged edits to
+    // files this turn never touched. Treat those as explicit-override conflicts
+    // as well; worktree-only blob checks cannot detect staged-only edits.
+    let current_head = head(cwd);
+    if cascade
+        .iter()
+        .any(|t| !t.commits.is_empty() && current_head.is_some() && current_head == t.head_after)
+    {
+        let staged = git_ok(cwd, &["diff", "--cached", "--name-only", "-z", "HEAD"])?;
+        conflicts.extend(
+            staged
+                .split('\0')
+                .filter(|path| !path.is_empty())
+                .map(str::to_string),
+        );
+    }
     conflicts.sort();
+    conflicts.dedup();
     if !conflicts.is_empty() && !force {
         return Ok(TurnUndoResult {
             conflicts,
@@ -1505,5 +1522,71 @@ mod tests {
         .is_err());
         std::fs::remove_dir_all(&repo).unwrap();
         std::fs::remove_dir_all(&sess).unwrap();
+    }
+    #[test]
+    fn undo_protects_later_worktree_and_unrelated_staged_edits_before_head_reset() {
+        let repo = temp_repo("undo-user-index");
+        let sid = "s1";
+        write(&repo, "turn.txt", "before\n");
+        write(&repo, "user.txt", "base\n");
+        g(&repo, &["add", "-A"]);
+        g(&repo, &["commit", "-q", "-m", "init"]);
+        let head_before = g(&repo, &["rev-parse", "HEAD"]);
+        let before = snap(&repo, "before");
+        write(&repo, "turn.txt", "agent edit\n");
+        g(&repo, &["add", "turn.txt"]);
+        g(&repo, &["commit", "-q", "-m", "turn"]);
+        let head_after = g(&repo, &["rev-parse", "HEAD"]);
+        let after = snap(&repo, "after");
+        refs(&repo, sid, "t1", &before, &after);
+        let sess = temp_dir("undo-user-index-session");
+        let file = session_file(
+            &sess,
+            &repo,
+            sid,
+            &[entry(
+                sid,
+                "t1",
+                "edit",
+                &before,
+                &after,
+                Some(&head_before),
+                Some(&head_after),
+                &[&head_after],
+                &[("turn.txt", "M")],
+                "2026-10-29T00:00:00Z",
+            )],
+        );
+        // Staged-only edits are invisible to the worktree blob check.
+        write(&repo, "user.txt", "user staged content\n");
+        g(&repo, &["add", "user.txt"]);
+        write(&repo, "user.txt", "base\n");
+        write(&repo, "turn.txt", "later user content\n");
+        let index_before = g(&repo, &["write-tree"]);
+        let result = undo_turn(&repo, &file, "t1", false).unwrap();
+        assert_eq!(result.conflicts, vec!["turn.txt", "user.txt"]);
+        assert_eq!(result.turns_undone, 0);
+        assert_eq!(g(&repo, &["write-tree"]), index_before);
+        assert_eq!(g(&repo, &["rev-parse", "HEAD"]), head_after);
+        assert_eq!(
+            std::fs::read_to_string(repo.join("turn.txt")).unwrap(),
+            "later user content\n"
+        );
+        assert!(git_ok(&repo, &["rev-parse", "--verify", &undone_ref(sid, "t1")]).is_err());
+        // Only the separately confirmed force override may reset that index.
+        let forced = undo_turn(&repo, &file, "t1", true).unwrap();
+        assert!(forced.head_reset);
+        assert_eq!(forced.turns_undone, 1);
+        assert_eq!(g(&repo, &["rev-parse", "HEAD"]), head_before);
+        assert_eq!(
+            std::fs::read_to_string(repo.join("turn.txt")).unwrap(),
+            "before\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.join("user.txt")).unwrap(),
+            "base\n"
+        );
+        std::fs::remove_dir_all(repo).unwrap();
+        std::fs::remove_dir_all(sess).unwrap();
     }
 }

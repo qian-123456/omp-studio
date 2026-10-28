@@ -46,6 +46,7 @@ export function ompVersionLabel(info: OmpInfo | null, status: OmpUpdateStatus | 
 }
 
 let startupDone = false;
+let checkGeneration = 0;
 
 export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 	appVersion: null,
@@ -67,21 +68,26 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 
 	check: async (silent = false) => {
 		if (get().checking) return;
+		const generation = ++checkGeneration;
 		set({ checking: true, error: null });
 		try {
 			const status = await ompUpdateCheck();
+			if (generation !== checkGeneration) return;
 			set({ status, lastOutput: status.output });
 			if (status.updateAvailable && useSettings.getState().settings?.ompAutoUpdate === true && !get().updating) {
 				void get().runUpdate();
 			}
 		} catch (e) {
+			if (generation !== checkGeneration) return;
 			const msg = errMsg(e);
 			set({ error: msg, lastOutput: msg });
 			if (!silent) toast.error(tNow("shell.checkOmpUpdateFailed", { error: msg }));
 		} finally {
-			const now = Date.now();
-			localStorage.setItem(LAST_CHECK_KEY, String(now));
-			set({ checking: false, lastCheckedAt: now });
+			if (generation === checkGeneration) {
+				const now = Date.now();
+				localStorage.setItem(LAST_CHECK_KEY, String(now));
+				set({ checking: false, lastCheckedAt: now });
+			}
 		}
 	},
 
@@ -106,6 +112,9 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 				toast.error(tNow("shell.ompUpdateFailedInSettings"));
 				return;
 			}
+			// An in-flight pre-update check no longer describes the installed binary.
+			++checkGeneration;
+			set({ checking: false, status: null, error: null });
 			await get().loadInfo();
 			await get().check(true);
 			void useModelCatalog.getState().refresh();

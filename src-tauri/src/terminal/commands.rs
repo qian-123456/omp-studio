@@ -24,6 +24,24 @@ fn forget_term(term_id: &str) {
     session_terms().lock().retain(|_, (t, _)| t != term_id);
 }
 
+fn open_registered_term(
+    terms: &SessionTerms,
+    session_id: String,
+    is_omp: bool,
+    open: impl FnOnce() -> Result<String, String>,
+    is_open: impl FnOnce(&str) -> bool,
+) -> Result<String, String> {
+    // The exit sink uses this same lock: it cannot forget an id and then have
+    // the start response reinsert it. A PTY already reaped is never recorded.
+    let mut terms = terms.lock();
+    let term_id = open()?;
+    if !is_open(&term_id) {
+        return Err("终端已退出".into());
+    }
+    terms.insert(session_id, (term_id.clone(), is_omp));
+    Ok(term_id)
+}
+
 /// Close the PTY terminal opened for `session_id` (if any) and forget it.
 pub fn close_session_term(session_id: &str) {
     let entry = session_terms().lock().remove(session_id);
@@ -153,6 +171,7 @@ pub async fn term_open_session(
     let agent = TerminalAgent::parse(&agent)?;
     let lock = crate::rpc::session_resume_lock(&session_id);
     let _guard = lock.lock().await;
+    let _mutation = crate::catalog::session_mutation_lock().lock().await;
     let meta = crate::catalog::get(&state, &session_id)
         .await
         .ok_or_else(|| format!("找不到会话 {session_id}"))?;
@@ -213,11 +232,13 @@ pub async fn term_open_session(
             .map(|h| h.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string())
     };
-    let term_id = pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)?;
-    session_terms()
-        .lock()
-        .insert(session_id, (term_id.clone(), is_omp));
-    Ok(term_id)
+    open_registered_term(
+        session_terms(),
+        session_id,
+        is_omp,
+        || pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env),
+        pty::is_open,
+    )
 }
 
 /// POSIX single-quote `s` unless it is made only of shell-safe characters.
@@ -337,6 +358,73 @@ mod agent_tests {
             TerminalAgent::Codex.foreign_argv().unwrap(),
             ["codex", "resume", "--last"]
         );
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+
+    #[test]
+    fn exit_before_registration_never_records_a_dead_terminal() {
+        let terms = SessionTerms::default();
+        let result = open_registered_term(
+            &terms,
+            "session".into(),
+            true,
+            || Ok("dead".into()),
+            |_| false,
+        );
+        assert_eq!(result.unwrap_err(), "终端已退出");
+        assert!(terms.lock().is_empty());
+    }
+
+    #[test]
+    fn exit_during_registration_cannot_be_reinserted_after_forget() {
+        let terms = Arc::new(SessionTerms::default());
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let exit_terms = terms.clone();
+        let exit_barrier = barrier.clone();
+        let exit = std::thread::spawn(move || {
+            exit_barrier.wait();
+            exit_terms.lock().retain(|_, (id, _)| id != "term");
+        });
+        open_registered_term(
+            &terms,
+            "session".into(),
+            true,
+            || {
+                barrier.wait();
+                Ok("term".into())
+            },
+            |_| true,
+        )
+        .unwrap();
+        exit.join().unwrap();
+        assert!(terms.lock().is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_deletion_waits_for_terminal_start_registration() {
+        let gate = crate::catalog::session_mutation_lock();
+        let terms = Arc::new(SessionTerms::default());
+        let opening = gate.lock().await;
+        let deleted_terms = terms.clone();
+        let delete = tokio::spawn(async move {
+            let _guard = crate::catalog::session_mutation_lock().lock().await;
+            deleted_terms.lock().remove("session");
+        });
+        open_registered_term(
+            &terms,
+            "session".into(),
+            true,
+            || Ok("term".into()),
+            |_| true,
+        )
+        .unwrap();
+        drop(opening);
+        delete.await.unwrap();
+        assert!(terms.lock().is_empty());
     }
 }
 

@@ -46,7 +46,7 @@ pub async fn mobile_revoke_all(state: tauri::State<'_, AppState>) -> Result<(), 
 
 #[tauri::command]
 pub async fn tunnel_start(state: tauri::State<'_, AppState>) -> Result<MobileStatus, String> {
-    let st = super::start(&state).await?;
+    super::start(&state).await?;
     let (mode, name, host) = {
         let s = state.settings.read();
         (
@@ -55,7 +55,8 @@ pub async fn tunnel_start(state: tauri::State<'_, AppState>) -> Result<MobileSta
             s.tunnel_hostname.clone(),
         )
     };
-    super::tunnel::start(&mode, st.port, name, host).await?;
+    let (port, shutdown) = super::tunnel_origin()?;
+    super::tunnel::start(&mode, port, name, host, shutdown).await?;
     Ok(super::status(&state))
 }
 

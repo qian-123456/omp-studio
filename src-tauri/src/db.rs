@@ -345,6 +345,21 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
              CREATE INDEX IF NOT EXISTS idx_push_subscriptions_device ON push_subscriptions(token_hash);",
         )?;
     }
+    // v22: explicitly restored ideas are exempt from automatic finished-item archival
+    // until the user explicitly changes their status again.
+    if version < 22 {
+        step_with(conn, 22, |tx| {
+            let has_restored_at: bool = tx.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('backlog') WHERE name = 'restored_at'",
+                [],
+                |row| row.get(0),
+            )?;
+            if !has_restored_at {
+                tx.execute_batch("ALTER TABLE backlog ADD COLUMN restored_at TEXT;")?;
+            }
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 
@@ -424,7 +439,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -447,7 +462,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 21);
+        assert_eq!(v3, 22);
     }
 
     #[test]
@@ -457,7 +472,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -484,7 +499,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -559,7 +574,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -654,7 +669,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -714,7 +729,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -859,7 +874,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -902,7 +917,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
         let columns = |table: &str| -> Vec<String> {
             conn.prepare(&format!("PRAGMA table_info({table})"))
                 .unwrap()
@@ -1047,7 +1062,7 @@ mod atomic_step_tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
     }
 }
 
@@ -1088,6 +1103,28 @@ mod backlog_v19_tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 21);
+        assert_eq!(v, 22);
+    }
+
+    #[test]
+    fn migrate_v22_preserves_restore_exemption_when_reentered() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute("INSERT INTO backlog(id, text, kind, status, created_at, updated_at, restored_at) VALUES('restored', 'idea', 'idea', 'done', 'old', 'old', 'restored time')", []).unwrap();
+        conn.pragma_update(None, "user_version", 21).unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        let restored: Option<String> = conn
+            .query_row(
+                "SELECT restored_at FROM backlog WHERE id = 'restored'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored.as_deref(), Some("restored time"));
+        let version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 22);
     }
 }

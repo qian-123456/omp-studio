@@ -9,7 +9,7 @@ import {
 	X,
 } from "lucide-react";
 import { isComposing } from "../../lib/hooks";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { Notice } from "../../components/Notice";
 import { errMsg } from "../../lib/dialogs";
@@ -47,45 +47,55 @@ export function DiagnoseDialog() {
 	const [newSessionModel, setNewSessionModel] = useState<string>("");
 	const [dispatching, setDispatching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const sending = useRef(false);
+	const promptRequest = useRef(0);
+	const visit = useRef(0);
 
 	const targetSession = targetSessionId ? sessions[targetSessionId] : undefined;
 
 	const fetchPrompt = useCallback(() => {
 		if (!targetSessionId) return;
+		const request = ++promptRequest.current;
 		setError(null);
 		setLoadingPrompt(true);
 		diagnoseBuildPrompt(targetSessionId)
 			.then((p) => {
-				setPrompt(p);
+				if (request === promptRequest.current) setPrompt(p);
 			})
 			.catch((err) => {
+				if (request !== promptRequest.current) return;
 				const msg = errMsg(err);
 				setError(t("diagnose.errorGeneratingPrompt", { error: msg }));
 				toast.error(t("diagnose.errorGeneratingPrompt", { error: msg }));
 			})
 			.finally(() => {
-				setLoadingPrompt(false);
+				if (request === promptRequest.current) setLoadingPrompt(false);
 			});
-	}, [targetSessionId]);
+	}, [targetSessionId, t]);
 
 	useEffect(() => {
+		visit.current++;
 		if (isVisible && targetSessionId) {
-			setDispatching(false);
-
-			// Choose default existing diagnoser: first session that is not target
-			const candidateIds = Object.keys(sessions).filter(
+			setPrompt("");
+			setDispatching(sending.current);
+			setTargetType("existing");
+			setNewSessionModel("");
+			// Read once per opening, not on catalog refresh.
+			const candidateIds = Object.keys(useSessions.getState().sessions).filter(
 				(id) => id !== targetSessionId,
 			);
 			setSelectedExistingId(candidateIds[0] || "");
-
 			fetchPrompt();
 		}
-	}, [isVisible, targetSessionId, sessions, fetchPrompt]);
+		return () => { promptRequest.current++; };
+	}, [isVisible, targetSessionId, fetchPrompt]);
 
 	if (!isVisible) return null;
 
 	const handleExecuteDiagnose = async () => {
-		if (!prompt) return;
+		if (!prompt || loadingPrompt || sending.current) return;
+		sending.current = true;
+		const currentVisit = visit.current;
 		setDispatching(true);
 		setError(null);
 		try {
@@ -105,13 +115,17 @@ export function DiagnoseDialog() {
 
 			await dispatchPrompt(diagnoserId, prompt);
 
+			if (currentVisit !== visit.current) return;
 			toast.success(t("diagnose.diagnosisStarted"));
 			closeModal();
 			selectSession(diagnoserId);
 		} catch (err) {
+			if (currentVisit !== visit.current) return;
 			const msg = errMsg(err);
 			setError(msg);
 			toast.error(t("diagnose.errorStartingDiagnosis", { error: msg }));
+		} finally {
+			sending.current = false;
 			setDispatching(false);
 		}
 	};

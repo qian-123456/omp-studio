@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { AlertTriangle, GitBranch, Loader2, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { useHomeDir } from "../../lib/hooks";
@@ -33,11 +33,16 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 	const [error, setError] = useState<string | null>(null);
 	const home = useHomeDir();
 	const { t } = useT();
+	const scope = useRef({ cwd });
+	if (scope.current.cwd !== cwd) scope.current = { cwd };
 
 	useEffect(() => {
 		let cancelled = false;
 		setHidden(false);
 		setOrphans([]);
+		setBusy(false);
+		setCleaningPath(null);
+		setError(null);
 		void (async () => {
 			const root = await gitRepoRoot(cwd).catch(() => null);
 			if (cancelled || !root) return;
@@ -66,22 +71,30 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 	};
 
 	const reclaim = async (wt: WorktreeInfo) => {
+		const owner = scope.current;
 		setError(null);
 		setCleaningPath(wt.path);
 		try {
-			if (await removeWorktreeFlow(repo ?? cwd, wt)) {
-				void useWorktrees.getState().refresh();
-				setOrphans((list) => list.filter((o) => o.path !== wt.path));
-				onChanged?.();
+			if (await removeWorktreeFlow(repo ?? cwd, wt, undefined, true)) {
+				if (scope.current === owner) setOrphans((list) => list.filter((o) => o.path !== wt.path));
 			}
 		} catch (e) {
-			setError(errMsg(e));
+			if (scope.current === owner) setError(errMsg(e));
 		} finally {
-			setCleaningPath(null);
+			// Directory removal can succeed before branch deletion fails.
+			// Always reconcile from disk while preserving the branch error.
+			void useWorktrees.getState().refresh();
+			const current = await gitScanOrphans().catch(() => []);
+			if (scope.current === owner) {
+				setOrphans(current.filter((o) => repoRootFromWorktree(o.path) === (repo ?? cwd)));
+				onChanged?.();
+				setCleaningPath(null);
+			}
 		}
 	};
 
 	const reclaimAll = async () => {
+		const owner = scope.current;
 		if (orphans.length === 0 || busy) return;
 		const dirty = orphans.filter((o) => o.dirty > 0);
 		const dirtyList =
@@ -101,7 +114,7 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 				okLabel: t("worktree.orphan.reclaimAllTitle"),
 			},
 		);
-		if (!ok) return;
+		if (!ok || scope.current !== owner) return;
 		setBusy(true);
 		setError(null);
 		try {
@@ -109,17 +122,21 @@ export function useOrphans(cwd: string, onChanged?: () => void) {
 				const removed = await removeWorktreeFlow(repo ?? cwd, wt, {
 					force: wt.dirty > 0,
 					deleteBranch: Boolean(wt.branch),
-				});
+				}, true);
 				if (removed) {
-					setOrphans((list) => list.filter((o) => o.path !== wt.path));
+					if (scope.current === owner) setOrphans((list) => list.filter((o) => o.path !== wt.path));
 				}
 			}
-			void useWorktrees.getState().refresh();
-			onChanged?.();
 		} catch (e) {
-			setError(errMsg(e));
+			if (scope.current === owner) setError(errMsg(e));
 		} finally {
-			setBusy(false);
+			void useWorktrees.getState().refresh();
+			const current = await gitScanOrphans().catch(() => []);
+			if (scope.current === owner) {
+				setOrphans(current.filter((o) => repoRootFromWorktree(o.path) === (repo ?? cwd)));
+				onChanged?.();
+				setBusy(false);
+			}
 		}
 	};
 

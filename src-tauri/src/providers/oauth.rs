@@ -20,6 +20,7 @@ struct LoginProc {
     stdin: Arc<Mutex<tokio::process::ChildStdin>>,
     child: Arc<Mutex<tokio::process::Child>>,
     cancel_tx: Option<oneshot::Sender<()>>,
+    reader: tokio::task::JoinHandle<()>,
 }
 
 static ACTIVE: Mutex<Option<LoginProc>> = Mutex::const_new(None);
@@ -319,19 +320,22 @@ pub async fn oauth_login_start(app: tauri::AppHandle, provider_id: String) -> Re
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
     let stdin_arc = Arc::new(Mutex::new(stdin));
     let child_arc = Arc::new(Mutex::new(child));
+    // Register the reader while holding ACTIVE so cancel cannot miss a reader
+    // that would otherwise start after its process was already cancelled.
+    let reader_stdin = Arc::clone(&stdin_arc);
+    let pid_clone = provider_id.clone();
+    let reader = tokio::spawn(async move {
+        reader_task(app, pid_clone, stdout, reader_stdin, cancel_rx).await;
+    });
 
     *active_guard = Some(LoginProc {
         provider_id: provider_id.clone(),
         stdin: Arc::clone(&stdin_arc),
         child: Arc::clone(&child_arc),
         cancel_tx: Some(cancel_tx),
+        reader,
     });
     drop(active_guard);
-
-    let pid_clone = provider_id.clone();
-    tokio::spawn(async move {
-        reader_task(app, pid_clone, stdout, stdin_arc, cancel_rx).await;
-    });
 
     Ok(())
 }
@@ -483,18 +487,33 @@ pub async fn oauth_login_respond(payload: serde_json::Value) -> Result<(), Strin
     Ok(())
 }
 
+/// Kill before releasing ownership. A failed kill remains retryable and must not
+/// report cancellation success or drop the only process handle.
+async fn cancel_active(active: &Mutex<Option<LoginProc>>) -> Result<Option<String>, String> {
+    let mut guard = active.lock().await;
+    let Some(proc) = guard.as_mut() else {
+        return Ok(None);
+    };
+    proc.child
+        .lock()
+        .await
+        .kill()
+        .await
+        .map_err(|e| format!("取消登录进程失败: {e}"))?;
+    if let Some(tx) = proc.cancel_tx.take() {
+        let _ = tx.send(());
+    }
+    // The reader may still be waiting for ready, not yet selecting cancel_rx.
+    // Abort it before another flow can reuse the same provider ID.
+    proc.reader.abort();
+    let _ = (&mut proc.reader).await;
+    let proc = guard.take().expect("active process is still owned");
+    Ok(Some(proc.provider_id))
+}
+
 /// Cancel the active OAuth login process.
 pub async fn oauth_login_cancel(app: tauri::AppHandle) -> Result<(), String> {
-    let mut guard = ACTIVE.lock().await;
-    if let Some(mut proc) = guard.take() {
-        if let Some(tx) = proc.cancel_tx.take() {
-            let _ = tx.send(());
-        }
-        let mut child = proc.child.lock().await;
-        let _ = child.kill().await;
-        let provider_id = proc.provider_id.clone();
-        drop(guard);
-
+    if let Some(provider_id) = cancel_active(&ACTIVE).await? {
         let ev = OauthUiEvent {
             kind: "completed".to_string(),
             provider_id,
@@ -675,6 +694,43 @@ pub async fn oauth_logout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cancellation_reaps_child_and_stops_reader_before_releasing_slot() {
+        // Synthetic local pipe process only: no OMP, provider, credentials or network.
+        let mut child = tokio::process::Command::new("sh")
+            .args(["-c", "read value"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
+        let child = Arc::new(Mutex::new(child));
+        let reader = tokio::spawn(std::future::pending::<()>());
+        let reader_abort = reader.abort_handle();
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let active = Mutex::new(Some(LoginProc {
+            provider_id: "synthetic".to_string(),
+            stdin,
+            child: Arc::clone(&child),
+            cancel_tx: Some(cancel_tx),
+            reader,
+        }));
+        assert_eq!(
+            cancel_active(&active).await.unwrap().as_deref(),
+            Some("synthetic")
+        );
+        assert!(active.lock().await.is_none());
+        assert!(child.lock().await.try_wait().unwrap().is_some());
+        cancel_rx.await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !reader_abort.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(cancel_active(&active).await.unwrap().is_none());
+    }
 
     fn logout_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();

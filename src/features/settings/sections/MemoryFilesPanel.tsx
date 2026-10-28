@@ -2,7 +2,7 @@
 
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FolderOpen, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tNow, useT } from "../../../stores/language";
 import { NativeSelect } from "../../../components/NativeSelect";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
@@ -185,6 +185,9 @@ export function MemoryFilesPanel() {
 	const [error, setError] = useState<string | null>(null);
 	const [rawOpen, setRawOpen] = useState(false);
 	const [reloadToken, setReloadToken] = useState(0);
+	const filesGeneration = useRef(0);
+	const currentSlug = useRef(slug);
+	currentSlug.current = slug;
 
 	useEffect(() => {
 		let alive = true;
@@ -210,14 +213,19 @@ export function MemoryFilesPanel() {
 	}, [cwd]);
 
 	const refreshFiles = useCallback(async () => {
+		if (currentSlug.current !== slug) return;
+		const generation = ++filesGeneration.current;
 		if (!slug) {
 			setFiles([]);
 			return;
 		}
 		try {
-			setFiles(await ompMemoryFiles(slug));
+			const next = await ompMemoryFiles(slug);
+			if (generation !== filesGeneration.current || currentSlug.current !== slug) return;
+			setFiles(next);
 			setError(null);
 		} catch (e) {
+			if (generation !== filesGeneration.current || currentSlug.current !== slug) return;
 			setFiles([]);
 			setError(describeFileCommandError(e));
 		}
@@ -226,7 +234,10 @@ export function MemoryFilesPanel() {
 	useEffect(() => {
 		setRel(null);
 		setRawOpen(false);
+		setFiles([]);
+		setError(null);
 		void refreshFiles();
+		return () => { filesGeneration.current++; };
 	}, [refreshFiles]);
 
 	const split = useMemo(() => splitMemoryFiles(files), [files]);
@@ -245,10 +256,11 @@ export function MemoryFilesPanel() {
 			danger: true,
 			okLabel: t("memoryRules.delete"),
 		});
-		if (!ok) return;
+		if (!ok || currentSlug.current !== slug) return;
 		try {
 			await ompMemoryDeleteSkill(slug, name);
 			toast.success(t("memoryRules.skillDeleted"));
+			if (currentSlug.current !== slug) return;
 			setRel(null);
 			await refreshFiles();
 		} catch (e) {

@@ -77,6 +77,9 @@ export function endedByAbort(messages: unknown): boolean {
 }
 
 /** Remind only when no plan file exists, reminders remain, and the user did not stop the turn. */
+// `stop` and `toolUse` describe model outcomes, not a user stop. Keep the
+// cancellation boundary at the latest assistant's `aborted` reason; an older
+// abort must not suppress a later completed planning turn's reminder.
 export function shouldRemind(found: boolean, reminders: number, messages: unknown): boolean {
 	return !found && reminders < REMINDER_MAX && !endedByAbort(messages);
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
 	openPath: vi.fn(),
@@ -64,6 +65,18 @@ describe("Markdown file links", () => {
 		expect(useFilePreview.getState().tabs[0]?.mode).toBe("preview");
 		expect(useUi.getState().rightTab).toBe("files");
 		expect(useUi.getState().rightOpen).toBe(true);
+	});
+
+	it.each([
+		"[source](file:///repo/src/a.ts)",
+		"[source](src/a.ts)",
+	])("opens an explicit Markdown file link through the preview handler: %s", async (text) => {
+		const view = render(<Markdown text={text} cwd="/repo" />);
+		fireEvent.click(view.getByRole("link", { name: "source" }));
+		await waitFor(() => expect(useFilePreview.getState().activePath).toBe("/repo/src/a.ts"));
+		expect(useUi.getState().rightTab).toBe("files");
+		expect(openPath).not.toHaveBeenCalled();
+		expect(openUrl).not.toHaveBeenCalled();
 	});
 	it("opens a percent-encoded Chinese Markdown link as the real file path", async () => {
 		const { container } = render(
@@ -169,14 +182,12 @@ describe("file links never execute anything", () => {
 	});
 
 	it("refuses an existing non-previewable file without calling the system opener", async () => {
-		const { openPath } = await import("@tauri-apps/plugin-opener");
 		await openFileLink("/Users/me/Evil.app/Contents/MacOS/Evil");
 		expect(useFilePreview.getState().tabs).toEqual([]);
 		expect(openPath).not.toHaveBeenCalled();
 	});
 
 	it("opens text files as a preview tab and still never calls the system opener", async () => {
-		const { openPath } = await import("@tauri-apps/plugin-opener");
 		await openFileLink("/Users/me/CodingWiki/wiki/rules.md");
 		expect(useFilePreview.getState().tabs[0]?.path).toBe(
 			"/Users/me/CodingWiki/wiki/rules.md",

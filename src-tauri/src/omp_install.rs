@@ -2,6 +2,7 @@
 //! `https://omp.sh/install --binary` script, streams its output and download progress
 //! (`omp:install` event) and re-probes omp afterwards. macOS/Linux only.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -56,15 +57,95 @@ struct InstallOutcome {
 }
 
 struct Active {
+    run_id: String,
     pgid: Option<u32>,
     cancelled: bool,
 }
 
-/// Single-flight slot: `Some` while an install is running.
-static ACTIVE: Mutex<Option<Active>> = Mutex::new(None);
+const MAX_CANCELLATION_REQUESTS: usize = 32;
 
-fn lock_active() -> std::sync::MutexGuard<'static, Option<Active>> {
-    ACTIVE.lock().unwrap_or_else(|e| e.into_inner())
+#[derive(Default)]
+struct InstallState {
+    active: Option<Active>,
+    pending_cancels: VecDeque<String>,
+    finished_requests: VecDeque<String>,
+}
+
+impl InstallState {
+    fn remember(requests: &mut VecDeque<String>, run_id: String) {
+        if requests.contains(&run_id) {
+            return;
+        }
+        if requests.len() == MAX_CANCELLATION_REQUESTS {
+            requests.pop_front();
+        }
+        requests.push_back(run_id);
+    }
+
+    fn begin(&mut self, run_id: String) -> Result<(), String> {
+        if let Some(active) = self.active.as_ref() {
+            if active.run_id != run_id {
+                self.retire(run_id);
+            }
+            return Err("omp 正在安装中".to_string());
+        }
+        if self.finished_requests.contains(&run_id) {
+            return Err("安装请求已结束".to_string());
+        }
+        let cancelled = self
+            .pending_cancels
+            .iter()
+            .position(|id| id == &run_id)
+            .and_then(|index| self.pending_cancels.remove(index))
+            .is_some();
+        self.active = Some(Active {
+            run_id,
+            pgid: None,
+            cancelled,
+        });
+        Ok(())
+    }
+
+    fn cancel(&mut self, run_id: String) {
+        if let Some(active) = self.active.as_mut() {
+            if active.run_id == run_id {
+                active.cancelled = true;
+                if let Some(pgid) = active.pgid {
+                    kill_group(pgid);
+                }
+                return;
+            }
+        }
+        // Commands run on independent async tasks: cancel can be polled before begin.
+        if !self.finished_requests.contains(&run_id) {
+            Self::remember(&mut self.pending_cancels, run_id);
+        }
+    }
+
+    fn retire(&mut self, run_id: String) {
+        self.pending_cancels.retain(|id| id != &run_id);
+        Self::remember(&mut self.finished_requests, run_id);
+    }
+
+    fn finish(&mut self) {
+        if let Some(active) = self.active.take() {
+            if let Some(pgid) = active.pgid {
+                kill_group(pgid);
+            }
+            self.retire(active.run_id);
+        }
+    }
+}
+
+/// Single-flight ownership and bounded pre-registration/finished request records share a lock.
+static INSTALL_STATE: Mutex<InstallState> = Mutex::new(InstallState {
+    active: None,
+    pending_cancels: VecDeque::new(),
+    finished_requests: VecDeque::new(),
+});
+
+fn lock_install() -> std::sync::MutexGuard<'static, InstallState> {
+    INSTALL_STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(unix)]
@@ -84,22 +165,19 @@ fn kill_group(_pgid: u32) {}
 struct InstallGuard;
 
 impl InstallGuard {
-    fn begin() -> Result<Self, String> {
-        let mut slot = lock_active();
-        if slot.is_some() {
-            return Err("omp 正在安装中".to_string());
-        }
-        *slot = Some(Active {
-            pgid: None,
-            cancelled: false,
-        });
+    fn begin(run_id: String) -> Result<Self, String> {
+        lock_install().begin(run_id)?;
         Ok(InstallGuard)
+    }
+
+    fn is_cancelled(&self) -> bool {
+        lock_install().active.as_ref().is_some_and(|a| a.cancelled)
     }
 
     /// Registers the spawned group; returns true when a cancel arrived before that.
     fn set_pgid(&self, pgid: u32) -> bool {
-        let mut slot = lock_active();
-        match slot.as_mut() {
+        let mut state = lock_install();
+        match state.active.as_mut() {
             Some(a) => {
                 a.pgid = Some(pgid);
                 a.cancelled
@@ -110,8 +188,8 @@ impl InstallGuard {
 
     /// Forgets the group once the leader was reaped (its id may be reused afterwards).
     fn clear_pgid(&self) -> bool {
-        let mut slot = lock_active();
-        match slot.as_mut() {
+        let mut state = lock_install();
+        match state.active.as_mut() {
             Some(a) => {
                 a.pgid = None;
                 a.cancelled
@@ -123,13 +201,7 @@ impl InstallGuard {
 
 impl Drop for InstallGuard {
     fn drop(&mut self) {
-        let mut slot = lock_active();
-        if let Some(Active {
-            pgid: Some(pgid), ..
-        }) = slot.take()
-        {
-            kill_group(pgid);
-        }
+        lock_install().finish();
     }
 }
 
@@ -227,6 +299,13 @@ async fn run_installer(
 ) -> Result<InstallOutcome, String> {
     use std::os::unix::process::CommandExt as _;
     use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
+
+    if guard.is_cancelled() {
+        return Ok(InstallOutcome {
+            success: false,
+            output: build_output("", false, true, false, None),
+        });
+    }
 
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c")
@@ -336,15 +415,17 @@ async fn run_installer(
 #[tauri::command]
 pub async fn omp_install_run(
     state: tauri::State<'_, AppState>,
+    run_id: String,
 ) -> Result<OmpInstallResult, String> {
     #[cfg(not(unix))]
     {
         let _ = &state;
+        lock_install().retire(run_id);
         Err(WINDOWS_UNSUPPORTED.to_string())
     }
     #[cfg(unix)]
     {
-        let guard = InstallGuard::begin()?;
+        let guard = InstallGuard::begin(run_id)?;
         let app = state.app.clone();
         let outcome = run_installer(&guard, move |p| {
             let _ = app.emit("omp:install", p);
@@ -361,16 +442,10 @@ pub async fn omp_install_run(
     }
 }
 
-/// `omp_install_cancel` (§7): kills the running installer's process group (no-op when idle).
+/// `omp_install_cancel` (§7): cancels only this request, including before registration.
 #[tauri::command]
-pub async fn omp_install_cancel() -> Result<(), String> {
-    let mut slot = lock_active();
-    if let Some(a) = slot.as_mut() {
-        a.cancelled = true;
-        if let Some(pgid) = a.pgid {
-            kill_group(pgid);
-        }
-    }
+pub async fn omp_install_cancel(run_id: String) -> Result<(), String> {
+    lock_install().cancel(run_id);
     Ok(())
 }
 
@@ -418,17 +493,134 @@ mod tests {
         assert!(build_output("", false, true, false, Some(137)).contains("已取消"));
     }
 
-    #[test]
-    fn single_flight_and_idle_cancel() {
-        // Only test touching the global slot.
-        let first = InstallGuard::begin().expect("first install starts");
+    #[tokio::test]
+    async fn request_scoped_commands_preserve_single_flight_and_retry() {
+        // Only test touching the global slot; no real installer is started.
+        omp_install_cancel("before-begin".into()).await.unwrap();
+        let cancelled = InstallGuard::begin("before-begin".into()).unwrap();
+        assert!(cancelled.is_cancelled());
+        #[cfg(unix)]
+        {
+            let outcome = run_installer(&cancelled, |_| panic!("cancelled run emitted progress"))
+                .await
+                .unwrap();
+            assert!(!outcome.success);
+            assert!(outcome.output.contains("已取消"));
+        }
+        drop(cancelled);
+
+        let first = InstallGuard::begin("first".into()).expect("first install starts");
+        assert!(!first.is_cancelled());
+        omp_install_cancel("other-request".into()).await.unwrap();
+        assert!(!first.is_cancelled());
         assert_eq!(
-            InstallGuard::begin().err().as_deref(),
+            InstallGuard::begin("overlapping".into()).err().as_deref(),
             Some("omp 正在安装中")
         );
+        omp_install_cancel("first".into()).await.unwrap();
+        assert!(first.is_cancelled());
         drop(first);
-        let again = InstallGuard::begin().expect("slot is free after drop");
+        let again = InstallGuard::begin("retry".into()).expect("slot is free after drop");
+        omp_install_cancel("first".into()).await.unwrap();
+        assert!(!again.is_cancelled());
         drop(again);
-        assert!(lock_active().is_none());
+        assert!(lock_install().active.is_none());
+    }
+
+    #[test]
+    fn cancel_before_begin_is_consumed_and_finished_request_is_cleaned_up() {
+        let mut state = InstallState::default();
+        state.cancel("pending".into());
+        state.cancel("pending".into());
+        assert_eq!(state.pending_cancels.len(), 1);
+        state.begin("pending".into()).unwrap();
+        assert!(state.active.as_ref().unwrap().cancelled);
+        assert!(state.pending_cancels.is_empty());
+        state.finish();
+        assert!(state.active.is_none());
+        assert_eq!(
+            state.finished_requests.front().map(String::as_str),
+            Some("pending")
+        );
+        state.cancel("pending".into());
+        assert!(state.pending_cancels.is_empty());
+        assert_eq!(state.begin("pending".into()).unwrap_err(), "安装请求已结束");
+    }
+
+    #[test]
+    fn mismatched_and_late_cancels_do_not_cancel_another_request() {
+        let mut state = InstallState::default();
+        state.begin("first".into()).unwrap();
+        state.cancel("not-yet-started".into());
+        assert!(!state.active.as_ref().unwrap().cancelled);
+        state.finish();
+
+        state.begin("retry".into()).unwrap();
+        state.cancel("first".into());
+        assert!(!state.active.as_ref().unwrap().cancelled);
+        assert_eq!(state.pending_cancels.len(), 1);
+        state.cancel("retry".into());
+        assert!(state.active.as_ref().unwrap().cancelled);
+        state.finish();
+
+        state.begin("not-yet-started".into()).unwrap();
+        assert!(state.active.as_ref().unwrap().cancelled);
+        assert!(state.pending_cancels.is_empty());
+        state.finish();
+    }
+
+    #[test]
+    fn rejected_request_drops_pending_cancel_without_retiring_the_active_owner() {
+        let mut state = InstallState::default();
+        state.begin("active".into()).unwrap();
+        state.cancel("rejected".into());
+        assert_eq!(
+            state.begin("rejected".into()).unwrap_err(),
+            "omp 正在安装中"
+        );
+        assert!(state.pending_cancels.is_empty());
+        state.cancel("rejected".into());
+        assert!(state.pending_cancels.is_empty());
+        assert!(!state.active.as_ref().unwrap().cancelled);
+        assert_eq!(state.begin("active".into()).unwrap_err(), "omp 正在安装中");
+        assert!(!state.finished_requests.iter().any(|id| id == "active"));
+        state.cancel("active".into());
+        assert!(state.active.as_ref().unwrap().cancelled);
+        state.finish();
+    }
+
+    #[test]
+    fn cancellation_records_stay_bounded_across_request_lifecycles() {
+        let mut state = InstallState::default();
+        for index in 0..MAX_CANCELLATION_REQUESTS + 5 {
+            state.cancel(format!("pending-{index}"));
+        }
+        assert_eq!(state.pending_cancels.len(), MAX_CANCELLATION_REQUESTS);
+        assert_eq!(
+            state.pending_cancels.front().map(String::as_str),
+            Some("pending-5")
+        );
+        let newest = format!("pending-{}", MAX_CANCELLATION_REQUESTS + 4);
+        state.cancel(newest.clone());
+        assert_eq!(state.pending_cancels.len(), MAX_CANCELLATION_REQUESTS);
+        state.begin(newest.clone()).unwrap();
+        assert!(state.active.as_ref().unwrap().cancelled);
+        assert_eq!(state.pending_cancels.len(), MAX_CANCELLATION_REQUESTS - 1);
+        state.finish();
+        state.cancel(newest);
+        assert_eq!(state.pending_cancels.len(), MAX_CANCELLATION_REQUESTS - 1);
+
+        for index in 0..MAX_CANCELLATION_REQUESTS + 5 {
+            state.begin(format!("finished-{index}")).unwrap();
+            state.finish();
+        }
+        assert_eq!(state.finished_requests.len(), MAX_CANCELLATION_REQUESTS);
+        assert_eq!(
+            state.finished_requests.front().map(String::as_str),
+            Some("finished-5")
+        );
+        state.cancel(format!("finished-{}", MAX_CANCELLATION_REQUESTS + 4));
+        assert_eq!(state.pending_cancels.len(), MAX_CANCELLATION_REQUESTS - 1);
+        assert!(state.active.is_none());
     }
 }

@@ -430,10 +430,10 @@ export function PendingCards() {
 			{showApproveAll(pendings) && (
 				<div className="flex flex-wrap items-center gap-2 rounded-m-lg bg-m-surface py-2 pr-2 pl-4">
 					<span className="min-w-0 flex-1 text-m-sm text-m-text-2">{approvals} 个工具请求等待批准</span>
-					<Button size="sm" onClick={() => void controller.approveAll("deny")}>
+					<Button size="sm" onClick={() => void controller.approveAll("deny", pendings)}>
 						全部拒绝
 					</Button>
-					<Button size="sm" variant="primary" onClick={() => void controller.approveAll("approve")}>
+					<Button size="sm" variant="primary" onClick={() => void controller.approveAll("approve", pendings)}>
 						全部允许
 					</Button>
 				</div>

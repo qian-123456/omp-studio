@@ -160,7 +160,7 @@ describe("SideChatPanel blank new chat", () => {
 		}
 	});
 
-	it("echoes first, then creates, binds the tab, and asks (nothing starts before send)", async () => {
+	it("shows a pending bubble, then asks before committing the echo and bound tab", async () => {
 		seedAnnotation("p1", "hello quote");
 		let resolveCreate!: (v: { sessionId: string }) => void;
 		const create = {
@@ -182,6 +182,7 @@ describe("SideChatPanel blank new chat", () => {
 		expect((input() as HTMLTextAreaElement).value).toBe("");
 		expect(h.createSideChat).toHaveBeenCalledWith("p1", undefined);
 		expect(h.sideChatAsk).not.toHaveBeenCalled();
+		expect(h.addUserEcho).not.toHaveBeenCalled();
 
 		await act(async () => create.resolve({ sessionId: "child-new" }));
 		await waitFor(() => expect(h.sideChatAsk).toHaveBeenCalled());
@@ -220,7 +221,7 @@ describe("SideChatPanel blank new chat", () => {
 			{ id: first.id, path: first.path, marker: "[Image #1]" },
 			{ id: second.id, path: second.path, marker: "[Image #2]" },
 		]);
-		expect(h.addUserEcho.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(h.addUserEcho.mock.invocationCallOrder[0]).toBeGreaterThan(
 			h.sideChatAsk.mock.invocationCallOrder[0]!,
 		);
 	});
@@ -258,6 +259,60 @@ describe("SideChatPanel blank new chat", () => {
 		expect(h.sideChatAsk).not.toHaveBeenCalled();
 		expect(useSideChatView.getState().openTabs["p1"]).toEqual([blankId]);
 		expect(useSideChatView.getState().pending).toEqual({});
+	});
+
+	it("restores a failed first ask without an echo and retries its first-question boundary with quotes and images", async () => {
+		seedAnnotation("p1", "keep this quote");
+		const annotations = useComposer.getState().annotations[sideChatAnnKey("p1")];
+		const image = useComposer.getState().addImage(blankId, "/kept.png");
+		const draft = "  问题 🖼️#1\n ";
+		h.sideChatAsk.mockRejectedValueOnce(new Error("first ask rejected"));
+		const first = render(<SideChatPanel />);
+		typeAndSend(draft);
+		await waitFor(() => expect((input() as HTMLTextAreaElement).value).toBe(draft));
+
+		expect(h.addUserEcho).not.toHaveBeenCalled();
+		expect(useSideChatView.getState().openTabs.p1).toEqual([blankId]);
+		expect(useSideChatView.getState().pending).toEqual({});
+		expect(useComposer.getState().annotations[sideChatAnnKey("p1")]).toEqual(annotations);
+		expect(useComposer.getState().images[blankId]).toEqual([image]);
+		expect(screen.queryByTestId("child-view")).toBeNull();
+
+		// Even after remount, retry must reuse the created child and sideChatAsk,
+		// not bind early and fall through SessionView's ordinary sendPrompt path.
+		first.unmount();
+		render(<SideChatPanel />);
+		expect((input() as HTMLTextAreaElement).value).toBe(draft);
+		fireEvent.keyDown(input(), { key: "Enter" });
+		await waitFor(() => expect(screen.getByTestId("child-view")).toBeTruthy());
+		expect(h.createSideChat).toHaveBeenCalledTimes(1);
+		expect(h.sideChatAsk).toHaveBeenCalledTimes(2);
+		expect(h.sideChatAsk.mock.calls[1]).toEqual(h.sideChatAsk.mock.calls[0]);
+		expect(h.sideChatAsk.mock.calls[1]?.[1]).toContain("/kept.png");
+		expect(h.sideChatAsk.mock.calls[1]?.[2]).toContain("keep this quote");
+		expect(h.sideChatAsk.mock.calls[1]?.[2]).toContain("批注：批注内容");
+		expect(h.addUserEcho).toHaveBeenCalledTimes(1);
+		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", expect.any(String), [
+			{ id: image.id, path: image.path, marker: "[Image #1]" },
+		]);
+		expect(useComposer.getState().images[blankId] ?? []).toEqual([]);
+		expect(useComposer.getState().annotations[sideChatAnnKey("p1")] ?? []).toEqual([]);
+	});
+
+	it.each(["create", "ask"] as const)("does not overwrite newer typing when the pending %s fails", async (phase) => {
+		let rejectRequest!: (error: Error) => void;
+		const pending = new Promise<never>((_resolve, reject) => { rejectRequest = reject; });
+		if (phase === "create") h.createSideChat.mockReturnValueOnce(pending);
+		else h.sideChatAsk.mockReturnValueOnce(pending);
+		render(<SideChatPanel />);
+		typeAndSend("original question");
+		if (phase === "ask") await waitFor(() => expect(h.sideChatAsk).toHaveBeenCalledTimes(1));
+		fireEvent.change(input(), { target: { value: "newer draft" } });
+		await act(async () => rejectRequest(new Error("request rejected")));
+		await waitFor(() => expect(useSideChatView.getState().pending).toEqual({}));
+		expect((input() as HTMLTextAreaElement).value).toBe("newer draft");
+		expect(useComposer.getState().sideChatDrafts[blankId]).toBe("newer draft");
+		expect(h.addUserEcho).not.toHaveBeenCalled();
 	});
 
 	it("keeps the draft across unmount/remount", () => {

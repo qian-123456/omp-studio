@@ -2,8 +2,8 @@
  * Side-chat actions shared by the panel, the tab context menu and `/btw`.
  *
  * Send flow (nothing ever starts without a user-typed message):
- *   blank tab, first message: pending bubble now -> `createSideChat` (fork, no
- *   prompt) -> echo into the new session -> bind the tab -> `sideChatAsk`.
+ *   blank tab: pending bubble -> create (once) -> first ask -> echo + bind.
+ *   Failed asks keep the blank composer and created session for a first-ask retry.
  *   Bound tab, later messages: echo + `sendPrompt` (done by the thread view).
  */
 
@@ -53,12 +53,17 @@ export function firstMessageParts(
 	return { question, selection };
 }
 
-/**
- * Send the first message of a blank tab. The pending bubble appears before any
- * backend call. Rejects only if the session could not be created (nothing was
- * started); a failed ask after creation is reported by a toast and keeps the
- * tab bound to the new session.
- */
+// A created session is not a bound thread until its first ask is accepted.
+// Keep it across failures so retrying does not create another side chat or use
+// the ordinary send path, which would omit the first-question boundary prompt.
+const firstQuestionSessions = new Map<string, string>();
+useSideChatView.subscribe(({ openTabs }) => {
+	for (const tabId of firstQuestionSessions.keys()) {
+		if (!Object.values(openTabs).some((tabs) => tabs.includes(tabId))) firstQuestionSessions.delete(tabId);
+	}
+});
+
+/** Send a blank tab's first question; failures leave all staged input intact. */
 export async function sendFirstMessage(input: FirstMessageInput): Promise<void> {
 	const { parentId, tabId, annotations, images = [] } = input;
 	const imageAttachments = sideChatImageAttachments(images);
@@ -79,27 +84,23 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 	const view = useSideChatView.getState();
 	const shown = sideChatEchoText(question, selection);
 	view.setPending(tabId, shown);
-	let sessionId: string;
 	try {
-		const info = await createSideChat(parentId, input.model ?? undefined);
-		sessionId = info.sessionId;
-		// Echo first so the bubble is there the moment the thread view mounts.
+		let sessionId = firstQuestionSessions.get(tabId);
+		if (!sessionId) {
+			const info = await createSideChat(parentId, input.model ?? undefined);
+			sessionId = info.sessionId;
+			firstQuestionSessions.set(tabId, sessionId);
+		}
+		await sideChatAsk(sessionId, promptQuestion, selection);
+		// Only accepted messages become user echoes or consume staged attachments.
 		useLive.getState().addUserEcho(sessionId, shown, imageAttachments);
 		await useSessions.getState().load().catch(() => {});
 		view.bindTab(parentId, tabId, sessionId);
-		// The quotes were consumed into the first prompt.
+		firstQuestionSessions.delete(tabId);
 		if (annotations?.length) useComposer.getState().clearAnnotations(sideChatAnnKey(parentId));
-	} catch (err) {
-		view.setPending(tabId, null);
-		throw err;
-	}
-	view.setPending(tabId, null);
-	try {
-		await sideChatAsk(sessionId, promptQuestion, selection);
-	} catch (err) {
-		toast.error(tNow("sidechat.sendSideChatMessageFailed", { error: err instanceof Error ? err.message : String(err) }));
-	} finally {
 		if (images.length > 0) useComposer.getState().clearImages(tabId);
+	} finally {
+		view.setPending(tabId, null);
 	}
 }
 
@@ -125,7 +126,8 @@ export async function openSideChatTab(
 			});
 
 		} catch (err) {
-			useComposer.getState().setSideChatDraft(tabId, question);
+			const composer = useComposer.getState();
+			if (!composer.sideChatDrafts[tabId]) composer.setSideChatDraft(tabId, question);
 			throw err;
 		}
 	}
