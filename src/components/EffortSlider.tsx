@@ -1,10 +1,10 @@
 /** Effort slider modelled on the ChatGPT desktop model-picker "power slider":
- * a 24px rounded track, a colored range that ends under a 28px white thumb,
+ * a 32px rounded track, a colored range that ends under a 36px white thumb,
  * 4px stop dots, and — when the strongest stop is reached — a purple animated
  * WebGL fill that sweeps in from the thumb, a particle burst around the thumb
  * and softly drifting sparks inside the track.
  *
- * Geometry (same as ChatGPT): the thumb center sits `13px` in from each track
+ * Geometry (ChatGPT-like): the thumb center sits `17px` in from each track
  * end (`offset(p)` below), the range's right edge follows the thumb center, and
  * every visual position is driven by one animated CSS number `--es-p` (0..100),
  * so the thumb, range and max effects always move in lockstep.
@@ -14,7 +14,7 @@ import clsx from "clsx";
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from "react";
 
 /** Half thumb width minus 1px: the thumb center's inset from each track end. */
-const THUMB_INSET = 13;
+const THUMB_INSET = 17;
 /** Pointer travel (px) before a press counts as a drag. */
 const DRAG_SLOP = 4;
 /** Wheel delta (px) per stop, and the idle gap (ms) that resets accumulation. */
@@ -59,7 +59,7 @@ export function EffortSlider({
 	onCommit,
 	onCancel,
 }: {
-	/** Number of stops, weakest (0) → strongest (count - 1); the last one is "max". */
+	/** Number of stops, weakest (0) → strongest (count - 1); the last is the strongest position of the passed list. */
 	count: number;
 	/** Displayed stop index; -1 = no stop (e.g. `auto`): thumb and range hidden. */
 	value: number;
@@ -213,6 +213,7 @@ export function EffortSlider({
 				ref={rootRef}
 				role="slider"
 				tabIndex={0}
+				aria-disabled={last <= 0 || undefined}
 				aria-label={label}
 				aria-valuemin={0}
 				aria-valuemax={Math.max(last, 0)}
