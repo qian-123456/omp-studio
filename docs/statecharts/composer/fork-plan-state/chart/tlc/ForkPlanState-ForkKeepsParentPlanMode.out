@@ -1,0 +1,784 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 38 and seed -727130444957342273 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 80043] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ForkPlanState.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module ForkPlanState
+Starting... (2026-10-28 22:50:10)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:50:10.
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "none"
+
+State 4: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 5: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOn", "answer", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 5: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOff", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 5: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOn", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 5: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOff", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 5: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOn", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOn", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOn", "planOn", "answer", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOff", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "planOff", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOn", "planOff", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "planOn", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOn", "answer", "planOn", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "planOff", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOn", "answer", "planOff", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOn", "answer", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOn", "answer", "answer", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOn", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOn", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"planOff", "planOn", "answer", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOff", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "planOff", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOff", "planOff", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOff", "answer", "planOn", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOff", "answer", "planOff", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"planOff", "answer", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"planOff", "answer", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOn", "planOn", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "planOff">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOn", "planOff", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOn", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "on"
+/\ transcript = <<"answer", "planOn", "answer", "planOff">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOff", "planOn", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "planOff">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOff", "planOff", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "planOff", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "planOff", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "planOn", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "answer", "planOn", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendPlanOff line 36, col 3 to line 39, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "planOff">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "planOff", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "answer", "planOff", "planOn">>
+/\ forkMode = "lastComplete"
+
+Error: Invariant ForkKeepsParentPlanMode is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<>>
+/\ forkMode = "none"
+
+State 2: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer">>
+/\ forkMode = "none"
+
+State 3: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer">>
+/\ forkMode = "none"
+
+State 4: <AppendAnswer line 42, col 3 to line 45, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "answer">>
+/\ forkMode = "none"
+
+State 5: <AppendPlanOn line 30, col 3 to line 33, col 39 of module ForkPlanState>
+/\ forkPlanOn = "unknown"
+/\ transcript = <<"answer", "answer", "answer", "planOn">>
+/\ forkMode = "none"
+
+State 6: <ForkSession line 49, col 3 to line 53, col 25 of module ForkPlanState>
+/\ forkPlanOn = "off"
+/\ transcript = <<"answer", "answer", "answer", "planOn">>
+/\ forkMode = "lastComplete"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.9E-16
+241 states generated, 216 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 22:50:10)

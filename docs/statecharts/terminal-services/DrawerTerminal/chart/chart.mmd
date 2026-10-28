@@ -1,0 +1,243 @@
+---
+title: "抽屉终端生命周期"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Mixed fill:#d1f2eb,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1 fill:#e8f0fe,stroke:#74787f,color:#1b2631
+  classDef group1Wrong fill:#e8f0fe,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2 fill:#eeeeee,stroke:#777777,color:#1b2631
+  classDef group2Wrong fill:#eeeeee,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2Mixed fill:#eeeeee,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group3 fill:#ffffff,stroke:#808080,color:#1b2631
+  classDef group3Wrong fill:#ffffff,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group4 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group4Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group4Mixed fill:#d6eaf8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group5 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group5Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "终端运行中" as legendGroup0
+    state "连接中" as legendGroup1
+    state "已退出或失败" as legendGroup2
+    state "没有标签" as legendGroup3
+    state "显示运行中但进程已不在" as legendGroup4
+    state "连接中却没有终端" as legendGroup5
+    state "违反规则" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendGroup3 group3
+  class legendGroup4 group4
+  class legendGroup5 group5
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "标签显示启动失败，没有终端进程，已折叠为后台服务" as s0
+  state "标签显示启动失败，没有终端进程，已折叠为后台服务，第一段输出已丢失" as s1
+  state "标签显示启动失败，没有终端进程，面板已打开" as s2
+  state "标签显示启动失败，没有终端进程，面板已打开，第一段输出已丢失" as s3
+  state "标签显示启动失败，没有终端进程，面板未打开" as s4
+  state "标签显示启动失败，没有终端进程，面板未打开，第一段输出已丢失" as s5
+  state "标签显示已退出，终端进程已结束，已折叠为后台服务" as s6
+  state "标签显示已退出，终端进程已结束，已折叠为后台服务，第一段输出已丢失" as s7
+  state "标签显示已退出，终端进程已结束，面板已打开" as s8
+  state "标签显示已退出，终端进程已结束，面板已打开，第一段输出已丢失" as s9
+  state "标签显示已退出，终端进程已结束，面板未打开" as s10
+  state "标签显示已退出，终端进程已结束，面板未打开，第一段输出已丢失" as s11
+  state "标签显示运行中，终端进程在运行，已折叠为后台服务" as s12
+  state "标签显示运行中，终端进程在运行，已折叠为后台服务，第一段输出已丢失" as s13
+  state "标签显示运行中，终端进程在运行，面板已打开" as s14
+  state "标签显示运行中，终端进程在运行，面板已打开，第一段输出已丢失" as s15
+  state "标签显示运行中，终端进程在运行，面板未打开" as s16
+  state "标签显示运行中，终端进程在运行，面板未打开，第一段输出已丢失" as s17
+  state "标签显示运行中，终端进程已结束，已折叠为后台服务" as s18
+  state "标签显示运行中，终端进程已结束，已折叠为后台服务，第一段输出已丢失" as s19
+  state "标签显示运行中，终端进程已结束，已折叠为后台服务，退出通知在路上" as s20
+  state "标签显示运行中，终端进程已结束，已折叠为后台服务，退出通知在路上，第一段输出已丢失" as s21
+  state "标签显示运行中，终端进程已结束，面板已打开" as s22
+  state "标签显示运行中，终端进程已结束，面板已打开，第一段输出已丢失" as s23
+  state "标签显示运行中，终端进程已结束，面板已打开，退出通知在路上" as s24
+  state "标签显示运行中，终端进程已结束，面板已打开，退出通知在路上，第一段输出已丢失" as s25
+  state "标签显示运行中，终端进程已结束，面板未打开" as s26
+  state "标签显示运行中，终端进程已结束，面板未打开，第一段输出已丢失" as s27
+  state "标签显示运行中，终端进程已结束，面板未打开，退出通知在路上" as s28
+  state "标签显示运行中，终端进程已结束，面板未打开，退出通知在路上，第一段输出已丢失" as s29
+  state "标签显示连接中，没有终端进程，已折叠为后台服务" as s30
+  state "标签显示连接中，没有终端进程，已折叠为后台服务，启动请求未返回" as s31
+  state "标签显示连接中，没有终端进程，已折叠为后台服务，启动请求未返回，第一段输出已丢失" as s32
+  state "标签显示连接中，没有终端进程，已折叠为后台服务，第一段输出已丢失" as s33
+  state "标签显示连接中，没有终端进程，面板已打开" as s34
+  state "标签显示连接中，没有终端进程，面板已打开，启动请求未返回" as s35
+  state "标签显示连接中，没有终端进程，面板已打开，启动请求未返回，第一段输出已丢失" as s36
+  state "标签显示连接中，没有终端进程，面板已打开，界面里没有终端" as s37
+  state "标签显示连接中，没有终端进程，面板已打开，第一段输出已丢失" as s38
+  state "标签显示连接中，没有终端进程，面板已打开，第一段输出已丢失，界面里没有终端" as s39
+  state "标签显示连接中，没有终端进程，面板未打开" as s40
+  state "标签显示连接中，没有终端进程，面板未打开，启动请求未返回" as s41
+  state "标签显示连接中，没有终端进程，面板未打开，启动请求未返回，第一段输出已丢失" as s42
+  state "标签显示连接中，没有终端进程，面板未打开，第一段输出已丢失" as s43
+  state "标签显示连接中，终端进程在运行，已折叠为后台服务，启动请求未返回" as s44
+  state "标签显示连接中，终端进程在运行，已折叠为后台服务，启动请求未返回，第一段输出已丢失" as s45
+  state "标签显示连接中，终端进程在运行，面板已打开，启动请求未返回" as s46
+  state "标签显示连接中，终端进程在运行，面板已打开，启动请求未返回，第一段输出已丢失" as s47
+  state "标签显示连接中，终端进程在运行，面板未打开，启动请求未返回" as s48
+  state "标签显示连接中，终端进程在运行，面板未打开，启动请求未返回，第一段输出已丢失" as s49
+  state "标签显示连接中，终端进程已结束，已折叠为后台服务，启动请求未返回" as s50
+  state "标签显示连接中，终端进程已结束，已折叠为后台服务，启动请求未返回，第一段输出已丢失" as s51
+  state "标签显示连接中，终端进程已结束，已折叠为后台服务，启动请求未返回，退出通知在路上" as s52
+  state "标签显示连接中，终端进程已结束，已折叠为后台服务，启动请求未返回，退出通知在路上，第一段输出已丢失" as s53
+  state "标签显示连接中，终端进程已结束，面板已打开，启动请求未返回" as s54
+  state "标签显示连接中，终端进程已结束，面板已打开，启动请求未返回，第一段输出已丢失" as s55
+  state "标签显示连接中，终端进程已结束，面板已打开，启动请求未返回，退出通知在路上" as s56
+  state "标签显示连接中，终端进程已结束，面板已打开，启动请求未返回，退出通知在路上，第一段输出已丢失" as s57
+  state "标签显示连接中，终端进程已结束，面板未打开，启动请求未返回" as s58
+  state "标签显示连接中，终端进程已结束，面板未打开，启动请求未返回，第一段输出已丢失" as s59
+  state "标签显示连接中，终端进程已结束，面板未打开，启动请求未返回，退出通知在路上" as s60
+  state "标签显示连接中，终端进程已结束，面板未打开，启动请求未返回，退出通知在路上，第一段输出已丢失" as s61
+  state "没有标签，没有终端进程" as s62
+  state "没有标签，没有终端进程，启动请求未返回" as s63
+  state "没有标签，没有终端进程，第一段输出已丢失" as s64
+  state "没有标签，终端进程在运行，启动请求未返回" as s65
+  state "没有标签，终端进程在运行，启动请求未返回，第一段输出已丢失" as s66
+  [*] --> s62
+  s62 --> s34 : 打开终端面板
+  s34 --> s40 : 切走右侧面板 or 重启应用
+  s34 --> s30 : 折叠成后台服务
+  s34 --> s35 : 界面创建终端并请求启动
+  s35 --> s41 : 切走右侧面板
+  s35 --> s63 : 关闭标签
+  s35 --> s31 : 折叠成后台服务
+  s35 --> s46 : 后端成功启动 shell
+  s35 --> s2 : 后端启动失败
+  s41 --> s48 : 后端成功启动 shell
+  s41 --> s4 : 后端启动失败
+  s63 --> s65 : 后端成功启动 shell
+  s31 --> s44 : 后端成功启动 shell
+  s31 --> s0 : 后端启动失败
+  s46 --> s56 : shell 退出
+  s46 --> s14 : 启动请求返回
+  s46 --> s47 : shell 打印第一段输出
+  s2 --> s37 : 点击重新连接
+  s48 --> s60 : shell 退出
+  s48 --> s16 : 启动请求返回
+  s48 --> s49 : shell 打印第一段输出
+  s65 --> s66 : shell 打印第一段输出
+  s44 --> s52 : shell 退出
+  s44 --> s12 : 启动请求返回
+  s44 --> s45 : shell 打印第一段输出
+  s56 --> s24 : 启动请求返回
+  s56 --> s54 : 界面收到退出通知
+  s47 --> s57 : shell 退出
+  s47 --> s15 : 启动请求返回
+  s60 --> s28 : 启动请求返回
+  s60 --> s58 : 界面收到退出通知
+  s49 --> s61 : shell 退出
+  s49 --> s17 : 启动请求返回
+  s66 --> s64 : 启动请求返回
+  s52 --> s20 : 启动请求返回
+  s52 --> s50 : 界面收到退出通知
+  s45 --> s53 : shell 退出
+  s45 --> s13 : 启动请求返回
+  s24 --> s8 : 界面收到退出通知
+  s54 --> s22 : 启动请求返回
+  s57 --> s25 : 启动请求返回
+  s57 --> s55 : 界面收到退出通知
+  s28 --> s10 : 界面收到退出通知
+  s58 --> s26 : 启动请求返回
+  s61 --> s29 : 启动请求返回
+  s61 --> s59 : 界面收到退出通知
+  s64 --> s38 : 打开终端面板
+  s20 --> s6 : 界面收到退出通知
+  s50 --> s18 : 启动请求返回
+  s53 --> s21 : 启动请求返回
+  s53 --> s51 : 界面收到退出通知
+  s25 --> s9 : 界面收到退出通知
+  s55 --> s23 : 启动请求返回
+  s29 --> s11 : 界面收到退出通知
+  s59 --> s27 : 启动请求返回
+  s38 --> s43 : 切走右侧面板
+  s38 --> s33 : 折叠成后台服务
+  s38 --> s36 : 界面创建终端并请求启动
+  s21 --> s7 : 界面收到退出通知
+  s51 --> s19 : 启动请求返回
+  s9 --> s39 : 点击重新连接
+  s36 --> s42 : 切走右侧面板
+  s36 --> s32 : 折叠成后台服务
+  s36 --> s3 : 后端启动失败
+  s42 --> s5 : 后端启动失败
+  s32 --> s1 : 后端启动失败
+  class s0 group2
+  class s1 group2Wrong
+  class s2 group2
+  class s3 group2Mixed
+  class s4 group2
+  class s5 group2Wrong
+  class s6 group2
+  class s7 group2Wrong
+  class s8 group2
+  class s9 group2Mixed
+  class s10 group2
+  class s11 group2Wrong
+  class s12 group0
+  class s13 group0Mixed
+  class s14 group0
+  class s15 group0Mixed
+  class s16 group0
+  class s17 group0Mixed
+  class s18 group4Wrong
+  class s19 group4Wrong
+  class s20 group4
+  class s21 group4
+  class s22 group4Mixed
+  class s23 group4Mixed
+  class s24 group4
+  class s25 group4
+  class s26 group4Wrong
+  class s27 group4Wrong
+  class s28 group4
+  class s29 group4
+  class s30 group1
+  class s31 group1
+  class s32 group1
+  class s33 group1Wrong
+  class s34 group5
+  class s35 group1
+  class s36 group1
+  class s37 group5Wrong
+  class s38 group5
+  class s39 group5Wrong
+  class s40 group1
+  class s41 group1
+  class s42 group1
+  class s43 group1Wrong
+  class s44 group1
+  class s45 group1
+  class s46 group1
+  class s47 group1
+  class s48 group1
+  class s49 group1
+  class s50 group1
+  class s51 group1
+  class s52 group1
+  class s53 group1
+  class s54 group1
+  class s55 group1
+  class s56 group1
+  class s57 group1
+  class s58 group1
+  class s59 group1
+  class s60 group1
+  class s61 group1
+  class s62 group3
+  class s63 group3
+  class s64 group3Wrong
+  class s65 group3
+  class s66 group3

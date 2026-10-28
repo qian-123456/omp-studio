@@ -1,0 +1,545 @@
+{
+  "slice": "privacy-providers",
+  "title": "隐私保护与供应商凭据生命周期",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "extension/omp-workspace-privacy.ts",
+      "feature": "omp-workspace-privacy.ts",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/privacy/classify.rs",
+      "feature": "classify.rs",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src-tauri/src/privacy/commands.rs",
+      "feature": "commands.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/privacy/files.rs",
+      "feature": "files.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/privacy/mod.rs",
+      "feature": "mod.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/privacy/store.rs",
+      "feature": "store.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/commands.rs",
+      "feature": "commands.rs",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src-tauri/src/providers/config_yml.rs",
+      "feature": "config_yml.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/key_ref.rs",
+      "feature": "key_ref.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/migration.rs",
+      "feature": "migration.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/mod.rs",
+      "feature": "mod.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/models_yml_providers.rs",
+      "feature": "models_yml_providers.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/models_yml_write.rs",
+      "feature": "models_yml_write.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/oauth.rs",
+      "feature": "oauth.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/omp_config.rs",
+      "feature": "omp_config.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/ops.rs",
+      "feature": "ops.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/presets.rs",
+      "feature": "presets.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/rows.rs",
+      "feature": "rows.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/providers/vault.rs",
+      "feature": "vault.rs",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src-tauri/src/rpc/privacy_ext.rs",
+      "feature": "privacy_ext.rs",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src/features/chat/privacy/ComposerSecretOverlay.tsx",
+      "feature": "ComposerSecretOverlay.tsx",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/chat/privacy/LibraryPromptCard.tsx",
+      "feature": "LibraryPromptCard.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/chat/privacy/MarkSecretPopover.tsx",
+      "feature": "MarkSecretPopover.tsx",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src/features/chat/privacy/composerClipboard.ts",
+      "feature": "composerClipboard.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/chat/privacy/composerPrivacy.test.ts",
+      "feature": "composerPrivacy.test.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/chat/privacy/composerPrivacy.ts",
+      "feature": "composerPrivacy.ts",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/chat/privacy/useComposerPrivacy.ts",
+      "feature": "useComposerPrivacy.ts",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/privacy/SecretChip.tsx",
+      "feature": "SecretChip.tsx",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/privacy/render.test.ts",
+      "feature": "render.test.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/privacy/render.ts",
+      "feature": "render.ts",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/providers/KeyModeRadio.tsx",
+      "feature": "KeyModeRadio.tsx",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src/features/providers/ModelPickerModal.tsx",
+      "feature": "ModelPickerModal.tsx",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/providers/OauthLoginDialog.test.tsx",
+      "feature": "OauthLoginDialog.test.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/OauthLoginDialog.tsx",
+      "feature": "OauthLoginDialog.tsx",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src/features/providers/ProviderDialog.tsx",
+      "feature": "ProviderDialog.tsx",
+      "status": "modeled",
+      "reason": "有限抽象覆盖标记范围、原生同步、密钥持久化或登录生命周期；不等于全文件验证。"
+    },
+    {
+      "path": "src/features/providers/ProviderGroup.tsx",
+      "feature": "ProviderGroup.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/ProviderPanel.test.tsx",
+      "feature": "ProviderPanel.test.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/ProviderPanel.tsx",
+      "feature": "ProviderPanel.tsx",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/providers/ProviderRowView.tsx",
+      "feature": "ProviderRowView.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/SetKeyDialog.tsx",
+      "feature": "SetKeyDialog.tsx",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/providers/contextWindowOnSave.ts",
+      "feature": "contextWindowOnSave.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/envImport.ts",
+      "feature": "envImport.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/envparse.test.ts",
+      "feature": "envparse.test.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/envparse.ts",
+      "feature": "envparse.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/httpWarning.test.ts",
+      "feature": "httpWarning.test.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/httpWarning.ts",
+      "feature": "httpWarning.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/keyState.ts",
+      "feature": "keyState.ts",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/providers/modelEntry.test.ts",
+      "feature": "modelEntry.test.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/modelEntry.ts",
+      "feature": "modelEntry.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/presets.ts",
+      "feature": "presets.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/providerGroups.ts",
+      "feature": "providerGroups.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/providers/store.ts",
+      "feature": "store.ts",
+      "status": "read-only",
+      "reason": "已读取对应逻辑；展示、分类、发现或组合输入行为未独立形式化。"
+    },
+    {
+      "path": "src/features/settings/sections/PrivacySection.tsx",
+      "feature": "PrivacySection.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/settings/sections/ProviderBrandLogo.tsx",
+      "feature": "ProviderBrandLogo.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/features/settings/sections/ProvidersSection.tsx",
+      "feature": "ProvidersSection.tsx",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    },
+    {
+      "path": "src/stores/privacy.ts",
+      "feature": "privacy.ts",
+      "status": "out-of-model",
+      "reason": "辅助展示/解析/配置/凭据实现或现有测试；未独立建模，不能据此声称已验证。"
+    }
+  ],
+  "models": [
+    {
+      "name": "PrivacyScope",
+      "spec": "scope/PrivacyScope.tla",
+      "config": "scope/PrivacyScope.cfg",
+      "map": "scope/PrivacyScope.map.mjs",
+      "out": "scope/out",
+      "summary": "scope/out/summary.json",
+      "regenerate": "cd scope && node \"$HOME/.agents/skills/statechart/scripts/statechart.mjs\" from-spec PrivacyScope.tla --fixed PrivacyScopeFixed.tla --expect-broken HistoryReplacedWhenAsked --title \"隐私标记范围\" --out out --png",
+      "limits": "有限值域、单条目/单供应商/单进程。外部文件写入与授权结果以事件输入；没有真实网络或真实凭据。"
+    },
+    {
+      "name": "PrivacyNative",
+      "spec": "native/PrivacyNative.tla",
+      "config": "native/PrivacyNative.cfg",
+      "map": "native/PrivacyNative.map.mjs",
+      "out": "native/out",
+      "summary": "native/out/summary.json",
+      "regenerate": "cd native && node \"$HOME/.agents/skills/statechart/scripts/statechart.mjs\" from-spec PrivacyNative.tla --fixed PrivacyNativeFixed.tla --expect-broken CompactionHasNativeCoverage --title \"原生保护同步\" --out out --png",
+      "limits": "有限值域、单条目/单供应商/单进程。外部文件写入与授权结果以事件输入；没有真实网络或真实凭据。"
+    },
+    {
+      "name": "ProviderKeys",
+      "spec": "keys/ProviderKeys.tla",
+      "config": "keys/ProviderKeys.cfg",
+      "map": "keys/ProviderKeys.map.mjs",
+      "out": "keys/out",
+      "summary": "keys/out/summary.json",
+      "regenerate": "cd keys && node \"$HOME/.agents/skills/statechart/scripts/statechart.mjs\" from-spec ProviderKeys.tla --fixed ProviderKeysFixed.tla --expect-broken SavedModeMatchesChoice,NoOrphanVaultKey --title \"供应商密钥保存\" --out out --png",
+      "limits": "有限值域、单条目/单供应商/单进程。外部文件写入与授权结果以事件输入；没有真实网络或真实凭据。"
+    },
+    {
+      "name": "OauthLogin",
+      "spec": "oauth/OauthLogin.tla",
+      "config": "oauth/OauthLogin.cfg",
+      "map": "oauth/OauthLogin.map.mjs",
+      "out": "oauth/out",
+      "summary": "oauth/out/summary.json",
+      "regenerate": "cd oauth && node \"$HOME/.agents/skills/statechart/scripts/statechart.mjs\" from-spec OauthLogin.tla --fixed OauthLoginFixed.tla --expect-broken PanelShowsSavedLogin,NoOrphanLogin --title \"授权登录对话框\" --out out --png",
+      "limits": "有限值域、单条目/单供应商/单进程。外部文件写入与授权结果以事件输入；没有真实网络或真实凭据。"
+    }
+  ],
+  "findings": [
+    {
+      "rule": "HistoryReplacedWhenAsked",
+      "title": "再次选择替换旧历史仍保留旧范围",
+      "model": "PrivacyScope",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "先仅保护后续内容",
+        "再选择同时替换旧历史",
+        "旧消息仍含明文"
+      ],
+      "reproduction": "Rust store::mark 现有公开测试通过；真实 MarkSecretPopover 与 extension context 重放通过。跨 Rust/extension 的完整原生 IPC 未运行。track=false 分支只重放消费者，未重放 Rust 更新。",
+      "evidence": [
+        "src-tauri/src/privacy/store.rs:170",
+        "src-tauri/src/privacy/store.rs:204",
+        "replay/privacy.replay.test.tsx"
+      ],
+      "fixModelStatus": "模型提议清除范围并恢复跟踪；不代表产品已修复。"
+    },
+    {
+      "rule": "CompactionHasNativeCoverage",
+      "title": "哈希相同不证明进程曾加载隐私块",
+      "model": "PrivacyNative",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "启动时隐私块写入失败",
+        "相同内容重写成功",
+        "压缩被放行"
+      ],
+      "reproduction": "真实 extension session_before_compact 的哈希判定已重放；未启动实际 OMP 进程验证原生加载。",
+      "evidence": [
+        "src-tauri/src/privacy/mod.rs:120",
+        "src-tauri/src/rpc/privacy_ext.rs:39",
+        "replay/privacy.replay.test.tsx"
+      ],
+      "fixModelStatus": "提议使用不可匹配启动标记；仅模型。"
+    },
+    {
+      "rule": "SavedModeMatchesChoice",
+      "title": "未填写新密钥时保存模式选择未生效",
+      "model": "ProviderKeys",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "编辑加密供应商",
+        "选择明文但保持密钥为空",
+        "保存成功但后台保留原模式"
+      ],
+      "reproduction": "真实 ProviderDialog 重放显示 key=null、mode=plaintext 且成功关闭；未调用 Rust ops 的完整保存入口。",
+      "evidence": [
+        "src/features/providers/ProviderDialog.tsx:301",
+        "src-tauri/src/providers/ops.rs:367",
+        "replay/providers.replay.test.tsx"
+      ],
+      "fixModelStatus": "提议切换已有密钥存储；仅模型。"
+    },
+    {
+      "rule": "NoOrphanVaultKey",
+      "title": "配置修改成功而凭据清理失败可留下孤立密钥",
+      "model": "ProviderKeys",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "已有加密密钥",
+        "写入明文或删除配置",
+        "凭据清理失败"
+      ],
+      "reproduction": "未重放实际 KeyStore 故障；模型与写入顺序证据。",
+      "evidence": [
+        "src-tauri/src/providers/ops.rs:185",
+        "src-tauri/src/providers/ops.rs:476"
+      ],
+      "fixModelStatus": "当前提议模型不解决该规则。"
+    },
+    {
+      "rule": "PanelShowsSavedLogin",
+      "title": "返回列表后的迟到成功事件不会刷新供应商",
+      "model": "OauthLogin",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "打开登录流程",
+        "点上一步",
+        "取消待处理时收到成功",
+        "供应商未刷新"
+      ],
+      "reproduction": "真实 OauthLoginDialog 与事件总线边界重放；有效监听控制组刷新一次，返回后监听为零且没有刷新。外部实际凭据保存未运行。",
+      "evidence": [
+        "src/features/providers/OauthLoginDialog.tsx:325",
+        "replay/providers.replay.test.tsx"
+      ],
+      "fixModelStatus": "提议取消完成后刷新；仅部分路径改善，固定模型仍有坏状态。"
+    },
+    {
+      "rule": "NoOrphanLogin",
+      "title": "启动未完成就取消可能留下后台登录进程",
+      "model": "OauthLogin",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "开始登录请求在途",
+        "返回列表",
+        "后台先处理取消",
+        "启动后处理"
+      ],
+      "reproduction": "真实 UI 重放确认启动未 resolve 时会发送 cancel；未验证原生 IPC 调度能否实现模型中的处理反序。",
+      "evidence": [
+        "src-tauri/src/providers/oauth.rs:488",
+        "src/features/providers/OauthLoginDialog.tsx:352",
+        "replay/providers.replay.test.tsx"
+      ],
+      "fixModelStatus": "等待启动完成的提议阻止最短路径；固定模型未消除全部坏状态。"
+    }
+  ],
+  "verification": [
+    {
+      "command": "./node_modules/.bin/vitest run --config <slice>/replay/vitest.config.ts",
+      "exitCode": 0,
+      "result": "2 files / 7 tests passed; reproduction evidence, not desired-contract acceptance"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=<slice>/replay/cargo-target cargo test --offline --lib future_scope_records_cutoff_once_and_all_never_clears",
+      "exitCode": 0,
+      "result": "1 passed; 754 filtered out"
+    },
+    {
+      "command": "uncitedConditions over all eight TLA files",
+      "exitCode": 0,
+      "result": "all returned []"
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "extension/omp-workspace-privacy.ts",
+    "src-tauri/src/privacy/classify.rs",
+    "src-tauri/src/privacy/commands.rs",
+    "src-tauri/src/privacy/files.rs",
+    "src-tauri/src/privacy/mod.rs",
+    "src-tauri/src/privacy/store.rs",
+    "src-tauri/src/providers/commands.rs",
+    "src-tauri/src/providers/oauth.rs",
+    "src-tauri/src/providers/ops.rs",
+    "src-tauri/src/rpc/privacy_ext.rs",
+    "src/features/chat/privacy/ComposerSecretOverlay.tsx",
+    "src/features/chat/privacy/MarkSecretPopover.tsx",
+    "src/features/chat/privacy/composerPrivacy.ts",
+    "src/features/chat/privacy/useComposerPrivacy.ts",
+    "src/features/chat/send.ts",
+    "src/features/privacy/SecretChip.tsx",
+    "src/features/privacy/render.ts",
+    "src/features/providers/KeyModeRadio.tsx",
+    "src/features/providers/ModelPickerModal.tsx",
+    "src/features/providers/OauthLoginDialog.tsx",
+    "src/features/providers/ProviderDialog.tsx",
+    "src/features/providers/ProviderPanel.tsx",
+    "src/features/providers/SetKeyDialog.tsx",
+    "src/features/providers/keyState.ts",
+    "src/features/providers/store.ts"
+  ],
+  "limits": [
+    "未独立形式化：模型发现并发/替换、密钥批量导入、设置页编辑、mask/reveal、library prompt、剪贴板、fork 继承、提供商 migration。覆盖表中明确标注。",
+    "真实 OMP secrets.yml 启动加载、原生 IPC 调度、浏览器 OAuth、网络模型发现、系统密钥库与加密实现均是未执行的外部边界。",
+    "只使用合成字符串；未读取实际凭据、登录、联网或修改产品代码。"
+  ]
+}

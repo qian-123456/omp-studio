@@ -1,0 +1,151 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 46 and seed 4689835335116624001 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 85683] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ServicesPanelPoll.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module ServicesPanelPoll
+Starting... (2026-10-28 22:52:21)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:52:22.
+Error: Invariant RowsMatchToggle is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 0
+/\ events = 0
+
+State 2: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = TRUE
+/\ rows = "none"
+/\ toggles = 1
+/\ events = 0
+
+State 3: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE, FALSE>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 2
+/\ events = 0
+
+State 4: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = FALSE
+/\ rows = "dev"
+/\ toggles = 2
+/\ events = 0
+
+State 5: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "all"
+/\ toggles = 2
+/\ events = 0
+
+Error: Invariant RowsMatchToggle is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 0
+/\ events = 0
+
+State 2: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = TRUE
+/\ rows = "none"
+/\ toggles = 1
+/\ events = 0
+
+State 3: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE, FALSE>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 2
+/\ events = 0
+
+State 4: <ChangedEvent line 42, col 3 to line 47, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE, FALSE>>
+/\ all = FALSE
+/\ rows = "dev"
+/\ toggles = 2
+/\ events = 1
+
+State 5: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = FALSE
+/\ rows = "dev"
+/\ toggles = 2
+/\ events = 1
+
+State 6: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "all"
+/\ toggles = 2
+/\ events = 1
+
+Error: Invariant RowsMatchToggle is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 0
+/\ events = 0
+
+State 2: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = TRUE
+/\ rows = "none"
+/\ toggles = 1
+/\ events = 0
+
+State 3: <ChangedEvent line 42, col 3 to line 47, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE, TRUE>>
+/\ all = TRUE
+/\ rows = "none"
+/\ toggles = 1
+/\ events = 1
+
+State 4: <ToggleAll line 33, col 3 to line 38, col 31 of module ServicesPanelPoll>
+/\ pending = <<TRUE, TRUE, FALSE>>
+/\ all = FALSE
+/\ rows = "none"
+/\ toggles = 2
+/\ events = 1
+
+State 5: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<TRUE, TRUE>>
+/\ all = FALSE
+/\ rows = "dev"
+/\ toggles = 2
+/\ events = 1
+
+State 6: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<TRUE>>
+/\ all = FALSE
+/\ rows = "all"
+/\ toggles = 2
+/\ events = 1
+
+State 7: <Respond line 51, col 3 to line 54, col 39 of module ServicesPanelPoll>
+/\ pending = <<>>
+/\ all = FALSE
+/\ rows = "all"
+/\ toggles = 2
+/\ events = 1
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.9E-17
+38 states generated, 21 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 02s at (2026-10-28 22:52:22)

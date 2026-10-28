@@ -1,0 +1,107 @@
+{
+  "view": "customer",
+  "modelStates": 20,
+  "modelTransitions": 25,
+  "chartStates": 14,
+  "chartTransitions": 13,
+  "chartStatus": {
+    "works": 7,
+    "wrong": 7,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": true,
+    "states": 14,
+    "transitions": 18,
+    "leftOutStates": [],
+    "leftOutTransitions": [
+      "正在创建辅助对话，显示待发气泡，输入框为空 --> 空白辅助对话页，输入框有文字: 创建辅助对话失败",
+      "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，整理结论失败 --> 辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，正在整理结论: 点击回传给父会话",
+      "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，结论已就绪 --> 辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，正在整理结论: 点击回传给父会话",
+      "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，整理结论失败 --> 辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，正在整理结论: 点击回传给父会话",
+      "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，结论已就绪 --> 辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，正在整理结论: 点击回传给父会话"
+    ]
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "辅助对话已绑定，首条消息发送中，输入框为空，副本带着计划模式",
+      "invariant": "SideChatNeverInheritsPlanMode",
+      "rule": "辅助对话从不继承父会话的计划模式。",
+      "cause": null,
+      "readerSteps": 2,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "辅助对话创建成功"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本未带计划模式",
+      "invariant": "EchoMeansMessageSent",
+      "rule": "辅助对话里出现的“我发的消息”，一定真的发给了模型。",
+      "cause": null,
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "首条消息发送失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 3,
+      "end": "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本未带计划模式",
+      "invariant": "FailedFirstMessageKeepsText",
+      "rule": "首条消息失败后，用户输入的文字不会凭空消失。",
+      "cause": null,
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "首条消息发送失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 4,
+      "end": "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本带着计划模式",
+      "invariant": "EchoMeansMessageSent",
+      "rule": "辅助对话里出现的“我发的消息”，一定真的发给了模型。",
+      "cause": null,
+      "readerSteps": 3,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "首条消息发送失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 5,
+      "end": "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本带着计划模式",
+      "invariant": "FailedFirstMessageKeepsText",
+      "rule": "首条消息失败后，用户输入的文字不会凭空消失。",
+      "cause": null,
+      "readerSteps": 3,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "首条消息发送失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

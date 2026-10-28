@@ -1,0 +1,44 @@
+---
+title: "MCP父子组件写入归属, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "目录为空：没有弹窗，0次写入尚未返回" as s0
+  state "目录为空：没有弹窗，1次写入尚未返回" as s1
+  state "目录为空：编辑弹窗（本窗口正在保存），1次写入尚未返回" as s2
+  state "目录为空：编辑弹窗（本窗口正在保存），2次写入尚未返回" as s3
+  state "目录为空：编辑弹窗，0次写入尚未返回" as s4
+  state "目录为空：编辑弹窗，1次写入尚未返回" as s5
+  [*] --> s0
+  s0 --> s4 : 1. 点添加服务器
+  s4 --> s2 : 2. 保存合法草稿
+  s2 --> s1 : 3. 关闭弹窗但请求未取消
+  s1 --> s5 : 4. 点添加服务器
+  s5 --> s3 : 5. 保存合法草稿
+  class s0 worksPath
+  class s1 worksPath
+  class s2 worksPath
+  class s3 wrongPath
+  class s4 worksPath
+  class s5 worksPath

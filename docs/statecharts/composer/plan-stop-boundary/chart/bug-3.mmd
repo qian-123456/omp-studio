@@ -1,0 +1,52 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendMixed mixed
+  state "正在响应隐藏提醒：还没有计划文件，已点停止0次" as s0
+  state "正在响应隐藏提醒：还没有计划文件，已点停止1次" as s1
+  state "正在响应隐藏提醒：还没有计划文件，已点停止3次" as s2
+  state "正在回答你的消息：还没有计划文件，已点停止0次" as s3
+  state "正在回答你的消息：还没有计划文件，已点停止1次" as s4
+  state "正在回答你的消息：还没有计划文件，已点停止2次" as s5
+  state "空闲：还没有计划文件，已点停止0次" as s6
+  state "空闲：还没有计划文件，已点停止1次" as s7
+  state "空闲：还没有计划文件，已点停止2次" as s8
+  [*] --> s6
+  s6 --> s3 : 1. 发送一条消息
+  s3 --> s0 : 2. 这一轮自然结束
+  s1 --> s8 : 6. 点击停止
+  s0 --> s7 : 3. 点击停止
+  s8 --> s5 : 7. 发送一条消息
+  s7 --> s4 : 4. 发送一条消息
+  s5 --> s2 : 8. 点击停止
+  s4 --> s1 : 5. 这一轮自然结束
+  class s0 worksPath
+  class s1 mixedPath
+  class s2 mixedPath
+  class s3 worksPath
+  class s4 mixedPath
+  class s5 mixedPath
+  class s6 worksPath
+  class s7 mixedPath
+  class s8 mixedPath

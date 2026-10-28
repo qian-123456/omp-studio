@@ -1,0 +1,26 @@
+[
+  {
+    "file": "ModelCapability.tla",
+    "unmatched": []
+  },
+  {
+    "file": "ReplaceLifecycle.tla",
+    "unmatched": []
+  },
+  {
+    "file": "ReplaceOwnership.tla",
+    "unmatched": []
+  },
+  {
+    "file": "RoleScope.tla",
+    "unmatched": []
+  },
+  {
+    "file": "TemplateSnapshot.tla",
+    "unmatched": []
+  },
+  {
+    "file": "TemplateSwitch.tla",
+    "unmatched": []
+  }
+]

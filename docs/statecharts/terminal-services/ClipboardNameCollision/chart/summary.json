@@ -1,0 +1,48 @@
+{
+  "view": "customer",
+  "modelStates": 9,
+  "modelTransitions": 8,
+  "chartStates": 9,
+  "chartTransitions": 8,
+  "chartStatus": {
+    "works": 7,
+    "wrong": 2,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "各自独立",
+      "color": "#d1f2eb",
+      "states": 7
+    },
+    {
+      "name": "两个附件指向同一路径",
+      "color": "#d6eaf8",
+      "states": 2
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "两个文件同一毫秒且同名，第一个文件已保存，第二个文件已保存，共用路径里是第二个文件",
+      "invariant": "EachAttachmentKeepsItsBytes",
+      "rule": "两个附件保存完成后，各自返回的路径里应当是各自的内容。",
+      "cause": "缓存文件名只由毫秒时间戳和文件名拼成且不检查是否已存在，同一毫秒的同名文件会互相覆盖，两个附件指向同一路径",
+      "readerSteps": 2,
+      "modelSteps": 3,
+      "counterexamples": 2,
+      "lastSteps": [
+        "保存第一个粘贴文件",
+        "保存第二个粘贴文件"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

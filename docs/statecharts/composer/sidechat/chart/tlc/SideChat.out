@@ -1,0 +1,153 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 103 and seed -2911732012474956761 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 68548] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/SideChat_rules.tla
+Parsing file <path>/SideChat.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module SideChat
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module SideChat_rules
+Starting... (2026-10-28 22:45:35)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:45:36.
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "failed",
+     cutCopyFailed |-> FALSE,
+     forkPlanOn |-> FALSE,
+     handback |-> "idle",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"EchoMeansMessageSent", "FailedFirstMessageKeepsText"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "inflight",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "idle",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "idle",
+     sideStreaming |-> TRUE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "failed",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "idle",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   { "EchoMeansMessageSent",
+     "FailedFirstMessageKeepsText",
+     "SideChatNeverInheritsPlanMode" } >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "idle",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "running",
+     sideStreaming |-> TRUE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "running",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "ready",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+<< "statechart broken",
+   [ tab |-> "bound",
+     questionDraft |-> "empty",
+     annotationsStaged |-> FALSE,
+     pendingBubble |-> FALSE,
+     forkSession |-> TRUE,
+     echoBubble |-> TRUE,
+     askState |-> "sent",
+     cutCopyFailed |-> TRUE,
+     forkPlanOn |-> TRUE,
+     handback |-> "error",
+     sideStreaming |-> FALSE,
+     handbackSentWhileBusy |-> FALSE ],
+   {"SideChatNeverInheritsPlanMode"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.5E-18
+26 states generated, 20 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-28 22:45:36)

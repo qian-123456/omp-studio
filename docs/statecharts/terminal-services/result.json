@@ -1,0 +1,478 @@
+{
+  "slice": "terminal-services",
+  "title": "终端、后台服务与文件缓存状态审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "src-tauri/src/terminal/commands.rs",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src-tauri/src/terminal/pty.rs",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src-tauri/src/terminal/shell_init.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/terminal/mod.rs",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src-tauri/src/terminal/extension.rs",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src-tauri/src/terminal/env.rs",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src-tauri/src/services/commands.rs",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src-tauri/src/services/perf.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/services/clipboard.rs",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src-tauri/src/services/files.rs",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src-tauri/src/services/trash.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/services/mod.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/services/scan.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src/features/terminal/CommandTerminalPanel.tsx",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src/features/terminal/drawerRegistry.ts",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src/features/terminal/drawerStore.ts",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src/features/terminal/terminalTabs.ts",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src/features/terminal/terminalTheme.ts",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src/features/terminal/terminalTheme.test.ts",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src/features/terminal/drawerStore.test.ts",
+      "feature": "环境、扩展、主题和既有测试",
+      "status": "out-of-model",
+      "reason": "不纳入有限状态模型，未做独立行为验证"
+    },
+    {
+      "path": "src/features/services/ServicesPanel.tsx",
+      "feature": "终端/会话/服务列表/文件缓存生命周期",
+      "status": "modeled",
+      "reason": "仅对应模型所列操作，不包括该文件全部行为"
+    },
+    {
+      "path": "src/components/BottomBar.tsx",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src/features/chat/Composer.tsx",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/catalog/mod.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    },
+    {
+      "path": "src/lib/ipc.ts",
+      "feature": "边界追踪及只读辅助操作",
+      "status": "read-only",
+      "reason": "只读审阅，不宣称状态不变量覆盖；扫描、停止进程、性能采样、回收站和 shell 初始化未建模"
+    }
+  ],
+  "models": [
+    {
+      "name": "DrawerTerminal",
+      "spec": "models/DrawerTerminal.tla",
+      "config": "models/DrawerTerminal.cfg",
+      "map": "models/DrawerTerminal.map.mjs",
+      "out": "out/drawer-terminal",
+      "regenerate": "node $STATECHART from-spec models/DrawerTerminal.tla --out out/drawer-terminal --png --cover --title '抽屉终端生命周期' --expect-broken ReadyMeansAlive,OpeningMakesProgress,OutputNotLost",
+      "summary": "out/drawer-terminal/summary.json",
+      "limits": "单标签、至多一代在途启动、至多三代进程；事件交错通过 I/O 替身重放，未证明原生事件传输实际排序。",
+      "counts": {
+        "modelStates": 1058,
+        "modelTransitions": 5828,
+        "chartStates": 67,
+        "chartTransitions": 66
+      },
+      "coverOmittedStates": 991
+    },
+    {
+      "name": "SessionTerminal",
+      "spec": "models/SessionTerminal.tla",
+      "config": "models/SessionTerminal.cfg",
+      "map": "models/SessionTerminal.map.mjs",
+      "out": "out/session-terminal",
+      "regenerate": "node $STATECHART from-spec models/SessionTerminal.tla --out out/session-terminal --png --title '会话终端登记表' --expect-broken RecordMeansAlive,DeletedSessionHasNoTerminal",
+      "summary": "out/session-terminal/summary.json",
+      "limits": "单会话与单个开启操作；原生会话删除/开启竞态未实际重放。",
+      "counts": {
+        "modelStates": 12,
+        "modelTransitions": 22,
+        "chartStates": 12,
+        "chartTransitions": 22
+      },
+      "coverOmittedStates": null
+    },
+    {
+      "name": "ServicesPanelPoll",
+      "spec": "models/ServicesPanelPoll.tla",
+      "config": "models/ServicesPanelPoll.cfg",
+      "map": "models/ServicesPanelPoll.map.mjs",
+      "out": "out/services-poll",
+      "regenerate": "node $STATECHART from-spec models/ServicesPanelPoll.tla --out out/services-poll --png --title '服务面板列表' --expect-broken RowsMatchToggle",
+      "summary": "out/services-poll/summary.json",
+      "limits": "至多两次切换、三个在途请求和一次变更事件；未实际组件重放。",
+      "counts": {
+        "modelStates": 23,
+        "modelTransitions": 35,
+        "chartStates": 14,
+        "chartTransitions": 29
+      },
+      "coverOmittedStates": null
+    },
+    {
+      "name": "FileWriteRace",
+      "spec": "models/FileWriteRace.tla",
+      "config": "models/FileWriteRace.cfg",
+      "map": "models/FileWriteRace.map.mjs",
+      "out": "out/file-write-race",
+      "regenerate": "node $STATECHART from-spec models/FileWriteRace.tla --out out/file-write-race --png --title '文本文件并发保存' --expect-broken SuccessIsWhatLanded,FailedSaveDidNotLand",
+      "summary": "out/file-write-race/summary.json",
+      "limits": "两次同路径写入；字节写入原子化，真实写入可能有更多交错；仅重放真实文件函数而非完整 IPC。",
+      "counts": {
+        "modelStates": 19,
+        "modelTransitions": 18,
+        "chartStates": 16,
+        "chartTransitions": 18
+      },
+      "coverOmittedStates": null
+    },
+    {
+      "name": "ClipboardNameCollision",
+      "spec": "models/ClipboardNameCollision.tla",
+      "config": "models/ClipboardNameCollision.cfg",
+      "map": "models/ClipboardNameCollision.map.mjs",
+      "out": "out/clipboard-name",
+      "regenerate": "node $STATECHART from-spec models/ClipboardNameCollision.tla --out out/clipboard-name --png --title '剪贴板文件缓存重名' --expect-broken EachAttachmentKeepsItsBytes",
+      "summary": "out/clipboard-name/summary.json",
+      "limits": "两个同名文件；毫秒碰撞作为外部输入；真实函数重放而非剪贴板 GUI。",
+      "counts": {
+        "modelStates": 9,
+        "modelTransitions": 8,
+        "chartStates": 9,
+        "chartTransitions": 8
+      },
+      "coverOmittedStates": null
+    }
+  ],
+  "findings": [
+    {
+      "rule": "ReadyMeansAlive",
+      "title": "启动响应前退出事件被消费，响应后标签持续显示运行中",
+      "model": "DrawerTerminal",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "打开终端",
+        "进程退出通知先到达",
+        "启动请求才返回",
+        "所有通知处理完毕，标签仍运行中"
+      ],
+      "reproduction": "真实组件重放通过；只证明给定事件顺序下的消费者行为，不证明原生传输必然发生该顺序",
+      "evidence": [
+        "replay/drawer-terminal.replay.test.tsx:126-143",
+        "logs/replay-js.log",
+        "src/features/terminal/drawerRegistry.ts:58-63",
+        "src/features/terminal/CommandTerminalPanel.tsx:248-259"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "OpeningMakesProgress",
+      "title": "启动失败后重试不触发新启动",
+      "model": "DrawerTerminal",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "打开终端失败",
+        "点击重试",
+        "显示连接中但没有新启动请求"
+      ],
+      "reproduction": "真实组件重放通过；观察窗口300毫秒，依赖未变化由源码补充证明",
+      "evidence": [
+        "replay/drawer-terminal.replay.test.tsx:162-178",
+        "logs/replay-js.log",
+        "src/features/terminal/CommandTerminalPanel.tsx:275-316"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "OutputNotLost",
+      "title": "启动响应前的数据被桥丢弃",
+      "model": "DrawerTerminal",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "打开终端",
+        "响应前第一段数据到达",
+        "响应返回",
+        "后续数据可写入但第一段未出现"
+      ],
+      "reproduction": "真实组件和注册表重放通过；画布 write 为输出边界替身，原生事件顺序未验证",
+      "evidence": [
+        "replay/drawer-terminal.replay.test.tsx:145-160",
+        "logs/replay-js.log",
+        "src/features/terminal/drawerRegistry.ts:47-54"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "RecordMeansAlive",
+      "title": "退出发生在会话登记之前可留下已死终端登记",
+      "model": "SessionTerminal",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "打开会话终端",
+        "进程退出，移除尚不存在的登记",
+        "开启操作随后写入登记"
+      ],
+      "reproduction": "未原生重放；需要可控 PTY 与会话命令调度，不算确认缺陷",
+      "evidence": [
+        "out/session-terminal/stories.md",
+        "src-tauri/src/terminal/commands.rs:56-57",
+        "src-tauri/src/terminal/commands.rs:216-218"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "DeletedSessionHasNoTerminal",
+      "title": "会话删除与终端登记交错可遗留进程",
+      "model": "SessionTerminal",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "开始打开会话终端",
+        "登记前删除会话",
+        "开启操作继续写入登记"
+      ],
+      "reproduction": "未原生重放；不算确认缺陷",
+      "evidence": [
+        "out/session-terminal/stories.md",
+        "src-tauri/src/catalog/mod.rs:635-672",
+        "src-tauri/src/terminal/commands.rs:29-32",
+        "src-tauri/src/terminal/commands.rs:216-218"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "RowsMatchToggle",
+      "title": "较早请求晚返回覆盖当前开关列表",
+      "model": "ServicesPanelPoll",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "切换到全部",
+        "切回仅开发服务",
+        "新请求先完成",
+        "旧请求最后完成"
+      ],
+      "reproduction": "模型和源码证据；未真实组件重放，不算确认缺陷",
+      "evidence": [
+        "out/services-poll/stories.md",
+        "src/features/services/ServicesPanel.tsx:48-67"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "SuccessIsWhatLanded",
+      "title": "成功保存的内容可能不是最后落盘内容，即使另一次保存报错",
+      "model": "FileWriteRace",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "两个写入共用进程号临时文件",
+        "后一次写入覆盖临时内容",
+        "第一次替换成功",
+        "第二次替换报错但其内容已落盘"
+      ],
+      "reproduction": "真实 files::write_text 并发重放300轮：297轮有失败，292轮成功调用与落盘内容不一致且失败调用内容落盘；完整 IPC/UI 未重放",
+      "evidence": [
+        "replay/rust/src/main.rs",
+        "logs/replay-rust.log",
+        "src-tauri/src/services/files.rs:85-93"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "FailedSaveDidNotLand",
+      "title": "报错的保存仍可能覆盖文件",
+      "model": "FileWriteRace",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "两个写入共用进程号临时文件",
+        "后一次写入覆盖临时内容",
+        "第一次替换成功",
+        "第二次替换报错但其内容已落盘"
+      ],
+      "reproduction": "真实 files::write_text 并发重放300轮：297轮有失败，292轮成功调用与落盘内容不一致且失败调用内容落盘；完整 IPC/UI 未重放",
+      "evidence": [
+        "replay/rust/src/main.rs",
+        "logs/replay-rust.log",
+        "src-tauri/src/services/files.rs:85-93"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    },
+    {
+      "rule": "EachAttachmentKeepsItsBytes",
+      "title": "同毫秒同名缓存文件覆盖早先附件字节",
+      "model": "ClipboardNameCollision",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "保存第一个同名附件",
+        "同毫秒保存第二个附件",
+        "两次返回同路径，第一份字节被替换"
+      ],
+      "reproduction": "真实 save_clipboard_file_internal 连续2000对保存：1834对同路径且首份字节被替换；Tauri宏/未触及缓存路径解析是边界替身，GUI未重放",
+      "evidence": [
+        "replay/rust/src/main.rs",
+        "logs/replay-rust.log",
+        "src-tauri/src/services/clipboard.rs:228-231"
+      ],
+      "fixModelStatus": "未建修复模型；产品未修改"
+    }
+  ],
+  "verification": [
+    {
+      "command": "./regenerate.sh (TLA2TOOLS/JAVA 环境已指定)",
+      "exitCode": 0,
+      "result": "五个模型各自退出0；预期破坏规则单独登记，TypeOK未作为预期失败"
+    },
+    {
+      "command": "node logs/uncited.mjs",
+      "exitCode": 0,
+      "result": "五个模型未引用条件均为空；最后仅补充源码注释，未改变模型语义"
+    },
+    {
+      "command": "./node_modules/.bin/vitest run --config <scratch>/terminal-services/replay/vitest.config.mts --root .",
+      "exitCode": 0,
+      "result": "1文件4测试通过；复现证据而非产品验收"
+    },
+    {
+      "command": "cargo run --offline --release (replay/rust)",
+      "exitCode": 0,
+      "result": "真实文件函数与剪贴板保存函数复现，详见 logs/replay-rust.log"
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "src-tauri/src/terminal/commands.rs",
+    "src-tauri/src/terminal/pty.rs",
+    "src-tauri/src/terminal/shell_init.rs",
+    "src-tauri/src/terminal/mod.rs",
+    "src-tauri/src/terminal/extension.rs",
+    "src-tauri/src/terminal/env.rs",
+    "src-tauri/src/services/commands.rs",
+    "src-tauri/src/services/perf.rs",
+    "src-tauri/src/services/clipboard.rs",
+    "src-tauri/src/services/files.rs",
+    "src-tauri/src/services/trash.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/scan.rs",
+    "src/features/terminal/CommandTerminalPanel.tsx",
+    "src/features/terminal/drawerRegistry.ts",
+    "src/features/terminal/drawerStore.ts",
+    "src/features/terminal/terminalTabs.ts",
+    "src/features/terminal/terminalTheme.ts",
+    "src/features/terminal/terminalTheme.test.ts",
+    "src/features/terminal/drawerStore.test.ts",
+    "src/features/services/ServicesPanel.tsx",
+    "src/components/BottomBar.tsx",
+    "src/features/chat/Composer.tsx",
+    "src-tauri/src/catalog/mod.rs",
+    "src-tauri/src/lib.rs",
+    "src/lib/ipc.ts"
+  ],
+  "modelLimits": [
+    "未运行原生 PTY、操作系统剪贴板、真实浏览器/桌面操作。",
+    "ServicesPanel 和 SessionTerminal 未真实入口重放，其发现为假设而非确认缺陷。",
+    "所有生成图均已目视检查；抽屉总览使用 --cover，省略991个具体模型状态；混合分组详情保留 summary.json。",
+    "NoLeakAfterClose和ExitedMeansNotAlive仅在有限模型内未破坏，非全产品证明。",
+    "未修复产品，未运行全项目构建/测试。"
+  ]
+}

@@ -1,0 +1,82 @@
+---
+title: "启动恢复"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): the fix
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "页面没被抢走" as legendWorks
+    state "修复后保留用户的页面" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "停在收件箱" as g0 {
+    state "会话列表加载中" as s0
+    state "会话列表已加载" as s1
+    state "会话列表已加载，恢复已处理" as s2
+    state "会话列表已加载，恢复已处理，用户打开的页面被抢走" as s3
+  }
+  state "停在首页" as g1 {
+    state "会话列表加载中" as s4
+    state "会话列表已加载" as s5
+    state "会话列表已加载，恢复已处理" as s6
+    state "会话列表已加载，恢复已处理，用户打开的页面被抢走" as s7
+  }
+  state "已进入上次的会话" as g2 {
+    state "会话列表已加载，恢复已处理" as s8
+    state "会话列表已加载，恢复已处理，用户打开的页面被抢走" as s9
+  }
+  state "设置窗口开着" as g3 {
+    state "会话列表加载中" as s10
+    state "会话列表已加载" as s11
+    state "会话列表已加载，恢复已处理" as s12
+    state "会话列表已加载，恢复已处理，用户打开的页面被抢走" as s13
+  }
+  [*] --> s4
+  s4 --> s10 : 加载没完成时自己打开设置或收件箱
+  s4 --> s0 : 加载没完成时自己打开设置或收件箱
+  s4 --> s5 : 会话列表第一次加载成功
+  s10 --> s11 : 会话列表第一次加载成功
+  s0 --> s1 : 会话列表第一次加载成功
+  s5 --> s11 : 加载没完成时自己打开设置或收件箱
+  s5 --> s1 : 加载没完成时自己打开设置或收件箱
+  s5 --> s6 : 启动恢复上次的会话
+  s5 --> s8 : 启动恢复上次的会话
+  s11 --> s12 : 启动恢复上次的会话
+  s1 --> s7 : 启动恢复上次的会话
+  s6 --> s12 : 加载没完成时自己打开设置或收件箱
+  s6 --> s2 : 加载没完成时自己打开设置或收件箱
+  s11 --> s9 : 启动恢复上次的会话
+  s1 --> s9 : 启动恢复上次的会话
+  s7 --> s13 : 加载没完成时自己打开设置或收件箱
+  s7 --> s3 : 加载没完成时自己打开设置或收件箱
+  s1 --> s2 : with the fix, 启动恢复上次的会话
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 fixed
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 fixed
+  class s8 works
+  class s9 fixed
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 fixed

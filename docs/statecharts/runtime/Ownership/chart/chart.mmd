@@ -1,0 +1,186 @@
+---
+title: "会话占用与挂起"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group0Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group1Mixed fill:#e8f6e8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  state "Legend" as legend {
+    state "显示外部占用" as legendGroup0
+    state "其他显示" as legendGroup1
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "显示已挂起" as s0
+  state "显示已挂起，挂起标记待写" as s1
+  state "显示已挂起，状态文件指向已死进程" as s2
+  state "显示已挂起，状态文件指向已死进程，挂起标记待写" as s3
+  state "显示已挂起，状态文件指向运行中的终端" as s4
+  state "显示已挂起，状态文件指向运行中的终端，挂起标记待写" as s5
+  state "显示已挂起，状态文件的进程号已被无关程序占用" as s6
+  state "显示已挂起，状态文件的进程号已被无关程序占用，挂起标记待写" as s7
+  state "显示空闲" as s8
+  state "显示空闲，挂起标记待写" as s9
+  state "显示空闲，状态文件指向已死进程" as s10
+  state "显示空闲，状态文件指向已死进程，挂起标记待写" as s11
+  state "显示空闲，状态文件指向运行中的终端" as s12
+  state "显示空闲，状态文件指向运行中的终端，挂起标记待写" as s13
+  state "显示空闲，状态文件的进程号已被无关程序占用" as s14
+  state "显示空闲，状态文件的进程号已被无关程序占用，挂起标记待写" as s15
+  state "显示被外部终端占用" as s16
+  state "显示被外部终端占用，挂起标记待写" as s17
+  state "显示被外部终端占用，状态文件指向已死进程" as s18
+  state "显示被外部终端占用，状态文件指向已死进程，挂起标记待写" as s19
+  state "显示被外部终端占用，状态文件指向运行中的终端" as s20
+  state "显示被外部终端占用，状态文件指向运行中的终端，挂起标记待写" as s21
+  state "显示被外部终端占用，状态文件的进程号已被无关程序占用" as s22
+  state "显示被外部终端占用，状态文件的进程号已被无关程序占用，挂起标记待写" as s23
+  state "由本应用运行" as s24
+  state "由本应用运行，挂起标记待写" as s25
+  state "由本应用运行，状态文件指向已死进程" as s26
+  state "由本应用运行，状态文件指向已死进程，挂起标记待写" as s27
+  state "由本应用运行，状态文件指向运行中的终端" as s28
+  state "由本应用运行，状态文件指向运行中的终端，挂起标记待写" as s29
+  state "由本应用运行，状态文件的进程号已被无关程序占用" as s30
+  state "由本应用运行，状态文件的进程号已被无关程序占用，挂起标记待写" as s31
+  [*] --> s8
+  s8 --> s12 : 终端启动 omp
+  s8 --> s24 : 点击继续会话
+  s12 --> s8 : 终端 omp 正常退出
+  s12 --> s10 : 被记录的进程被强制关闭
+  s12 --> s20 : 周期检查刷新显示
+  s24 --> s25 : 空闲回收关闭进程
+  s10 --> s14 : 系统把该进程号分给无关程序
+  s10 --> s26 : 点击继续会话
+  s20 --> s16 : 终端 omp 正常退出
+  s20 --> s18 : 被记录的进程被强制关闭 or 点击接管
+  s25 --> s29 : 终端启动 omp
+  s25 --> s9 : 退出事件刷新显示
+  s25 --> s24 : 写入挂起标记
+  s14 --> s10 : 被记录的进程被强制关闭
+  s14 --> s22 : 周期检查刷新显示
+  s26 --> s30 : 系统把该进程号分给无关程序
+  s26 --> s27 : 空闲回收关闭进程
+  s16 --> s20 : 终端启动 omp
+  s16 --> s8 : 周期检查刷新显示
+  s16 --> s24 : 点击继续会话
+  s18 --> s22 : 系统把该进程号分给无关程序
+  s18 --> s10 : 周期检查刷新显示
+  s18 --> s26 : 点击继续会话
+  s29 --> s25 : 终端 omp 正常退出
+  s29 --> s27 : 被记录的进程被强制关闭
+  s29 --> s21 : 周期检查刷新显示 or 退出事件刷新显示
+  s29 --> s28 : 写入挂起标记
+  s9 --> s13 : 终端启动 omp
+  s9 --> s25 : 点击继续会话
+  s9 --> s8 : 写入挂起标记
+  s24 --> s28 : 终端启动 omp
+  s24 --> s0 : 退出事件刷新显示
+  s22 --> s18 : 被记录的进程被强制关闭
+  s30 --> s26 : 被记录的进程被强制关闭
+  s30 --> s31 : 空闲回收关闭进程
+  s27 --> s31 : 系统把该进程号分给无关程序
+  s27 --> s11 : 退出事件刷新显示
+  s27 --> s26 : 写入挂起标记
+  s21 --> s17 : 终端 omp 正常退出
+  s21 --> s19 : 被记录的进程被强制关闭 or 点击接管
+  s21 --> s20 : 写入挂起标记
+  s28 --> s24 : 终端 omp 正常退出
+  s28 --> s26 : 被记录的进程被强制关闭
+  s28 --> s20 : 周期检查刷新显示 or 退出事件刷新显示
+  s13 --> s9 : 终端 omp 正常退出
+  s13 --> s11 : 被记录的进程被强制关闭
+  s13 --> s21 : 周期检查刷新显示
+  s13 --> s12 : 写入挂起标记
+  s0 --> s4 : 终端启动 omp
+  s0 --> s24 : 点击继续会话
+  s31 --> s27 : 被记录的进程被强制关闭
+  s31 --> s23 : 周期检查刷新显示 or 退出事件刷新显示
+  s31 --> s30 : 写入挂起标记
+  s11 --> s15 : 系统把该进程号分给无关程序
+  s11 --> s27 : 点击继续会话
+  s11 --> s10 : 写入挂起标记
+  s26 --> s2 : 退出事件刷新显示
+  s17 --> s21 : 终端启动 omp
+  s17 --> s9 : 周期检查刷新显示
+  s17 --> s25 : 点击继续会话
+  s17 --> s16 : 写入挂起标记
+  s19 --> s23 : 系统把该进程号分给无关程序
+  s19 --> s11 : 周期检查刷新显示
+  s19 --> s27 : 点击继续会话
+  s19 --> s18 : 写入挂起标记
+  s25 --> s1 : 退出事件刷新显示
+  s4 --> s0 : 终端 omp 正常退出
+  s4 --> s2 : 被记录的进程被强制关闭
+  s4 --> s20 : 周期检查刷新显示
+  s23 --> s19 : 被记录的进程被强制关闭
+  s23 --> s22 : 写入挂起标记
+  s30 --> s22 : 周期检查刷新显示 or 退出事件刷新显示
+  s15 --> s11 : 被记录的进程被强制关闭
+  s15 --> s23 : 周期检查刷新显示
+  s15 --> s14 : 写入挂起标记
+  s2 --> s6 : 系统把该进程号分给无关程序
+  s2 --> s26 : 点击继续会话
+  s16 --> s0 : 周期检查刷新显示
+  s18 --> s2 : 周期检查刷新显示
+  s1 --> s5 : 终端启动 omp
+  s1 --> s25 : 点击继续会话
+  s1 --> s0 : 写入挂起标记
+  s27 --> s3 : 退出事件刷新显示
+  s6 --> s2 : 被记录的进程被强制关闭
+  s6 --> s22 : 周期检查刷新显示
+  s5 --> s1 : 终端 omp 正常退出
+  s5 --> s3 : 被记录的进程被强制关闭
+  s5 --> s21 : 周期检查刷新显示
+  s5 --> s4 : 写入挂起标记
+  s3 --> s7 : 系统把该进程号分给无关程序
+  s3 --> s27 : 点击继续会话
+  s3 --> s2 : 写入挂起标记
+  s17 --> s1 : 周期检查刷新显示
+  s19 --> s3 : 周期检查刷新显示
+  s7 --> s3 : 被记录的进程被强制关闭
+  s7 --> s23 : 周期检查刷新显示
+  s7 --> s6 : 写入挂起标记
+  class s0 group1
+  class s1 group1
+  class s2 group1
+  class s3 group1
+  class s4 group1
+  class s5 group1
+  class s6 group1
+  class s7 group1
+  class s8 group1Mixed
+  class s9 group1
+  class s10 group1Mixed
+  class s11 group1
+  class s12 group1
+  class s13 group1
+  class s14 group1
+  class s15 group1
+  class s16 group0
+  class s17 group0
+  class s18 group0
+  class s19 group0
+  class s20 group0
+  class s21 group0
+  class s22 group0Wrong
+  class s23 group0
+  class s24 group1
+  class s25 group1
+  class s26 group1
+  class s27 group1
+  class s28 group1
+  class s29 group1
+  class s30 group1
+  class s31 group1

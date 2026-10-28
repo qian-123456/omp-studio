@@ -1,0 +1,739 @@
+{
+  "slice": "git-files",
+  "title": "工作树、文件缓冲区、检查点与存储清理状态图审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "extension/autocommit-rule.md",
+      "feature": "extension",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "extension/omp-workspace-checkpoints.ts",
+      "feature": "extension",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/git/base_sync.rs",
+      "feature": "git",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/git/checkpoints_ext.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/cmd.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/commands.rs",
+      "feature": "git",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src-tauri/src/git/history.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/mod.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/status.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/tests.rs",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/git/tm.rs",
+      "feature": "git",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/git/turns.rs",
+      "feature": "git",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/git/worktree.rs",
+      "feature": "git",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/omp_files.rs",
+      "feature": "src",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src-tauri/src/storage/fsutil.rs",
+      "feature": "storage",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src-tauri/src/storage/images.rs",
+      "feature": "storage",
+      "status": "read-only",
+      "reason": "已读图片引用/垃圾回收实现；30天年龄、24小时节流、部分失败和草稿引用未建模/未回放"
+    },
+    {
+      "path": "src-tauri/src/storage/mod.rs",
+      "feature": "storage",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src-tauri/src/storage/sessions.rs",
+      "feature": "storage",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src/features/editor/DocView.tsx",
+      "feature": "editor",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src/features/editor/useFileBuffer.ts",
+      "feature": "editor",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src/features/explorer/FileExplorer.tsx",
+      "feature": "explorer",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/explorer/FileIcon.test.ts",
+      "feature": "explorer",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/explorer/FileIcon.tsx",
+      "feature": "explorer",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/explorer/FileTreeNode.tsx",
+      "feature": "explorer",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/explorer/WorkspaceCard.tsx",
+      "feature": "explorer",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/files/FileEditor.tsx",
+      "feature": "files",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/files/FilePreviewPanel.test.tsx",
+      "feature": "files",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/files/FilePreviewPanel.tsx",
+      "feature": "files",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src/features/git/BranchAssetSection.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/ChangesSection.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/CheckpointsCard.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/DiffModal.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/GitPanel.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/NewSessionDialog.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/OrphanBadge.test.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/OrphanBadge.tsx",
+      "feature": "git",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src/features/git/OrphanBanner.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/TimelineSection.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/TmRunCard.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/WorktreeActionMenu.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/WorktreeCommitPopover.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/WorktreeGraph.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/WorktreeHoverCard.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/WorktreeSection.tsx",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/diff.test.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/diff.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/helpers.test.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/helpers.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/removeWorktree.tsx",
+      "feature": "git",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src/features/git/turns.test.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/features/git/turns.ts",
+      "feature": "git",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src/features/git/useAutoRefresh.ts",
+      "feature": "git",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/stores/explorer.ts",
+      "feature": "stores",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src/stores/filePreview.test.ts",
+      "feature": "stores",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/stores/filePreview.ts",
+      "feature": "stores",
+      "status": "modeled",
+      "reason": "相关生命周期进入有限模型；不代表该文件全部行为均已验证"
+    },
+    {
+      "path": "src/stores/turnNav.ts",
+      "feature": "stores",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    },
+    {
+      "path": "src/stores/worktrees.test.ts",
+      "feature": "stores",
+      "status": "out-of-model",
+      "reason": "静态展示、辅助函数或额外操作未进入本轮模型；不作验证结论"
+    },
+    {
+      "path": "src/stores/worktrees.ts",
+      "feature": "stores",
+      "status": "read-only",
+      "reason": "用于边界/调用契约对照；未单独建立状态机"
+    }
+  ],
+  "models": [
+    {
+      "name": "FileBuffer",
+      "spec": "file-buffer/FileBuffer.tla",
+      "config": "file-buffer/FileBuffer.cfg",
+      "map": "file-buffer/FileBuffer.map.mjs",
+      "out": "file-buffer/out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec file-buffer/FileBuffer.tla --out file-buffer/out --png --cover --title \"文件缓冲区\" --expect-broken NoLossOnClose,NoLossOnReload,NoLossOnSwitch,NoClobber,NoLossOnRefresh",
+      "summary": "file-buffer/out/summary.json",
+      "limits": [
+        "两个标签、有限文本版本；IPC 为读写边界 mock，验证真实 React/CodeMirror 与 Zustand；未验原生文件权限/浏览器窗口行为。后台磁盘写入在概览中可能合并为隐藏步骤，完整 TLC 与 replay 保留该事件。"
+      ]
+    },
+    {
+      "name": "Worktree",
+      "spec": "worktree/Worktree.tla",
+      "config": "worktree/Worktree.cfg",
+      "map": "worktree/Worktree.map.mjs",
+      "out": "worktree/out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec worktree/Worktree.tla --out worktree/out --png --cover --title \"工作树生命周期\" --expect-broken NoKillRunningRun,NoRemoveInUse,NoStaleListing",
+      "summary": "worktree/out/summary.json",
+      "limits": [
+        "一个会话工作树、一个旧提交工作树；原生 Rust/git/process 未调用；UI replay 只证明请求参数/快照/错误后列表，不能证明运行中进程真正被杀或目录真正删除。NoKillRunningRun 名称只指运行目录被删，非已证实进程死亡。"
+      ]
+    },
+    {
+      "name": "Checkpoint",
+      "spec": "checkpoint/Checkpoint.tla",
+      "config": "checkpoint/Checkpoint.cfg",
+      "map": "checkpoint/Checkpoint.map.mjs",
+      "out": "checkpoint/out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec checkpoint/Checkpoint.tla --out checkpoint/out --png --cover --title \"检查点与撤销\" --expect-broken NoLeftoverSnapshots,NoSilentOverwrite,UndoneStaysUndone",
+      "summary": "checkpoint/out/summary.json",
+      "limits": [
+        "三轮、保留两轮抽象生产 KEEP_TURNS=50；同会话、单文件；公开扩展事件在隔离 git 仓库回放。撤回标记回放以 git ref 种子作为边界输入，不声称调用过 Rust undo_turn。NoSilentOverwrite 的最短路径是用户在轮次结束前改动，被同一快照捕获，属于归属设计问题，不是已证实无提示覆盖“轮后”编辑。"
+      ]
+    },
+    {
+      "name": "BaseSync",
+      "spec": "base-sync/BaseSync.tla",
+      "config": "base-sync/BaseSync.cfg",
+      "map": "base-sync/BaseSync.map.mjs",
+      "out": "base-sync/out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec base-sync/BaseSync.tla --out base-sync/out --png --cover --title \"基线同步\" --expect-broken ErrorLeavesBranchUntouched",
+      "summary": "base-sync/out/summary.json",
+      "limits": [
+        "有限 ahead/behind 和快进失败原因；合并/快进历史压缩为布尔量，所谓合并提交也可能是快进 HEAD 变化；原生入口未回放，失败原子性是待确认设计契约。"
+      ]
+    },
+    {
+      "name": "Storage",
+      "spec": "storage/Storage.tla",
+      "config": "storage/Storage.cfg",
+      "map": "storage/Storage.map.mjs",
+      "out": "storage/out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec storage/Storage.tla --out storage/out --png --cover --title \"批量清理旧会话\" --expect-broken NoTrashPinned,NoTrashStartedAfterCheck,NoTrashTerminalHeld",
+      "summary": "storage/out/summary.json",
+      "limits": [
+        "单个会话；会话状态切换是 runtime 输入契约，不模拟底层启动/锁；只建模 skip_reason 与 delete_with 的检查/执行边界；未回放 native 竞态，未建模图片年龄、节流、部分删除失败、锁/Trash 平台语义。"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "rule": "NoLossOnClose",
+      "title": "未保存的修改在关闭标签时不会丢失。",
+      "model": "FileBuffer",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 file-buffer/out/stories.md 的编号 1 路径逐步读取",
+      "reproduction": "真实 FilePreviewPanel / store 入口，IPC 与确认框仅在 I/O 边界 mock；8 项聚焦回放中的文件编辑用例通过，证明现有不安全行为，而非修复验收。",
+      "evidence": [
+        "file-buffer/out/bug-1.png",
+        "file-buffer/out/bug-1.mmd",
+        "file-buffer/out/stories.md",
+        "file-buffer/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoLossOnReload",
+      "title": "未保存的修改在点重新载入时不会在没确认的情况下丢失。",
+      "model": "FileBuffer",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 file-buffer/out/stories.md 的编号 2 路径逐步读取",
+      "reproduction": "真实 FilePreviewPanel / store 入口，IPC 与确认框仅在 I/O 边界 mock；8 项聚焦回放中的文件编辑用例通过，证明现有不安全行为，而非修复验收。",
+      "evidence": [
+        "file-buffer/out/bug-2.png",
+        "file-buffer/out/bug-2.mmd",
+        "file-buffer/out/stories.md",
+        "file-buffer/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoLossOnSwitch",
+      "title": "未保存的修改在切换标签时不会丢失。",
+      "model": "FileBuffer",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 file-buffer/out/stories.md 的编号 3 路径逐步读取",
+      "reproduction": "真实 FilePreviewPanel / store 入口，IPC 与确认框仅在 I/O 边界 mock；8 项聚焦回放中的文件编辑用例通过，证明现有不安全行为，而非修复验收。",
+      "evidence": [
+        "file-buffer/out/bug-3.png",
+        "file-buffer/out/bug-3.mmd",
+        "file-buffer/out/stories.md",
+        "file-buffer/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoClobber",
+      "title": "保存不会悄悄覆盖用户从没看到过的磁盘改动。",
+      "model": "FileBuffer",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 file-buffer/out/stories.md 的编号 4 路径逐步读取",
+      "reproduction": "真实 FilePreviewPanel / store 入口，IPC 与确认框仅在 I/O 边界 mock；8 项聚焦回放中的文件编辑用例通过，证明现有不安全行为，而非修复验收。",
+      "evidence": [
+        "file-buffer/out/bug-4.png",
+        "file-buffer/out/bug-4.mmd",
+        "file-buffer/out/stories.md",
+        "file-buffer/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoLossOnRefresh",
+      "title": "窗口聚焦后的后台刷新不会冲掉用户刚输入的文字。",
+      "model": "FileBuffer",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 file-buffer/out/stories.md 的编号 5 路径逐步读取",
+      "reproduction": "真实 FilePreviewPanel / store 入口，IPC 与确认框仅在 I/O 边界 mock；8 项聚焦回放中的文件编辑用例通过，证明现有不安全行为，而非修复验收。",
+      "evidence": [
+        "file-buffer/out/bug-5.png",
+        "file-buffer/out/bug-5.mmd",
+        "file-buffer/out/stories.md",
+        "file-buffer/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoKillRunningRun",
+      "title": "正在运行的时光机不会被「回收孤儿」删掉目录。",
+      "model": "Worktree",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": "按 worktree/out/stories.md 的编号 1 路径逐步读取",
+      "reproduction": "真实 useOrphans 证明使用旧扫描结果且提交无占用信息的删除请求；Rust 删除与进程影响未回放。",
+      "evidence": [
+        "worktree/out/bug-1.png",
+        "worktree/out/bug-1.mmd",
+        "worktree/out/stories.md",
+        "worktree/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoRemoveInUse",
+      "title": "有会话在用的工作树不会被「回收孤儿」删掉。",
+      "model": "Worktree",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": "按 worktree/out/stories.md 的编号 2 路径逐步读取",
+      "reproduction": "真实 useOrphans 证明使用旧扫描结果且提交无占用信息的删除请求；Rust 删除与进程影响未回放。",
+      "evidence": [
+        "worktree/out/bug-2.png",
+        "worktree/out/bug-2.mmd",
+        "worktree/out/stories.md",
+        "worktree/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoStaleListing",
+      "title": "清理失败后，界面不会再显示一个磁盘上已经不存在的工作树。",
+      "model": "Worktree",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 worktree/out/stories.md 的编号 3 路径逐步读取",
+      "reproduction": "真实 useOrphans.reclaim 收到原生边界的部分成功错误后，旧列表保留且没有再次扫描；真实目录删除部分来自源码，未在本测试执行。",
+      "evidence": [
+        "worktree/out/bug-3.png",
+        "worktree/out/bug-3.mmd",
+        "worktree/out/stories.md",
+        "worktree/out/summary.json",
+        "replay/git-files.replay.test.tsx"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoLeftoverSnapshots",
+      "title": "没有正在记录的轮次时，不会留下只有开始快照、没有条目的残留存档。",
+      "model": "Checkpoint",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 checkpoint/out/stories.md 的编号 1 路径逐步读取",
+      "reproduction": "公开扩展注册的 agent_start/agent_end/session_switch 事件，独立 mkdtemp git 仓库。前者验证切会话遗留 before ref 且以后不清理；后者在 52 轮中验证已种入 undone 标记随旧存档删除，条目仍保留；未调用 Rust 撤回。",
+      "evidence": [
+        "checkpoint/out/bug-1.png",
+        "checkpoint/out/bug-1.mmd",
+        "checkpoint/out/stories.md",
+        "checkpoint/out/summary.json",
+        "replay/extension-checkpoints.replay.ts"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoSilentOverwrite",
+      "title": "撤回不会悄悄覆盖用户之后做的改动。",
+      "model": "Checkpoint",
+      "kind": "design question",
+      "steps": "按 checkpoint/out/stories.md 的编号 2 路径逐步读取",
+      "reproduction": "未回放 Rust undo_turn；最短路径用户在轮内改动，需决定整轮快照是否包含这些改动，不能归类为已确认的轮后编辑丢失。",
+      "evidence": [
+        "checkpoint/out/bug-2.png",
+        "checkpoint/out/bug-2.mmd",
+        "checkpoint/out/stories.md",
+        "checkpoint/out/summary.json"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "UndoneStaysUndone",
+      "title": "已经撤回过的轮次，在存档清理之后仍然显示为已撤回。",
+      "model": "Checkpoint",
+      "kind": "reproduced consumer behavior",
+      "steps": "按 checkpoint/out/stories.md 的编号 3 路径逐步读取",
+      "reproduction": "公开扩展注册的 agent_start/agent_end/session_switch 事件，独立 mkdtemp git 仓库。前者验证切会话遗留 before ref 且以后不清理；后者在 52 轮中验证已种入 undone 标记随旧存档删除，条目仍保留；未调用 Rust 撤回。",
+      "evidence": [
+        "checkpoint/out/bug-3.png",
+        "checkpoint/out/bug-3.mmd",
+        "checkpoint/out/stories.md",
+        "checkpoint/out/summary.json",
+        "replay/extension-checkpoints.replay.ts"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "ErrorLeavesBranchUntouched",
+      "title": "同步或变基报错时，当前分支的提交历史保持同步前的样子。",
+      "model": "BaseSync",
+      "kind": "design question",
+      "steps": "按 base-sync/out/stories.md 的编号 1 路径逐步读取",
+      "reproduction": "源码显示当前分支先变更，随后基础分支快进可失败；需决定错误原子性契约，原生入口未执行。",
+      "evidence": [
+        "base-sync/out/bug-1.png",
+        "base-sync/out/bug-1.mmd",
+        "base-sync/out/stories.md",
+        "base-sync/out/summary.json"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoTrashPinned",
+      "title": "清理不会删掉检查之后才被置顶的会话。",
+      "model": "Storage",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": "按 storage/out/stories.md 的编号 1 路径逐步读取",
+      "reproduction": "未回放原生入口；只提供模型路径和源码，不能视为确认产品缺陷。",
+      "evidence": [
+        "storage/out/bug-1.png",
+        "storage/out/bug-1.mmd",
+        "storage/out/stories.md",
+        "storage/out/summary.json"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoTrashStartedAfterCheck",
+      "title": "清理不会删掉检查之后才被启动的会话。",
+      "model": "Storage",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": "按 storage/out/stories.md 的编号 2 路径逐步读取",
+      "reproduction": "未回放原生入口；只提供模型路径和源码，不能视为确认产品缺陷。",
+      "evidence": [
+        "storage/out/bug-2.png",
+        "storage/out/bug-2.mmd",
+        "storage/out/stories.md",
+        "storage/out/summary.json"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    },
+    {
+      "rule": "NoTrashTerminalHeld",
+      "title": "清理不会删掉被终端里的 omp 占用的会话。",
+      "model": "Storage",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": "按 storage/out/stories.md 的编号 3 路径逐步读取",
+      "reproduction": "未回放原生入口；只提供模型路径和源码，不能视为确认产品缺陷。",
+      "evidence": [
+        "storage/out/bug-3.png",
+        "storage/out/bug-3.mmd",
+        "storage/out/stories.md",
+        "storage/out/summary.json"
+      ],
+      "fixModelStatus": "未提出/未建模修复；产品未修改"
+    }
+  ],
+  "verification": [
+    {
+      "command": "node cite-check.mjs file-buffer/FileBuffer.tla worktree/Worktree.tla checkpoint/Checkpoint.tla base-sync/BaseSync.tla storage/Storage.tla",
+      "exitCode": 0,
+      "result": "TOTAL_UNCITED 0；见 logs/source-citations.txt"
+    },
+    {
+      "command": "./node_modules/.bin/vitest run --config <scratch>/git-files/replay/vitest.config.mts",
+      "exitCode": 0,
+      "result": "8 tests passed，重现现有消费者行为；不是产品修复验收。"
+    },
+    {
+      "command": "<HOME>/.bun/bin/bun run <scratch>/git-files/replay/extension-checkpoints.replay.ts",
+      "exitCode": 0,
+      "result": "4 个隔离 git fixture 检查通过；含正常轮、切换遗留、后续不清理与 52 轮 pruning。"
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "extension/autocommit-rule.md",
+    "extension/omp-workspace-checkpoints.ts",
+    "src-tauri/src/catalog/mod.rs",
+    "src-tauri/src/git/base_sync.rs",
+    "src-tauri/src/git/checkpoints_ext.rs",
+    "src-tauri/src/git/cmd.rs",
+    "src-tauri/src/git/commands.rs",
+    "src-tauri/src/git/history.rs",
+    "src-tauri/src/git/mod.rs",
+    "src-tauri/src/git/status.rs",
+    "src-tauri/src/git/tests.rs",
+    "src-tauri/src/git/tm.rs",
+    "src-tauri/src/git/turns.rs",
+    "src-tauri/src/git/worktree.rs",
+    "src-tauri/src/omp_files.rs",
+    "src-tauri/src/services/commands.rs",
+    "src-tauri/src/services/files.rs",
+    "src-tauri/src/storage/fsutil.rs",
+    "src-tauri/src/storage/images.rs",
+    "src-tauri/src/storage/mod.rs",
+    "src-tauri/src/storage/sessions.rs",
+    "src/components/RightPanelHeader.tsx",
+    "src/features/chat/AnswerFooter.tsx",
+    "src/features/chat/turnChips.ts",
+    "src/features/editor/DocView.tsx",
+    "src/features/editor/useFileBuffer.ts",
+    "src/features/explorer/FileExplorer.tsx",
+    "src/features/explorer/FileIcon.test.ts",
+    "src/features/explorer/FileIcon.tsx",
+    "src/features/explorer/FileTreeNode.tsx",
+    "src/features/explorer/WorkspaceCard.tsx",
+    "src/features/files/FileEditor.tsx",
+    "src/features/files/FilePreviewPanel.test.tsx",
+    "src/features/files/FilePreviewPanel.tsx",
+    "src/features/git/BranchAssetSection.tsx",
+    "src/features/git/ChangesSection.tsx",
+    "src/features/git/CheckpointsCard.tsx",
+    "src/features/git/DiffModal.tsx",
+    "src/features/git/GitPanel.tsx",
+    "src/features/git/NewSessionDialog.tsx",
+    "src/features/git/OrphanBadge.test.ts",
+    "src/features/git/OrphanBadge.tsx",
+    "src/features/git/OrphanBanner.tsx",
+    "src/features/git/TimelineSection.tsx",
+    "src/features/git/TmRunCard.tsx",
+    "src/features/git/WorktreeActionMenu.tsx",
+    "src/features/git/WorktreeCommitPopover.tsx",
+    "src/features/git/WorktreeGraph.tsx",
+    "src/features/git/WorktreeHoverCard.tsx",
+    "src/features/git/WorktreeSection.tsx",
+    "src/features/git/diff.test.ts",
+    "src/features/git/diff.ts",
+    "src/features/git/helpers.test.ts",
+    "src/features/git/helpers.ts",
+    "src/features/git/removeWorktree.tsx",
+    "src/features/git/turns.test.ts",
+    "src/features/git/turns.ts",
+    "src/features/git/useAutoRefresh.ts",
+    "src/lib/nativeShortcuts.ts",
+    "src/stores/explorer.ts",
+    "src/stores/filePreview.test.ts",
+    "src/stores/filePreview.ts",
+    "src/stores/turnNav.ts",
+    "src/stores/worktrees.test.ts",
+    "src/stores/worktrees.ts"
+  ]
+}

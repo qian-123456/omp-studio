@@ -1,0 +1,59 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "加过期判断",
+    "lacks": []
+  },
+  "modelStates": 17,
+  "modelTransitions": 36,
+  "chartStates": 7,
+  "chartTransitions": 17,
+  "chartStatus": {
+    "works": 5,
+    "wrong": 0,
+    "fixed": 2,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "列表是项目1的，选中的却是项目2",
+      "invariant": "MemoryListMatchesProject",
+      "rule": "规则：请求全部返回后，记忆文件列表属于当前所选项目。",
+      "cause": null,
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "一次文件列表读取返回"
+      ],
+      "startsHere": false,
+      "fix": "列表正确（项目2）"
+    },
+    {
+      "n": 2,
+      "end": "列表是项目2的，选中的却是项目1",
+      "invariant": "MemoryListMatchesProject",
+      "rule": "规则：请求全部返回后，记忆文件列表属于当前所选项目。",
+      "cause": null,
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "一次文件列表读取返回"
+      ],
+      "startsHere": false,
+      "fix": "列表正确（项目1）"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "MemoryFilesLoad.tla": [],
+    "MemoryFilesLoadFixed.tla": []
+  },
+  "brokenProperties": []
+}

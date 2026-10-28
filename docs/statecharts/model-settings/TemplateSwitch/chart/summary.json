@@ -1,0 +1,30 @@
+{
+  "view": "customer",
+  "modelStates": 52,
+  "modelTransitions": 54,
+  "chartStates": 38,
+  "chartTransitions": 36,
+  "chartStatus": {
+    "works": 38,
+    "wrong": 0,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": true,
+    "states": 38,
+    "transitions": 40,
+    "leftOutStates": [],
+    "leftOutTransitions": [
+      "全局；已应用 --> 全局；已自动恢复: 额度回落且无手动修改，恢复旧值",
+      "全局；已应用；已强制 --> 全局；已自动恢复；已强制: 额度回落且无手动修改，恢复旧值",
+      "项目；已应用 --> 项目；已自动恢复: 额度回落且无手动修改，恢复旧值",
+      "项目；已应用；已强制 --> 项目；已自动恢复；已强制: 额度回落且无手动修改，恢复旧值"
+    ]
+  },
+  "classes": [],
+  "codeLike": [],
+  "brokenProperties": []
+}

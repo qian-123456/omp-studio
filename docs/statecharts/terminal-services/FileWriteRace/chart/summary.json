@@ -1,0 +1,69 @@
+{
+  "view": "customer",
+  "modelStates": 19,
+  "modelTransitions": 18,
+  "chartStates": 16,
+  "chartTransitions": 18,
+  "chartStatus": {
+    "works": 14,
+    "wrong": 2,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "两次保存都结束",
+      "color": "#d1f2eb",
+      "states": 4
+    },
+    {
+      "name": "保存进行中",
+      "color": "#e8f0fe",
+      "states": 10
+    },
+    {
+      "name": "结果与回报矛盾",
+      "color": "#d6eaf8",
+      "states": 2
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "第一次保存报告保存成功，第二次保存报告保存失败，文件是第二次保存的内容",
+      "invariant": "FailedSaveDidNotLand",
+      "rule": "报告失败的保存，其内容不应出现在文件里。",
+      "cause": "两次保存使用同一个临时文件名，后写的内容覆盖了前一次的临时文件，先替换的一方把另一方的内容放进了目标文件，后替换的一方因临时文件已被搬走而失败",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "第一次保存替换目标文件",
+        "第二次保存替换目标文件"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "第一次保存报告保存成功，第二次保存报告保存失败，文件是第二次保存的内容",
+      "invariant": "SuccessIsWhatLanded",
+      "rule": "两次保存都结束后，报告成功的那次保存，其内容应当就是文件里的内容（若另一次失败）。",
+      "cause": "两次保存使用同一个临时文件名，后写的内容覆盖了前一次的临时文件，先替换的一方把另一方的内容放进了目标文件，后替换的一方因临时文件已被搬走而失败",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "第一次保存替换目标文件",
+        "第二次保存替换目标文件"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

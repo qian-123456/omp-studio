@@ -1,0 +1,43 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 52 and seed -8823751130786029730 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 85964] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/SessionTerminal.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module SessionTerminal
+Starting... (2026-10-28 22:52:28)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:52:30.
+Error: Invariant DeletedSessionHasNoTerminal is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ rec = FALSE
+/\ opened = FALSE
+/\ sessionExists = TRUE
+/\ pty = "none"
+
+State 2: <OpenSessionTerm line 31, col 3 to line 36, col 32 of module SessionTerminal>
+/\ rec = FALSE
+/\ opened = TRUE
+/\ sessionExists = TRUE
+/\ pty = "alive"
+
+State 3: <DeleteSession line 55, col 3 to line 59, col 25 of module SessionTerminal>
+/\ rec = FALSE
+/\ opened = TRUE
+/\ sessionExists = FALSE
+/\ pty = "alive"
+
+State 4: <RecordSessionTerm line 65, col 3 to line 68, col 37 of module SessionTerminal>
+/\ rec = TRUE
+/\ opened = FALSE
+/\ sessionExists = FALSE
+/\ pty = "alive"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.0E-18
+21 states generated, 11 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 03s at (2026-10-28 22:52:30)

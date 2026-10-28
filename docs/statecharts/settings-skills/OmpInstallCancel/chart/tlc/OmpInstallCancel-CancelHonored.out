@@ -1,0 +1,54 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 8 and seed -5239306353162254439 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 64524] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/OmpInstallCancel.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module OmpInstallCancel
+Starting... (2026-10-28 22:43:44)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:43:44.
+Error: Invariant CancelHonored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ clickedCancel = FALSE
+/\ backendSlot = FALSE
+/\ backendCancelled = FALSE
+/\ phase = "idle"
+/\ listening = FALSE
+
+State 2: <Start line 18, col 3 to line 20, col 54 of module OmpInstallCancel>
+/\ clickedCancel = FALSE
+/\ backendSlot = FALSE
+/\ backendCancelled = FALSE
+/\ phase = "running"
+/\ listening = FALSE
+
+State 3: <ClickCancel line 29, col 3 to line 33, col 48 of module OmpInstallCancel>
+/\ clickedCancel = TRUE
+/\ backendSlot = FALSE
+/\ backendCancelled = FALSE
+/\ phase = "running"
+/\ listening = FALSE
+
+State 4: <ListenReady line 23, col 3 to line 26, col 57 of module OmpInstallCancel>
+/\ clickedCancel = TRUE
+/\ backendSlot = TRUE
+/\ backendCancelled = FALSE
+/\ phase = "running"
+/\ listening = TRUE
+
+State 5: <InstallFinishes line 36, col 3 to line 39, col 61 of module OmpInstallCancel>
+/\ clickedCancel = TRUE
+/\ backendSlot = FALSE
+/\ backendCancelled = FALSE
+/\ phase = "success"
+/\ listening = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.3E-18
+11 states generated, 8 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-28 22:43:44)

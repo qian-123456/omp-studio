@@ -1,0 +1,85 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 29 and seed -7415225114288985526 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 79869] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobileConn.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module MobileConn
+Starting... (2026-10-28 22:49:49)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:49:49.
+Error: Invariant BannerMatchesStream is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ helloPending = FALSE
+/\ netUp = TRUE
+/\ probing = FALSE
+/\ started = FALSE
+/\ timer = FALSE
+/\ phase = "idle"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "none"
+
+State 2: <StartStream line 43, col 5 to line 48, col 72 of module MobileConn>
+/\ helloPending = FALSE
+/\ netUp = TRUE
+/\ probing = TRUE
+/\ started = TRUE
+/\ timer = FALSE
+/\ phase = "connecting"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "none"
+
+State 3: <ProbeOk line 52, col 5 to line 59, col 70 of module MobileConn>
+/\ helloPending = TRUE
+/\ netUp = TRUE
+/\ probing = FALSE
+/\ started = TRUE
+/\ timer = FALSE
+/\ phase = "connecting"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "live"
+
+State 4: <HelloArrives line 90, col 5 to line 96, col 76 of module MobileConn>
+/\ helloPending = FALSE
+/\ netUp = TRUE
+/\ probing = FALSE
+/\ started = TRUE
+/\ timer = FALSE
+/\ phase = "open"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "live"
+
+State 5: <OfflineEvent line 139, col 5 to line 142, col 83 of module MobileConn>
+/\ helloPending = FALSE
+/\ netUp = FALSE
+/\ probing = FALSE
+/\ started = TRUE
+/\ timer = FALSE
+/\ phase = "closed"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "live"
+
+State 6: <OnlineEvent line 146, col 5 to line 157, col 49 of module MobileConn>
+/\ helloPending = FALSE
+/\ netUp = TRUE
+/\ probing = FALSE
+/\ started = TRUE
+/\ timer = FALSE
+/\ phase = "closed"
+/\ unauthSeen = FALSE
+/\ tokenOk = TRUE
+/\ es = "live"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.6E-16
+283 states generated, 77 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:49:49)

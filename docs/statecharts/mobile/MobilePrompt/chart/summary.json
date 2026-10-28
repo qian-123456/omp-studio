@@ -1,0 +1,55 @@
+{
+  "view": "customer",
+  "modelStates": 18,
+  "modelTransitions": 28,
+  "chartStates": 17,
+  "chartTransitions": 27,
+  "chartStatus": {
+    "works": 11,
+    "wrong": 5,
+    "fixed": 0,
+    "mixed": 1,
+    "after": 0
+  },
+  "mixedStatus": [
+    "显示发送失败: 输入框已恢复原文，无临时气泡，服务器已收到1条"
+  ],
+  "regions": {
+    "drawn": false,
+    "why": "19 region states are not fewer than the 17 flat states"
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "显示发送失败: 输入框已恢复原文，无临时气泡，服务器已收到1条",
+      "invariant": "RestoredMeansNotSent",
+      "rule": "规则：输入框里恢复出未发送的文字时，服务器不应已经收到过这条消息。",
+      "cause": "手机超时后无法得知服务器已处理，仍把原文放回输入框",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "请求超时或网络中断"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "发送中: 输入框为空，有临时气泡，服务器已收到2条（本次已到达）",
+      "invariant": "NoDuplicatePrompt",
+      "rule": "规则：同一条消息经一次点击发送，服务器最多收到一次。",
+      "cause": "超时恢复的原文被再次发送，服务器没有去重",
+      "readerSteps": 6,
+      "modelSteps": 7,
+      "counterexamples": 2,
+      "lastSteps": [
+        "服务器收到并处理这条消息"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

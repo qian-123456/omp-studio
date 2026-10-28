@@ -1,0 +1,31 @@
+---
+title: "会话占用与挂起, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group1Mixed fill:#e8f6e8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1Path fill:#e8f6e8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "其他显示" as legendGroup1
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup1 group1
+  class legendMixed plainMixed
+  state "显示空闲" as s0
+  state "显示空闲，挂起标记待写" as s1
+  state "由本应用运行" as s2
+  state "由本应用运行，挂起标记待写" as s3
+  [*] --> s0
+  s0 --> s2 : 1. 点击继续会话
+  s2 --> s3 : 2. 空闲回收关闭进程
+  s3 --> s1 : 3. 退出事件刷新显示
+  s1 --> s0 : 4. 写入挂起标记
+  class s0 group1Mixed
+  class s1 group1Path
+  class s2 group1Path
+  class s3 group1Path

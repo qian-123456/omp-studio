@@ -1,0 +1,25 @@
+{
+  "view": "customer",
+  "modelStates": 8,
+  "modelTransitions": 7,
+  "chartStates": 8,
+  "chartTransitions": 7,
+  "chartStatus": {
+    "works": 8,
+    "wrong": 0,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": true,
+    "states": 8,
+    "transitions": 7,
+    "leftOutStates": [],
+    "leftOutTransitions": []
+  },
+  "classes": [],
+  "codeLike": [],
+  "brokenProperties": []
+}

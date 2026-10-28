@@ -1,0 +1,62 @@
+---
+title: "会话运行状态, bug 3"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group0Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0Path fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group2 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group2Path fill:#e8f6e8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "显示进行中或等待" as legendGroup0
+    state "显示空闲类状态" as legendGroup2
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "会话显示「空闲」" as g0 {
+    state "没有进程" as s0
+    state "进程在跑回合，2条消息在途" as s1
+    state "进程在跑回合，3条消息在途" as s2
+    state "进程已退出但句柄未清，3条消息在途" as s3
+    state "进程已退出但句柄未清，4条消息在途" as s4
+    state "进程已退出但句柄未清，界面有待答卡片，4条消息在途" as s5
+    state "进程已退出但句柄未清，界面转圈，3条消息在途" as s6
+    state "进程空闲，1条消息在途" as s7
+  }
+  state "会话显示「空闲」（仍记为存活）" as g1 {
+    state "进程已退出但句柄未清，界面有待答卡片，1条消息在途" as s8
+    state "进程已退出但句柄未清，界面有待答卡片，3条消息在途" as s9
+  }
+  state "会话显示「处理中」（仍记为存活）:<br/>进程已退出但句柄未清，界面有待答卡片，2条消息在途" as s10
+  state "会话显示「等待批准」（仍记为存活）:<br/>进程已退出但句柄未清，界面有待答卡片" as s11
+  [*] --> s0
+  s0 --> s7 : 1. 点击继续，拉起进程
+  s7 --> s1 : 2. 进程开始一轮
+  s1 --> s2 : 3. 进程请求批准或回答
+  s2 --> s3 : 4. 进程退出
+  s3 --> s6 : 5. 读到开始帧
+  s6 --> s4 : 6. 监视器宣告进程退出
+  s4 --> s5 : 7. 读到请求帧
+  s5 --> s9 : 8. 状态推导处理进程启动
+  s9 --> s10 : 9. 状态推导处理开始
+  s10 --> s8 : 10. 状态推导处理进程退出
+  s8 --> s11 : 11. 状态推导处理请求
+  class s10 group0Path
+  class s0 group2Path
+  class s1 group2Path
+  class s2 group2Path
+  class s3 group2Path
+  class s4 group2Path
+  class s5 group2Path
+  class s6 group2Path
+  class s7 group2Path
+  class s8 group2Path
+  class s9 group2Path
+  class s11 group0Wrong

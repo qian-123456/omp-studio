@@ -1,0 +1,49 @@
+{
+  "view": "customer",
+  "modelStates": 19,
+  "modelTransitions": 29,
+  "chartStates": 19,
+  "chartTransitions": 29,
+  "chartStatus": {
+    "works": 14,
+    "wrong": 5,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "目录为空：导入弹窗（本窗口正在保存），2次写入尚未返回",
+      "invariant": "SingleWriter",
+      "rule": "规则：同一时间最多只有一次写入在进行。",
+      "cause": null,
+      "readerSteps": 5,
+      "modelSteps": 6,
+      "counterexamples": 1,
+      "lastSteps": [
+        "导入合法条目"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "目录为空：编辑弹窗（本窗口正在保存），2次写入尚未返回",
+      "invariant": "SingleWriter",
+      "rule": "规则：同一时间最多只有一次写入在进行。",
+      "cause": null,
+      "readerSteps": 5,
+      "modelSteps": 6,
+      "counterexamples": 1,
+      "lastSteps": [
+        "保存合法草稿"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

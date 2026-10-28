@@ -1,0 +1,44 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 106 and seed 1131632243541451626 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 72993] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/AiDoctor.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module AiDoctor
+Starting... (2026-10-28 22:46:41)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:46:41.
+Error: Invariant NoStarvation is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ tries = [A |-> 0, B |-> 0]
+/\ diag = [A |-> FALSE, B |-> FALSE]
+/\ stat = [A |-> "idle", B |-> "idle"]
+
+State 2: <Tick line 24, col 3 to line 28, col 19 of module AiDoctor>
+/\ tries = [A |-> 1, B |-> 0]
+/\ diag = [A |-> FALSE, B |-> FALSE]
+/\ stat = [A |-> "running", B |-> "idle"]
+
+State 3: <DiagnoseFail line 35, col 3 to line 36, col 30 of module AiDoctor>
+/\ tries = [A |-> 1, B |-> 0]
+/\ diag = [A |-> FALSE, B |-> FALSE]
+/\ stat = [A |-> "error", B |-> "idle"]
+
+State 4: <Tick line 24, col 3 to line 28, col 19 of module AiDoctor>
+/\ tries = [A |-> 2, B |-> 0]
+/\ diag = [A |-> FALSE, B |-> FALSE]
+/\ stat = [A |-> "running", B |-> "idle"]
+
+State 5: <DiagnoseFail line 35, col 3 to line 36, col 30 of module AiDoctor>
+/\ tries = [A |-> 2, B |-> 0]
+/\ diag = [A |-> FALSE, B |-> FALSE]
+/\ stat = [A |-> "error", B |-> "idle"]
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.5E-18
+29 states generated, 24 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-28 22:46:41)

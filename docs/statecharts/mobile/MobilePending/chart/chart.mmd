@@ -1,0 +1,67 @@
+---
+title: "手机端待处理审批"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendMixed mixed
+  state "屏幕显示：无; 服务器待处理：无，已回答：无" as s0
+  state "屏幕显示：无;<br/>服务器待处理：无，已回答：请求1，在途快照1个" as s1
+  state "屏幕显示：无;<br/>服务器待处理：请求1、请求2、请求3，已回答：无，在途快照1个" as s2
+  state "屏幕显示：无;<br/>服务器待处理：请求1、请求2，已回答：无" as s3
+  state "屏幕显示：无;<br/>服务器待处理：请求1、请求2，已回答：无，在途快照1个" as s4
+  state "屏幕显示：无; 服务器待处理：请求1，已回答：无" as s5
+  state "屏幕显示：无;<br/>服务器待处理：请求1，已回答：无，在途快照1个" as s6
+  state "屏幕显示：请求1; 服务器待处理：无，已回答：请求1" as s7
+  state "屏幕显示：请求1;<br/>服务器待处理：无，已回答：请求1，在途快照2个" as s8
+  state "屏幕显示：请求1; 服务器待处理：请求1，已回答：无" as s9
+  state "屏幕显示：请求1;<br/>服务器待处理：请求1，已回答：无，在途快照1个" as s10
+  state "屏幕显示：请求1、请求2;<br/>服务器待处理：无，已回答：请求1、请求2、请求3，在途快照1个" as s11
+  state "屏幕显示：请求1、请求2;<br/>服务器待处理：请求1、请求2、请求3，已回答：无" as s12
+  [*] --> s0
+  s0 --> s5 : 运行端发出新的审批请求
+  s5 --> s3 : 运行端发出新的审批请求
+  s5 --> s6 : 手机请求待处理列表
+  s3 --> s4 : 手机请求待处理列表
+  s6 --> s9 : 待处理列表响应送达并替换屏幕
+  s4 --> s2 : 运行端发出新的审批请求
+  s9 --> s10 : 手机请求待处理列表
+  s2 --> s12 : 待处理列表响应送达并替换屏幕
+  s10 --> s8 : 用户单独回答请求1
+  s12 --> s11 : 用户点全部允许
+  s8 --> s1 : 待处理列表响应送达并替换屏幕
+  s1 --> s7 : 待处理列表响应送达并替换屏幕
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 wrong
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 mixed
+  class s12 works

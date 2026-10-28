@@ -1,0 +1,633 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 122 and seed 5012876357689930418 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 95510] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/DiagnoseDialog.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module DiagnoseDialog
+Starting... (2026-10-28 22:57:16)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:57:16.
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 7: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 8: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 8: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 8: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+Error: Invariant SentAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 8: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 9: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.1E-16
+91 states generated, 46 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:57:16)

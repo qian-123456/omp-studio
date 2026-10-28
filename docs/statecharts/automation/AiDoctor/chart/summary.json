@@ -1,0 +1,49 @@
+{
+  "view": "customer",
+  "modelStates": 37,
+  "modelTransitions": 40,
+  "chartStates": 37,
+  "chartTransitions": 40,
+  "chartStatus": {
+    "works": 7,
+    "wrong": 30,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "较新会话：诊断中（已尝试2次）；较旧会话：未诊断",
+      "invariant": "FailedNotRetried",
+      "rule": "自动诊断失败的会话，在没有新活动前，不应被每分钟反复重试。",
+      "cause": "失败不会写入诊断时间，下一分钟仍把同一个会话当作待诊断并排在最前",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 2,
+      "lastSteps": [
+        "每分钟的自动检查开始一次诊断"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "较新会话：诊断失败（已尝试2次）；较旧会话：未诊断",
+      "invariant": "NoStarvation",
+      "rule": "一个会话诊断失败后，其他待诊断的会话仍有机会被诊断，不会被它一直排在前面。",
+      "cause": "失败不会写入诊断时间，下一分钟仍把同一个会话当作待诊断并排在最前",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "诊断失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

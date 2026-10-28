@@ -1,0 +1,56 @@
+---
+title: "检查点与撤销, bug 3"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "第1轮可撤回，第2轮被中断且留下残留快照；文件是第1轮写的" as s0
+  state "第1轮可撤回，第2轮进行中；文件是第1轮写的" as s1
+  state "第1轮可撤回；文件是第1轮写的" as s2
+  state "第1轮已撤回，第2轮被中断且留下残留快照，第3轮进行中；文件是初始内容" as s3
+  state "第1轮已撤回，第2轮被中断且留下残留快照，第3轮进行中；文件是第3轮写的" as s4
+  state "第1轮已撤回，第2轮被中断且留下残留快照；文件是初始内容" as s5
+  state "第1轮撤回标记丢失，第2轮被中断且留下残留快照，第3轮可撤回；文件是第3轮写的" as s6
+  state "第1轮进行中；文件是初始内容" as s7
+  state "第1轮进行中；文件是第1轮写的" as s8
+  state "还没有记录；文件是初始内容" as s9
+  [*] --> s9
+  s9 --> s7 : 1. 代理开始第1轮
+  s7 --> s8 : 2. 代理写入文件
+  s8 --> s2 : 3. 一轮结束，记录存档
+  s2 --> s1 : 4. 代理开始第2轮
+  s1 --> s0 : 5. 一轮进行中切换了会话
+  s0 --> s5 : 6. 点撤回第1轮
+  s5 --> s3 : 7. 代理开始第3轮
+  s3 --> s4 : 8. 代理写入文件
+  s4 --> s6 : 9. 一轮结束，记录存档
+  class s0 wrongPath
+  class s1 worksPath
+  class s2 worksPath
+  class s3 wrongPath
+  class s4 wrongPath
+  class s5 wrongPath
+  class s6 wrongPath
+  class s7 worksPath
+  class s8 worksPath
+  class s9 worksPath

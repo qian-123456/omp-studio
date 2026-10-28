@@ -1,0 +1,51 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 43 and seed -8618000398366151416 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 68474] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PlanApprove.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module PlanApprove
+Starting... (2026-10-28 22:45:30)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:45:30.
+Error: Invariant FailedApprovalCanRetryAtOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ planFile = "written"
+/\ retriesPossible = FALSE
+/\ approveFailed = FALSE
+/\ approveBusy = "idle"
+/\ s_enabled = TRUE
+/\ execSession = "none"
+
+State 2: <ClickApprove line 21, col 3 to line 24, col 83 of module PlanApprove>
+/\ planFile = "written"
+/\ retriesPossible = FALSE
+/\ approveFailed = FALSE
+/\ approveBusy = "exitSent"
+/\ s_enabled = TRUE
+/\ execSession = "none"
+
+State 3: <ExtensionExits line 28, col 3 to line 32, col 72 of module PlanApprove>
+/\ planFile = "written"
+/\ retriesPossible = FALSE
+/\ approveFailed = FALSE
+/\ approveBusy = "exited"
+/\ s_enabled = FALSE
+/\ execSession = "none"
+
+State 4: <CreateSessionFails line 43, col 3 to line 46, col 68 of module PlanApprove>
+/\ planFile = "written"
+/\ retriesPossible = FALSE
+/\ approveFailed = TRUE
+/\ approveBusy = "idle"
+/\ s_enabled = FALSE
+/\ execSession = "none"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.8E-18
+17 states generated, 13 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 13.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 1 and the 95th percentile is 1).
+Finished in 00s at (2026-10-28 22:45:30)

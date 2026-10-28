@@ -1,0 +1,37 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 6 and seed 3558967849709246925 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 85729] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ClipboardNameCollision_rules.tla
+Parsing file <path>/ClipboardNameCollision.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module ClipboardNameCollision
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module ClipboardNameCollision_rules
+Starting... (2026-10-28 22:52:24)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-28 22:52:25.
+<< "statechart broken",
+   [ sameKey |-> TRUE,
+     s1 |-> "done",
+     s2 |-> "done",
+     disk |-> [p1 |-> "none", p2 |-> "none", shared |-> "c2"] ],
+   {"EachAttachmentKeepsItsBytes"} >>
+<< "statechart broken",
+   [ sameKey |-> TRUE,
+     s1 |-> "done",
+     s2 |-> "done",
+     disk |-> [p1 |-> "none", p2 |-> "none", shared |-> "c1"] ],
+   {"EachAttachmentKeepsItsBytes"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 4.9E-19
+10 states generated, 9 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 02s at (2026-10-28 22:52:25)

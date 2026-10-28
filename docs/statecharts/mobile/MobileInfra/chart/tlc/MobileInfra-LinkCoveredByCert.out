@@ -1,0 +1,3973 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 119 and seed 7122013124321371540 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 76294] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobileInfra.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module MobileInfra
+Starting... (2026-10-28 22:48:12)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:48:12.
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+State 11: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 11: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 11: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 11: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 11: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 5: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 8: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 9: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "B"
+/\ server = "running"
+
+State 11: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+State 12: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "B"
+/\ server = "running"
+
+Error: Invariant LinkCoveredByCert is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 3: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 4: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <Ipv6Start line 87, col 5 to line 91, col 69 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 6: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 7: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 9: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 10: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 11: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "A"
+/\ server = "running"
+
+State 12: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "on"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "A"
+/\ server = "running"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 7.4E-15
+947 states generated, 176 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 12.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:48:12)

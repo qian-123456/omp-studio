@@ -1,0 +1,901 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 16 and seed -1556765502293878844 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 89889] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/IdeaLifecycle.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module IdeaLifecycle
+Starting... (2026-10-28 22:54:20)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:54:21.
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 6: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 6: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 7: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant RestoredStaysRestored is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <AppStart line 100, col 3 to line 105, col 64 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 5.8E-15
+809 states generated, 168 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 8 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:54:21)

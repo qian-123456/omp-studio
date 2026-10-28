@@ -1,0 +1,31 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 93 and seed -5629350345288895625 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 18610] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/McpEditorDialog.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module McpEditorDialog
+Starting... (2026-10-29 00:39:06)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-29 00:39:07.
+Error: Invariant EditorVisibleWhenOpen is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ dialog = "none"
+/\ present = TRUE
+
+State 2: <OpenEditor line 10, col 3 to line 12, col 22 of module McpEditorDialog>
+/\ dialog = "edit"
+/\ present = TRUE
+
+State 3: <ExternalRemoveThenReload line 14, col 3 to line 16, col 21 of module McpEditorDialog>
+/\ dialog = "edit"
+/\ present = FALSE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 4.9E-19
+6 states generated, 3 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 2.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-29 00:39:07)

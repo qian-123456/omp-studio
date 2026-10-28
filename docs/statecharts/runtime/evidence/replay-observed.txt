@@ -1,0 +1,17 @@
+Observed focused replay output (transcribed from tool results; not a fresh run):
+
+cargo test --offline --test replay:
+test bug_status_file_with_reused_pid_pins_external ... ok
+test bug_late_frame_after_exit_resurrects_session ... ok
+test bug_respond_after_settle_flips_idle_session_to_working ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+vitest run --config <scratch>/runtime/replay-js/vitest.config.ts:
+RUN v3.2.7
+ext.replay.ts (1 test) passed
+live.replay.ts (3 tests) passed
+Test Files 2 passed (2)
+Tests 4 passed (4)
+Duration 1.16s
+
+These assertions describe current flawed consumer behavior, not passing desired product contracts.

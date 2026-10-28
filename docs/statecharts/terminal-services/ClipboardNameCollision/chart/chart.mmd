@@ -1,0 +1,48 @@
+---
+title: "剪贴板文件缓存重名"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group1 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group1Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "各自独立" as legendGroup0
+    state "两个附件指向同一路径" as legendGroup1
+    state "违反规则" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  state "两个文件同一毫秒且同名，第一个文件已保存，第二个文件已保存，共用路径里是第一个文件" as s0
+  state "两个文件同一毫秒且同名，第一个文件已保存，第二个文件已保存，共用路径里是第二个文件" as s1
+  state "两个文件同一毫秒且同名，第一个文件已保存，第二个文件未保存，共用路径里是第一个文件" as s2
+  state "两个文件同一毫秒且同名，第一个文件未保存，第二个文件已保存，共用路径里是第二个文件" as s3
+  state "两个文件同一毫秒且同名，第一个文件未保存，第二个文件未保存，共用路径里是空" as s4
+  state "两个文件的缓存名不同，第一个文件已保存，第二个文件已保存，两个路径各自保存" as s5
+  state "两个文件的缓存名不同，第一个文件已保存，第二个文件未保存，两个路径各自保存" as s6
+  state "两个文件的缓存名不同，第一个文件未保存，第二个文件已保存，两个路径各自保存" as s7
+  state "两个文件的缓存名不同，第一个文件未保存，第二个文件未保存，两个路径各自保存" as s8
+  [*] --> s4
+  [*] --> s8
+  s8 --> s6 : 保存第一个粘贴文件
+  s8 --> s7 : 保存第二个粘贴文件
+  s4 --> s2 : 保存第一个粘贴文件
+  s4 --> s3 : 保存第二个粘贴文件
+  s6 --> s5 : 保存第二个粘贴文件
+  s7 --> s5 : 保存第一个粘贴文件
+  s2 --> s1 : 保存第二个粘贴文件
+  s3 --> s0 : 保存第一个粘贴文件
+  class s0 group1Wrong
+  class s1 group1Wrong
+  class s2 group0
+  class s3 group0
+  class s4 group0
+  class s5 group0
+  class s6 group0
+  class s7 group0
+  class s8 group0

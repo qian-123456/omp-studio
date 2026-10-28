@@ -1,0 +1,40 @@
+---
+title: "手机端连接横幅, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendMixed mixed
+  state "横幅：未连接" as g0 {
+    state "无事件流，网络在线，配对已撤销" as s0
+    state "无事件流，网络在线，配对有效" as s1
+  }
+  state "横幅：已断开: 无事件流，网络离线，配对已撤销" as s2
+  state "横幅：配对失效: 无事件流，网络在线，配对已撤销" as s3
+  [*] --> s1
+  s1 --> s0 : 1. 电脑端撤销全部配对
+  s0 --> s3 : 2. 任一请求被服务器拒绝为未配对
+  s3 --> s2 : 3. 手机提示网络断开
+  class s2 mixedPath
+  class s0 worksPath
+  class s1 worksPath
+  class s3 worksPath

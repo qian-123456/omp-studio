@@ -1,0 +1,3794 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 6 and seed -5124678660915679817 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 81914] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/OauthLogin.tla
+Semantic processing of module OauthLogin
+Starting... (2026-10-28 22:50:41)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:50:42.
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 4: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 9: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 9: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 9: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <ParentUnmount line 140, col 3 to line 147, col 64 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 9: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 13: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 14: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 14: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 13: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 14: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 14: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 14: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 14: <DismissConfirmed line 114, col 3 to line 124, col 63 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 14: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 13: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 14: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 13: <ParentUnmount line 140, col 3 to line 147, col 64 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 14: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "closed"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 12: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 14: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 15: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 5: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 6: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "ok"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 13: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 14: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 15: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 16: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Error: Invariant NoOrphanLogin is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 2: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "cancelled"
+/\ active = FALSE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 3: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = FALSE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = FALSE
+
+State 4: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = FALSE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = FALSE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 5: <LoginSucceeds line 53, col 3 to line 63, col 83 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 6: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 7: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "success"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 8: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 9: <LoginFails line 66, col 3 to line 70, col 106 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 10: <BackendCleanup line 74, col 3 to line 77, col 128 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 11: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "failed"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "none"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 12: <StartFlow line 32, col 3 to line 40, col 84 of module OauthLogin>
+/\ confirmOpen = FALSE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 13: <DismissAsk line 101, col 3 to line 105, col 123 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "flow"
+/\ listening = TRUE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = TRUE
+/\ pendingCancel = TRUE
+
+State 14: <BackUnlisten line 81, col 3 to line 87, col 77 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = TRUE
+
+State 15: <CancelCall line 91, col 3 to line 97, col 105 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "failed"
+/\ active = FALSE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "inFlight"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+State 16: <BackendStart line 44, col 3 to line 49, col 108 of module OauthLogin>
+/\ confirmOpen = TRUE
+/\ result = "pending"
+/\ active = TRUE
+/\ credSaved = TRUE
+/\ uiDone = "running"
+/\ phase = "list"
+/\ listening = FALSE
+/\ startState = "done"
+/\ panelStale = TRUE
+/\ uiFlowActive = FALSE
+/\ pendingCancel = FALSE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.0E-14
+926 states generated, 295 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 17.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:50:42)

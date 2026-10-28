@@ -1,0 +1,120 @@
+---
+title: "手机端连接横幅"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendMixed mixed
+  state "横幅：已断开" as g0 {
+    state "事件流存活，网络在线，配对有效" as s0
+    state "事件流存活，网络离线，配对有效" as s1
+    state "事件流被系统杀死，等待问候，网络离线，配对已撤销" as s2
+    state "事件流被系统杀死，等待问候，网络离线，配对有效" as s3
+    state "事件流被系统杀死，网络离线，配对已撤销" as s4
+    state "事件流被系统杀死，网络离线，配对有效" as s5
+    state "无事件流，网络在线，配对已撤销" as s6
+    state "无事件流，网络在线，配对有效" as s7
+    state "无事件流，网络离线，配对已撤销" as s8
+    state "无事件流，网络离线，配对有效" as s9
+  }
+  state "横幅：已连接" as g1 {
+    state "事件流存活，网络在线，配对有效" as s10
+    state "事件流被系统杀死，网络在线，配对已撤销" as s11
+    state "事件流被系统杀死，网络在线，配对有效" as s12
+  }
+  state "横幅：未连接" as g2 {
+    state "无事件流，网络在线，配对已撤销" as s13
+    state "无事件流，网络在线，配对有效" as s14
+    state "无事件流，网络离线，配对已撤销" as s15
+    state "无事件流，网络离线，配对有效" as s16
+  }
+  state "横幅：连接中" as g3 {
+    state "事件流存活，等待问候，网络在线，配对有效" as s17
+    state "事件流被系统杀死，等待问候，网络在线，配对已撤销" as s18
+    state "事件流被系统杀死，等待问候，网络在线，配对有效" as s19
+    state "无事件流，探测中，网络在线，配对有效" as s20
+  }
+  state "横幅：配对失效" as g4 {
+    state "事件流被系统杀死，等待问候，网络在线，配对已撤销" as s21
+    state "事件流被系统杀死，等待问候，网络离线，配对已撤销" as s22
+    state "事件流被系统杀死，网络在线，配对已撤销" as s23
+    state "事件流被系统杀死，网络离线，配对已撤销" as s24
+    state "无事件流，网络在线，配对已撤销" as s25
+    state "无事件流，网络离线，配对已撤销" as s26
+  }
+  [*] --> s14
+  s14 --> s20 : 应用启动事件流
+  s14 --> s9 : 手机提示网络断开
+  s14 --> s13 : 电脑端撤销全部配对
+  s20 --> s17 : 探测请求成功并建立事件流
+  s9 --> s7 : 手机提示网络恢复
+  s9 --> s8 : 电脑端撤销全部配对
+  s13 --> s25 : 任一请求被服务器拒绝为未配对
+  s17 --> s10 : 收到服务器问候
+  s17 --> s19 : 系统悄悄杀掉事件流
+  s7 --> s6 : 电脑端撤销全部配对
+  s8 --> s26 : 任一请求被服务器拒绝为未配对
+  s25 --> s8 : 手机提示网络断开
+  s10 --> s12 : 系统悄悄杀掉事件流
+  s10 --> s1 : 手机提示网络断开
+  s19 --> s3 : 手机提示网络断开
+  s19 --> s18 : 电脑端撤销全部配对
+  s26 --> s16 : 重新扫码配对成功
+  s12 --> s5 : 手机提示网络断开
+  s12 --> s11 : 电脑端撤销全部配对
+  s1 --> s0 : 手机提示网络恢复
+  s3 --> s2 : 电脑端撤销全部配对
+  s18 --> s21 : 任一请求被服务器拒绝为未配对
+  s16 --> s15 : 电脑端撤销全部配对
+  s5 --> s4 : 电脑端撤销全部配对
+  s11 --> s23 : 任一请求被服务器拒绝为未配对
+  s2 --> s22 : 任一请求被服务器拒绝为未配对
+  s4 --> s24 : 任一请求被服务器拒绝为未配对
+  class s0 wrong
+  class s1 works
+  class s2 mixed
+  class s3 works
+  class s4 mixed
+  class s5 works
+  class s6 mixed
+  class s7 works
+  class s8 mixed
+  class s9 works
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works
+  class s22 works
+  class s23 works
+  class s24 works
+  class s25 works
+  class s26 works

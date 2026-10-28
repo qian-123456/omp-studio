@@ -1,0 +1,48 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 28,
+  "modelTransitions": 78,
+  "chartStates": 12,
+  "chartTransitions": 38,
+  "chartStatus": {
+    "works": 8,
+    "wrong": 0,
+    "fixed": 4,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "regions": {
+    "drawn": false,
+    "why": "the regions do not combine into the flat chart, with 18 difference(s), such as states only in EXPECTED (no path from the start reaches them in the spec, or the spec renamed them): 侧边栏展开，侧边栏显示代码空间 | 选中了研究空间的会话"
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "侧边栏收起，侧边栏显示代码空间: 选中了研究空间的会话，选中的行不在列表里",
+      "invariant": "SpaceMatchesSelection",
+      "rule": "当前会话所属的空间，必须就是侧边栏正在显示的空间，这样选中的那一行总是看得见。",
+      "cause": "侧边栏收起期间打开了另一个空间的会话，重新展开后不会补做空间跟随",
+      "readerSteps": 2,
+      "modelSteps": 3,
+      "counterexamples": 6,
+      "lastSteps": [
+        "从收件箱等入口直接打开另一个会话"
+      ],
+      "startsHere": false,
+      "fix": "侧边栏收起，侧边栏显示研究空间: 选中了研究空间的会话"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "SpaceFollow.tla": [],
+    "SpaceFollowFixed.tla": []
+  },
+  "brokenProperties": []
+}

@@ -1,0 +1,78 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 323,
+  "modelTransitions": 970,
+  "chartStates": 110,
+  "chartTransitions": 399,
+  "chartStatus": {
+    "works": 88,
+    "wrong": 4,
+    "fixed": 18,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "授权已保存但列表过期",
+      "color": "#ffe9c7",
+      "states": 34
+    },
+    {
+      "name": "遗留无人管理的登录进程",
+      "color": "#fde2e2",
+      "states": 4
+    },
+    {
+      "name": "正常",
+      "color": "#e2f5e9",
+      "states": 72
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "对话框在供应商列表；后台登录进程在等待授权",
+      "invariant": "NoOrphanLogin",
+      "rule": "界面离开登录流程后，不能留下无人管理、仍在等待授权的登录进程。",
+      "cause": "取消请求先于启动请求被后台处理，之后启动请求才生效，登录进程在没有界面的情况下继续等待授权",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 9,
+      "lastSteps": [
+        "后台开始登录进程"
+      ],
+      "startsHere": false,
+      "fix": "对话框在供应商列表，启动请求还在途中；后台没有登录进程，取消请求在途中"
+    },
+    {
+      "n": 2,
+      "end": "对话框在供应商列表；后台没有登录进程，授权已保存但列表没刷新",
+      "invariant": "PanelShowsSavedLogin",
+      "rule": "登录成功且取消请求处理完之后，供应商列表必须显示新保存的授权。",
+      "cause": "授权成功的通知到达前，对话框已经停止监听，成功通知被丢弃，没有刷新供应商列表",
+      "readerSteps": 5,
+      "modelSteps": 6,
+      "counterexamples": 39,
+      "lastSteps": [
+        "后台处理取消请求",
+        "浏览器授权成功"
+      ],
+      "startsHere": false,
+      "fix": "对话框在供应商列表；后台没有登录进程，授权已保存"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "OauthLogin.tla": [],
+    "OauthLoginFixed.tla": []
+  },
+  "brokenProperties": []
+}

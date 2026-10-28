@@ -1,0 +1,48 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 19,
+  "modelTransitions": 28,
+  "chartStates": 12,
+  "chartTransitions": 19,
+  "chartStatus": {
+    "works": 10,
+    "wrong": 0,
+    "fixed": 2,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "regions": {
+    "drawn": false,
+    "why": "\"停在新会话页: 发送已完成，没有进入刚发送的会话\" is \"修复后看到了新会话\", and its two region states would show \"发送后看到了新会话\""
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "设置窗口开着（下面是新会话页）: 发送已完成，没有进入刚发送的会话",
+      "invariant": "SendShowsSession",
+      "rule": "用户发送第一条消息后一直没有离开，等处理完成，用户看到的必须是刚才发消息的那个会话。",
+      "cause": "进程启动完成时设置窗口正开着，系统不认为用户还停在新会话页，所以没有选中新会话，草稿也被删除",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "进程启动完成，草稿转成真实会话"
+      ],
+      "startsHere": false,
+      "fix": "设置窗口开着（下面是新会话页）: 发送已完成，已进入刚发送的会话"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "DraftHandoff.tla": [],
+    "DraftHandoffFixed.tla": []
+  },
+  "brokenProperties": []
+}

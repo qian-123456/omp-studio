@@ -1,0 +1,80 @@
+---
+title: "检查更新与执行更新"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "已升级到新版本，不显示可用更新" as s0
+  state "已升级到新版本，显示有可用更新" as s1
+  state "已升级到新版本，正在更新，不显示可用更新" as s2
+  state "已升级到新版本，正在更新，显示有可用更新" as s3
+  state "已升级到新版本，正在检查更新，不显示可用更新" as s4
+  state "已升级到新版本，正在检查更新，显示有可用更新" as s5
+  state "还是旧版本，不显示可用更新" as s6
+  state "还是旧版本，显示有可用更新" as s7
+  state "还是旧版本，正在更新，不显示可用更新" as s8
+  state "还是旧版本，正在更新，显示有可用更新" as s9
+  state "还是旧版本，正在检查更新，不显示可用更新" as s10
+  state "还是旧版本，正在检查更新，显示有可用更新" as s11
+  [*] --> s6
+  s6 --> s10 : 开始检查更新
+  s6 --> s8 : 点更新
+  s10 --> s7 : 检查结果返回
+  s10 --> s8 : 点更新
+  s8 --> s0 : 更新完成
+  s7 --> s11 : 开始检查更新
+  s7 --> s9 : 点更新
+  s8 --> s9 : 检查结果返回
+  s8 --> s4 : 更新完成
+  s0 --> s4 : 开始检查更新
+  s0 --> s2 : 点更新
+  s11 --> s7 : 检查结果返回
+  s11 --> s9 : 点更新
+  s9 --> s0 : 更新完成
+  s4 --> s1 : 检查结果返回
+  s4 --> s2 : 点更新
+  s4 --> s0 : 检查结果返回
+  s2 --> s0 : 更新完成
+  s9 --> s5 : 更新完成
+  s1 --> s5 : 开始检查更新
+  s1 --> s3 : 点更新
+  s2 --> s3 : 检查结果返回
+  s2 --> s4 : 更新完成
+  s5 --> s1 : 检查结果返回
+  s5 --> s3 : 点更新
+  s5 --> s0 : 检查结果返回
+  s3 --> s0 : 更新完成
+  s3 --> s5 : 更新完成
+  s3 --> s2 : 检查结果返回
+  class s0 works
+  class s1 wrong
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 works

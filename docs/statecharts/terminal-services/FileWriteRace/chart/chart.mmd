@@ -1,0 +1,74 @@
+---
+title: "文本文件并发保存"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group1 fill:#e8f0fe,stroke:#74787f,color:#1b2631
+  classDef group2 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group2Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "两次保存都结束" as legendGroup0
+    state "保存进行中" as legendGroup1
+    state "结果与回报矛盾" as legendGroup2
+    state "违反规则" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "第一次保存尚未开始，第二次保存尚未开始，文件仍是旧内容" as s0
+  state "第一次保存尚未开始，第二次保存已写好临时文件，文件仍是旧内容" as s1
+  state "第一次保存尚未开始，第二次保存报告保存成功，文件是第二次保存的内容" as s2
+  state "第一次保存已写好临时文件，第二次保存尚未开始，文件仍是旧内容" as s3
+  state "第一次保存已写好临时文件，第二次保存已写好临时文件，文件仍是旧内容" as s4
+  state "第一次保存已写好临时文件，第二次保存报告保存成功，文件是第一次保存的内容" as s5
+  state "第一次保存已写好临时文件，第二次保存报告保存成功，文件是第二次保存的内容" as s6
+  state "第一次保存报告保存失败，第二次保存报告保存成功，文件是第一次保存的内容" as s7
+  state "第一次保存报告保存失败，第二次保存报告保存成功，文件是第二次保存的内容" as s8
+  state "第一次保存报告保存成功，第二次保存尚未开始，文件是第一次保存的内容" as s9
+  state "第一次保存报告保存成功，第二次保存已写好临时文件，文件是第一次保存的内容" as s10
+  state "第一次保存报告保存成功，第二次保存已写好临时文件，文件是第二次保存的内容" as s11
+  state "第一次保存报告保存成功，第二次保存报告保存失败，文件是第一次保存的内容" as s12
+  state "第一次保存报告保存成功，第二次保存报告保存失败，文件是第二次保存的内容" as s13
+  state "第一次保存报告保存成功，第二次保存报告保存成功，文件是第一次保存的内容" as s14
+  state "第一次保存报告保存成功，第二次保存报告保存成功，文件是第二次保存的内容" as s15
+  [*] --> s0
+  s0 --> s3 : 第一次保存写入临时文件
+  s0 --> s1 : 第二次保存写入临时文件
+  s3 --> s4 : 第二次保存写入临时文件
+  s3 --> s9 : 第一次保存替换目标文件
+  s1 --> s4 : 第一次保存写入临时文件
+  s1 --> s2 : 第二次保存替换目标文件
+  s4 --> s11 : 第一次保存替换目标文件
+  s4 --> s6 : 第二次保存替换目标文件
+  s9 --> s10 : 第二次保存写入临时文件
+  s4 --> s10 : 第一次保存替换目标文件
+  s4 --> s5 : 第二次保存替换目标文件
+  s2 --> s6 : 第一次保存写入临时文件
+  s11 --> s13 : 第二次保存替换目标文件
+  s6 --> s8 : 第一次保存替换目标文件
+  s10 --> s15 : 第二次保存替换目标文件
+  s10 --> s12 : 第二次保存替换目标文件
+  s5 --> s7 : 第一次保存替换目标文件
+  s6 --> s14 : 第一次保存替换目标文件
+  class s0 group1
+  class s1 group1
+  class s2 group1
+  class s3 group1
+  class s4 group1
+  class s5 group1
+  class s6 group1
+  class s7 group2Wrong
+  class s8 group0
+  class s9 group1
+  class s10 group1
+  class s11 group1
+  class s12 group0
+  class s13 group2Wrong
+  class s14 group0
+  class s15 group0

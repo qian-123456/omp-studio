@@ -1,0 +1,38 @@
+---
+title: "会话终端登记表, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Path fill:#d1f2eb,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group1 fill:#ffffff,stroke:#808080,color:#1b2631
+  classDef group1Path fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group2 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group2Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2Path fill:#d6eaf8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "终端运行中" as legendGroup0
+    state "无终端" as legendGroup1
+    state "会话已删除仍有终端" as legendGroup2
+    state "违反规则" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "会话存在，没有终端进程，登记表为空" as s0
+  state "会话存在，终端进程在运行，终端刚启动，尚未登记，登记表为空" as s1
+  state "会话已删除，终端进程在运行，登记表认为终端打开" as s2
+  state "会话已删除，终端进程在运行，终端刚启动，尚未登记，登记表为空" as s3
+  [*] --> s0
+  s0 --> s1 : 1. 打开会话终端
+  s1 --> s3 : 2. 删除会话
+  s3 --> s2 : 3. 后端把终端写入登记表
+  class s0 group1Path
+  class s1 group0Path
+  class s2 group2Wrong
+  class s3 group2Path

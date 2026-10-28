@@ -1,0 +1,1075 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 33 and seed -9156266688108906772 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 328] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ProviderKeysFixed.tla
+Semantic processing of module ProviderKeysFixed
+Starting... (2026-10-28 23:00:17)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-28 23:00:17.
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "none"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 4: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "none"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "none"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 5: <SavePlainVaultCleanupFails line 73, col 3 to line 80, col 38 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "error"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 5: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 4: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 4: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "none"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 4: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 5: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 4: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 5: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "none"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 4: <SaveWithKey line 53, col 3 to line 59, col 31 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 5: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 4: <SaveWithKey line 53, col 3 to line 59, col 31 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 5: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "none"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 5: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 6: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <CloseEdit line 47, col 3 to line 49, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 6: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "none"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <SaveWithKey line 53, col 3 to line 59, col 31 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 6: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 4: <SaveWithKey line 53, col 3 to line 59, col 31 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 5: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 6: <DeleteVaultCleanupFails line 109, col 3 to line 113, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "none"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 4: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 5: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 6: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "none"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "encrypted"
+
+State 4: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 5: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+State 6: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "encrypted"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 4: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 5: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 6: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 7: <SavePlainVaultCleanupFails line 73, col 3 to line 80, col 38 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "error"
+/\ vault = TRUE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+Error: Invariant NoOrphanVaultKey is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 2: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "none"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 3: <SaveWithoutKey line 63, col 3 to line 69, col 31 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "closed"
+/\ radio = "plaintext"
+
+State 4: <OpenEdit line 28, col 3 to line 33, col 42 of module ProviderKeysFixed>
+/\ typed = FALSE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 5: <TypeKey line 41, col 3 to line 44, col 57 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = FALSE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 6: <RowEncrypt line 83, col 3 to line 86, col 49 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "ref"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+State 7: <RowDecryptVaultCleanupFails line 96, col 3 to line 99, col 56 of module ProviderKeysFixed>
+/\ typed = TRUE
+/\ ymlKey = "plain"
+/\ lastSave = "honoured"
+/\ vault = TRUE
+/\ dialog = "open"
+/\ radio = "plaintext"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.3E-16
+148 states generated, 40 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 23:00:17)

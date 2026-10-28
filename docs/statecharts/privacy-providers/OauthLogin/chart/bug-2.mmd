@@ -1,0 +1,44 @@
+---
+title: "授权登录对话框, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): the fix
+  classDef plainFixed fill:#f4f6f7,stroke:#1e8449,stroke-width:4px,color:#145a32
+  classDef group0 fill:#ffe9c7,stroke:#807564,color:#1b2631
+  classDef group0Fixed fill:#ffe9c7,stroke:#1e8449,stroke-width:4px,color:#145a32
+  classDef group0Path fill:#ffe9c7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group2 fill:#e2f5e9,stroke:#717b75,color:#1b2631
+  classDef group2Path fill:#e2f5e9,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "授权已保存但列表过期" as legendGroup0
+    state "正常" as legendGroup2
+    state "Fixed or new with the fix" as legendFixed
+  }
+  class legendGroup0 group0
+  class legendGroup2 group2
+  class legendFixed plainFixed
+  state "对话框在供应商列表；后台没有登录进程" as s0
+  state "对话框在供应商列表；后台没有登录进程，授权已保存" as s1
+  state "对话框在供应商列表；后台没有登录进程，授权已保存但列表没刷新" as s2
+  state "对话框在供应商列表；后台登录进程在等待授权，取消请求在途中" as s3
+  state "对话框在供应商列表；后台登录进程已结束待清理，取消请求在途中，授权已保存但列表没刷新" as s4
+  state "对话框在登录步骤，登录进行中，启动请求还在途中；后台没有登录进程" as s5
+  state "对话框在登录步骤，登录进行中；后台登录进程在等待授权" as s6
+  [*] --> s0
+  s0 --> s5 : 1. 选择供应商开始登录
+  s5 --> s6 : 2. 后台开始登录进程
+  s6 --> s3 : 3. 点上一步
+  s3 --> s4 : 4. 浏览器授权成功
+  s4 --> s2 : 5. 后台处理取消请求
+  s4 --> s1 : with the fix, 后台处理取消请求
+  class s0 group2Path
+  class s1 group2Path
+  class s2 group0Fixed
+  class s3 group2Path
+  class s4 group0Path
+  class s5 group2Path
+  class s6 group2Path

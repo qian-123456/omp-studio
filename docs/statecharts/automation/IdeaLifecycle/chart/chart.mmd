@@ -1,0 +1,55 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendMixed mixed
+  state "在回收站" as s0
+  state "在回收站（入回收站超过7天）" as s1
+  state "在回收站（超过30天未变动，刚恢复）" as s2
+  state "已完成" as s3
+  state "已完成（刚恢复）" as s4
+  state "已完成（超过30天未变动，刚恢复）" as s5
+  state "已被永久删除" as s6
+  state "待处理" as s7
+  state "待处理（已送达却仍显示待处理且无提示）" as s8
+  [*] --> s7
+  s7 --> s8 : 放进输入框并发送，记录已派发失败
+  s7 --> s3 : 手动改变想法状态
+  s7 --> s0 : 删除到回收站
+  s3 --> s0 : 删除到回收站
+  s0 --> s1 : 回收站里过去7天
+  s0 --> s4 : 从回收站恢复
+  s1 --> s6 : 重新启动应用
+  s4 --> s5 : 时间过去30天
+  s5 --> s2 : 重新启动应用
+  class s0 works
+  class s1 works
+  class s2 wrong
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 mixed
+  class s7 works
+  class s8 wrong

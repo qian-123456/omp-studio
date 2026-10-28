@@ -1,0 +1,72 @@
+{
+  "view": "customer",
+  "modelStates": 12,
+  "modelTransitions": 22,
+  "chartStates": 12,
+  "chartTransitions": 22,
+  "chartStatus": {
+    "works": 9,
+    "wrong": 3,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "终端运行中",
+      "color": "#d1f2eb",
+      "states": 2
+    },
+    {
+      "name": "无终端",
+      "color": "#ffffff",
+      "states": 6
+    },
+    {
+      "name": "会话已删除仍有终端",
+      "color": "#d6eaf8",
+      "states": 2
+    },
+    {
+      "name": "终端已结束却仍被登记",
+      "color": "#fdebd0",
+      "states": 2
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "会话已删除，终端进程在运行，登记表认为终端打开",
+      "invariant": "DeletedSessionHasNoTerminal",
+      "rule": "会话被删除后，不应还留着在运行的终端。",
+      "cause": "删除会话发生在终端刚启动、尚未登记的间隙，删除只清理登记表里已有的终端，随后新终端又被登记到已删除的会话上",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 1,
+      "lastSteps": [
+        "后端把终端写入登记表"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "会话存在，终端进程已结束，登记表认为终端打开",
+      "invariant": "RecordMeansAlive",
+      "rule": "登记表里记着该会话的终端时，终端进程必须还活着（否则会无故阻止该会话的结构化通道重新启动）。",
+      "cause": "终端在被写入登记表之前就已经退出，退出时的清理发现登记表里没有它，随后登记表又写入了这个已死的终端，会话的结构化通道因此一直被挡住",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 2,
+      "lastSteps": [
+        "后端把终端写入登记表"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

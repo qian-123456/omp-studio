@@ -1,0 +1,389 @@
+{
+  "slice": "shell",
+  "title": "Shell/导航/本地草稿/空间/启动 状态图审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "src/App.tsx",
+      "feature": "桌面外壳:中心视图选择/侧栏拖拽/启动恢复/错误边界",
+      "status": "modeled",
+      "reason": "启动恢复(StartupRestore)、中心区草稿优先级(CenterPane)、侧栏挂载(SpaceFollow);拖拽宽度为单步 UI 状态,读码"
+    },
+    {
+      "path": "src/main.tsx",
+      "feature": "启动:主题/会话事件/根错误边界",
+      "status": "read-only",
+      "reason": "RootErrorBoundary 只有 出错→重载 单向;初次加载失败 hasLoaded 保持 false(sessions.ts:336-337) 读码确认,无独立状态机"
+    },
+    {
+      "path": "src/stores/ui.ts",
+      "feature": "centerView/selectedSessionId/设置浮层/右栏记忆",
+      "status": "modeled",
+      "reason": "DraftHandoff、SpaceFollow、StartupRestore 引用其 selectSession/openSettings/closeSettings/leaveSession/toggleSidebar"
+    },
+    {
+      "path": "src/features/sessions/pendingSession.ts",
+      "feature": "本地草稿创建/预热/移交/清理",
+      "status": "modeled",
+      "reason": "DraftHandoff 与 CenterPane"
+    },
+    {
+      "path": "src/features/sessions/draftSession.ts",
+      "feature": "本地草稿创建/预热/移交/清理",
+      "status": "modeled",
+      "reason": "DraftHandoff 与 CenterPane"
+    },
+    {
+      "path": "src/features/sessions/newSession.ts",
+      "feature": "本地草稿创建/预热/移交/清理",
+      "status": "modeled",
+      "reason": "DraftHandoff 与 CenterPane"
+    },
+    {
+      "path": "src/features/sessions/forkDraft.ts",
+      "feature": "分支草稿",
+      "status": "modeled",
+      "reason": "CenterPane;其 visible 判定含设置浮层,作为 DraftHandoff 修复参照"
+    },
+    {
+      "path": "src/features/sessions/SessionSidebar.tsx",
+      "feature": "空间(mode)隔离与跟随",
+      "status": "modeled",
+      "reason": "SpaceFollow"
+    },
+    {
+      "path": "src/features/sessions/switchMode.ts",
+      "feature": "空间(mode)隔离与跟随",
+      "status": "modeled",
+      "reason": "SpaceFollow"
+    },
+    {
+      "path": "src/features/sessions/sidebarStore.ts",
+      "feature": "空间(mode)隔离与跟随",
+      "status": "modeled",
+      "reason": "SpaceFollow"
+    },
+    {
+      "path": "src/features/sessions/modes.ts",
+      "feature": "空间(mode)隔离与跟随",
+      "status": "modeled",
+      "reason": "SpaceFollow"
+    },
+    {
+      "path": "src/features/sessions/search/openSearchRow.ts",
+      "feature": "空间(mode)隔离与跟随",
+      "status": "modeled",
+      "reason": "SpaceFollow"
+    },
+    {
+      "path": "src/features/sessions/SessionRow.tsx",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/sessions/SessionDialogs.tsx",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/sessions/ResumeMissingCwdDialog.tsx",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/sessions/archiveUndo.ts",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/sessions/sessionActions.ts",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/sessions/grouping.ts",
+      "feature": "会话行/对话框/归档撤销/分组纯函数",
+      "status": "read-only",
+      "reason": "选择入口已通过 grep 枚举(selectSession 55 处调用);归档撤销与会话生命周期由 runtime/git-files 切片拥有"
+    },
+    {
+      "path": "src/features/shortcuts/**",
+      "feature": "键盘分发/绑定",
+      "status": "read-only",
+      "reason": "dispatcher.ts 按 设置浮层/模态层 门控(dispatcher.ts:99-109);无跨步骤状态,读码审计,未发现违反;不做键盘 GUI 自动化"
+    },
+    {
+      "path": "src/lib/nativeShortcuts.ts",
+      "feature": "Esc 认领/Cmd+W 层关闭/焦点陷阱",
+      "status": "read-only",
+      "reason": "认领协议与嵌套层判断读码一致,未生成模型;实际焦点需主线 GUI 验证"
+    },
+    {
+      "path": "src/lib/escapeClaim.ts",
+      "feature": "Esc 认领/Cmd+W 层关闭/焦点陷阱",
+      "status": "read-only",
+      "reason": "认领协议与嵌套层判断读码一致,未生成模型;实际焦点需主线 GUI 验证"
+    },
+    {
+      "path": "src/features/settings/SettingsOverlay.tsx",
+      "feature": "Esc 认领/Cmd+W 层关闭/焦点陷阱",
+      "status": "read-only",
+      "reason": "认领协议与嵌套层判断读码一致,未生成模型;实际焦点需主线 GUI 验证"
+    },
+    {
+      "path": "src/features/settings/nestedModal.ts",
+      "feature": "Esc 认领/Cmd+W 层关闭/焦点陷阱",
+      "status": "read-only",
+      "reason": "认领协议与嵌套层判断读码一致,未生成模型;实际焦点需主线 GUI 验证"
+    },
+    {
+      "path": "src/features/home/**",
+      "feature": "起始页/指南",
+      "status": "read-only",
+      "reason": "静态展示,无独立生命周期"
+    },
+    {
+      "path": "guide/**",
+      "feature": "起始页/指南",
+      "status": "read-only",
+      "reason": "静态展示,无独立生命周期"
+    },
+    {
+      "path": "src/components/**",
+      "feature": "Modal/FloatingLayer/Toaster/CenterHeader/RightAside/Markdown 等",
+      "status": "read-only",
+      "reason": "模型化子集:无;Markdown 文件链接点击仅做真实入口复现(F5,见 implementationFindings),其余组件读码。Markdown 文件链接点击缺少 openFileLink 导入(F5,代码缺陷,非状态机);其余组件为受控展示"
+    },
+    {
+      "path": "src/stores/{displayPrefs,language,privacy,explorer,filePreview,locate,turnNav,worktrees,live,composer,sessions}.ts",
+      "feature": "全局偏好/导航/显示 store",
+      "status": "read-only",
+      "reason": "sessions.ts 加载状态(loading→error/ready)读码;live/composer 归 runtime/composer 切片"
+    },
+    {
+      "path": "src/lib/** (非功能专属)",
+      "feature": "ipc/contracts/theme/zoom/format 等",
+      "status": "read-only",
+      "reason": "纯函数或 IPC 封装;loadState.ts 三态已读"
+    },
+    {
+      "path": "src-tauri/src/{lib,main,state,db,paths,contracts,ime,local_rows}.rs",
+      "feature": "Rust 装配/状态/数据库",
+      "status": "read-only",
+      "reason": "仅清点,契约:前端 invoke 名称与 list_sessions/list_workspaces 假定;未做 Rust 状态机"
+    },
+    {
+      "path": "docs/**",
+      "feature": "文档/站点/构建发布",
+      "status": "out-of-model",
+      "reason": "静态页与 CI 工作流,无应用内状态机;不声称验证"
+    },
+    {
+      "path": "site/**",
+      "feature": "文档/站点/构建发布",
+      "status": "out-of-model",
+      "reason": "静态页与 CI 工作流,无应用内状态机;不声称验证"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "feature": "文档/站点/构建发布",
+      "status": "out-of-model",
+      "reason": "静态页与 CI 工作流,无应用内状态机;不声称验证"
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "feature": "文档/站点/构建发布",
+      "status": "out-of-model",
+      "reason": "静态页与 CI 工作流,无应用内状态机;不声称验证"
+    }
+  ],
+  "models": [
+    {
+      "name": "SpaceFollow",
+      "spec": "models/space-follow/SpaceFollow.tla",
+      "config": "models/space-follow/SpaceFollow.cfg",
+      "map": "models/space-follow/SpaceFollow.map.mjs",
+      "out": "models/space-follow/out",
+      "regenerate": "regenerate.sh",
+      "summary": "models/space-follow/out/summary.json",
+      "limits": "modelStates=28 modelTransitions=78 chartStates=12 chartTransitions=38; fixed model keeps rule: works=8 fixed=4 wrong=0"
+    },
+    {
+      "name": "DraftHandoff",
+      "spec": "models/draft-handoff/DraftHandoff.tla",
+      "config": "models/draft-handoff/DraftHandoff.cfg",
+      "map": "models/draft-handoff/DraftHandoff.map.mjs",
+      "out": "models/draft-handoff/out",
+      "regenerate": "regenerate.sh",
+      "summary": "models/draft-handoff/out/summary.json",
+      "limits": "modelStates=19 modelTransitions=28 chartStates=12 chartTransitions=19; fixed model keeps rule: works=10 fixed=2 wrong=0"
+    },
+    {
+      "name": "CenterPane",
+      "spec": "models/center-pane/CenterPane.tla",
+      "config": "models/center-pane/CenterPane.cfg",
+      "map": "models/center-pane/CenterPane.map.mjs",
+      "out": "models/center-pane/out",
+      "regenerate": "regenerate.sh",
+      "summary": "models/center-pane/out/summary.json",
+      "limits": "modelStates=8 modelTransitions=22 chartStates=8 chartTransitions=24; fixed model keeps rule: works=7 fixed=1 wrong=0"
+    },
+    {
+      "name": "StartupRestore",
+      "spec": "models/startup-restore/StartupRestore.tla",
+      "config": "models/startup-restore/StartupRestore.cfg",
+      "map": "models/startup-restore/StartupRestore.map.mjs",
+      "out": "models/startup-restore/out",
+      "regenerate": "regenerate.sh",
+      "summary": "models/startup-restore/out/summary.json",
+      "limits": "modelStates=20 modelTransitions=24 chartStates=14 chartTransitions=18; fixed model keeps rule: works=10 fixed=4 wrong=0"
+    }
+  ],
+  "findings": [
+    {
+      "rule": "SpaceMatchesSelection",
+      "title": "侧栏收起时打开其他空间的会话,重新展开后空间不跟随",
+      "model": "SpaceFollow",
+      "steps": "Cmd+B 收起 → 收件箱等入口选其他空间会话(2 步,图 bug-1)",
+      "reproduction": "reproduced",
+      "evidence": "replay/app-shell.test.tsx F2: 渲染真实 App;收起后 selectSession('b'),重开后 activeMode=code,行 b 未渲染; 对照(侧栏开)跟随成功",
+      "sourceCitations": "SessionSidebar.tsx:376-391, App.tsx:347, ui.ts:291-300; 直接调用 selectSession 的入口 InboxPage.tsx:66 等",
+      "fixModelStatus": "fixed model holds",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "SendShowsSession",
+      "title": "首条消息发送期间打开设置,完成后落到空白起始页而非新会话",
+      "model": "DraftHandoff",
+      "steps": "回车发送 → 打开设置 → 启动完成(3 步)",
+      "reproduction": "reproduced",
+      "evidence": "replay/handoff-settings.test.ts: sendFromDraft 进行中 openSettings,完成后 closeSettings,selectedSessionId=null;对照 forkDraft 同时序成功",
+      "sourceCitations": "draftSession.ts:153-154 对比 forkDraft.ts:150-153,newSession.ts:100-108(设置期间保留草稿)",
+      "fixModelStatus": "fixed model holds",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "NewSessionVisible",
+      "title": "分支草稿开着时新建会话,中间区仍显示分支草稿",
+      "model": "CenterPane",
+      "steps": "在运行会话点分支 → Cmd+N(2 步)",
+      "reproduction": "reproduced",
+      "evidence": "replay/app-shell.test.tsx F4: 渲染真实 App;可见 composer=fork-draft:…,而 pending 选中=local-draft:4",
+      "sourceCitations": "App.tsx:121-130, newSession.ts:57-70, forkDraft.ts:130-136",
+      "fixModelStatus": "fixed model holds",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "RestoreKeepsUserPage",
+      "title": "会话列表加载期间打开设置/收件箱,启动恢复抢走页面",
+      "model": "StartupRestore",
+      "steps": "加载中打开页面 → 列表加载成功 → 恢复(3 步)",
+      "reproduction": "reproduced (设置页+上次会话在当前空间分支); 另一分支(上次会话不在当前空间→回首页)仅读码/模型 unverified",
+      "evidence": "replay/app-shell.test.tsx F3: 设置打开后加载完成,centerView=session,selected=a",
+      "sourceCitations": "App.tsx:312-324, ui.ts:301-314",
+      "fixModelStatus": "fixed model holds",
+      "unverifiedBranch": "上次会话不在当前空间 → 被带回首页(模型图路径),仅模型+读码,未用真实入口复现;已复现的是 设置页 + 上次会话在当前空间 分支",
+      "kind": "reproduced consumer behavior",
+      "reproductionScope": "设置页+上次会话在当前空间分支已复现;另一分支为 trace-and-source-only hypothesis"
+    }
+  ],
+  "verification": [
+    {
+      "command": "statechart.mjs from-spec (x4, see regenerate.sh) with TLA2TOOLS/JAVA",
+      "exitCode": 0,
+      "result": "4 个规则按预期被破坏,4 个修复模型均通过"
+    },
+    {
+      "command": "node models/cite-check.mjs models/*/*.tla (lib.mjs uncitedConditions)",
+      "exitCode": 0,
+      "result": "8 个 .tla 全部 uncited=0"
+    },
+    {
+      "command": "node_modules/.bin/vitest run --config replay/vitest.config.ts",
+      "exitCode": 1,
+      "result": "8 例: 2 通过(2 个对照)、6 失败(F1×1、F2×1、F3×1、F4×1、F5×2)= 全部为复现断言失败; 日志 replay/replay.log"
+    },
+    {
+      "command": "node models/cite-check.mjs models/*/*.tla",
+      "exitCode": 0,
+      "result": "8 个 .tla(4 模型+4 修复模型)uncited=0",
+      "files": [
+        "models/space-follow/SpaceFollow.tla",
+        "models/space-follow/SpaceFollowFixed.tla",
+        "models/draft-handoff/DraftHandoff.tla",
+        "models/draft-handoff/DraftHandoffFixed.tla",
+        "models/center-pane/CenterPane.tla",
+        "models/center-pane/CenterPaneFixed.tla",
+        "models/startup-restore/StartupRestore.tla",
+        "models/startup-restore/StartupRestoreFixed.tla"
+      ]
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "src/App.tsx",
+    "src/main.tsx",
+    "src/stores/ui.ts",
+    "src/stores/sessions.ts",
+    "src/features/sessions/pendingSession.ts",
+    "src/features/sessions/draftSession.ts",
+    "src/features/sessions/newSession.ts",
+    "src/features/sessions/forkDraft.ts",
+    "src/features/sessions/switchMode.ts",
+    "src/features/sessions/sidebarStore.ts",
+    "src/features/sessions/modes.ts",
+    "src/features/sessions/SessionSidebar.tsx",
+    "src/features/sessions/ForkDraftView.tsx",
+    "src/features/sessions/PendingSessionView.tsx",
+    "src/features/sessions/search/openSearchRow.ts",
+    "src/features/shortcuts/dispatcher.ts",
+    "src/features/shortcuts/actions/navigation.ts",
+    "src/features/settings/SettingsOverlay.tsx",
+    "src/features/settings/nestedModal.ts",
+    "src/lib/nativeShortcuts.ts",
+    "src/lib/escapeClaim.ts",
+    "src/lib/loadState.ts",
+    "src/components/Markdown.tsx",
+    "src/features/inbox/InboxPage.tsx",
+    "src/stores/filePreview.ts"
+  ],
+  "implementationFindings": [
+    {
+      "rule": "(非状态机)",
+      "title": "Markdown 文件链接点击抛 ReferenceError: openFileLink is not defined",
+      "model": "—",
+      "steps": "点击 file:// 或相对路径链接",
+      "reproduction": "reproduced",
+      "evidence": "replay/markdown-link.test.tsx 两例均 toast「打开链接失败: openFileLink is not defined」且预览页签 0;主线整套 Vitest fileLinkClick.test.tsx 6 例同因失败",
+      "sourceCitations": "components/Markdown.tsx:295,299,340,515 使用但未导入(stores/filePreview.ts:176 导出)",
+      "fixModelStatus": "n/a(类型诊断同源)",
+      "kind": "reproduced consumer behavior"
+    }
+  ],
+  "limits": [
+    "GUI/键盘焦点/原生运行时未实测(产品 UI 未改动,审计不声称 GUI 证明)",
+    "Rust 文件与 docs/site/workflows 仅清点",
+    "StartupRestore 另一分支未复现"
+  ],
+  "guardProof": {
+    "command": "node models/cite-check.mjs models/*/*.tla",
+    "exitCode": 0,
+    "result": "8 个 .tla(4 模型+4 修复模型)uncited=0",
+    "files": [
+      "models/space-follow/SpaceFollow.tla",
+      "models/space-follow/SpaceFollowFixed.tla",
+      "models/draft-handoff/DraftHandoff.tla",
+      "models/draft-handoff/DraftHandoffFixed.tla",
+      "models/center-pane/CenterPane.tla",
+      "models/center-pane/CenterPaneFixed.tla",
+      "models/startup-restore/StartupRestore.tla",
+      "models/startup-restore/StartupRestoreFixed.tla"
+    ]
+  },
+  "replayNote": "replay 断言期望的正确行为,失败即为复现证据,不是验收失败;模型修复只说明模型,产品未修复"
+}

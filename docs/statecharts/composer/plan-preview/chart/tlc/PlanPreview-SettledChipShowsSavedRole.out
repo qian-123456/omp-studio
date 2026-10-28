@@ -1,0 +1,755 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 104 and seed 728923938960461461 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 17523] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PlanPreview.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module PlanPreview
+Starting... (2026-10-28 23:07:16)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 23:07:16.
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 3: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 3: <ReadExecutes line 135, col 3 to line 139, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "inflight", gen |-> 0, val |-> "A", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <OrdinaryPick line 86, col 3 to line 91, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 3: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 3: <PickPlanModel line 95, col 3 to line 100, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "A"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "A"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 5: <WriteFails line 127, col 3 to line 131, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 3: <PickPlanModel line 95, col 3 to line 100, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "B"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "B"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 5: <WriteFails line 127, col 3 to line 131, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <OrdinaryPick line 86, col 3 to line 91, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 3: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <ReadExecutes line 135, col 3 to line 139, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "inflight", gen |-> 0, val |-> "A", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 5: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <OrdinaryPick line 86, col 3 to line 91, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 3: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <PickPlanModel line 95, col 3 to line 100, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "A"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 5: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "A"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 6: <WriteFails line 127, col 3 to line 131, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Error: Invariant SettledChipShowsSavedRole is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "O"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 2: <OrdinaryPick line 86, col 3 to line 91, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "none"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "O"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 0
+/\ planSend = "none"
+
+State 3: <SelectPlanChip line 70, col 3 to line 75, col 58 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 4: <PickPlanModel line 95, col 3 to line 100, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "B"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "asked", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 5: <ReadFails line 152, col 3 to line 156, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "started", visit |-> 1, value |-> "B"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+State 6: <WriteFails line 127, col 3 to line 131, col 78 of module PlanPreview>
+/\ modelRoleFile = "A"
+/\ planEditState = "none"
+/\ saveFlight = [st |-> "idle", visit |-> 0, value |-> "none"]
+/\ ompProcessModel = "O"
+/\ planAppliedRef = FALSE
+/\ draftModel = "X"
+/\ chip = "plan"
+/\ readFlight = [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE]
+/\ planMode = FALSE
+/\ planRolesState = "none"
+/\ draftBeforePreview = "X"
+/\ planModelApplied = FALSE
+/\ planRolesWrite = 0
+/\ statusPlanModel = "none"
+/\ extSettingsRole = "A"
+/\ planVisit = 1
+/\ planSend = "none"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.8E-14
+3133 states generated, 658 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 23:07:16)

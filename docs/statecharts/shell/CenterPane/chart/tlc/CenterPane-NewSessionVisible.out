@@ -1,0 +1,56 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 120 and seed 3351051306696149496 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 54472] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/CenterPane.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module CenterPane
+Starting... (2026-10-28 22:37:15)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:37:15.
+Error: Invariant NewSessionVisible is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkDraftOpen = FALSE
+/\ lastRequest = "none"
+/\ pendingSelected = FALSE
+
+State 2: <UserOpenForkDraft line 22, col 5 to line 24, col 32 of module CenterPane>
+/\ forkDraftOpen = TRUE
+/\ lastRequest = "fork"
+/\ pendingSelected = FALSE
+
+State 3: <UserNewSession line 28, col 5 to line 30, col 30 of module CenterPane>
+/\ forkDraftOpen = TRUE
+/\ lastRequest = "newSession"
+/\ pendingSelected = TRUE
+
+Error: Invariant NewSessionVisible is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ forkDraftOpen = FALSE
+/\ lastRequest = "none"
+/\ pendingSelected = FALSE
+
+State 2: <UserNewSession line 28, col 5 to line 30, col 30 of module CenterPane>
+/\ forkDraftOpen = FALSE
+/\ lastRequest = "newSession"
+/\ pendingSelected = TRUE
+
+State 3: <UserOpenForkDraft line 22, col 5 to line 24, col 32 of module CenterPane>
+/\ forkDraftOpen = TRUE
+/\ lastRequest = "fork"
+/\ pendingSelected = TRUE
+
+State 4: <UserNewSession line 28, col 5 to line 30, col 30 of module CenterPane>
+/\ forkDraftOpen = TRUE
+/\ lastRequest = "newSession"
+/\ pendingSelected = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.5E-18
+24 states generated, 7 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:37:15)

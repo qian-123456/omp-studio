@@ -1,0 +1,15 @@
+Observed focused replay results (2026-10-28; transcribed from tool output, not a fresh rerun)
+
+./node_modules/.bin/vitest run --config <slice>/replay/vitest.config.ts
+Test Files 2 passed (2)
+Tests 7 passed (7)
+Duration 4.99s
+
+CARGO_TARGET_DIR=<slice>/replay/cargo-target cargo test --offline --lib future_scope_records_cutoff_once_and_all_never_clears
+privacy::store::tests::future_scope_records_cutoff_once_and_all_never_clears ... ok
+1 passed; 0 failed; 754 filtered out
+Finished test profile in 4m39s; test 0.02s.
+
+All 8 TLA files: uncitedConditions returned [].
+Test assertions intentionally record existing undesired behavior; passing replay is reproduction evidence, not desired-contract acceptance.
+The Node replay external boundary mocks do not prove native IPC ordering, successful credential persistence, or OMP process secret loading.

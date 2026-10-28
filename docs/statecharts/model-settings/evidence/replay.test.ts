@@ -1,0 +1,26 @@
+import { it, expect, vi } from 'vitest';
+import { writeFileSync } from 'node:fs';
+const io = vi.hoisted(() => ({ next: null as null | (() => Promise<unknown>) }));
+vi.mock("@repo/src/lib/ipc.ts", () => ({ modelTemplatesSnapshot: () => io.next!(), modelSwitchStatus: async () => ({providers:[]}) }));
+vi.mock("@repo/src/lib/events.ts", () => ({ onModelSwitchChanged: async () => () => {} }));
+import { useModelTemplatesStore as store } from "@repo/src/features/settings/modelTemplates/store.ts";
+const deferred = () => { let resolve!: (v: unknown) => void; const promise = new Promise(r => { resolve = r; }); return {promise,resolve}; };
+const snapshot = (name: string) => ({templates:[{id:'fixture-template',name,scope:'global',roles:{default:'fixture/model'}}],rules:[],log:[],settings:{pollIntervalSecs:600},currents:[],conflicts:[]}) as any;
+it('replays public store save publication overwritten by pending older read; forced-read control succeeds', async () => {
+ const old = snapshot('before-save'); const saved = snapshot('saved-template');
+ const oldRead = deferred(); io.next = () => oldRead.promise;
+ const observed: string[] = [];
+ const stop = store.subscribe(s => {if(s.snapshot) {const name = s.snapshot.templates[0].name; if(observed.at(-1) !== name) observed.push(name);}});
+ const pending = store.getState().load(true);
+ store.getState().setSnapshot(saved);
+ expect(store.getState().snapshot?.templates[0].name).toBe('saved-template');
+ oldRead.resolve(old); await pending;
+ expect(store.getState().snapshot?.templates[0].name).toBe('before-save');
+ expect(observed.slice(-2)).toEqual(['saved-template','before-save']); stop();
+ const first = deferred(); const second = deferred();
+ io.next = () => first.promise; const p1 = store.getState().load(true);
+ io.next = () => second.promise; const p2 = store.getState().load(true);
+ second.resolve(saved); await p2; first.resolve(old); await p1;
+ expect(store.getState().snapshot?.templates[0].name).toBe('saved-template');
+ writeFileSync(process.env.OMP_AUDIT_OUTPUT ?? '<scratch>/model-settings/replay-result.json', JSON.stringify({result:'confirmed',productionEntryPoints:['useModelTemplatesStore.load(true)','useModelTemplatesStore.setSnapshot(snapshot)'],mockedIo:['IPC snapshot/status','desktop change events'],observedBugSequence:observed,control:'Forced reads correctly suppress earlier completion',assertions:4,limitation:'Consumer store replay, no rendered desktop or config writes.'},null,2));
+});

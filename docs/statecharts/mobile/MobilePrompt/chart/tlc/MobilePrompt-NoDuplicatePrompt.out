@@ -1,0 +1,126 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 2 and seed -4826381555571958060 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 71179] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobilePrompt.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module MobilePrompt
+Starting... (2026-10-28 22:46:14)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:46:14.
+Error: Invariant NoDuplicatePrompt is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ optimistic = FALSE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "none"
+/\ serverPrompts = 0
+
+State 2: <Type line 30, col 5 to line 32, col 63 of module MobilePrompt>
+/\ optimistic = FALSE
+/\ composer = "draft"
+/\ serverSeen = FALSE
+/\ req = "none"
+/\ serverPrompts = 0
+
+State 3: <TapSend line 36, col 5 to line 43, col 30 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "inflight"
+/\ serverPrompts = 0
+
+State 4: <ServerReceives line 47, col 5 to line 51, col 46 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = TRUE
+/\ req = "inflight"
+/\ serverPrompts = 1
+
+State 5: <ClientFailure line 62, col 5 to line 66, col 46 of module MobilePrompt>
+/\ optimistic = FALSE
+/\ composer = "restored"
+/\ serverSeen = TRUE
+/\ req = "failed"
+/\ serverPrompts = 1
+
+State 6: <TapSend line 36, col 5 to line 43, col 30 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "inflight"
+/\ serverPrompts = 1
+
+State 7: <ServerReceives line 47, col 5 to line 51, col 46 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = TRUE
+/\ req = "inflight"
+/\ serverPrompts = 2
+
+Error: Invariant NoDuplicatePrompt is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ optimistic = FALSE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "none"
+/\ serverPrompts = 0
+
+State 2: <Type line 30, col 5 to line 32, col 63 of module MobilePrompt>
+/\ optimistic = FALSE
+/\ composer = "draft"
+/\ serverSeen = FALSE
+/\ req = "none"
+/\ serverPrompts = 0
+
+State 3: <TapSend line 36, col 5 to line 43, col 30 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "inflight"
+/\ serverPrompts = 0
+
+State 4: <ServerReceives line 47, col 5 to line 51, col 46 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = TRUE
+/\ req = "inflight"
+/\ serverPrompts = 1
+
+State 5: <ClientFailure line 62, col 5 to line 66, col 46 of module MobilePrompt>
+/\ optimistic = FALSE
+/\ composer = "restored"
+/\ serverSeen = TRUE
+/\ req = "failed"
+/\ serverPrompts = 1
+
+State 6: <TapSend line 36, col 5 to line 43, col 30 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "empty"
+/\ serverSeen = FALSE
+/\ req = "inflight"
+/\ serverPrompts = 1
+
+State 7: <Type line 30, col 5 to line 32, col 63 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "draft"
+/\ serverSeen = FALSE
+/\ req = "inflight"
+/\ serverPrompts = 1
+
+State 8: <ServerReceives line 47, col 5 to line 51, col 46 of module MobilePrompt>
+/\ optimistic = TRUE
+/\ composer = "draft"
+/\ serverSeen = TRUE
+/\ req = "inflight"
+/\ serverPrompts = 2
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 7.0E-18
+23 states generated, 13 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:46:14)

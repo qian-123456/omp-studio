@@ -1,0 +1,1219 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 57 and seed -8992680755271044232 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 56247] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PrivacyNative.tla
+Parsing file <path>/Integers.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module PrivacyNative
+Starting... (2026-10-28 22:39:48)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:39:48.
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 4: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+State 3: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 4: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+State 3: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 6: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 6: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 8: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 6: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 8: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <MarkNewEntry line 45, col 3 to line 48, col 67 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 6: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 8: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 2
+/\ jsonProt = FALSE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 9: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 2
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 2
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 2
+/\ jsonVer = 2
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 2
+
+Error: Invariant CompactionHasNativeCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+State 2: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 3: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 4: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = FALSE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 5: <UserBreaksYml line 57, col 3 to line 61, col 98 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = TRUE
+/\ ymlBlock = 0
+
+State 6: <UserFixesYml line 64, col 3 to line 66, col 115 of module PrivacyNative>
+/\ procEnv = 0
+/\ drift = TRUE
+/\ procUp = FALSE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 7: <SpawnOmp line 70, col 3 to line 74, col 96 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = FALSE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 8: <BeginTurn line 77, col 3 to line 81, col 114 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = TRUE
+/\ procUp = TRUE
+/\ status = "conflict"
+/\ memHash = 1
+/\ jsonProt = FALSE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 0
+
+State 9: <ResyncSame line 52, col 3 to line 53, col 72 of module PrivacyNative>
+/\ procEnv = 1
+/\ drift = FALSE
+/\ procUp = TRUE
+/\ status = "ok"
+/\ memHash = 1
+/\ jsonProt = TRUE
+/\ streaming = TRUE
+/\ ver = 1
+/\ jsonVer = 1
+/\ procLoaded = 0
+/\ conflict = FALSE
+/\ ymlBlock = 1
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.1E-15
+316 states generated, 94 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:39:48)

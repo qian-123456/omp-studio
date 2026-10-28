@@ -1,0 +1,79 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 128,
+  "modelTransitions": 432,
+  "chartStates": 68,
+  "chartTransitions": 291,
+  "chartStatus": {
+    "works": 22,
+    "wrong": 18,
+    "fixed": 17,
+    "mixed": 0,
+    "after": 11,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "所选方式被忽略",
+      "color": "#fde2e2",
+      "states": 17
+    },
+    {
+      "name": "加密库留有孤立密钥",
+      "color": "#ffe9c7",
+      "states": 18
+    },
+    {
+      "name": "正常",
+      "color": "#e2f5e9",
+      "states": 33
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "配置里是明文密钥，加密库里有密钥",
+      "invariant": "NoOrphanVaultKey",
+      "rule": "加密库里存在某个供应商的密钥时，配置文件里一定还有指向它的引用。",
+      "cause": "配置文件先改完，再清理加密库，清理失败后加密库里留下没有任何引用的密钥",
+      "readerSteps": 1,
+      "modelSteps": 2,
+      "counterexamples": 37,
+      "lastSteps": [
+        "改回明文时清理加密库失败",
+        "删除供应商时清理加密库失败",
+        "改成明文保存时清理加密库失败"
+      ],
+      "startsHere": false,
+      "fix": "unchanged"
+    },
+    {
+      "n": 2,
+      "end": "配置里是明文密钥，加密库里没有密钥，上次保存提示成功但所选方式没有生效",
+      "invariant": "SavedModeMatchesChoice",
+      "rule": "保存后，密钥的存放方式必须和用户在表单里选的方式一致。",
+      "cause": "没有输入新密钥时，所选保存方式被忽略，已有密钥的存放方式没变，界面仍提示保存成功",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 3,
+      "lastSteps": [
+        "不输入新密钥直接保存"
+      ],
+      "startsHere": false,
+      "fix": "配置里是加密引用，加密库里有密钥，上次保存按所选方式生效"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "ProviderKeys.tla": [],
+    "ProviderKeysFixed.tla": []
+  },
+  "brokenProperties": []
+}

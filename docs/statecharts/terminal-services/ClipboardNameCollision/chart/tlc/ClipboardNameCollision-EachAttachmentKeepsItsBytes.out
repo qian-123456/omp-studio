@@ -1,0 +1,57 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 33 and seed -5569230909499966619 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 85685] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ClipboardNameCollision.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module ClipboardNameCollision
+Starting... (2026-10-28 22:52:21)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-28 22:52:22.
+Error: Invariant EachAttachmentKeepsItsBytes is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "none"]
+/\ s1 = "idle"
+/\ s2 = "idle"
+
+State 2: <Save1 line 33, col 3 to line 36, col 30 of module ClipboardNameCollision>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "c1"]
+/\ s1 = "done"
+/\ s2 = "idle"
+
+State 3: <Save2 line 39, col 3 to line 42, col 30 of module ClipboardNameCollision>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "c2"]
+/\ s1 = "done"
+/\ s2 = "done"
+
+Error: Invariant EachAttachmentKeepsItsBytes is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "none"]
+/\ s1 = "idle"
+/\ s2 = "idle"
+
+State 2: <Save2 line 39, col 3 to line 42, col 30 of module ClipboardNameCollision>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "c2"]
+/\ s1 = "idle"
+/\ s2 = "done"
+
+State 3: <Save1 line 33, col 3 to line 36, col 30 of module ClipboardNameCollision>
+/\ sameKey = TRUE
+/\ disk = [p1 |-> "none", p2 |-> "none", shared |-> "c1"]
+/\ s1 = "done"
+/\ s2 = "done"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.1E-18
+10 states generated, 7 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 01s at (2026-10-28 22:52:22)

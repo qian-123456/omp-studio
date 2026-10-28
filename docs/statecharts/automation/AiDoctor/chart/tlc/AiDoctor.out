@@ -1,0 +1,175 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 33 and seed -140855870936433659 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 72998] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/AiDoctor_rules.tla
+Parsing file <path>/AiDoctor.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module AiDoctor
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module AiDoctor_rules
+Starting... (2026-10-28 22:46:42)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:46:42.
+<< "statechart broken",
+   [ stat |-> [A |-> "running", B |-> "idle"],
+     diag |-> [A |-> FALSE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 0] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 0] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "error", B |-> "idle"],
+     diag |-> [A |-> FALSE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 0] ],
+   {"FailedNotRetried", "NoStarvation"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 1, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "running", B |-> "idle"],
+     diag |-> [A |-> FALSE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 0] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 1, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 1, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 2, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 0] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "error", B |-> "idle"],
+     diag |-> [A |-> FALSE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 0] ],
+   {"FailedNotRetried", "NoStarvation"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 1, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 1, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 1, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 2, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 3, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 1] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 2, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 2, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 3, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 2] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "running"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "idle"],
+     diag |-> [A |-> TRUE, B |-> TRUE],
+     tries |-> [A |-> 3, B |-> 3] ],
+   {"FailedNotRetried"} >>
+<< "statechart broken",
+   [ stat |-> [A |-> "idle", B |-> "error"],
+     diag |-> [A |-> TRUE, B |-> FALSE],
+     tries |-> [A |-> 3, B |-> 3] ],
+   {"FailedNotRetried"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.6E-17
+45 states generated, 37 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 13.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-28 22:46:42)

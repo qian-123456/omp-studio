@@ -1,0 +1,703 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 85 and seed -3296731485273042933 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 72251] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/Ownership.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Ownership
+Starting... (2026-10-28 23:49:37)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 23:49:37.
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 3: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 4: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <PidReusedByOtherProgram line 40, col 3 to line 42, col 71 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 4: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 5: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 6: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = TRUE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpExitsCleanly line 30, col 3 to line 32, col 69 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 5: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 6: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 7: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 5: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 6: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 7: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 3: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 4: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 6: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 7: <ExternalOmpExitsCleanly line 30, col 3 to line 32, col 69 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 3: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 4: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 6: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 7: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpExitsCleanly line 30, col 3 to line 32, col 69 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <PidReusedByOtherProgram line 40, col 3 to line 42, col 71 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 6: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 7: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 8: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpExitsCleanly line 30, col 3 to line 32, col 69 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <PidReusedByOtherProgram line 40, col 3 to line 42, col 71 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 6: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 7: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 8: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 9: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "exited"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <PidReusedByOtherProgram line 40, col 3 to line 42, col 71 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 5: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 6: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 7: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 8: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 9: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Error: Invariant SuspendShown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ statusFile = "none"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 2: <ExternalOmpStarts line 25, col 3 to line 27, col 59 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 3: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 4: <UserOpenSession line 51, col 3 to line 55, col 62 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = FALSE
+/\ pidIsOmp = TRUE
+/\ appAlive = TRUE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 5: <IdleReclaim line 64, col 3 to line 66, col 68 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> TRUE, st |-> "live"]
+
+State 6: <ExitEventRecompute line 69, col 3 to line 71, col 85 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = TRUE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 7: <PidReusedByOtherProgram line 40, col 3 to line 42, col 71 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = FALSE
+/\ stopPending = TRUE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 8: <WriteSuspendedFlag line 74, col 3 to line 76, col 65 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = TRUE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+State 9: <ExternalOmpKilled line 35, col 3 to line 37, col 81 of module Ownership>
+/\ statusFile = "working"
+/\ pidAlive = FALSE
+/\ suspendedDb = TRUE
+/\ stopPending = FALSE
+/\ pidIsOmp = FALSE
+/\ appAlive = FALSE
+/\ meta = [live |-> FALSE, st |-> "idle"]
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.8E-15
+403 states generated, 117 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 23:49:37)

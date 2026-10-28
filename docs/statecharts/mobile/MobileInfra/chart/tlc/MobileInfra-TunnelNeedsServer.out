@@ -1,0 +1,1583 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 91 and seed 2453088966483824163 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 76279] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobileInfra.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module MobileInfra
+Starting... (2026-10-28 22:48:09)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:48:09.
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 5: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 8: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 6: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 7: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 8: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 9: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 11: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 11: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 11: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 12: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 11: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 12: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "A"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Error: Invariant TunnelNeedsServer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 2: <StartServer line 39, col 5 to line 41, col 83 of module MobileInfra>
+/\ inflight = 0
+/\ children = 0
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 3: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 4: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 2
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 5: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 6: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 7: <TunnelStop line 80, col 5 to line 83, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 1
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 8: <TunnelStartBegin line 56, col 5 to line 62, col 71 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "running"
+
+State 9: <StopServer line 45, col 5 to line 52, col 51 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 10: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "none"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 11: <DdnsSync line 106, col 5 to line 108, col 79 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "B"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 12: <SetDdnsHost line 101, col 5 to line 102, col 81 of module MobileInfra>
+/\ inflight = 1
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "none"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+State 13: <TunnelReady line 66, col 5 to line 69, col 73 of module MobileInfra>
+/\ inflight = 0
+/\ children = 2
+/\ ddnsSynced = "B"
+/\ v6 = "off"
+/\ tunnel = "up"
+/\ ddnsHost = "A"
+/\ certHost = "none"
+/\ server = "stopped"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 7.1E-15
+927 states generated, 174 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 12.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:48:09)

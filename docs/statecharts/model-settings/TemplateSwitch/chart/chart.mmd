@@ -1,0 +1,138 @@
+---
+title: "模板额度切换与恢复"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+  }
+  class legendWorks works
+  state "全局；写入失败" as s0
+  state "全局；写入失败；已强制" as s1
+  state "全局；已应用" as s2
+  state "全局；已应用；已强制" as s3
+  state "全局；已应用；手动修改待保留" as s4
+  state "全局；已应用；手动修改待保留；已强制" as s5
+  state "全局；已自动恢复" as s6
+  state "全局；已自动恢复；已强制" as s7
+  state "全局；未命中" as s8
+  state "全局；等待检查" as s9
+  state "全局；部分生效" as s10
+  state "全局；部分生效；已强制" as s11
+  state "全局；部分生效；手动修改待保留" as s12
+  state "全局；部分生效；手动修改待保留；已强制" as s13
+  state "全局；配置已写入，通知会话" as s14
+  state "全局；配置已写入，通知会话；已强制" as s15
+  state "全局；重新预检" as s16
+  state "全局；重新预检；已强制" as s17
+  state "全局；额度不足已拒绝" as s18
+  state "项目；写入失败" as s19
+  state "项目；写入失败；已强制" as s20
+  state "项目；已应用" as s21
+  state "项目；已应用；已强制" as s22
+  state "项目；已应用；手动修改待保留" as s23
+  state "项目；已应用；手动修改待保留；已强制" as s24
+  state "项目；已自动恢复" as s25
+  state "项目；已自动恢复；已强制" as s26
+  state "项目；未命中" as s27
+  state "项目；等待检查" as s28
+  state "项目；部分生效" as s29
+  state "项目；部分生效；已强制" as s30
+  state "项目；部分生效；手动修改待保留" as s31
+  state "项目；部分生效；手动修改待保留；已强制" as s32
+  state "项目；配置已写入，通知会话" as s33
+  state "项目；配置已写入，通知会话；已强制" as s34
+  state "项目；重新预检" as s35
+  state "项目；重新预检；已强制" as s36
+  state "项目；额度不足已拒绝" as s37
+  [*] --> s9
+  [*] --> s28
+  s9 --> s16 : 额度达到阈值，选择首条规则
+  s9 --> s8 : 额度未命中或窗口缺失
+  s28 --> s35 : 额度达到阈值，选择首条规则
+  s28 --> s27 : 额度未命中或窗口缺失
+  s16 --> s14 : 原子写入角色配置
+  s16 --> s0 : 配置写入失败
+  s16 --> s18 : 目标额度耗尽，记录拒绝
+  s35 --> s33 : 原子写入角色配置
+  s35 --> s19 : 配置写入失败
+  s35 --> s37 : 目标额度耗尽，记录拒绝
+  s14 --> s10 : 通知可切换会话并记录结果
+  s14 --> s2 : 通知可切换会话并记录结果
+  s18 --> s17 : 确认强制应用或采用同范围保底
+  s33 --> s29 : 通知可切换会话并记录结果
+  s33 --> s21 : 通知可切换会话并记录结果
+  s37 --> s36 : 确认强制应用或采用同范围保底
+  s10 --> s12 : 用户手动修改角色
+  s10 --> s6 : 额度回落且无手动修改，恢复旧值
+  s2 --> s4 : 用户手动修改角色
+  s17 --> s15 : 原子写入角色配置
+  s17 --> s1 : 配置写入失败
+  s29 --> s31 : 用户手动修改角色
+  s29 --> s25 : 额度回落且无手动修改，恢复旧值
+  s21 --> s23 : 用户手动修改角色
+  s36 --> s34 : 原子写入角色配置
+  s36 --> s20 : 配置写入失败
+  s15 --> s11 : 通知可切换会话并记录结果
+  s15 --> s3 : 通知可切换会话并记录结果
+  s34 --> s30 : 通知可切换会话并记录结果
+  s34 --> s22 : 通知可切换会话并记录结果
+  s11 --> s13 : 用户手动修改角色
+  s11 --> s7 : 额度回落且无手动修改，恢复旧值
+  s3 --> s5 : 用户手动修改角色
+  s30 --> s32 : 用户手动修改角色
+  s30 --> s26 : 额度回落且无手动修改，恢复旧值
+  s22 --> s24 : 用户手动修改角色
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works
+  class s22 works
+  class s23 works
+  class s24 works
+  class s25 works
+  class s26 works
+  class s27 works
+  class s28 works
+  class s29 works
+  class s30 works
+  class s31 works
+  class s32 works
+  class s33 works
+  class s34 works
+  class s35 works
+  class s36 works
+  class s37 works

@@ -1,0 +1,140 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "较新会话：已诊断（已尝试2次）；较旧会话：已诊断" as s0
+  state "较新会话：已诊断（已尝试2次）；较旧会话：已诊断（已尝试2次）" as s1
+  state "较新会话：已诊断（已尝试2次）；较旧会话：已诊断（已尝试3次以上）" as s2
+  state "较新会话：已诊断（已尝试2次）；较旧会话：未诊断" as s3
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断中" as s4
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断中（已尝试2次）" as s5
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断中（已尝试3次以上）" as s6
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断失败" as s7
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断失败（已尝试2次）" as s8
+  state "较新会话：已诊断（已尝试2次）；较旧会话：诊断失败（已尝试3次以上）" as s9
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：已诊断" as s10
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：已诊断（已尝试2次）" as s11
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：已诊断（已尝试3次以上）" as s12
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：未诊断" as s13
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断中" as s14
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断中（已尝试2次）" as s15
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断中（已尝试3次以上）" as s16
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断失败" as s17
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断失败（已尝试2次）" as s18
+  state "较新会话：已诊断（已尝试3次以上）；较旧会话：诊断失败（已尝试3次以上）" as s19
+  state "较新会话：已诊断；较旧会话：已诊断" as s20
+  state "较新会话：已诊断；较旧会话：已诊断（已尝试2次）" as s21
+  state "较新会话：已诊断；较旧会话：已诊断（已尝试3次以上）" as s22
+  state "较新会话：已诊断；较旧会话：未诊断" as s23
+  state "较新会话：已诊断；较旧会话：诊断中" as s24
+  state "较新会话：已诊断；较旧会话：诊断中（已尝试2次）" as s25
+  state "较新会话：已诊断；较旧会话：诊断中（已尝试3次以上）" as s26
+  state "较新会话：已诊断；较旧会话：诊断失败" as s27
+  state "较新会话：已诊断；较旧会话：诊断失败（已尝试2次）" as s28
+  state "较新会话：已诊断；较旧会话：诊断失败（已尝试3次以上）" as s29
+  state "较新会话：未诊断；较旧会话：未诊断" as s30
+  state "较新会话：诊断中（已尝试2次）；较旧会话：未诊断" as s31
+  state "较新会话：诊断中（已尝试3次以上）；较旧会话：未诊断" as s32
+  state "较新会话：诊断中；较旧会话：未诊断" as s33
+  state "较新会话：诊断失败（已尝试2次）；较旧会话：未诊断" as s34
+  state "较新会话：诊断失败（已尝试3次以上）；较旧会话：未诊断" as s35
+  state "较新会话：诊断失败；较旧会话：未诊断" as s36
+  [*] --> s30
+  s30 --> s33 : 每分钟的自动检查开始一次诊断
+  s33 --> s23 : 诊断成功
+  s33 --> s36 : 诊断失败
+  s23 --> s24 : 每分钟的自动检查开始一次诊断
+  s36 --> s31 : 每分钟的自动检查开始一次诊断
+  s24 --> s20 : 诊断成功
+  s24 --> s27 : 诊断失败
+  s31 --> s3 : 诊断成功
+  s31 --> s34 : 诊断失败
+  s27 --> s25 : 每分钟的自动检查开始一次诊断
+  s3 --> s4 : 每分钟的自动检查开始一次诊断
+  s34 --> s32 : 每分钟的自动检查开始一次诊断
+  s25 --> s21 : 诊断成功
+  s25 --> s28 : 诊断失败
+  s4 --> s0 : 诊断成功
+  s4 --> s7 : 诊断失败
+  s32 --> s13 : 诊断成功
+  s32 --> s35 : 诊断失败
+  s28 --> s26 : 每分钟的自动检查开始一次诊断
+  s7 --> s5 : 每分钟的自动检查开始一次诊断
+  s13 --> s14 : 每分钟的自动检查开始一次诊断
+  s35 --> s32 : 每分钟的自动检查开始一次诊断
+  s26 --> s22 : 诊断成功
+  s26 --> s29 : 诊断失败
+  s5 --> s1 : 诊断成功
+  s5 --> s8 : 诊断失败
+  s14 --> s10 : 诊断成功
+  s14 --> s17 : 诊断失败
+  s29 --> s26 : 每分钟的自动检查开始一次诊断
+  s8 --> s6 : 每分钟的自动检查开始一次诊断
+  s17 --> s15 : 每分钟的自动检查开始一次诊断
+  s6 --> s2 : 诊断成功
+  s6 --> s9 : 诊断失败
+  s15 --> s11 : 诊断成功
+  s15 --> s18 : 诊断失败
+  s9 --> s6 : 每分钟的自动检查开始一次诊断
+  s18 --> s16 : 每分钟的自动检查开始一次诊断
+  s16 --> s12 : 诊断成功
+  s16 --> s19 : 诊断失败
+  s19 --> s16 : 每分钟的自动检查开始一次诊断
+  class s0 wrong
+  class s1 wrong
+  class s2 wrong
+  class s3 wrong
+  class s4 wrong
+  class s5 wrong
+  class s6 wrong
+  class s7 wrong
+  class s8 wrong
+  class s9 wrong
+  class s10 wrong
+  class s11 wrong
+  class s12 wrong
+  class s13 wrong
+  class s14 wrong
+  class s15 wrong
+  class s16 wrong
+  class s17 wrong
+  class s18 wrong
+  class s19 wrong
+  class s20 works
+  class s21 wrong
+  class s22 wrong
+  class s23 works
+  class s24 works
+  class s25 wrong
+  class s26 wrong
+  class s27 works
+  class s28 wrong
+  class s29 wrong
+  class s30 works
+  class s31 wrong
+  class s32 wrong
+  class s33 works
+  class s34 wrong
+  class s35 wrong
+  class s36 works

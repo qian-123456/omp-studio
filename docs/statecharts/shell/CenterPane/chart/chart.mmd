@@ -1,0 +1,66 @@
+---
+title: "中间区域草稿"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): the fix
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "显示的就是用户要的" as legendWorks
+    state "修复后显示新会话" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "中间显示分支草稿" as g0 {
+    state "用户刚点了分支" as s0
+    state "用户刚点了分支，新会话草稿被盖住" as s1
+    state "用户刚点了新建会话，新会话草稿被盖住" as s2
+  }
+  state "中间显示新会话草稿" as g1 {
+    state "用户刚点了分支" as s3
+    state "用户刚点了新建会话" as s4
+  }
+  state "中间显示起始页" as g2 {
+    state "刚打开" as s5
+    state "用户刚点了分支" as s6
+    state "用户刚选了已有会话" as s7
+  }
+  [*] --> s5
+  g0 --> s7 : 点一个已有会话
+  g1 --> s1 : 在运行中的会话上点分支
+  g1 --> s7 : 点一个已有会话
+  g2 --> s0 : 在运行中的会话上点分支
+  g2 --> s4 : 按 Cmd+N 或点新建会话
+  s5 --> s7 : 点一个已有会话
+  s0 --> s2 : 按 Cmd+N 或点新建会话
+  s0 --> s6 : 放弃分支草稿
+  s2 --> s1 : 在运行中的会话上点分支
+  s2 --> s4 : 放弃分支草稿
+  s6 --> s7 : 点一个已有会话
+  s1 --> s2 : 按 Cmd+N 或点新建会话
+  s1 --> s3 : 放弃分支草稿
+  s3 --> s4 : 按 Cmd+N 或点新建会话
+  s0 --> s4 : with the fix, 按 Cmd+N 或点新建会话
+  s1 --> s4 : with the fix, 按 Cmd+N 或点新建会话
+  class s0 works
+  class s1 works
+  class s2 fixed
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works

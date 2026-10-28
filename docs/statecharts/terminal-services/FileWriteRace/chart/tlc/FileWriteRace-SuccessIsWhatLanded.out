@@ -1,0 +1,81 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 24 and seed 3584705723171337056 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 85687] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/FileWriteRace.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module FileWriteRace
+Starting... (2026-10-28 22:52:21)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:52:21.
+Error: Invariant SuccessIsWhatLanded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ w1 = "idle"
+/\ w2 = "idle"
+/\ file = "old"
+/\ tmp = "none"
+
+State 2: <WriteTmp1 line 24, col 3 to line 27, col 27 of module FileWriteRace>
+/\ w1 = "tmpWritten"
+/\ w2 = "idle"
+/\ file = "old"
+/\ tmp = "c1"
+
+State 3: <WriteTmp2 line 30, col 3 to line 33, col 27 of module FileWriteRace>
+/\ w1 = "tmpWritten"
+/\ w2 = "tmpWritten"
+/\ file = "old"
+/\ tmp = "c2"
+
+State 4: <Rename1 line 36, col 3 to line 40, col 21 of module FileWriteRace>
+/\ w1 = "ok"
+/\ w2 = "tmpWritten"
+/\ file = "c2"
+/\ tmp = "none"
+
+State 5: <Rename2 line 43, col 3 to line 47, col 21 of module FileWriteRace>
+/\ w1 = "ok"
+/\ w2 = "failed"
+/\ file = "c2"
+/\ tmp = "none"
+
+Error: Invariant SuccessIsWhatLanded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ w1 = "idle"
+/\ w2 = "idle"
+/\ file = "old"
+/\ tmp = "none"
+
+State 2: <WriteTmp2 line 30, col 3 to line 33, col 27 of module FileWriteRace>
+/\ w1 = "idle"
+/\ w2 = "tmpWritten"
+/\ file = "old"
+/\ tmp = "c2"
+
+State 3: <WriteTmp1 line 24, col 3 to line 27, col 27 of module FileWriteRace>
+/\ w1 = "tmpWritten"
+/\ w2 = "tmpWritten"
+/\ file = "old"
+/\ tmp = "c1"
+
+State 4: <Rename2 line 43, col 3 to line 47, col 21 of module FileWriteRace>
+/\ w1 = "tmpWritten"
+/\ w2 = "ok"
+/\ file = "c1"
+/\ tmp = "none"
+
+State 5: <Rename1 line 36, col 3 to line 40, col 21 of module FileWriteRace>
+/\ w1 = "failed"
+/\ w2 = "ok"
+/\ file = "c1"
+/\ tmp = "none"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.8E-18
+19 states generated, 17 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 01s at (2026-10-28 22:52:21)

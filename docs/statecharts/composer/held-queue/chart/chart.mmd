@@ -1,0 +1,160 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendMixed mixed
+  state "正在停止：暂存1、2；已发出无" as s0
+  state "正在停止：暂存1、2；已发出无；单条发送中：1" as s1
+  state "正在停止：暂存1、2；已发出无；单条发送中：2" as s2
+  state "正在停止：暂存1；已发出2" as s3
+  state "正在停止：暂存1；已发出无" as s4
+  state "正在停止：暂存1；已发出无；单条发送中：2" as s5
+  state "正在停止：暂存2；已发出1" as s6
+  state "正在停止：暂存2；已发出无" as s7
+  state "正在停止：暂存2；已发出无；单条发送中：1" as s8
+  state "正在生成：暂存1、2；已发出无" as s9
+  state "正在生成：暂存1、2；已发出无；单条发送中：1" as s10
+  state "正在生成：暂存1、2；已发出无；单条发送中：2" as s11
+  state "正在生成：暂存1；已发出2" as s12
+  state "正在生成：暂存1；已发出无" as s13
+  state "正在生成：暂存1；已发出无；单条发送中：2" as s14
+  state "正在生成：暂存2；已发出1" as s15
+  state "正在生成：暂存2；已发出无" as s16
+  state "正在生成：暂存2；已发出无；单条发送中：1" as s17
+  state "正在生成：暂存无；已发出1" as s18
+  state "正在生成：暂存无；已发出1、2" as s19
+  state "正在生成：暂存无；已发出2" as s20
+  state "正在生成：暂存无；已发出无" as s21
+  state "空闲：暂存1、2；已发出无" as s22
+  state "空闲：暂存1、2；已发出无；单条发送中：1" as s23
+  state "空闲：暂存1、2；已发出无；单条发送中：2" as s24
+  state "空闲：暂存1；已发出2" as s25
+  state "空闲：暂存1；已发出无" as s26
+  state "空闲：暂存1；已发出无；单条发送中：2" as s27
+  state "空闲：暂存1；已发出无；合并发送中：2；单条发送中：1" as s28
+  state "空闲：暂存2；已发出1" as s29
+  state "空闲：暂存2；已发出无" as s30
+  state "空闲：暂存2；已发出无；单条发送中：1" as s31
+  state "空闲：暂存2；已发出无；合并发送中：1；单条发送中：2" as s32
+  state "空闲：暂存无；已发出1" as s33
+  state "空闲：暂存无；已发出1、2" as s34
+  state "空闲：暂存无；已发出1；合并发送中：2" as s35
+  state "空闲：暂存无；已发出2" as s36
+  state "空闲：暂存无；已发出2；合并发送中：1" as s37
+  state "空闲：暂存无；已发出无" as s38
+  state "空闲：暂存无；已发出无；合并发送中：1" as s39
+  state "空闲：暂存无；已发出无；合并发送中：1、2" as s40
+  state "空闲：暂存无；已发出无；合并发送中：1；单条发送中：2" as s41
+  state "空闲：暂存无；已发出无；合并发送中：2" as s42
+  state "空闲：暂存无；已发出无；合并发送中：2；单条发送中：1" as s43
+  [*] --> s21
+  s21 --> s13 : 生成中输入一条消息，先暂存
+  s21 --> s16 : 生成中输入一条消息，先暂存
+  s21 --> s38 : 这一轮结束
+  s13 --> s9 : 生成中输入一条消息，先暂存
+  s13 --> s4 : 点击停止
+  s13 --> s39 : 这一轮结束
+  s16 --> s7 : 点击停止
+  s16 --> s42 : 这一轮结束
+  s9 --> s0 : 点击停止
+  s9 --> s40 : 这一轮结束
+  s4 --> s39 : 这一轮结束
+  s39 --> s18 : 合并消息发送成功
+  s39 --> s26 : 合并消息发送失败，退回队列
+  s7 --> s42 : 这一轮结束
+  s42 --> s20 : 合并消息发送成功
+  s42 --> s30 : 合并消息发送失败，退回队列
+  s0 --> s40 : 这一轮结束
+  s40 --> s19 : 合并消息发送成功
+  s40 --> s22 : 合并消息发送失败，退回队列
+  s18 --> s15 : 生成中输入一条消息，先暂存
+  s18 --> s33 : 这一轮结束
+  s20 --> s12 : 生成中输入一条消息，先暂存
+  s20 --> s36 : 这一轮结束
+  s19 --> s34 : 这一轮结束
+  s22 --> s23 : 点击立即发送其中一条
+  s22 --> s24 : 点击立即发送其中一条
+  s15 --> s6 : 点击停止
+  s15 --> s35 : 这一轮结束
+  s12 --> s3 : 点击停止
+  s12 --> s37 : 这一轮结束
+  s23 --> s31 : 确认删除一条暂存消息
+  s23 --> s10 : 直接发送新消息开始一轮
+  s24 --> s27 : 确认删除一条暂存消息
+  s24 --> s11 : 直接发送新消息开始一轮
+  s6 --> s35 : 这一轮结束
+  s35 --> s29 : 合并消息发送失败，退回队列
+  s3 --> s37 : 这一轮结束
+  s37 --> s25 : 合并消息发送失败，退回队列
+  s31 --> s17 : 直接发送新消息开始一轮
+  s10 --> s1 : 点击停止
+  s27 --> s14 : 直接发送新消息开始一轮
+  s11 --> s2 : 点击停止
+  s17 --> s8 : 点击停止
+  s1 --> s28 : 这一轮结束
+  s14 --> s5 : 点击停止
+  s2 --> s32 : 这一轮结束
+  s8 --> s43 : 这一轮结束
+  s5 --> s41 : 这一轮结束
+  class s0 mixed
+  class s1 mixed
+  class s2 mixed
+  class s3 mixed
+  class s4 mixed
+  class s5 mixed
+  class s6 mixed
+  class s7 mixed
+  class s8 mixed
+  class s9 mixed
+  class s10 mixed
+  class s11 mixed
+  class s12 mixed
+  class s13 mixed
+  class s14 mixed
+  class s15 mixed
+  class s16 mixed
+  class s17 mixed
+  class s18 mixed
+  class s19 mixed
+  class s20 mixed
+  class s21 mixed
+  class s22 mixed
+  class s23 mixed
+  class s24 mixed
+  class s25 mixed
+  class s26 mixed
+  class s27 mixed
+  class s28 mixed
+  class s29 mixed
+  class s30 mixed
+  class s31 mixed
+  class s32 mixed
+  class s33 mixed
+  class s34 mixed
+  class s35 mixed
+  class s36 mixed
+  class s37 mixed
+  class s38 mixed
+  class s39 mixed
+  class s40 mixed
+  class s41 mixed
+  class s42 mixed
+  class s43 mixed

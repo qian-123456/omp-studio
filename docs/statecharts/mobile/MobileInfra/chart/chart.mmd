@@ -1,0 +1,226 @@
+---
+title: "手机服务生命周期"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "服务停止" as g0 {
+    state "无隧道，进程0个，IPv6关闭，设置域名域名乙，已同步域名乙" as s0
+    state "无隧道，进程0个，IPv6关闭，设置域名域名乙，已同步无" as s1
+    state "无隧道，进程0个，IPv6关闭，设置域名域名甲，已同步域名甲" as s2
+    state "无隧道，进程0个，IPv6关闭，设置域名域名甲，已同步无" as s3
+    state "无隧道，进程1个，IPv6关闭，设置域名域名乙，已同步域名乙" as s4
+    state "无隧道，进程1个，IPv6关闭，设置域名域名甲，已同步域名甲" as s5
+    state "无隧道，进程1个，IPv6关闭，设置域名域名甲，已同步无" as s6
+    state "隧道启动中，进程1个，IPv6关闭，设置域名域名甲，已同步无" as s7
+    state "隧道启动中，进程2个，两次启动同时进行，IPv6关闭，设置域名域名甲，已同步无" as s8
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名乙，已同步域名乙" as s9
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名乙，已同步无" as s10
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名甲，已同步域名甲" as s11
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名甲，已同步无" as s12
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名乙，已同步域名乙" as s13
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名乙，已同步无" as s14
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名甲，已同步域名甲" as s15
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名甲，已同步无" as s16
+  }
+  state "服务运行" as g1 {
+    state "无隧道，进程0个，IPv6关闭，设置域名域名乙，已同步域名乙" as s17
+    state "无隧道，进程0个，IPv6关闭，设置域名域名乙，已同步无" as s18
+    state "无隧道，进程0个，IPv6关闭，设置域名域名甲，已同步域名甲" as s19
+    state "无隧道，进程0个，IPv6关闭，设置域名域名甲，已同步无" as s20
+    state "无隧道，进程0个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步域名乙" as s21
+    state "无隧道，进程0个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步无" as s22
+    state "无隧道，进程0个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步域名甲" as s23
+    state "无隧道，进程0个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步无" as s24
+    state "无隧道，进程0个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步域名乙" as s25
+    state "无隧道，进程0个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步无" as s26
+    state "无隧道，进程0个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步域名甲" as s27
+    state "无隧道，进程0个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步无" as s28
+    state "无隧道，进程1个，IPv6关闭，设置域名域名乙，已同步域名乙" as s29
+    state "无隧道，进程1个，IPv6关闭，设置域名域名甲，已同步域名甲" as s30
+    state "无隧道，进程1个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步域名乙" as s31
+    state "无隧道，进程1个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步域名甲" as s32
+    state "无隧道，进程1个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步域名乙" as s33
+    state "无隧道，进程1个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步域名甲" as s34
+    state "隧道启动中，进程1个，IPv6关闭，设置域名域名甲，已同步无" as s35
+    state "隧道启动中，进程1个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步无" as s36
+    state "隧道启动中，进程1个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步无" as s37
+    state "隧道启动中，进程2个，两次启动同时进行，IPv6关闭，设置域名域名甲，已同步无" as s38
+    state "隧道启动中，进程2个，两次启动同时进行，IPv6在线，证书域名域名乙，设置域名域名乙，已同步无" as s39
+    state "隧道启动中，进程2个，两次启动同时进行，IPv6在线，证书域名域名甲，设置域名域名甲，已同步无" as s40
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名乙，已同步域名乙" as s41
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名乙，已同步无" as s42
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名甲，已同步域名甲" as s43
+    state "隧道在线，进程1个，IPv6关闭，设置域名域名甲，已同步无" as s44
+    state "隧道在线，进程1个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步域名乙" as s45
+    state "隧道在线，进程1个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步无" as s46
+    state "隧道在线，进程1个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步域名甲" as s47
+    state "隧道在线，进程1个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步无" as s48
+    state "隧道在线，进程1个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步域名乙" as s49
+    state "隧道在线，进程1个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步无" as s50
+    state "隧道在线，进程1个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步域名甲" as s51
+    state "隧道在线，进程1个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步无" as s52
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名乙，已同步域名乙" as s53
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名乙，已同步无" as s54
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名甲，已同步域名甲" as s55
+    state "隧道在线，进程2个，IPv6关闭，设置域名域名甲，已同步无" as s56
+    state "隧道在线，进程2个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步域名乙" as s57
+    state "隧道在线，进程2个，IPv6在线，证书域名域名乙，设置域名域名乙，已同步无" as s58
+    state "隧道在线，进程2个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步域名甲" as s59
+    state "隧道在线，进程2个，IPv6在线，证书域名域名乙，设置域名域名甲，已同步无" as s60
+    state "隧道在线，进程2个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步域名乙" as s61
+    state "隧道在线，进程2个，IPv6在线，证书域名域名甲，设置域名域名乙，已同步无" as s62
+    state "隧道在线，进程2个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步域名甲" as s63
+    state "隧道在线，进程2个，IPv6在线，证书域名域名甲，设置域名域名甲，已同步无" as s64
+  }
+  [*] --> s3
+  s3 --> s20 : 启动手机服务
+  s3 --> s28 : 启动 IPv6 服务
+  s3 --> s1 : 修改 DDNS 域名
+  s3 --> s2 : 后台同步域名成功
+  s20 --> s35 : 点开始隧道
+  s20 --> s18 : 修改 DDNS 域名
+  s20 --> s19 : 后台同步域名成功
+  s28 --> s37 : 点开始隧道
+  s28 --> s26 : 修改 DDNS 域名
+  s28 --> s27 : 后台同步域名成功
+  s1 --> s22 : 启动 IPv6 服务
+  s1 --> s0 : 后台同步域名成功
+  s35 --> s7 : 停止手机服务
+  s35 --> s38 : 点开始隧道
+  s35 --> s44 : 隧道地址就绪
+  s18 --> s17 : 后台同步域名成功
+  s37 --> s40 : 点开始隧道
+  s37 --> s52 : 隧道地址就绪
+  s26 --> s25 : 后台同步域名成功
+  s22 --> s36 : 点开始隧道
+  s22 --> s24 : 修改 DDNS 域名
+  s22 --> s21 : 后台同步域名成功
+  s7 --> s12 : 隧道地址就绪
+  s38 --> s8 : 停止手机服务
+  s38 --> s56 : 隧道地址就绪
+  s44 --> s42 : 修改 DDNS 域名
+  s44 --> s43 : 后台同步域名成功
+  s40 --> s64 : 隧道地址就绪
+  s52 --> s50 : 修改 DDNS 域名
+  s52 --> s51 : 后台同步域名成功
+  s36 --> s39 : 点开始隧道
+  s36 --> s46 : 隧道地址就绪
+  s24 --> s23 : 后台同步域名成功
+  s12 --> s10 : 修改 DDNS 域名
+  s12 --> s11 : 后台同步域名成功
+  s8 --> s16 : 隧道地址就绪
+  s56 --> s54 : 修改 DDNS 域名
+  s56 --> s55 : 后台同步域名成功
+  s42 --> s41 : 后台同步域名成功
+  s64 --> s62 : 修改 DDNS 域名
+  s64 --> s63 : 后台同步域名成功
+  s50 --> s49 : 后台同步域名成功
+  s39 --> s58 : 隧道地址就绪
+  s46 --> s48 : 修改 DDNS 域名
+  s46 --> s45 : 后台同步域名成功
+  s10 --> s9 : 后台同步域名成功
+  s16 --> s14 : 修改 DDNS 域名
+  s16 --> s15 : 后台同步域名成功
+  s56 --> s6 : 停止手机服务
+  s54 --> s53 : 后台同步域名成功
+  s62 --> s61 : 后台同步域名成功
+  s58 --> s60 : 修改 DDNS 域名
+  s58 --> s57 : 后台同步域名成功
+  s48 --> s47 : 后台同步域名成功
+  s14 --> s13 : 后台同步域名成功
+  s55 --> s5 : 停止手机服务
+  s55 --> s30 : 点停止隧道
+  s63 --> s34 : 点停止隧道
+  s60 --> s59 : 后台同步域名成功
+  s53 --> s4 : 停止手机服务
+  s53 --> s29 : 点停止隧道
+  s61 --> s33 : 点停止隧道
+  s57 --> s31 : 点停止隧道
+  s59 --> s32 : 点停止隧道
+  s56 --> s56 : 隧道地址就绪
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 wrong
+  class s5 wrong
+  class s6 wrong
+  class s7 works
+  class s8 works
+  class s9 wrong
+  class s10 wrong
+  class s11 wrong
+  class s12 wrong
+  class s13 wrong
+  class s14 wrong
+  class s15 wrong
+  class s16 wrong
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works
+  class s22 works
+  class s23 wrong
+  class s24 works
+  class s25 wrong
+  class s26 works
+  class s27 works
+  class s28 works
+  class s29 wrong
+  class s30 wrong
+  class s31 wrong
+  class s32 wrong
+  class s33 wrong
+  class s34 wrong
+  class s35 works
+  class s36 works
+  class s37 works
+  class s38 works
+  class s39 works
+  class s40 works
+  class s41 works
+  class s42 works
+  class s43 works
+  class s44 works
+  class s45 works
+  class s46 works
+  class s47 wrong
+  class s48 works
+  class s49 wrong
+  class s50 works
+  class s51 works
+  class s52 works
+  class s53 works
+  class s54 works
+  class s55 works
+  class s56 works
+  class s57 works
+  class s58 works
+  class s59 wrong
+  class s60 works
+  class s61 wrong
+  class s62 works
+  class s63 works
+  class s64 works

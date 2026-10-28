@@ -1,0 +1,72 @@
+---
+title: "模型角色与点名覆盖范围"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+  }
+  class legendWorks works
+  state "点名覆盖；全局页；全局已设置；项目已设置；等待读取" as s0
+  state "点名覆盖；全局页；全局已设置；项目已设置；采用全局值" as s1
+  state "点名覆盖；全局页；全局未设置；项目已设置；等待读取" as s2
+  state "点名覆盖；全局页；全局未设置；项目已设置；继续下级来源" as s3
+  state "点名覆盖；项目页；全局已设置；项目已设置；等待读取" as s4
+  state "点名覆盖；项目页；全局已设置；项目已设置；采用全局值" as s5
+  state "点名覆盖；项目页；全局未设置；项目已设置；等待读取" as s6
+  state "点名覆盖；项目页；全局未设置；项目已设置；采用项目值" as s7
+  state "角色分配；全局页；全局已设置；项目已设置；等待读取" as s8
+  state "角色分配；全局页；全局已设置；项目已设置；采用全局值" as s9
+  state "角色分配；全局页；全局未设置；项目已设置；等待读取" as s10
+  state "角色分配；全局页；全局未设置；项目已设置；继续下级来源" as s11
+  state "角色分配；项目页；全局已设置；项目已设置；等待读取" as s12
+  state "角色分配；项目页；全局已设置；项目已设置；采用项目值" as s13
+  state "角色分配；项目页；全局未设置；项目已设置；等待读取" as s14
+  state "角色分配；项目页；全局未设置；项目已设置；采用项目值" as s15
+  [*] --> s0
+  [*] --> s8
+  s8 --> s12 : 切换到项目范围
+  s8 --> s10 : 删除全局配置项
+  s8 --> s9 : 读取并解析当前范围
+  s0 --> s4 : 切换到项目范围
+  s0 --> s2 : 删除全局配置项
+  s0 --> s1 : 读取并解析当前范围
+  s12 --> s13 : 读取并解析当前范围
+  s10 --> s14 : 切换到项目范围
+  s10 --> s11 : 读取并解析当前范围
+  s4 --> s5 : 读取并解析当前范围
+  s2 --> s6 : 切换到项目范围
+  s2 --> s3 : 读取并解析当前范围
+  s14 --> s15 : 读取并解析当前范围
+  s6 --> s7 : 读取并解析当前范围
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works

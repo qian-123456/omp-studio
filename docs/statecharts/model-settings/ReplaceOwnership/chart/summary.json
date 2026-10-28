@@ -1,0 +1,30 @@
+{
+  "view": "customer",
+  "modelStates": 10,
+  "modelTransitions": 10,
+  "chartStates": 9,
+  "chartTransitions": 8,
+  "chartStatus": {
+    "works": 10,
+    "wrong": 0,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": true,
+    "states": 10,
+    "transitions": 10,
+    "leftOutStates": [
+      "已返回总览；没有进行中的写入；等候重扫；显示写入错误"
+    ],
+    "leftOutTransitions": [
+      "已返回总览；写入进行中；等候重扫 --> 已返回总览；没有进行中的写入；等候重扫；显示写入错误: 写入失败返回",
+      "已返回总览；没有进行中的写入；等候重扫；显示写入错误 --> 已返回总览；没有进行中的写入；显示写入错误: 写入结束后重新扫描"
+    ]
+  },
+  "classes": [],
+  "codeLike": [],
+  "brokenProperties": []
+}

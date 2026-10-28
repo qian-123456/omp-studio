@@ -1,0 +1,795 @@
+{
+  "slice": "settings-skills",
+  "title": "设置、技能、插件、MCP、安装/更新状态图审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "src/features/settings/FileEditor.tsx",
+      "feature": "共享文件编辑器",
+      "status": "modeled",
+      "reason": "FileEditorBuffer；与 git-files 的通用缓冲区只在边界上接触"
+    },
+    {
+      "path": "src/features/settings/fileEditorLogic.ts",
+      "feature": "共享文件编辑器",
+      "status": "modeled",
+      "reason": "FileEditorBuffer；与 git-files 的通用缓冲区只在边界上接触"
+    },
+    {
+      "path": "src/features/settings/sections/RulesFilesSection.tsx",
+      "feature": "规则文件编辑入口",
+      "status": "read-only",
+      "reason": "经 FileEditor 复用；读了入口使用，未单独建模"
+    },
+    {
+      "path": "src/features/settings/sections/rulesFiles.ts",
+      "feature": "规则文件编辑入口",
+      "status": "read-only",
+      "reason": "经 FileEditor 复用；读了入口使用，未单独建模"
+    },
+    {
+      "path": "src/features/settings/sections/MemoryFilesPanel.tsx",
+      "feature": "记忆文件列表/选择/编辑",
+      "status": "modeled",
+      "reason": "MemoryFilesLoad；删除技能时编辑草稿处理仅读码"
+    },
+    {
+      "path": "src/features/settings/sections/memoryFiles.ts",
+      "feature": "记忆文件列表/选择/编辑",
+      "status": "modeled",
+      "reason": "MemoryFilesLoad；删除技能时编辑草稿处理仅读码"
+    },
+    {
+      "path": "src/features/settings/sections/AgentDefsPanel.tsx",
+      "feature": "子代理定义文件编辑/创建",
+      "status": "out-of-model",
+      "reason": "未读完，创建流程未审；仅通过 FileEditor 共享边界覆盖"
+    },
+    {
+      "path": "src/features/settings/sections/NewAgentForm.tsx",
+      "feature": "子代理定义文件编辑/创建",
+      "status": "out-of-model",
+      "reason": "未读完，创建流程未审；仅通过 FileEditor 共享边界覆盖"
+    },
+    {
+      "path": "src/features/settings/sections/agentDefs.ts",
+      "feature": "子代理定义文件编辑/创建",
+      "status": "out-of-model",
+      "reason": "未读完，创建流程未审；仅通过 FileEditor 共享边界覆盖"
+    },
+    {
+      "path": "src/features/settings/McpSection.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "EditorVisibleWhenOpen 由父组件归属生命周期模型覆盖；SingleWriter 由独立 McpWriteOwnership 保留原规则并发现反例，重复编辑入口已重放。"
+    },
+    {
+      "path": "src/features/settings/McpServerRow.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/McpServerEditor.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/McpImportDialog.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/McpScopeDialog.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/McpScopePicker.tsx",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/mcpDraft.ts",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/mcpImport.ts",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/mcpProjects.ts",
+      "feature": "MCP 目录/启停/删除/作用域/导入",
+      "status": "modeled",
+      "reason": "[modeled (partial)] McpEditorDialog；McpSection reload 序号保护与写入忙碌读码确认；导入循环 run() 读码，未建模；McpServerEditor 内部草稿未审"
+    },
+    {
+      "path": "src/features/settings/PluginsSection.tsx",
+      "feature": "插件目录/启停/扩展",
+      "status": "modeled",
+      "reason": "[modeled (partial)] PluginsCatalogLoad、OmpListReadModifyWrite；plugin 开关与扩展删除读码，未建模"
+    },
+    {
+      "path": "src/features/settings/sections/PluginsSettingsSection.tsx",
+      "feature": "插件目录/启停/扩展",
+      "status": "modeled",
+      "reason": "[modeled (partial)] PluginsCatalogLoad、OmpListReadModifyWrite；plugin 开关与扩展删除读码，未建模"
+    },
+    {
+      "path": "src/features/skills/store.ts",
+      "feature": "技能目录/启停/扩展启用",
+      "status": "modeled",
+      "reason": "[modeled (partial)] OmpListReadModifyWrite、ExtensionEnableRollback；loadCatalog/revalidateCatalog 序号保护读码确认；SkillsPage.tsx 未读"
+    },
+    {
+      "path": "src/features/skills/SkillsPage.tsx",
+      "feature": "技能目录/启停/扩展启用",
+      "status": "modeled",
+      "reason": "[modeled (partial)] OmpListReadModifyWrite、ExtensionEnableRollback；loadCatalog/revalidateCatalog 序号保护读码确认；SkillsPage.tsx 未读"
+    },
+    {
+      "path": "src/features/omp-install/OmpInstallDialog.tsx",
+      "feature": "安装内核与取消",
+      "status": "modeled",
+      "reason": "OmpInstallCancel；未安装、未启动进程"
+    },
+    {
+      "path": "src/stores/ompInstall.ts",
+      "feature": "安装内核与取消",
+      "status": "modeled",
+      "reason": "OmpInstallCancel；未安装、未启动进程"
+    },
+    {
+      "path": "src-tauri/src/omp_install.rs",
+      "feature": "安装内核与取消",
+      "status": "modeled",
+      "reason": "OmpInstallCancel；未安装、未启动进程"
+    },
+    {
+      "path": "src/stores/ompUpdate.ts",
+      "feature": "omp 更新检查/执行",
+      "status": "modeled",
+      "reason": "[modeled (partial)] OmpUpdateCheck"
+    },
+    {
+      "path": "src/stores/appUpdate.ts",
+      "feature": "应用自动更新/会话陈旧同步/定时",
+      "status": "out-of-model",
+      "reason": "未建模；ompUpdateSessions 仅读到 ompUpdate.ts 的外部更新回调边界"
+    },
+    {
+      "path": "src/stores/ompUpdateSessions.ts",
+      "feature": "应用自动更新/会话陈旧同步/定时",
+      "status": "out-of-model",
+      "reason": "未建模；ompUpdateSessions 仅读到 ompUpdate.ts 的外部更新回调边界"
+    },
+    {
+      "path": "src/stores/ompUpdateSchedule.ts",
+      "feature": "应用自动更新/会话陈旧同步/定时",
+      "status": "out-of-model",
+      "reason": "未建模；ompUpdateSessions 仅读到 ompUpdate.ts 的外部更新回调边界"
+    },
+    {
+      "path": "src/stores/promptComposition.ts",
+      "feature": "提示词组成探测",
+      "status": "out-of-model",
+      "reason": "未读；归本 slice，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/PromptCompositionSection.tsx",
+      "feature": "提示词组成探测",
+      "status": "out-of-model",
+      "reason": "未读；归本 slice，需后续补审"
+    },
+    {
+      "path": "src-tauri/src/prompt_composition.rs",
+      "feature": "提示词组成探测",
+      "status": "out-of-model",
+      "reason": "未读；归本 slice，需后续补审"
+    },
+    {
+      "path": "src/stores/modelCatalog.ts",
+      "feature": "模型目录刷新",
+      "status": "read-only",
+      "reason": "[read-only boundary] 仅作为 ompInstall/ompUpdate 触发的 refresh 调用，所有权按 ModelSettings 交接"
+    },
+    {
+      "path": "src/features/settings/store.ts",
+      "feature": "应用设置乐观更新与保存队列",
+      "status": "read-only",
+      "reason": "读码：update() 使用 lastConfirmed 重基与 saveQueue；未发现已确认问题，未建模，未重放"
+    },
+    {
+      "path": "src/features/settings/useAppSettings.ts",
+      "feature": "应用设置乐观更新与保存队列",
+      "status": "read-only",
+      "reason": "读码：update() 使用 lastConfirmed 重基与 saveQueue；未发现已确认问题，未建模，未重放"
+    },
+    {
+      "path": "src/features/settings/ompConfigStore.ts",
+      "feature": "omp 配置目录 store 与列表",
+      "status": "read-only",
+      "reason": "ompConfigStore 的 generation/inflight 保护读码确认；RawFilesDialog 写后 load(true) 复用同代在途请求的可能性仅读码 [INFERENCE]，未建模"
+    },
+    {
+      "path": "src/features/settings/OmpSettingsList.tsx",
+      "feature": "omp 配置目录 store 与列表",
+      "status": "read-only",
+      "reason": "ompConfigStore 的 generation/inflight 保护读码确认；RawFilesDialog 写后 load(true) 复用同代在途请求的可能性仅读码 [INFERENCE]，未建模"
+    },
+    {
+      "path": "src/features/settings/sections/RawFilesDialog.tsx",
+      "feature": "omp 配置目录 store 与列表",
+      "status": "read-only",
+      "reason": "ompConfigStore 的 generation/inflight 保护读码确认；RawFilesDialog 写后 load(true) 复用同代在途请求的可能性仅读码 [INFERENCE]，未建模"
+    },
+    {
+      "path": "src/features/settings/SettingsOverlay.tsx",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/SettingsPage.tsx",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/settingsNav.ts",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/navigation.ts",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/nestedModal.ts",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/settingsTargets.ts",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/SectionJumpBar.tsx",
+      "feature": "设置页壳与导航",
+      "status": "out-of-model",
+      "reason": "归 ShellNavigation 边界；仅读 SettingsOverlay"
+    },
+    {
+      "path": "src/features/settings/sections/StorageSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/AboutSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/GeneralSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/AdvancedSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/SessionsSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/NotificationsSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/InboxSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/MobileSettingsSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/AppearanceSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/ShortcutsSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/GuideSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/ContextWindowSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/FallbackSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/sections/RolesSection.tsx",
+      "feature": "其余设置分区",
+      "status": "out-of-model",
+      "reason": "未审；存储/关于含自动更新入口，需后续补审"
+    },
+    {
+      "path": "src/features/settings/model*/",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/ModelRulesSection.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/AgentModelAssignmentsPanel.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "FallbackChain*",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/AutoCompactionCard.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/SideChatModelCard.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/sections/ProvidersSection.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src/features/settings/sections/PrivacySection.tsx",
+      "feature": "模型/提供商/隐私设置",
+      "status": "out-of-model",
+      "reason": "[out-of-slice] 归 ModelSettingsAudit / PrivacyProvidersAudit"
+    },
+    {
+      "path": "src-tauri/src/settings.rs",
+      "feature": "设置保存、omp config、omp 信息/更新命令",
+      "status": "read-only",
+      "reason": "读了 omp_config_list/set 与错误返回；其余未审"
+    },
+    {
+      "path": "src-tauri/src/settings_mcp.rs",
+      "feature": "MCP 配置读写命令",
+      "status": "out-of-model",
+      "reason": "仅读命令列表；文件格式与写入原子性未审"
+    },
+    {
+      "path": "src-tauri/src/settings_plugins.rs",
+      "feature": "插件命令",
+      "status": "out-of-model",
+      "reason": "仅读命令列表"
+    },
+    {
+      "path": "src-tauri/src/skills/*",
+      "feature": "技能目录命令",
+      "status": "out-of-model",
+      "reason": "仅读命令列表"
+    },
+    {
+      "path": "src-tauri/src/omp_files.rs",
+      "feature": "规则/记忆/子代理文件读写",
+      "status": "read-only",
+      "reason": "write_checked 比较 stamp 后写（无锁，检查与写之间的 TOCTOU 仅读码）"
+    },
+    {
+      "path": "src-tauri/src/visualize.rs",
+      "feature": "内置 visualize 插件安装与启停",
+      "status": "read-only",
+      "reason": "读码：启动时 write_if_changed 写 plugin.json 与 SKILL.md；spawn_plugin_dir 只检查 plugin.json 存在，SKILL.md 写失败时仍传 --plugin-dir（读码观察，未重放）；visualizeEnabled 只影响新建会话"
+    },
+    {
+      "path": "src-tauri/resources/plugins/omp-workspace-visualize",
+      "feature": "内置 visualize 插件安装与启停",
+      "status": "read-only",
+      "reason": "读码：启动时 write_if_changed 写 plugin.json 与 SKILL.md；spawn_plugin_dir 只检查 plugin.json 存在，SKILL.md 写失败时仍传 --plugin-dir（读码观察，未重放）；visualizeEnabled 只影响新建会话"
+    }
+  ],
+  "models": [
+    {
+      "name": "FileEditorBuffer",
+      "title": "文件编辑器缓冲区",
+      "spec": "models/FileEditorBuffer.tla",
+      "config": "models/FileEditorBuffer.cfg",
+      "map": "models/FileEditorBuffer.map.mjs",
+      "out": "out/FileEditorBuffer",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/FileEditorBuffer.tla --cover --out out/FileEditorBuffer --png --title '文件编辑器缓冲区' --expect-broken TypedTextKept",
+      "summary": "out/FileEditorBuffer/summary.json",
+      "limits": "磁盘内容、文本均为整数编号；未建模 createContent、tooLarge、只读、预览页、草稿缓存跨挂载恢复、重试循环里的多次覆盖；编辑器模态确认框按完全模态处理；用 --cover 只画到每个稳定状态的最短路径。",
+      "counts": {
+        "modelStates": 450,
+        "modelTransitions": 1101,
+        "chartStates": 19,
+        "chartTransitions": 19
+      },
+      "bugs": null,
+      "uncited": null
+    },
+    {
+      "name": "PluginsCatalogLoad",
+      "title": "插件目录按项目加载",
+      "spec": "models/PluginsCatalogLoad.tla",
+      "config": "models/PluginsCatalogLoad.cfg",
+      "map": "models/PluginsCatalogLoad.map.mjs",
+      "out": "out/PluginsCatalogLoad",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/PluginsCatalogLoad.tla --fixed models/PluginsCatalogLoadFixed.tla --label 加过期判断 --out out/PluginsCatalogLoad --png --title '插件目录按项目加载' --expect-broken PluginsMatchProject",
+      "summary": "out/PluginsCatalogLoad/summary.json",
+      "limits": "只有两个项目；没有建模 skillsList 的并行读取；Fixed 对照模型加入过期判断。",
+      "counts": {
+        "modelStates": 17,
+        "modelTransitions": 36,
+        "chartStates": 7,
+        "chartTransitions": 17
+      },
+      "bugs": null,
+      "uncited": {
+        "models/PluginsCatalogLoad.tla": [],
+        "models/PluginsCatalogLoadFixed.tla": []
+      }
+    },
+    {
+      "name": "MemoryFilesLoad",
+      "title": "记忆文件列表按项目加载",
+      "spec": "models/MemoryFilesLoad.tla",
+      "config": "models/MemoryFilesLoad.cfg",
+      "map": "models/MemoryFilesLoad.map.mjs",
+      "out": "out/MemoryFilesLoad",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/MemoryFilesLoad.tla --fixed models/MemoryFilesLoadFixed.tla --label 加过期判断 --out out/MemoryFilesLoad --png --title '记忆文件列表按项目加载' --expect-broken MemoryListMatchesProject",
+      "summary": "out/MemoryFilesLoad/summary.json",
+      "limits": "只有两个记忆项目；未建模 setRel(null)、文件选中与 FileEditor 挂载；Fixed 对照模型加入过期判断。",
+      "counts": {
+        "modelStates": 17,
+        "modelTransitions": 36,
+        "chartStates": 7,
+        "chartTransitions": 17
+      },
+      "bugs": null,
+      "uncited": {
+        "models/MemoryFilesLoad.tla": [],
+        "models/MemoryFilesLoadFixed.tla": []
+      }
+    },
+    {
+      "name": "OmpListReadModifyWrite",
+      "title": "配置列表读改写",
+      "spec": "models/OmpListReadModifyWrite.tla",
+      "config": "models/OmpListReadModifyWrite.cfg",
+      "map": "models/OmpListReadModifyWrite.map.mjs",
+      "out": "out/OmpListReadModifyWrite",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/OmpListReadModifyWrite.tla --out out/OmpListReadModifyWrite --png --title '配置列表读改写' --expect-broken OtherEntriesKept",
+      "summary": "out/OmpListReadModifyWrite/summary.json",
+      "limits": "只建模“其他条目 A”与“被切换条目 B”；读取失败是非确定选择；未建模 configWriteChain 串行（skills/store.ts:115-139）与 PluginsSection 的 busy 串行，两者互相不串行是代码阅读结论，未建模。",
+      "counts": {
+        "modelStates": 10,
+        "modelTransitions": 14,
+        "chartStates": 6,
+        "chartTransitions": 8
+      },
+      "bugs": null,
+      "uncited": null
+    },
+    {
+      "name": "ExtensionEnableRollback",
+      "title": "启用扩展的两步写入",
+      "spec": "models/ExtensionEnableRollback.tla",
+      "config": "models/ExtensionEnableRollback.cfg",
+      "map": "models/ExtensionEnableRollback.map.mjs",
+      "out": "out/ExtensionEnableRollback",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/ExtensionEnableRollback.tla --out out/ExtensionEnableRollback --png --title '启用扩展的两步写入' --expect-broken UiMatchesConfigAfterFailure",
+      "summary": "out/ExtensionEnableRollback/summary.json",
+      "limits": "只建模启用 .disabled 扩展且重命名失败；未建模禁用分支和 revalidateCatalog。",
+      "counts": {
+        "modelStates": 4,
+        "modelTransitions": 3,
+        "chartStates": 4,
+        "chartTransitions": 3
+      },
+      "bugs": null,
+      "uncited": null
+    },
+    {
+      "name": "OmpInstallCancel",
+      "title": "安装内核与取消",
+      "spec": "models/OmpInstallCancel.tla",
+      "config": "models/OmpInstallCancel.cfg",
+      "map": "models/OmpInstallCancel.map.mjs",
+      "out": "out/OmpInstallCancel",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/OmpInstallCancel.tla --out out/OmpInstallCancel --png --title '安装内核与取消' --expect-broken CancelHonored",
+      "summary": "out/OmpInstallCancel/summary.json",
+      "limits": "后端安装槽按 omp_install.rs 语义抽象；真实 Rust 命令未运行（不可启动安装）；未建模超时、窗口关闭、进度事件、recheck、自定义路径对话框。",
+      "counts": {
+        "modelStates": 9,
+        "modelTransitions": 11,
+        "chartStates": 8,
+        "chartTransitions": 11
+      },
+      "bugs": null,
+      "uncited": null
+    },
+    {
+      "name": "OmpUpdateCheck",
+      "title": "检查更新与执行更新",
+      "spec": "models/OmpUpdateCheck.tla",
+      "config": "models/OmpUpdateCheck.cfg",
+      "map": "models/OmpUpdateCheck.map.mjs",
+      "out": "out/OmpUpdateCheck",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/OmpUpdateCheck.tla --out out/OmpUpdateCheck --png --title '检查更新与执行更新' --expect-broken NoStaleUpdateBadge",
+      "summary": "out/OmpUpdateCheck/summary.json",
+      "limits": "checkSees 表示检查请求发出时的二进制版本，来自对 omp update 检查语义的假设 [INFERENCE]；未建模 autoUpdate 触发、外部更新处理 ompUpdateSessions。",
+      "counts": {
+        "modelStates": 20,
+        "modelTransitions": 40,
+        "chartStates": 12,
+        "chartTransitions": 29
+      },
+      "bugs": null,
+      "uncited": null
+    },
+    {
+      "name": "McpEditorDialog",
+      "title": "MCP编辑弹窗与目录归属",
+      "spec": "models/McpEditorDialog.tla",
+      "config": "models/McpEditorDialog.cfg",
+      "map": "models/McpEditorDialog.map.mjs",
+      "out": "out/McpEditorDialog",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/McpEditorDialog.tla --out out/McpEditorDialog --png --title 'MCP编辑弹窗与写入' --expect-broken EditorVisibleWhenOpen",
+      "summary": "out/McpEditorDialog/summary.json",
+      "limits": "仅父组件 dialog/allServers 归属、目录重读与可见子组件 onClose 输入契约，不涵盖写入。SingleWriter 现由独立 McpWriteOwnership 检查；原混合模型的通过结论撤回。",
+      "counts": {
+        "modelStates": 4,
+        "modelTransitions": 6,
+        "chartStates": 4,
+        "chartTransitions": 6
+      },
+      "bugs": 1,
+      "uncited": null
+    },
+    {
+      "name": "McpWriteOwnership",
+      "title": "MCP父子组件写入归属",
+      "spec": "models/McpWriteOwnership.tla",
+      "config": "models/McpWriteOwnership.cfg",
+      "map": "models/McpWriteOwnership.map.mjs",
+      "out": "out/McpWriteOwnership",
+      "summary": "out/McpWriteOwnership/summary.json",
+      "regenerate": "TLA2TOOLS=... JAVA=... node $STATECHART from-spec models/McpWriteOwnership.tla --out out/McpWriteOwnership --png --title 'MCP父子组件写入归属' --expect-broken SingleWriter",
+      "counts": {
+        "modelStates": 19,
+        "modelTransitions": 29,
+        "chartStates": 19,
+        "chartTransitions": 29
+      },
+      "bugs": 2,
+      "limits": "两次写入均尚未返回的有限前缀（writes<2 为探索上限，不是产品守卫）；合法草稿/合法非空导入输入；目录固定为空或非空；不建模完成、失败恢复、真实 Rust 持久化或同一渲染批次多次点击。包含 parent act、editor.save 与 import.run 的各自实际入口守卫。子组件关闭不会取消在途请求。"
+    }
+  ],
+  "findings": [
+    {
+      "rule": "TypedTextKept",
+      "title": "保存或重新读取进行时输入的文字会被结果覆盖",
+      "model": "FileEditorBuffer",
+      "steps": "点保存→继续输入→保存成功返回；或 点重新读取→继续输入→读取结果返回",
+      "reproduction": "reproduced: replay/settings.replay.test.tsx 两个 FileEditorBuffer 用例失败（Expected 'v2 + typed during save' Received 'v2'；Expected 'typed while reloading' Received 'v1'）",
+      "evidence": "FileEditor.tsx:96-101,139-153 (setDraft(text)/apply 无视期间输入), :346 editable 仅看 readOnly, :274 重新读取仅 loading 时禁用",
+      "fixModelStatus": "not modeled",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "PluginsMatchProject",
+      "title": "切换项目后旧项目的插件目录晚到并覆盖新项目",
+      "model": "PluginsCatalogLoad",
+      "steps": "换项目→新项目返回→旧项目返回",
+      "reproduction": "reproduced: PluginsCatalogLoad 用例失败（页面出现 plugin-of-a）",
+      "evidence": "PluginsSection.tsx:91-110 reload 无序号/取消保护（对比 McpSection.tsx:85-98）",
+      "fixModelStatus": "modeled: PluginsCatalogLoadFixed 模型，stories.md 将越界状态标为 fixed",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "MemoryListMatchesProject",
+      "title": "切换记忆项目后旧项目文件列表晚到并覆盖",
+      "model": "MemoryFilesLoad",
+      "steps": "换记忆项目→新项目返回→旧项目返回",
+      "reproduction": "reproduced: MemoryFilesLoad 用例失败（出现 other-project）",
+      "evidence": "MemoryFilesPanel.tsx:212-230 refreshFiles 无过期判断；:235-239 load/save 用当前 slug",
+      "fixModelStatus": "modeled: MemoryFilesLoadFixed 模型，同上",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "OtherEntriesKept",
+      "title": "omp config list 失败(found=false)时切换技能会用空列表整体覆盖 disabledExtensions",
+      "model": "OmpListReadModifyWrite",
+      "steps": "点开关→读列表失败→写回新列表",
+      "reproduction": "分两半：(1) 已重放：真实前端在 omp config list 读取失败(found=false)后，无条件下发以空列表为基础的 ompConfigSet('disabledExtensions','[\"skill:new-one\"]')，即不安全的写入分发；(2) 未验证：磁盘上原有条目是否因此持久丢失取决于真实 omp CLI 行为，属外部边界，未运行。整体不变量违反按 trace-and-source-only hypothesis 归类。",
+      "evidence": "skills/store.ts:127-135; PluginsSection.tsx:64-72 忽略 list.found；settings.rs:704-708 失败返回 found=false 空 entries",
+      "fixModelStatus": "not modeled",
+      "kind": "trace-and-source-only hypothesis"
+    },
+    {
+      "rule": "UiMatchesConfigAfterFailure",
+      "title": "启用 .disabled 扩展时重命名失败：界面回滚为已禁用，但配置里已被改为启用",
+      "model": "ExtensionEnableRollback",
+      "steps": "点启用→配置写入成功→重命名失败→界面回滚",
+      "reproduction": "reproduced at store entrypoint: 失败后 catalog 回到 enabled=false 而 ompConfigSet 已把 ext-a 从 disabledExtensions 移除",
+      "evidence": "skills/store.ts:463-488",
+      "fixModelStatus": "not modeled",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "CancelHonored",
+      "title": "取消点击早于后端登记安装时被后端当成空操作，随后安装仍成功",
+      "model": "OmpInstallCancel",
+      "steps": "点开始→点取消(监听尚未就绪)→监听就绪、安装开始→安装结束成功",
+      "reproduction": "部分：前端 + 读码。真实前端在 omp_install_run 之前发出取消（已重放，后端为替身）；后端空操作半边仅来自读 omp_install.rs:366-374，未运行真实 Rust。",
+      "evidence": "ompInstall.ts:68-96,113-115; omp_install.rs:89-98,366-374",
+      "fixModelStatus": "not modeled",
+      "kind": "trace-and-source-only hypothesis"
+    },
+    {
+      "rule": "NoStaleUpdateBadge",
+      "title": "更新成功后，更新前发出的检查结果晚到，仍显示有可用更新",
+      "model": "OmpUpdateCheck",
+      "steps": "开始检查→点更新→更新完成(自带复检因检查在途直接返回)→旧检查结果返回",
+      "reproduction": "已重放：在构造的合法异步顺序下（检查在途→更新完成→旧检查晚到），真实前端 ompUpdate store 的陈旧响应归属错误，更新成功后 status.updateAvailable 仍为 true。真实 CLI/版本探测未执行；该顺序是否在真实 omp 下出现属外部边界。",
+      "evidence": "ompUpdate.ts:66-72,105-134",
+      "fixModelStatus": "not modeled",
+      "kind": "reproduced consumer behavior"
+    },
+    {
+      "rule": "EditorVisibleWhenOpen",
+      "title": "MCP 编辑弹窗打开时，目录重读发现服务器已被外部删除，弹窗无提示地消失（状态仍是 edit）",
+      "model": "McpEditorDialog",
+      "steps": "点编辑→服务器被外部删除后列表重读",
+      "reproduction": "reproduced: McpSection 用例失败（重读后 role=dialog 消失）；“服务器重新出现后弹窗是否自动弹回”由 dialog 状态仍为 edit 推知，未单独断言",
+      "evidence": "McpSection.tsx:211 editing 由 allServers.find 派生、:400-409 渲染条件，dialog 状态不随之清理",
+      "fixModelStatus": "not modeled",
+      "kind": "design question"
+    },
+    {
+      "rule": "SingleWriter",
+      "title": "MCP空目录的添加入口绕过父 busy，保存中关闭弹窗再打开新弹窗可同时发出两次写入",
+      "model": "McpWriteOwnership",
+      "kind": "reproduced consumer behavior",
+      "steps": "空目录→添加→保存合法草稿（请求未返回）→取消关闭→空目录卡片添加→再次保存",
+      "reproduction": "真实 McpSection + McpServerEditor 用户入口复现；两次 mcpServerSave 均未 resolve，期望1次实际2次。只替换 IPC 边界，没有替换父/子组件。下游原生写入影响未运行；仅重复编辑分支已重放，模型中的编辑→导入分支仍为 trace/source-only。",
+      "evidence": "src/features/settings/McpSection.tsx:105-119,189-204,308-312,390-407; src/features/settings/McpServerEditor.tsx:156,187-207,410-413; src/features/settings/McpImportDialog.tsx:69-86,177-184; src/features/settings/ui.tsx:471",
+      "fixModelStatus": "not modeled"
+    }
+  ],
+  "verification": [
+    {
+      "command": "node citecheck.mjs (uncitedConditions over models/*.tla)",
+      "exitCode": 0,
+      "result": "11 TLA inputs: see final citecheck output; all []"
+    },
+    {
+      "command": "TLA2TOOLS/JAVA node statechart.mjs from-spec ... --png for 8 models (see run.sh and out/*/tlc)",
+      "exitCode": 0,
+      "result": "each broken rule reported; all PNG opened and visually inspected"
+    },
+    {
+      "command": "cd repo && ./node_modules/.bin/vitest run --config <scratch>/replay/vitest.config.mjs",
+      "exitCode": 1,
+      "result": "9 test cases fail by design: each failing assertion is REPRODUCTION EVIDENCE of a suspected bug, not an acceptance failure (replay/replay.log)"
+    },
+    {
+      "command": "./node_modules/.bin/vitest run --config <scratch>/settings-skills/replay/vitest.config.mjs <scratch>/settings-skills/replay/mcp-ownership.replay.test.tsx",
+      "exitCode": 1,
+      "result": "1 test failed by design: SingleWriter reproduction evidence; expected mcpServerSave once, received twice with both promises unresolved. Raw tool output artifact://588. Unrelated known replay tests not rerun."
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "src-tauri/src/omp_files.rs",
+    "src-tauri/src/omp_install.rs",
+    "src-tauri/src/settings.rs",
+    "src-tauri/src/visualize.rs",
+    "src/features/omp-install/OmpInstallDialog.tsx",
+    "src/features/settings/FileEditor.tsx",
+    "src/features/settings/McpImportDialog.tsx",
+    "src/features/settings/McpSection.tsx",
+    "src/features/settings/PluginsSection.tsx",
+    "src/features/settings/fileEditorLogic.ts",
+    "src/features/settings/ompConfigStore.ts",
+    "src/features/settings/sections/MemoryFilesPanel.tsx",
+    "src/features/settings/store.ts",
+    "src/features/settings/useAppSettings.ts",
+    "src/features/skills/store.ts",
+    "src/stores/ompInstall.ts",
+    "src/stores/ompUpdate.ts",
+    "src/features/settings/sections/RulesFilesSection.tsx",
+    "src/features/settings/McpServerRow.tsx",
+    "src/features/skills/SkillsPage.tsx",
+    "src/stores/modelCatalog.ts",
+    "src/lib/skillEnablement.ts",
+    "src/lib/ipc.ts",
+    "src/lib/events.ts",
+    "src/features/settings/McpServerEditor.tsx",
+    "src/features/settings/ui.tsx"
+  ],
+  "implementationFindings": [
+    {
+      "title": "create() 无重复点击保护、不设置 saving",
+      "evidence": "src/features/settings/FileEditor.tsx:178-196",
+      "kind": "trace-and-source-only hypothesis"
+    },
+    {
+      "title": "PluginsSection.updateOmpList 与 skills/store updateOmpListSetting 对同一配置键读改写互不串行",
+      "evidence": "src/features/settings/PluginsSection.tsx:60-73; src/features/skills/store.ts:115-140",
+      "kind": "trace-and-source-only hypothesis"
+    },
+    {
+      "title": "write_checked 在 stamp 比较与写入之间无锁",
+      "evidence": "src-tauri/src/omp_files.rs:74-92",
+      "kind": "trace-and-source-only hypothesis"
+    },
+    {
+      "title": "SKILL.md 写入失败时 spawn_plugin_dir 仍只因 plugin.json 存在而传 --plugin-dir",
+      "evidence": "src-tauri/src/visualize.rs:50-85",
+      "kind": "trace-and-source-only hypothesis"
+    }
+  ],
+  "openRules": []
+}

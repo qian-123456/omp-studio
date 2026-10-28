@@ -1,0 +1,67 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 67 and seed 5411678742682371987 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 71194] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobilePrompt_rules.tla
+Parsing file <path>/MobilePrompt.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module MobilePrompt
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module MobilePrompt_rules
+Starting... (2026-10-28 22:46:15)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:46:15.
+<< "statechart broken",
+   [ composer |-> "restored",
+     optimistic |-> FALSE,
+     req |-> "failed",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 1 ],
+   {"RestoredMeansNotSent"} >>
+<< "statechart broken",
+   [ composer |-> "empty",
+     optimistic |-> TRUE,
+     req |-> "inflight",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 2 ],
+   {"NoDuplicatePrompt"} >>
+<< "statechart broken",
+   [ composer |-> "draft",
+     optimistic |-> TRUE,
+     req |-> "inflight",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 2 ],
+   {"NoDuplicatePrompt"} >>
+<< "statechart broken",
+   [ composer |-> "empty",
+     optimistic |-> TRUE,
+     req |-> "done",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 2 ],
+   {"NoDuplicatePrompt"} >>
+<< "statechart broken",
+   [ composer |-> "restored",
+     optimistic |-> FALSE,
+     req |-> "failed",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 2 ],
+   {"RestoredMeansNotSent", "NoDuplicatePrompt"} >>
+<< "statechart broken",
+   [ composer |-> "draft",
+     optimistic |-> TRUE,
+     req |-> "done",
+     serverSeen |-> TRUE,
+     serverPrompts |-> 2 ],
+   {"NoDuplicatePrompt"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.1E-17
+29 states generated, 18 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:46:16)

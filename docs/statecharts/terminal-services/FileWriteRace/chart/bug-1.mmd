@@ -1,0 +1,36 @@
+---
+title: "文本文件并发保存, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1 fill:#e8f0fe,stroke:#74787f,color:#1b2631
+  classDef group1Path fill:#e8f0fe,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group2 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group2Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "保存进行中" as legendGroup1
+    state "结果与回报矛盾" as legendGroup2
+    state "违反规则" as legendWrong
+  }
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "第一次保存尚未开始，第二次保存尚未开始，文件仍是旧内容" as s0
+  state "第一次保存已写好临时文件，第二次保存尚未开始，文件仍是旧内容" as s1
+  state "第一次保存已写好临时文件，第二次保存已写好临时文件，文件仍是旧内容" as s2
+  state "第一次保存报告保存成功，第二次保存已写好临时文件，文件是第二次保存的内容" as s3
+  state "第一次保存报告保存成功，第二次保存报告保存失败，文件是第二次保存的内容" as s4
+  [*] --> s0
+  s0 --> s1 : 1. 第一次保存写入临时文件
+  s1 --> s2 : 2. 第二次保存写入临时文件
+  s2 --> s3 : 3. 第一次保存替换目标文件
+  s3 --> s4 : 4. 第二次保存替换目标文件
+  class s0 group1Path
+  class s1 group1Path
+  class s2 group1Path
+  class s3 group1Path
+  class s4 group2Wrong

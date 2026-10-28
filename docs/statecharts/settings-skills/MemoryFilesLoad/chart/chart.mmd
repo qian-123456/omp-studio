@@ -1,0 +1,59 @@
+---
+title: "记忆文件列表按项目加载"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): 加过期判断
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works today" as legendWorks
+    state "Fixed or new with 加过期判断" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "列表是项目1的，选中的却是项目2" as s0
+  state "列表是项目2的，选中的却是项目1" as s1
+  state "列表正确（项目1）" as s2
+  state "列表正确（项目2）" as s3
+  state "读取中，当前显示还没读到的列表" as s4
+  state "读取中，当前显示项目1的列表" as s5
+  state "读取中，当前显示项目2的列表" as s6
+  [*] --> s4
+  s4 --> s2 : 一次文件列表读取返回
+  s4 --> s5 : 一次文件列表读取返回
+  s4 --> s6 : 一次文件列表读取返回
+  s2 --> s5 : 换到另一个记忆项目
+  s5 --> s3 : 一次文件列表读取返回
+  s6 --> s0 : 一次文件列表读取返回
+  s5 --> s1 : 一次文件列表读取返回
+  s6 --> s2 : 一次文件列表读取返回
+  s5 --> s6 : 一次文件列表读取返回
+  s3 --> s6 : 换到另一个记忆项目
+  s0 --> s5 : 换到另一个记忆项目
+  s1 --> s6 : 换到另一个记忆项目
+  s6 --> s5 : 一次文件列表读取返回
+  s5 --> s2 : 一次文件列表读取返回
+  s6 --> s3 : 一次文件列表读取返回
+  s4 --> s3 : with 加过期判断, 一次文件列表读取返回
+  s4 --> s4 : 换到另一个记忆项目
+  class s0 fixed
+  class s1 fixed
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works

@@ -1,0 +1,72 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 73,
+  "modelTransitions": 268,
+  "chartStates": 54,
+  "chartTransitions": 190,
+  "chartStatus": {
+    "works": 45,
+    "wrong": 0,
+    "fixed": 9,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "旧消息仍可见明文",
+      "color": "#fde2e2",
+      "states": 30
+    },
+    {
+      "name": "旧消息已受保护或无明文",
+      "color": "#e2f5e9",
+      "states": 24
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "会话里已有明文密钥，条目启用，已绑定但只保护之后的内容，弹窗关闭，用户要求连旧历史一起替换，旧消息仍含明文",
+      "invariant": "HistoryReplacedWhenAsked",
+      "rule": "用户选择“同时替换旧历史”之后，旧消息里的真实值不应再发给上游。",
+      "cause": "此前选过只保护之后的内容，现在再点替换旧历史，系统保留了原来的截止点，旧消息仍发给上游",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "点同时替换旧历史"
+      ],
+      "startsHere": false,
+      "fix": "会话里已有明文密钥，条目启用，已绑定并保护全部历史，弹窗关闭，用户要求连旧历史一起替换"
+    },
+    {
+      "n": 2,
+      "end": "会话里已有明文密钥，条目已停用，已绑定但只保护之后的内容，弹窗关闭，用户要求连旧历史一起替换，旧消息仍含明文",
+      "invariant": "HistoryReplacedWhenAsked",
+      "rule": "用户选择“同时替换旧历史”之后，旧消息里的真实值不应再发给上游。",
+      "cause": "这个条目此前被停用，再次标记时系统没有重新启用，旧消息和新消息都不会被替换",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "点同时替换旧历史"
+      ],
+      "startsHere": false,
+      "fix": "会话里已有明文密钥，条目启用，已绑定并保护全部历史，弹窗关闭，用户要求连旧历史一起替换"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "PrivacyScope.tla": [],
+    "PrivacyScopeFixed.tla": []
+  },
+  "brokenProperties": []
+}

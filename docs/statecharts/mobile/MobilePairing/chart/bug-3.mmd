@@ -1,0 +1,49 @@
+---
+title: "手机配对与推送, bug 3"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendMixed mixed
+  state "手机已配对" as g0 {
+    state "配对码已用，事件流在线，已订阅通知，已推送0次" as s0
+    state "配对码已用，事件流在线，已订阅通知，正在前台查看，30秒内已通知，已推送1次" as s1
+    state "配对码已用，事件流在线，已订阅通知，正在前台查看，已推送0次" as s2
+    state "配对码已用，事件流在线，未订阅通知，已推送0次" as s3
+    state "配对码已用，无事件流，未订阅通知，已推送0次" as s4
+  }
+  state "无已配对设备" as g1 {
+    state "无配对码，无事件流，未订阅通知，已推送0次" as s5
+    state "配对码有效，无事件流，未订阅通知，已推送0次" as s6
+  }
+  [*] --> s5
+  s5 --> s6 : 1. 电脑生成配对码
+  s6 --> s4 : 2. 手机打开配对链接
+  s4 --> s3 : 3. 手机打开事件流
+  s3 --> s0 : 4. 手机开启通知
+  s0 --> s2 : 5. 手机在前台查看会话
+  s2 --> s1 : 6. 会话进入等待审批
+  class s0 mixedPath
+  class s1 mixedPath
+  class s2 mixedPath
+  class s3 mixedPath
+  class s4 mixedPath
+  class s5 mixedPath
+  class s6 mixedPath

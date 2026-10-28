@@ -1,0 +1,48 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 20,
+  "modelTransitions": 24,
+  "chartStates": 14,
+  "chartTransitions": 18,
+  "chartStatus": {
+    "works": 10,
+    "wrong": 0,
+    "fixed": 4,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "regions": {
+    "drawn": false,
+    "why": "the regions do not combine into the flat chart, with 2 difference(s), such as transitions only in EXPECTED (a guard in the spec blocks them, or the spec renamed the step): 设置窗口开着 | 会话列表已加载 --> 已进入上次的会话 | 会话列表已加载，恢复已处理 : 启动恢复上次的会话"
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "停在首页: 会话列表已加载，恢复已处理，用户打开的页面被抢走",
+      "invariant": "RestoreKeepsUserPage",
+      "rule": "用户在启动加载期间自己打开的页面，启动恢复不能把它抢走。",
+      "cause": "启动恢复只看会话是否加载完，不看用户已经去了别的页面",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 2,
+      "lastSteps": [
+        "启动恢复上次的会话"
+      ],
+      "startsHere": false,
+      "fix": "停在收件箱: 会话列表已加载，恢复已处理"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "StartupRestore.tla": [],
+    "StartupRestoreFixed.tla": []
+  },
+  "brokenProperties": []
+}

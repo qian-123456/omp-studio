@@ -1,0 +1,44 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendMixed mixed
+  state "正在停止：暂存1；已发出2" as s0
+  state "正在生成：暂存1；已发出2" as s1
+  state "正在生成：暂存2；已发出无" as s2
+  state "正在生成：暂存无；已发出2" as s3
+  state "正在生成：暂存无；已发出无" as s4
+  state "空闲：暂存无；已发出2；合并发送中：1" as s5
+  state "空闲：暂存无；已发出无；合并发送中：2" as s6
+  [*] --> s4
+  s4 --> s2 : 1. 生成中输入一条消息，先暂存
+  s2 --> s6 : 2. 这一轮结束
+  s6 --> s3 : 3. 合并消息发送成功
+  s3 --> s1 : 4. 生成中输入一条消息，先暂存
+  s1 --> s0 : 5. 点击停止
+  s0 --> s5 : 6. 这一轮结束
+  class s0 mixedPath
+  class s1 mixedPath
+  class s2 mixedPath
+  class s3 mixedPath
+  class s4 mixedPath
+  class s5 mixedPath
+  class s6 mixedPath

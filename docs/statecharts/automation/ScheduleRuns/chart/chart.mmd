@@ -1,0 +1,92 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group1 fill:#e8eaf6,stroke:#74757b,color:#1b2631
+  classDef group1Wrong fill:#e8eaf6,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2 fill:#fff3cd,stroke:#807a67,color:#1b2631
+  classDef group3 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group3Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group3Mixed fill:#d6eaf8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  state "Legend" as legend {
+    state "正常" as legendGroup0
+    state "已完成" as legendGroup1
+    state "已暂停" as legendGroup2
+    state "已删除" as legendGroup3
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendGroup3 group3
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "已删除" as s0
+  state "已删除，却仍启动了运行" as s1
+  state "已完成·一次性：无下次触发，同时有2个运行" as s2
+  state "已完成·一次性：无下次触发，正在运行" as s3
+  state "已完成·一次性：无下次触发，没有运行" as s4
+  state "已完成·一次性：等待下次触发，没有运行" as s5
+  state "已完成·重复(有次数上限)：无下次触发，同时有2个运行，次数超过上限" as s6
+  state "已完成·重复(有次数上限)：无下次触发，正在运行" as s7
+  state "已完成·重复(有次数上限)：无下次触发，正在运行，次数超过上限" as s8
+  state "已完成·重复(有次数上限)：无下次触发，没有运行" as s9
+  state "已完成·重复(有次数上限)：无下次触发，没有运行，次数超过上限" as s10
+  state "已暂停·一次性：无下次触发，没有运行" as s11
+  state "已暂停·重复(有次数上限)：无下次触发，没有运行" as s12
+  state "已暂停·重复：无下次触发，没有运行" as s13
+  state "运行中任务·一次性：已到点待领取，没有运行" as s14
+  state "运行中任务·一次性：等待下次触发，没有运行" as s15
+  state "运行中任务·重复(有次数上限)：等待下次触发，正在运行" as s16
+  state "运行中任务·重复(有次数上限)：等待下次触发，没有运行" as s17
+  state "运行中任务·重复：等待下次触发，没有运行" as s18
+  [*] --> s15
+  [*] --> s17
+  [*] --> s18
+  s15 --> s14 : 到达计划的触发时间
+  s15 --> s11 : 点击暂停
+  s15 --> s0 : 删除任务
+  s18 --> s13 : 点击暂停
+  s17 --> s12 : 点击暂停
+  s14 --> s4 : 调度器到点领取任务并推进下次时间
+  s17 --> s16 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s4 --> s5 : 把已执行的一次性任务改到新的未来时间
+  s4 --> s0 : 删除任务
+  s16 --> s17 : 运行正常结束 or 运行失败、超时或进程异常退出 or<br/>应用重启，收尾上次未完成的运行
+  s4 --> s3 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s0 --> s1 : 调度器创建运行记录并开始运行
+  s17 --> s7 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s3 --> s2 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s7 --> s9 : 运行正常结束 or 运行失败、超时或进程异常退出 or<br/>应用重启，收尾上次未完成的运行
+  s9 --> s8 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s7 --> s6 : 立即运行创建运行记录并开始运行 or<br/>调度器创建运行记录并开始运行
+  s6 --> s10 : 应用重启，收尾上次未完成的运行
+  s4 --> s4 : 点击立即运行，确认没有在运行的记录
+  s17 --> s17 : 点击立即运行，确认没有在运行的记录
+  s9 --> s9 : 点击立即运行，确认没有在运行的记录
+  class s0 group3Mixed
+  class s1 group3Wrong
+  class s2 group1Wrong
+  class s3 group1
+  class s4 group1
+  class s5 group1Wrong
+  class s6 group1Wrong
+  class s7 group1
+  class s8 group1Wrong
+  class s9 group1
+  class s10 group1Wrong
+  class s11 group2
+  class s12 group2
+  class s13 group2
+  class s14 group0
+  class s15 group0
+  class s16 group0
+  class s17 group0
+  class s18 group0

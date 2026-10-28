@@ -1,0 +1,387 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 116 and seed 1395970334276176269 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 52592] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PrivacyScope.tla
+Semantic processing of module PrivacyScope
+Starting... (2026-10-28 22:35:34)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-28 22:35:34.
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = FALSE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = FALSE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 5: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = FALSE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = FALSE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 5: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 5: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = FALSE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = FALSE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 5: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 6: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 7: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = FALSE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = FALSE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 5: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 6: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+State 7: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "all"
+/\ tracked = FALSE
+/\ entry = TRUE
+
+Error: Invariant HistoryReplacedWhenAsked is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ shownSent = FALSE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 2: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "none"
+/\ tracked = TRUE
+/\ entry = FALSE
+
+State 3: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 4: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "futureOnly"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = FALSE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 5: <ConfirmFuture line 57, col 3 to line 64, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = FALSE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 6: <OpenPopover line 44, col 3 to line 48, col 56 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "none"
+/\ history = "realSent"
+/\ popover = "open"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+State 7: <ConfirmAll line 68, col 3 to line 75, col 47 of module PrivacyScope>
+/\ shownSent = TRUE
+/\ wanted = "all"
+/\ history = "realSent"
+/\ popover = "closed"
+/\ popTrack = TRUE
+/\ link = "future"
+/\ tracked = TRUE
+/\ entry = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 5.4E-16
+224 states generated, 61 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:35:34)

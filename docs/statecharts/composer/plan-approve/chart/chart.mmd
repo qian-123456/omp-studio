@@ -1,0 +1,54 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Reached only after a bug" as legendAfter
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendAfter after
+  state "计划审阅面板可批准" as s0
+  state "计划审阅面板可批准，执行会话已开始" as s1
+  state "计划审阅面板可批准，批准处理中" as s2
+  state "计划审阅面板可批准，提示批准失败" as s3
+  state "计划模式已退出，面板无批准按钮，执行会话已开始" as s4
+  state "计划模式已退出，面板无批准按钮，批准处理中" as s5
+  state "计划模式已退出，面板无批准按钮，提示批准失败" as s6
+  state "计划模式开启，等待计划，执行会话已开始" as s7
+  state "计划模式开启，等待计划，提示批准失败" as s8
+  [*] --> s0
+  s0 --> s2 : 点击批准（新上下文执行）
+  s2 --> s5 : 扩展退出计划模式
+  s5 --> s4 : 新会话创建并开始执行
+  s5 --> s6 : 新会话创建失败
+  s4 --> s7 : 重新开启计划模式
+  s6 --> s8 : 重新开启计划模式
+  s7 --> s1 : 一轮结束，计划重新出现
+  s8 --> s3 : 一轮结束，计划重新出现
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 after
+  class s4 works
+  class s5 works
+  class s6 wrong
+  class s7 works
+  class s8 wrong

@@ -1,0 +1,105 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 80 and seed 4590232638034709350 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 68402] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/OmpUpdateCheck.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module OmpUpdateCheck
+Starting... (2026-10-28 22:45:25)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:45:25.
+Error: Invariant NoStaleUpdateBadge is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ checking = FALSE
+/\ shownAvail = FALSE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "none"
+
+State 2: <CheckStarts line 17, col 3 to line 19, col 47 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = FALSE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "old"
+
+State 3: <UpdateStarts line 28, col 3 to line 30, col 58 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = FALSE
+/\ updating = TRUE
+/\ binary = "old"
+/\ checkSees = "old"
+
+State 4: <UpdateFinishes line 33, col 3 to line 37, col 38 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = FALSE
+/\ updating = FALSE
+/\ binary = "new"
+/\ checkSees = "old"
+
+State 5: <CheckReturns line 22, col 3 to line 25, col 35 of module OmpUpdateCheck>
+/\ checking = FALSE
+/\ shownAvail = TRUE
+/\ updating = FALSE
+/\ binary = "new"
+/\ checkSees = "none"
+
+Error: Invariant NoStaleUpdateBadge is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ checking = FALSE
+/\ shownAvail = FALSE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "none"
+
+State 2: <CheckStarts line 17, col 3 to line 19, col 47 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = FALSE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "old"
+
+State 3: <CheckReturns line 22, col 3 to line 25, col 35 of module OmpUpdateCheck>
+/\ checking = FALSE
+/\ shownAvail = TRUE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "none"
+
+State 4: <CheckStarts line 17, col 3 to line 19, col 47 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = TRUE
+/\ updating = FALSE
+/\ binary = "old"
+/\ checkSees = "old"
+
+State 5: <UpdateStarts line 28, col 3 to line 30, col 58 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = TRUE
+/\ updating = TRUE
+/\ binary = "old"
+/\ checkSees = "old"
+
+State 6: <UpdateFinishes line 33, col 3 to line 37, col 38 of module OmpUpdateCheck>
+/\ checking = TRUE
+/\ shownAvail = TRUE
+/\ updating = FALSE
+/\ binary = "new"
+/\ checkSees = "old"
+
+State 7: <CheckReturns line 22, col 3 to line 25, col 35 of module OmpUpdateCheck>
+/\ checking = FALSE
+/\ shownAvail = TRUE
+/\ updating = FALSE
+/\ binary = "new"
+/\ checkSees = "none"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.1E-17
+39 states generated, 19 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-28 22:45:25)

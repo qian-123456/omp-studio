@@ -1,0 +1,1992 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 54 and seed 676098262658639333 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 79403] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ScheduleRuns.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module ScheduleRuns
+Starting... (2026-10-28 22:49:11)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 3 distinct states generated at 2026-10-28 22:49:11.
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 7: <FinishFail line 125, col 3 to line 128, col 115 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 2
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 2
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishFail line 125, col 3 to line 128, col 115 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 9: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 9: <FinishFail line 125, col 3 to line 128, col 115 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 12: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 12: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishFail line 125, col 3 to line 128, col 115 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 12: <ExecCreate line 86, col 3 to line 95, col 53 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Error: Invariant RunsWithinCap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 2: <TimeArrives line 55, col 3 to line 57, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "idle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = FALSE
+/\ due = "due"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 3: <SchedulerClaim line 60, col 3 to line 68, col 107 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "claimed"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 4: <ExecCheck line 80, col 3 to line 83, col 130 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 5: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "none"
+/\ hasRunRow = FALSE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 0
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 6: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 7: <FinishOk line 119, col 3 to line 122, col 115 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 8: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "ok"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 1
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "future"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = TRUE
+
+State 9: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 10: <FinishFail line 125, col 3 to line 128, col 115 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 11: <ManualCheck line 98, col 3 to line 102, col 132 of module ScheduleRuns>
+/\ lastStatus = "error"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 2
+/\ runCount = 0
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "sawIdle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+State 12: <ManualCreate line 105, col 3 to line 116, col 66 of module ScheduleRuns>
+/\ lastStatus = "running"
+/\ hasRunRow = TRUE
+/\ exists = TRUE
+/\ sched = "sawIdle"
+/\ runsDone = 3
+/\ runCount = 1
+/\ cap = 2
+/\ everRan = TRUE
+/\ due = "none"
+/\ startedAfterDelete = FALSE
+/\ man = "idle"
+/\ cadence = "recurring"
+/\ enabled = FALSE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.2E-13
+3387 states generated, 885 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 22.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:49:11)

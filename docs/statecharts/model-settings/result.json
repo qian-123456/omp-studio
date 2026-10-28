@@ -1,0 +1,579 @@
+{
+  "slice": "model-settings",
+  "title": "模型设置、批量替换与模板自动切换状态审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "src-tauri/src/model_replace.rs",
+      "feature": "Scan / guarded apply / successful-edit history / inverted undo",
+      "status": "modeled",
+      "reason": "ReplaceLifecycle models one guarded reference and undo result; scan projects/missing/errors, schedule/app-setting backends, partial batch, chain grouping, retry append and pruning read in source but not exhaustively modeled."
+    },
+    {
+      "path": "src-tauri/src/model_replace.rs",
+      "feature": "Catalog and real model probes",
+      "status": "out-of-model",
+      "reason": "Catalog is an opaque capability input. Probe runners may spend provider quota; no real probe or CLI was executed."
+    },
+    {
+      "path": "src-tauri/src/model_templates/mod.rs",
+      "feature": "Scope validation and command contracts",
+      "status": "modeled",
+      "reason": "TemplateSwitch uses global/project scope and command apply/undo boundaries; capture/snapshot/CRUD remain source-read-only."
+    },
+    {
+      "path": "src-tauri/src/model_templates/apply.rs",
+      "feature": "Fresh preview / quota preflight / write / session results / undo",
+      "status": "modeled",
+      "reason": "TemplateSwitch models finite preflight/write/aggregate sessions; native session switching and manual template undo are source-read-only. Apply recomputes preview (306-307); GUI preview itself is not a CAS promise."
+    },
+    {
+      "path": "src-tauri/src/model_templates/rules.rs",
+      "feature": "Quota rule first hit / bottom line / auto revert / poller",
+      "status": "modeled",
+      "reason": "TemplateSwitch bounds one eligible rule per valid scope and drift gating. Ordering, notification dedupe, missing projects, polling backoff and auto-revert eligibility predicates read in source, not separately explored."
+    },
+    {
+      "path": "src-tauri/src/model_templates/store.rs",
+      "feature": "Template/rule/history SQLite transactions",
+      "status": "read-only",
+      "reason": "Read schema commands/upsert semantics: scope retained on template updates, bottom-line uniqueness per scope, dependent rule deletion, ordered rules. No config or DB writes were performed."
+    },
+    {
+      "path": "src-tauri/src/model_templates/usage.rs",
+      "feature": "Cached quota aggregation",
+      "status": "read-only",
+      "reason": "fetch_usage uses cached report; window percentage and exhausted-account aggregation read. The model consumes verdicts instead of running provider/CLI reports."
+    },
+    {
+      "path": "src-tauri/src/model_templates/provider_map.rs",
+      "feature": "Usage-slug provider mapping",
+      "status": "read-only",
+      "reason": "Exact mapping and verbatim fallback traced only; provider identity remains an I/O boundary."
+    },
+    {
+      "path": "src-tauri/src/settings_model_roles.rs",
+      "feature": "Scoped role resolution and guarded YAML edits",
+      "status": "modeled",
+      "reason": "RoleScope models project-over-global roles and global-over-project named pins. Alias cycles/unset fallback, validation, byte preservation, atomic guarded writes, legacy refusal and batching read in source only."
+    },
+    {
+      "path": "src-tauri/src/settings_model_roles/chains.rs",
+      "feature": "Global fallback chain splice / rename / guarded write",
+      "status": "read-only",
+      "reason": "Fresh locked read, grouped planning, verification and atomic write inspected. No source-level assertion replay or live config write."
+    },
+    {
+      "path": "src-tauri/src/settings_model_roles/discovery.rs",
+      "feature": "Agent catalog precedence / discovery",
+      "status": "read-only",
+      "reason": "Project/user/extensions/plugins/builtin discovery and first-name-wins precedence inspected; no external catalog or arbitrary directory traversal model."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplaceDialog.tsx",
+      "feature": "Scope / scan / preview / apply / retry / undo / late navigation",
+      "status": "modeled",
+      "reason": "ReplaceOwnership models apply success/failure and start-over ownership; ReplaceLifecycle models stale stored value and undo; ModelCapability models target/level changes. Multiwrite, history read ordering and undo navigation are not fully explored."
+    },
+    {
+      "path": "src/features/settings/modelReplace/logic.ts",
+      "feature": "Plan building / matching / per-row thinking sanitization",
+      "status": "modeled",
+      "reason": "ModelCapability uses supported levels and row override sanitization; aliases/globs/provider-sensitive matching, chain dedup/conflict and full buildPlan are source-read-only."
+    },
+    {
+      "path": "src/features/settings/modelReplace/kinds.ts",
+      "feature": "Model-kind grouping / catalog load",
+      "status": "read-only",
+      "reason": "Catalog kind groups, probe-kind mapping, thinking eligibility and single-flight catalog load inspected. Catalog I/O not executed."
+    },
+    {
+      "path": "src/features/settings/modelReplace/parts.tsx",
+      "feature": "Target group and supported thinking picker",
+      "status": "modeled",
+      "reason": "ModelCapability covers supported options and search target conversion; popover/search/rendering is source-read-only."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplacePlanPreview.tsx",
+      "feature": "Checkbox and row override edit",
+      "status": "modeled",
+      "reason": "ModelCapability abstracts one same-kind override with unsupported level removal. Rendering and every row permutation remain read-only."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplaceResults.tsx",
+      "feature": "Result / retry-failed / selected live-session switch",
+      "status": "read-only",
+      "reason": "Failed item retry and live RPC model/thinking/get_state contracts traced; Runtime owns downstream execution state. No actual session RPCs issued."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplaceHistory.tsx",
+      "feature": "Expanded history / skipped undo outcomes",
+      "status": "read-only",
+      "reason": "Stored edits, restored-value presentation and per-item errors inspected; UI expansion itself is not modeled."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplaceOverview.tsx",
+      "feature": "Usage table / probe outcome UI",
+      "status": "read-only",
+      "reason": "Usage selection/probe pending/success/error rendering inspected. Probe invocation is out of runtime audit to avoid API cost."
+    },
+    {
+      "path": "src/features/settings/modelReplace/store.ts",
+      "feature": "Cross-panel invalidation revision",
+      "status": "read-only",
+      "reason": "Invalidate role/config/settings/schedule consumers traced. Consumer stores outside this slice retain their owners."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/store.ts",
+      "feature": "Snapshot generation / mutation publication / status reads",
+      "status": "modeled",
+      "reason": "TemplateSnapshot exposes late pre-save read overwriting a published successful mutation; confirmed through actual public store actions. Status reads/forced supersession are source-read-only, with forced-read control replayed."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/index.tsx",
+      "feature": "Mount refresh / subscription ownership / capture / duplicate",
+      "status": "read-only",
+      "reason": "Subscription cancellation cleanup and editor/apply modal ownership inspected; capture/navigation interleavings not separately verified."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/TemplateEditor.tsx",
+      "feature": "Captured/duplicate draft / save / absent vs null roles",
+      "status": "read-only",
+      "reason": "Save publishes full backend response via setSnapshot at 153. Pending busy/escape and null/absent editor values inspected, not independently modeled."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/TemplatesCard.tsx",
+      "feature": "Scoped listing / confirmed deletion / restore",
+      "status": "read-only",
+      "reason": "Scope filtering, dependent-rule warning and snapshot publication inspected. Confirm dialog and backend mutation I/O are not driven."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/RulesCard.tsx",
+      "feature": "Rule save/toggle/order / full snapshot publication",
+      "status": "read-only",
+      "reason": "Actual save caller of publication at 440-442 traced; the model begins at its returned snapshot, not a simulated UI click. Rule validation/CRUD not replayed."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/ApplyPreview.tsx",
+      "feature": "Preview / refused force / applying result",
+      "status": "modeled",
+      "reason": "TemplateSwitch models quota refusal and explicit force. Preview loading and modal rendering remain source-read-only; backend recomputes preview on apply."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/SwitchLogCard.tsx",
+      "feature": "Scoped history / confirmed manual undo",
+      "status": "read-only",
+      "reason": "Manual undo confirmation, IPC and refresh traced. Native undo not invoked."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/logic.ts",
+      "feature": "Scope filters / quota provider labels / rule defaults",
+      "status": "read-only",
+      "reason": "Scope helpers and quota presentation inspected; mapping remains an opaque provider identity boundary."
+    },
+    {
+      "path": "src/features/settings/AgentModelAssignmentsPanel.tsx",
+      "feature": "Queued scoped reads/writes and cached snapshots",
+      "status": "modeled",
+      "reason": "RoleScope models scoped results; source ownership checks skip old-project read publication and queue writes. Full cache warming and cross-revision races remain read-only."
+    },
+    {
+      "path": "src/features/settings/ModelRoleTables.tsx",
+      "feature": "Role/agent editor status and selection",
+      "status": "read-only",
+      "reason": "useSave mount ownership, pending/saved/error states, role choices and alias presentation inspected; not rendered or formally expanded."
+    },
+    {
+      "path": "src/features/settings/AddRoleForm.tsx",
+      "feature": "New model-role validation / save / cancel",
+      "status": "read-only",
+      "reason": "Name uniqueness, value requirement, pending lock, scoped write and error preservation inspected; no role definition creation is implied."
+    },
+    {
+      "path": "src/features/settings/modelRoleScope.tsx",
+      "feature": "Global default / session project choice / navigation",
+      "status": "modeled",
+      "reason": "RoleScope models explicit global/project selection; source no-project disabled state and project picker fallback are read-only."
+    },
+    {
+      "path": "src/features/settings/agentModelAssignments.ts",
+      "feature": "Role precedence / aliases / validation / fallback helper",
+      "status": "read-only",
+      "reason": "Frontend mirrors resolver: unknown/cycle errors do not silently fall through; alias and syntactic capability handling inspected. Full agent-resolution chain not checked by RoleScope."
+    },
+    {
+      "path": "src/features/settings/modelRoles.ts",
+      "feature": "Builtin roles / suffixes / fallback chain types",
+      "status": "read-only",
+      "reason": "Explicit absent/empty/list fallback meanings and known suffix splitting inspected; role values accept suffix syntax without a catalog capability guarantee."
+    },
+    {
+      "path": "src/features/settings/FallbackChainEditor.tsx",
+      "feature": "Draft reorder / apply / unset / disabled chain",
+      "status": "read-only",
+      "reason": "Committed draft resync, valid cleaned rows, mode actions and record write inspected; whole-record RPC remains I/O."
+    },
+    {
+      "path": "src/features/settings/modelNormalization.ts",
+      "feature": "Model selector normalization/matching helpers",
+      "status": "read-only",
+      "reason": "Pure display/match helpers inspected; no independently changing lifecycle to statechart."
+    },
+    {
+      "path": "src/features/settings/modelReplace/logic.test.ts",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/modelReplace/ModelReplaceDialog.test.tsx",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/modelTemplates/logic.test.ts",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/AgentModelAssignmentsPanel.test.tsx",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/AddRoleForm.test.tsx",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/agentModelAssignments.test.ts",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/modelRoles.test.ts",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/FallbackChainEditor.test.tsx",
+      "feature": "Existing regression test suite",
+      "status": "out-of-model",
+      "reason": "Existing suites were not rerun; this audit uses one focused isolated consumer replay. Parent reports existing TS7053 in AgentModelAssignmentsPanel.test.tsx as a verification limitation, not a model finding."
+    },
+    {
+      "path": "src/features/settings/FallbackChainsSection.tsx",
+      "feature": "Global chain listing / cycle order / config reload",
+      "status": "read-only",
+      "reason": "Read-only global fallback UI: role grouping, unset/empty/list inheritance hints, reload on save and shared cycle editor traced. Upstream runtime fallback algorithm stays opaque."
+    },
+    {
+      "path": "src/features/settings/ModelRulesSection.tsx",
+      "feature": "Model/provider fallback rule drafts / delete",
+      "status": "read-only",
+      "reason": "Draft add validation, duplicate keys, confirmed deletion and full retry.fallbackChains write traced; not exhaustively modeled."
+    },
+    {
+      "path": "src/features/settings/FallbackSwitchesCard.tsx",
+      "feature": "Fallback switches / quota reserve policy",
+      "status": "read-only",
+      "reason": "Pending lock, save/reload, master-disabled controls, usage-aware policy and percentage commit traced; runtime cooldown/fallback execution remains external."
+    },
+    {
+      "path": "src/features/settings/fallbackSwitches.ts",
+      "feature": "Fallback enum defaults / reserve validation",
+      "status": "read-only",
+      "reason": "Pure enum narrowing and finite numeric 0..100 validation read; no independent runtime lifecycle."
+    },
+    {
+      "path": "src/components/ModelSelect.tsx",
+      "feature": "Role-backed selection boundary",
+      "status": "read-only",
+      "reason": "Role override/global store loading and selected-role display path inspected. Generic picker, catalog refresh and live model application belong to their separate owners, not reimplemented here."
+    }
+  ],
+  "models": [
+    {
+      "name": "TemplateSnapshot",
+      "spec": "TemplateSnapshot.tla",
+      "config": "TemplateSnapshot.cfg",
+      "map": "TemplateSnapshot.map.mjs",
+      "out": "snapshot-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec TemplateSnapshot.tla --config TemplateSnapshot.cfg --map TemplateSnapshot.map.mjs --out snapshot-out --title \"模板列表保存与迟到读取\" --png --expect-broken MutationSurvives",
+      "summary": "snapshot-out/summary.json",
+      "counts": {
+        "modelStates": 10,
+        "modelTransitions": 12,
+        "chartStates": 6,
+        "chartTransitions": 9,
+        "chartStatus": {
+          "works": 5,
+          "wrong": 1,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "One snapshot read, one successful save publication; reply value captured at read start; errors terminate the read. Forced-read supersession is exercised by the consumer replay, not expanded in this model.",
+      "expectedBroken": [
+        "MutationSurvives"
+      ]
+    },
+    {
+      "name": "ReplaceLifecycle",
+      "spec": "ReplaceLifecycle.tla",
+      "config": "ReplaceLifecycle.cfg",
+      "map": "ReplaceLifecycle.map.mjs",
+      "out": "replace-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec ReplaceLifecycle.tla --config ReplaceLifecycle.cfg --map ReplaceLifecycle.map.mjs --out replace-out --title \"批量替换与保护性撤销\" --png --cover",
+      "summary": "replace-out/summary.json",
+      "counts": {
+        "modelStates": 8,
+        "modelTransitions": 7,
+        "chartStates": 8,
+        "chartTransitions": 7,
+        "chartStatus": {
+          "works": 8,
+          "wrong": 0,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "One scanned stored reference with three concrete values, one apply and at most one undo. A failed compare preserves the manual value. Batch partial results, retry accumulation, history pruning and later scans are source-read-only. undoValue captures the observable value at undo return, not a promise that future external writes cannot change it.",
+      "expectedBroken": []
+    },
+    {
+      "name": "ReplaceOwnership",
+      "spec": "ReplaceOwnership.tla",
+      "config": "ReplaceOwnership.cfg",
+      "map": "ReplaceOwnership.map.mjs",
+      "out": "ownership-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec ReplaceOwnership.tla --config ReplaceOwnership.cfg --map ReplaceOwnership.map.mjs --out ownership-out --title \"离开替换流程后的迟到结果\" --png --cover",
+      "summary": "ownership-out/summary.json",
+      "counts": {
+        "modelStates": 10,
+        "modelTransitions": 10,
+        "chartStates": 9,
+        "chartTransitions": 8,
+        "chartStatus": {
+          "works": 10,
+          "wrong": 0,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "One nonempty apply, one start-over navigation and one deferred rescan. Success/failure of IPC is opaque. Navigation invalidates presentation ownership but does not cancel a started backend write. Rescan failure, overlapping multiple writes, unmount and restart are read-only/out-of-model.",
+      "expectedBroken": []
+    },
+    {
+      "name": "TemplateSwitch",
+      "spec": "TemplateSwitch.tla",
+      "config": "TemplateSwitch.cfg",
+      "map": "TemplateSwitch.map.mjs",
+      "out": "switch-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec TemplateSwitch.tla --config TemplateSwitch.cfg --map TemplateSwitch.map.mjs --out switch-out --title \"模板额度切换与恢复\" --png --cover",
+      "summary": "switch-out/summary.json",
+      "counts": {
+        "modelStates": 52,
+        "modelTransitions": 54,
+        "chartStates": 38,
+        "chartTransitions": 36,
+        "chartStatus": {
+          "works": 38,
+          "wrong": 0,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "One valid scope and one first-hit rule; quota verdict is an opaque finite input. Force is either explicit confirmation or same-scope bottom line. One atomic write with success/failure and aggregate session outcomes; current enabled auto-revert with window due is fixed eligible, then drift prevents restoration. No concurrent native writes, DB failures after file commit, scheduler time progression, multi-rule ordering or live provider probes are explored.",
+      "expectedBroken": []
+    },
+    {
+      "name": "RoleScope",
+      "spec": "RoleScope.tla",
+      "config": "RoleScope.cfg",
+      "map": "RoleScope.map.mjs",
+      "out": "scope-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec RoleScope.tla --config RoleScope.cfg --map RoleScope.map.mjs --out scope-out --title \"模型角色与点名覆盖范围\" --png --cover",
+      "summary": "scope-out/summary.json",
+      "counts": {
+        "modelStates": 30,
+        "modelTransitions": 59,
+        "chartStates": 16,
+        "chartTransitions": 14,
+        "chartStatus": {
+          "works": 16,
+          "wrong": 0,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "One global key, one existing project key, role vs named-override tables, global deletion and scope navigation. Project starts configured and is not deleted in this bound. Alias recursion, agent discovery and full override > declaration > task > session precedence are source-read-only, not fully verified by this per-layer model.",
+      "expectedBroken": []
+    },
+    {
+      "name": "ModelCapability",
+      "spec": "ModelCapability.tla",
+      "config": "ModelCapability.cfg",
+      "map": "ModelCapability.map.mjs",
+      "out": "capability-out",
+      "regenerate": "node \"$STATECHART_SCRIPT\" from-spec ModelCapability.tla --config ModelCapability.cfg --map ModelCapability.map.mjs --out capability-out --title \"替换目标的类型与思考能力约束\" --png --cover",
+      "summary": "capability-out/summary.json",
+      "counts": {
+        "modelStates": 7,
+        "modelTransitions": 14,
+        "chartStates": 7,
+        "chartTransitions": 6,
+        "chartStatus": {
+          "works": 7,
+          "wrong": 0,
+          "fixed": 0,
+          "mixed": 0,
+          "after": 0
+        }
+      },
+      "limits": "Two chat targets with disjoint supported thinking levels, one search target and one row override. Model-default is a separate no-suffix value. Other model kinds, arbitrary catalogs, capability discovery, generic role suffix syntax and provider API compatibility are source-read-only/opaque.",
+      "expectedBroken": []
+    }
+  ],
+  "findings": [
+    {
+      "rule": "MutationSurvives",
+      "title": "已确认保存的新模板列表被更早的读取覆盖",
+      "model": "TemplateSnapshot",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "开始读取模板列表",
+        "保存模板并显示新配置",
+        "先前的读取返回配置，显示回旧配置"
+      ],
+      "reproduction": "Confirmed through actual public store load(true) and setSnapshot entrypoints: the saved-template snapshot is overwritten by before-save when an earlier read resolves. One focused replay test and four consumer-observable assertions passed; the newer-force-read control preserves saved-template. IPC/events mocked; no rendered desktop or native backend save was exercised.",
+      "reproductionDetails": {
+        "status": "confirmed",
+        "entrypoints": [
+          "useModelTemplatesStore.getState().load(true)",
+          "useModelTemplatesStore.getState().setSnapshot(snapshot)"
+        ],
+        "command": "OMP_REPO=/path/to/checkout node replay.mjs",
+        "result": "1 focused test passed with 4 consumer-observable assertions; saved-template -> before-save was observed, while forced-read generation control retained saved-template.",
+        "limits": "Public store-consumer replay, not a rendered desktop click or actual backend save. Only external IPC/events mocked; no model/provider/config writes."
+      },
+      "evidence": [
+        "snapshot-out/stories.md",
+        "snapshot-out/bug-1.mmd",
+        "snapshot-out/bug-1.png",
+        "snapshot-out/summary.json",
+        "snapshot-out/tlc/TemplateSnapshot-MutationSurvives.out",
+        "replay.test.ts",
+        "replay-result.json",
+        "replay.log",
+        "src/features/settings/modelTemplates/store.ts:46-59",
+        "src/features/settings/modelTemplates/store.ts:87",
+        "src/features/settings/modelTemplates/TemplateEditor.tsx:145-155",
+        "src/features/settings/modelTemplates/RulesCard.tsx:440-442"
+      ],
+      "fixModelStatus": "Not modeled; no product fix made."
+    }
+  ],
+  "verification": [
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec TemplateSnapshot.tla --config TemplateSnapshot.cfg --map TemplateSnapshot.map.mjs --out \"$AUDIT_OUT/snapshot-out\" --title \"模板列表保存与迟到读取\" --png --expect-broken MutationSurvives",
+      "exitCode": 0,
+      "result": "Expected MutationSurvives counterexample; TypeOK holds."
+    },
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec ReplaceLifecycle.tla --config ReplaceLifecycle.cfg --map ReplaceLifecycle.map.mjs --out \"$AUDIT_OUT/replace-out\" --title \"批量替换与保护性撤销\" --png --cover",
+      "exitCode": 0,
+      "result": "All configured finite-model invariants hold; see summary and retained TLC logs."
+    },
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec ReplaceOwnership.tla --config ReplaceOwnership.cfg --map ReplaceOwnership.map.mjs --out \"$AUDIT_OUT/ownership-out\" --title \"离开替换流程后的迟到结果\" --png --cover",
+      "exitCode": 0,
+      "result": "All configured finite-model invariants hold; see summary and retained TLC logs."
+    },
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec TemplateSwitch.tla --config TemplateSwitch.cfg --map TemplateSwitch.map.mjs --out \"$AUDIT_OUT/switch-out\" --title \"模板额度切换与恢复\" --png --cover",
+      "exitCode": 0,
+      "result": "All configured finite-model invariants hold; see summary and retained TLC logs."
+    },
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec RoleScope.tla --config RoleScope.cfg --map RoleScope.map.mjs --out \"$AUDIT_OUT/scope-out\" --title \"模型角色与点名覆盖范围\" --png --cover",
+      "exitCode": 0,
+      "result": "All configured finite-model invariants hold; see summary and retained TLC logs."
+    },
+    {
+      "command": "node \"$STATECHART_SCRIPT\" from-spec ModelCapability.tla --config ModelCapability.cfg --map ModelCapability.map.mjs --out \"$AUDIT_OUT/capability-out\" --title \"替换目标的类型与思考能力约束\" --png --cover",
+      "exitCode": 0,
+      "result": "All configured finite-model invariants hold; see summary and retained TLC logs."
+    },
+    {
+      "command": "OMP_REPO=<repo> node replay.mjs",
+      "exitCode": 0,
+      "result": "1 focused replay passed; 4 assertions on actual production store state/subscriptions; forced-read control passed. See replay.log and replay-result.json."
+    },
+    {
+      "command": "uncitedConditions over all six .tla files",
+      "exitCode": 0,
+      "result": "Zero unmatched source-guard conditions in citation-check.json."
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "src-tauri/src/model_replace.rs",
+    "src-tauri/src/model_templates/apply.rs",
+    "src-tauri/src/model_templates/mod.rs",
+    "src-tauri/src/model_templates/provider_map.rs",
+    "src-tauri/src/model_templates/rules.rs",
+    "src-tauri/src/model_templates/store.rs",
+    "src-tauri/src/model_templates/usage.rs",
+    "src-tauri/src/settings_model_roles.rs",
+    "src-tauri/src/settings_model_roles/chains.rs",
+    "src-tauri/src/settings_model_roles/discovery.rs",
+    "src/components/ModelSelect.tsx",
+    "src/features/settings/AddRoleForm.tsx",
+    "src/features/settings/AgentModelAssignmentsPanel.tsx",
+    "src/features/settings/FallbackChainEditor.tsx",
+    "src/features/settings/FallbackChainsSection.tsx",
+    "src/features/settings/FallbackSwitchesCard.tsx",
+    "src/features/settings/ModelRoleTables.tsx",
+    "src/features/settings/ModelRulesSection.tsx",
+    "src/features/settings/agentModelAssignments.ts",
+    "src/features/settings/fallbackSwitches.ts",
+    "src/features/settings/modelNormalization.ts",
+    "src/features/settings/modelReplace/ModelReplaceDialog.tsx",
+    "src/features/settings/modelReplace/ModelReplaceHistory.tsx",
+    "src/features/settings/modelReplace/ModelReplaceOverview.tsx",
+    "src/features/settings/modelReplace/ModelReplacePlanPreview.tsx",
+    "src/features/settings/modelReplace/ModelReplaceResults.tsx",
+    "src/features/settings/modelReplace/kinds.ts",
+    "src/features/settings/modelReplace/logic.ts",
+    "src/features/settings/modelReplace/parts.tsx",
+    "src/features/settings/modelReplace/store.ts",
+    "src/features/settings/modelRoleScope.tsx",
+    "src/features/settings/modelRoles.ts",
+    "src/features/settings/modelTemplates/ApplyPreview.tsx",
+    "src/features/settings/modelTemplates/RulesCard.tsx",
+    "src/features/settings/modelTemplates/SwitchLogCard.tsx",
+    "src/features/settings/modelTemplates/TemplateEditor.tsx",
+    "src/features/settings/modelTemplates/TemplatesCard.tsx",
+    "src/features/settings/modelTemplates/index.tsx",
+    "src/features/settings/modelTemplates/logic.ts",
+    "src/features/settings/modelTemplates/store.ts"
+  ],
+  "verificationLimitations": [
+    "No build, lint, formatter, full test suites, real provider probes or config writes were run.",
+    "Parent reported baseline TS7053 in AgentModelAssignmentsPanel.test.tsx; no source fix or full typecheck rerun was performed.",
+    "Native Tauri/SQLite/filesystem and live session/provider behavior is code-grounded boundary evidence only."
+  ],
+  "implementationFindings": []
+}

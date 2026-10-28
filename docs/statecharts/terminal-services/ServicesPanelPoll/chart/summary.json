@@ -1,0 +1,52 @@
+{
+  "view": "customer",
+  "modelStates": 23,
+  "modelTransitions": 35,
+  "chartStates": 14,
+  "chartTransitions": 29,
+  "chartStatus": {
+    "works": 13,
+    "wrong": 1,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "列表一致",
+      "color": "#d1f2eb",
+      "states": 3
+    },
+    {
+      "name": "请求进行中",
+      "color": "#e8f0fe",
+      "states": 10
+    },
+    {
+      "name": "列表与开关不一致",
+      "color": "#d6eaf8",
+      "states": 1
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "开关选了仅开发服务，显示的是全部端口列表",
+      "invariant": "RowsMatchToggle",
+      "rule": "所有请求都回来之后，列表的内容应当与开关当前的选择一致。",
+      "cause": "开关连续切换后，先发出的请求后返回，把过期的列表覆盖到界面上，且没有任何请求序号或开关校验",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "一个列表请求返回"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

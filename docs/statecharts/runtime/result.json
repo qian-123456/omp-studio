@@ -1,0 +1,680 @@
+{
+  "slice": "runtime",
+  "title": "会话运行、流式状态与占用审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "extension/omp-workspace-status.ts",
+      "feature": "omp-workspace-status.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/commands.rs",
+      "feature": "commands.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/external.rs",
+      "feature": "external.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/catalog/mod.rs",
+      "feature": "mod.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/catalog/parse.rs",
+      "feature": "parse.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/scan.rs",
+      "feature": "scan.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/search.rs",
+      "feature": "search.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/status.rs",
+      "feature": "status.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/catalog/store.rs",
+      "feature": "store.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/tasks.rs",
+      "feature": "tasks.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/catalog/transcript.rs",
+      "feature": "transcript.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/catalog/usage.rs",
+      "feature": "usage.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/rpc/autotitle.rs",
+      "feature": "autotitle.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/rpc/commands.rs",
+      "feature": "commands.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/rpc/frame.rs",
+      "feature": "frame.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src-tauri/src/rpc/live_test.rs",
+      "feature": "live_test.rs",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src-tauri/src/rpc/mod.rs",
+      "feature": "mod.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/rpc/process.rs",
+      "feature": "process.rs",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src-tauri/src/rpc/subagents.rs",
+      "feature": "subagents.rs",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/ActivityHeader.tsx",
+      "feature": "ActivityHeader.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/MessageList.tsx",
+      "feature": "MessageList.tsx",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/PendingUiCard.tsx",
+      "feature": "PendingUiCard.tsx",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/RequestStatsLine.tsx",
+      "feature": "RequestStatsLine.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/RetryNoticeList.test.tsx",
+      "feature": "RetryNoticeList.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/RetryNoticeList.tsx",
+      "feature": "RetryNoticeList.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/SessionView.tsx",
+      "feature": "SessionView.tsx",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/ThinkingPreview.test.tsx",
+      "feature": "ThinkingPreview.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/ThinkingPreview.tsx",
+      "feature": "ThinkingPreview.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/ToolCard.test.tsx",
+      "feature": "ToolCard.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/ToolCard.tsx",
+      "feature": "ToolCard.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/approvalOptions.test.ts",
+      "feature": "approvalOptions.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/approvalOptions.ts",
+      "feature": "approvalOptions.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/ask/AskPanel.test.tsx",
+      "feature": "AskPanel.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/ask/AskPanel.tsx",
+      "feature": "AskPanel.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/ask/askDriver.test.ts",
+      "feature": "askDriver.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/ask/askDriver.ts",
+      "feature": "askDriver.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/flowNotice.test.ts",
+      "feature": "flowNotice.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/flowNotice.ts",
+      "feature": "flowNotice.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/historyRows.test.ts",
+      "feature": "historyRows.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/historyRows.ts",
+      "feature": "historyRows.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/localRows.test.ts",
+      "feature": "localRows.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/localRows.ts",
+      "feature": "localRows.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/messageTrace.test.ts",
+      "feature": "messageTrace.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/messageTrace.ts",
+      "feature": "messageTrace.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/streamingMarkdown.test.ts",
+      "feature": "streamingMarkdown.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/streamingMarkdown.ts",
+      "feature": "streamingMarkdown.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/SubagentHoverCard.tsx",
+      "feature": "SubagentHoverCard.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/SubagentSheet.test.tsx",
+      "feature": "SubagentSheet.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/SubagentSheet.tsx",
+      "feature": "SubagentSheet.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/TaskToolBlock.tsx",
+      "feature": "TaskToolBlock.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/TopCapsule.nested.test.tsx",
+      "feature": "TopCapsule.nested.test.tsx",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/TopCapsule.tsx",
+      "feature": "TopCapsule.tsx",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/counts.test.ts",
+      "feature": "counts.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/counts.ts",
+      "feature": "counts.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/diskPoller.test.ts",
+      "feature": "diskPoller.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/diskPoller.ts",
+      "feature": "diskPoller.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/merge.test.ts",
+      "feature": "merge.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/merge.ts",
+      "feature": "merge.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/subagents/subagentTree.test.ts",
+      "feature": "subagentTree.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/subagentTree.ts",
+      "feature": "subagentTree.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/features/chat/subagents/types.ts",
+      "feature": "types.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/subagents/useSessionSubagents.test.ts",
+      "feature": "useSessionSubagents.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/features/chat/subagents/useSessionSubagents.ts",
+      "feature": "useSessionSubagents.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/features/chat/toolCardState.ts",
+      "feature": "toolCardState.ts",
+      "status": "out-of-model",
+      "reason": "展示/解析/合并的细粒度行为仅作为运行契约的边界列出；未单独穷举或完整审读。"
+    },
+    {
+      "path": "src/stores/frameBatch.test.ts",
+      "feature": "frameBatch.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/stores/frameBatch.ts",
+      "feature": "frameBatch.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/stores/live.test.ts",
+      "feature": "live.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/stores/live.ts",
+      "feature": "live.ts",
+      "status": "modeled",
+      "reason": "有限模型覆盖状态/事件契约；不覆盖该文件全部分支。"
+    },
+    {
+      "path": "src/stores/retryNotice.test.ts",
+      "feature": "retryNotice.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/stores/retryNotice.ts",
+      "feature": "retryNotice.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    },
+    {
+      "path": "src/stores/sessions.test.ts",
+      "feature": "sessions.test.ts",
+      "status": "out-of-model",
+      "reason": "已有回归测试未运行；非本次完整套件范围。"
+    },
+    {
+      "path": "src/stores/sessions.ts",
+      "feature": "sessions.ts",
+      "status": "read-only",
+      "reason": "读取公开边界及关键守卫；无独立穷举模型，不声称验证全部实现。"
+    }
+  ],
+  "models": [
+    {
+      "name": "RuntimeStatus",
+      "spec": "model/RuntimeStatus.tla",
+      "config": "model/RuntimeStatus.cfg",
+      "map": "model/RuntimeStatus.map.mjs",
+      "out": "out",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec model/RuntimeStatus.tla --out out --png --cover --title \"会话运行状态\" --expect-broken NoGhostLive,NoGhostStreaming,CardsMatchStatus,IdleNotWorking,AwaitingNeedsProcess",
+      "summary": "out/summary.json",
+      "limits": [
+        "单会话、有限请求 id；不模拟上游调度保证、工具执行副作用或网络。",
+        "运行模型仅1次启动、4次用户/子进程动作、stdout最多2帧；不是全程序证明。",
+        "占用模型对 PID 复用使用操作系统事实抽象；挂起模型省略文件监听防抖刷新。",
+        "所有权模型仅取目录状态推导的非本应用存活分支；不验证本应用与外部持有者并存的冲突处理。暂停标记写入期间允许重新打开。",
+        "接管动作只表示读取缓存外部进程号并终止的子步骤，恢复用单独打开动作抽象；不把操作系统事件写成产品守卫。",
+        "运行模型定义中的用户接受、文件监听、外部占用、空闲回收动作不在 Next；其独立部分由 Ownership 覆盖，接受/已读细节只读。",
+        "发现竞争路径未等同原生实时重现。"
+      ],
+      "expectedBroken": [
+        "NoGhostLive",
+        "NoGhostStreaming",
+        "CardsMatchStatus",
+        "IdleNotWorking",
+        "AwaitingNeedsProcess"
+      ],
+      "command": "node \"$STATECHART_CLI\" from-spec model/RuntimeStatus.tla --out out --png --cover --expect-broken NoGhostLive,NoGhostStreaming,CardsMatchStatus,IdleNotWorking,AwaitingNeedsProcess"
+    },
+    {
+      "name": "Ownership",
+      "spec": "model-b/Ownership.tla",
+      "config": "model-b/Ownership.cfg",
+      "map": "model-b/Ownership.map.mjs",
+      "out": "out-b",
+      "regenerate": "node \"$STATECHART_CLI\" from-spec model-b/Ownership.tla --out out-b --png --title \"会话占用与挂起\" --expect-broken ExternalIsRealOmp,SuspendShown",
+      "summary": "out-b/summary.json",
+      "limits": [
+        "单会话、有限请求 id；不模拟上游调度保证、工具执行副作用或网络。",
+        "运行模型仅1次启动、4次用户/子进程动作、stdout最多2帧；不是全程序证明。",
+        "占用模型对 PID 复用使用操作系统事实抽象；挂起模型省略文件监听防抖刷新。",
+        "仅取目录状态推导的非本应用存活分支；不验证本应用与外部持有者并存的冲突处理。暂停标记写入期间允许重新打开。",
+        "接管动作只表示读取缓存外部进程号并终止的子步骤，恢复用单独打开动作抽象；进程号复用、强制退出均是环境输入。",
+        "运行模型定义中的用户接受、文件监听、外部占用、空闲回收动作不在 Next；其独立部分由 Ownership 覆盖，接受/已读细节只读。",
+        "发现竞争路径未等同原生实时重现。"
+      ],
+      "expectedBroken": [
+        "ExternalIsRealOmp",
+        "SuspendShown"
+      ],
+      "command": "node \"$STATECHART_CLI\" from-spec model-b/Ownership.tla --out out-b --png --expect-broken ExternalIsRealOmp,SuspendShown"
+    }
+  ],
+  "findings": [
+    {
+      "rule": "NoGhostLive",
+      "title": "退出事件早于注册表清理/遗留帧时，缓存仍记存活",
+      "model": "RuntimeStatus",
+      "steps": "out/stories.md #1，步骤1–6",
+      "kind": "trace-and-source-only hypothesis",
+      "reproduction": "真实 apply/derive 重放验证退出后 agent_start 可重置 Working；最短注册表清理路径未在 Tauri/native 总线调度器复现。",
+      "evidence": "process.rs:985-1004；catalog/mod.rs:497；status.rs:87-91,159-165；replay-rs/tests/replay.rs",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "NoGhostStreaming",
+      "title": "退出后迟到的开始帧重新开启转圈",
+      "model": "RuntimeStatus",
+      "steps": "out/stories.md #2，步骤1–8",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "useLive.reduceProcess(false) 后 reduceFrame(agent_start)：alive=false、streaming=true。只确认真实消费者对给定顺序的行为；未证明真实 OS 调度触发概率。",
+      "evidence": "src/stores/live.ts:746-753,1525-1546；process.rs:942-982,985-1007；replay-js/live.replay.ts",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "AwaitingNeedsProcess",
+      "title": "退出后迟到的请求帧留下可回答卡片与等待状态",
+      "model": "RuntimeStatus",
+      "steps": "out/stories.md #3，步骤1–11",
+      "kind": "trace-and-source-only hypothesis",
+      "reproduction": "真实消费者具备无活进程守卫的 append 行为；此请求帧变体未单独驱动原生读循环。与迟到开始帧共享生命周期缺口。",
+      "evidence": "status.rs:102-116；live.ts:1005-1031；process.rs:942-1007",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "CardsMatchStatus",
+      "title": "回合终止后待答卡片仍保留",
+      "model": "RuntimeStatus",
+      "steps": "out/stories.md #4，步骤1–11",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "真实 useLive.reduceFrame(confirm)->agent_end 后 pendingUi.length=1 且 streaming=false。真实 status::apply/derive 同顺序进入 Review。外部 omp 是否总会先撤销卡片，未假定。",
+      "evidence": "live.ts:930-962；status.rs:127-137；process.rs:297-304；replay-js/live.replay.ts；replay-rs/tests/replay.rs",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "IdleNotWorking",
+      "title": "回答已结束回合的遗留卡片会把空闲状态改回处理中",
+      "model": "RuntimeStatus",
+      "steps": "out/stories.md #5，步骤1–13",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "真实 status::apply/derive：confirm -> agent_end -> UiResponded，Review 变 Working，无 agent_start。未执行真实原生 stdin 写入。",
+      "evidence": "rpc/mod.rs:534-562；status.rs:140-145；replay-rs/tests/replay.rs",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "ExternalIsRealOmp",
+      "title": "状态文件的进程号被复用后会话被误判外部占用",
+      "model": "Ownership",
+      "steps": "out-b/stories.md #1，步骤1–4",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "真实 external_map + pid_alive，以当前测试进程作为状态文件中的复用 pid：返回 external holder。未实际强杀 omp 或逼迫 OS 复用 PID。",
+      "evidence": "catalog/external.rs:99-131；rpc/mod.rs:400-418,630-660；replay-rs/tests/replay.rs",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    },
+    {
+      "rule": "SuspendShown",
+      "title": "挂起标记晚于退出重算写入时显示可能停在空闲",
+      "model": "Ownership",
+      "steps": "out-b/stories.md #2，步骤1–4",
+      "kind": "trace-and-source-only hypothesis",
+      "reproduction": "未重放 native 竞争窗口：需要受控 Tauri AppState、原生进程退出/总线调度与 DB 写入屏障；源代码只读无法注入屏障。普通路径可能由文件监听刷新修正，模型未包含防抖时间保证。",
+      "evidence": "rpc/mod.rs:189-228,277,688-694；catalog/tasks.rs:318-331；process.rs:994",
+      "fixModelStatus": "未建立修复模型；产品代码未修改"
+    }
+  ],
+  "implementationFindings": [
+    {
+      "title": "切换到无文件会话时沿用旧会话文件",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "真实扩展默认注册入口：session_start(old,/sessions/old.jsonl) -> session_switch(new,undefined)，new.json.sessionFile 等于旧文件。",
+      "evidence": "extension/omp-workspace-status.ts:79-87；replay-js/ext.replay.ts",
+      "limit": "未建独立 TLA 模型；不假定上游无文件 session_switch 的可达性。"
+    },
+    {
+      "title": "迟到的子代理进度可以倒退终态",
+      "kind": "reproduced consumer behavior",
+      "reproduction": "真实 useLive.reduceFrame：completed 生命周期后 running 进度把状态改回 running。",
+      "evidence": "src/stores/live.ts:1171-1243；replay-js/live.replay.ts",
+      "limit": "未建独立 TLA 模型；未假定上游保证或不保证帧顺序。"
+    }
+  ],
+  "verification": [
+    {
+      "command": "node statechart.mjs from-spec model/RuntimeStatus.tla --out out --png --cover --title 会话运行状态 --expect-broken NoGhostLive,NoGhostStreaming,CardsMatchStatus,IdleNotWorking,AwaitingNeedsProcess",
+      "exitCode": 0,
+      "result": "修正模型后实跑成功：35486 模型状态；精确预期5条规则破坏，无 TypeOK 失败。最终图像复核由集成验收记录。"
+    },
+    {
+      "command": "node statechart.mjs from-spec model-b/Ownership.tla --out out-b --png --title 会话占用与挂起 --expect-broken ExternalIsRealOmp,SuspendShown",
+      "exitCode": 0,
+      "result": "修正模型后实跑成功：124 模型状态、32图状态、97图边，精确预期两条规则破坏，无 TypeOK 失败。"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=.../target cargo test --offline --test replay",
+      "exitCode": 0,
+      "result": "3 passed; 0 failed；直接 path 导入真实 contracts/parse/status/external 源码。最初缺依赖的编译尝试已通过 scratch manifest 修正。"
+    },
+    {
+      "command": "./node_modules/.bin/vitest run --config <scratch>/runtime/replay-js/vitest.config.ts",
+      "exitCode": 0,
+      "result": "2 test files / 4 tests passed；断言当前缺陷行为，不是产品契约通过。"
+    },
+    {
+      "command": "uncitedConditions over both .tla",
+      "exitCode": 0,
+      "result": "修正虚构守卫后两个模型均无未引用条件；环境事件和单分支抽象边界保留在模型注释与限制说明。"
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "extension/omp-workspace-status.ts",
+    "src-tauri/src/catalog/commands.rs",
+    "src-tauri/src/catalog/external.rs",
+    "src-tauri/src/catalog/mod.rs",
+    "src-tauri/src/catalog/parse.rs",
+    "src-tauri/src/catalog/scan.rs",
+    "src-tauri/src/catalog/search.rs",
+    "src-tauri/src/catalog/status.rs",
+    "src-tauri/src/catalog/store.rs",
+    "src-tauri/src/catalog/tasks.rs",
+    "src-tauri/src/catalog/transcript.rs",
+    "src-tauri/src/catalog/usage.rs",
+    "src-tauri/src/rpc/autotitle.rs",
+    "src-tauri/src/rpc/commands.rs",
+    "src-tauri/src/rpc/frame.rs",
+    "src-tauri/src/rpc/live_test.rs",
+    "src-tauri/src/rpc/mod.rs",
+    "src-tauri/src/rpc/process.rs",
+    "src-tauri/src/rpc/subagents.rs",
+    "src/features/chat/ActivityHeader.tsx",
+    "src/features/chat/MessageList.tsx",
+    "src/features/chat/PendingUiCard.tsx",
+    "src/features/chat/RequestStatsLine.tsx",
+    "src/features/chat/RetryNoticeList.test.tsx",
+    "src/features/chat/RetryNoticeList.tsx",
+    "src/features/chat/SessionView.tsx",
+    "src/features/chat/ThinkingPreview.test.tsx",
+    "src/features/chat/ThinkingPreview.tsx",
+    "src/features/chat/ToolCard.test.tsx",
+    "src/features/chat/ToolCard.tsx",
+    "src/features/chat/approvalOptions.test.ts",
+    "src/features/chat/approvalOptions.ts",
+    "src/features/chat/ask/AskPanel.test.tsx",
+    "src/features/chat/ask/AskPanel.tsx",
+    "src/features/chat/ask/askDriver.test.ts",
+    "src/features/chat/ask/askDriver.ts",
+    "src/features/chat/flowNotice.test.ts",
+    "src/features/chat/flowNotice.ts",
+    "src/features/chat/historyRows.test.ts",
+    "src/features/chat/historyRows.ts",
+    "src/features/chat/localRows.test.ts",
+    "src/features/chat/localRows.ts",
+    "src/features/chat/messageTrace.test.ts",
+    "src/features/chat/messageTrace.ts",
+    "src/features/chat/streamingMarkdown.test.ts",
+    "src/features/chat/streamingMarkdown.ts",
+    "src/features/chat/subagents/SubagentHoverCard.tsx",
+    "src/features/chat/subagents/SubagentSheet.test.tsx",
+    "src/features/chat/subagents/SubagentSheet.tsx",
+    "src/features/chat/subagents/TaskToolBlock.tsx",
+    "src/features/chat/subagents/TopCapsule.nested.test.tsx",
+    "src/features/chat/subagents/TopCapsule.tsx",
+    "src/features/chat/subagents/counts.test.ts",
+    "src/features/chat/subagents/counts.ts",
+    "src/features/chat/subagents/diskPoller.test.ts",
+    "src/features/chat/subagents/diskPoller.ts",
+    "src/features/chat/subagents/merge.test.ts",
+    "src/features/chat/subagents/merge.ts",
+    "src/features/chat/subagents/subagentTree.test.ts",
+    "src/features/chat/subagents/subagentTree.ts",
+    "src/features/chat/subagents/types.ts",
+    "src/features/chat/subagents/useSessionSubagents.test.ts",
+    "src/features/chat/subagents/useSessionSubagents.ts",
+    "src/features/chat/toolCardState.ts",
+    "src/stores/frameBatch.test.ts",
+    "src/stores/frameBatch.ts",
+    "src/stores/live.test.ts",
+    "src/stores/live.ts",
+    "src/stores/retryNotice.test.ts",
+    "src/stores/retryNotice.ts",
+    "src/stores/sessions.test.ts",
+    "src/stores/sessions.ts"
+  ]
+}

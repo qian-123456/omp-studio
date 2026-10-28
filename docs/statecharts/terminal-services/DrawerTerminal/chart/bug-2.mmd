@@ -1,0 +1,47 @@
+---
+title: "抽屉终端生命周期, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Mixed fill:#d1f2eb,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1 fill:#e8f0fe,stroke:#74787f,color:#1b2631
+  classDef group1Path fill:#e8f0fe,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group3 fill:#ffffff,stroke:#808080,color:#1b2631
+  classDef group3Path fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group5 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group5Path fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "终端运行中" as legendGroup0
+    state "连接中" as legendGroup1
+    state "没有标签" as legendGroup3
+    state "连接中却没有终端" as legendGroup5
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup3 group3
+  class legendGroup5 group5
+  class legendMixed plainMixed
+  state "标签显示运行中，终端进程在运行，面板已打开，第一段输出已丢失" as s0
+  state "标签显示连接中，没有终端进程，面板已打开" as s1
+  state "标签显示连接中，没有终端进程，面板已打开，启动请求未返回" as s2
+  state "标签显示连接中，终端进程在运行，面板已打开，启动请求未返回" as s3
+  state "标签显示连接中，终端进程在运行，面板已打开，启动请求未返回，第一段输出已丢失" as s4
+  state "没有标签，没有终端进程" as s5
+  [*] --> s5
+  s5 --> s1 : 1. 打开终端面板
+  s1 --> s2 : 2. 界面创建终端并请求启动
+  s2 --> s3 : 3. 后端成功启动 shell
+  s3 --> s4 : 4. shell 打印第一段输出
+  s4 --> s0 : 5. 启动请求返回
+  class s0 group0Mixed
+  class s1 group5Path
+  class s2 group1Path
+  class s3 group1Path
+  class s4 group1Path
+  class s5 group3Path

@@ -1,0 +1,3 @@
+export const readerActions=["Hit","NoHit","Force","Drift"];
+export function state(v){return `${v.scope==="global"?"全局":"项目"}；${({idle:"等待检查",preview:"重新预检",refused:"额度不足已拒绝",sessions:"配置已写入，通知会话",done:({none:"完成",skipped:"未命中",failed:"写入失败",partial:"部分生效",applied:"已应用"})[v.status]??"完成",reverted:"已自动恢复"})[v.phase]}${v.drifted_roles?"；手动修改待保留":""}${v.force?"；已强制":""}`;}
+export function step(s){return ({Hit:"额度达到阈值，选择首条规则",NoHit:"额度未命中或窗口缺失",Refuse:"目标额度耗尽，记录拒绝",Force:"确认强制应用或采用同范围保底",Write:"原子写入角色配置",WriteFail:"配置写入失败",Finish:"通知可切换会话并记录结果",Drift:"用户手动修改角色",AutoRevert:"额度回落且无手动修改，恢复旧值"})[s]??s;}

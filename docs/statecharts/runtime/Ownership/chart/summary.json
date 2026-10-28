@@ -1,0 +1,70 @@
+{
+  "view": "customer",
+  "modelStates": 124,
+  "modelTransitions": 413,
+  "chartStates": 32,
+  "chartTransitions": 97,
+  "chartStatus": {
+    "works": 29,
+    "wrong": 1,
+    "fixed": 0,
+    "mixed": 2,
+    "after": 0
+  },
+  "mixedStatus": [
+    "显示空闲",
+    "显示空闲，状态文件指向已死进程"
+  ],
+  "chartGroups": [
+    {
+      "name": "显示外部占用",
+      "color": "#fdebd0",
+      "states": 8
+    },
+    {
+      "name": "其他显示",
+      "color": "#e8f6e8",
+      "states": 24
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "显示被外部终端占用，状态文件的进程号已被无关程序占用",
+      "invariant": "ExternalIsRealOmp",
+      "rule": "规则1: 周期检查跟上之后，会话显示被外部占用时，占用者必须真是一个仍在运行的 omp 终端。",
+      "cause": "终端被强杀后状态文件没有改成已退出，进程号又被无关程序复用，只靠进程号存活就判为外部占用",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 2,
+      "lastSteps": [
+        "周期检查刷新显示",
+        "系统把该进程号分给无关程序",
+        "写入挂起标记",
+        "退出事件刷新显示"
+      ],
+      "startsHere": false,
+      "fix": null
+    },
+    {
+      "n": 2,
+      "end": "显示空闲",
+      "invariant": "SuspendShown",
+      "rule": "规则2: 空闲回收完成且显示刷新后，会话应显示已挂起。",
+      "cause": "挂起标记写入时不触发刷新，进程退出的刷新先发生，显示停在空闲",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 7,
+      "lastSteps": [
+        "写入挂起标记",
+        "被记录的进程被强制关闭",
+        "终端 omp 正常退出"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

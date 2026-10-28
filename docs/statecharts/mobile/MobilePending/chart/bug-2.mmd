@@ -1,0 +1,50 @@
+---
+title: "手机端待处理审批, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "屏幕显示：无; 服务器待处理：无，已回答：无" as s0
+  state "屏幕显示：无;<br/>服务器待处理：无，已回答：请求1，在途快照1个" as s1
+  state "屏幕显示：无; 服务器待处理：请求1，已回答：无" as s2
+  state "屏幕显示：无;<br/>服务器待处理：请求1，已回答：无，在途快照1个" as s3
+  state "屏幕显示：请求1; 服务器待处理：无，已回答：请求1" as s4
+  state "屏幕显示：请求1;<br/>服务器待处理：无，已回答：请求1，在途快照2个" as s5
+  state "屏幕显示：请求1; 服务器待处理：请求1，已回答：无" as s6
+  state "屏幕显示：请求1;<br/>服务器待处理：请求1，已回答：无，在途快照1个" as s7
+  [*] --> s0
+  s0 --> s2 : 1. 运行端发出新的审批请求
+  s2 --> s3 : 2. 手机请求待处理列表
+  s3 --> s6 : 3. 待处理列表响应送达并替换屏幕
+  s6 --> s7 : 4. 手机请求待处理列表
+  s7 --> s5 : 5. 用户单独回答请求1
+  s5 --> s1 : 6. 待处理列表响应送达并替换屏幕
+  s1 --> s4 : 7. 待处理列表响应送达并替换屏幕
+  class s0 worksPath
+  class s1 worksPath
+  class s2 worksPath
+  class s3 worksPath
+  class s4 wrongPath
+  class s5 worksPath
+  class s6 worksPath
+  class s7 worksPath

@@ -1,0 +1,40 @@
+---
+title: "会话占用与挂起, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group0Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group1Mixed fill:#e8f6e8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1Path fill:#e8f6e8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "显示外部占用" as legendGroup0
+    state "其他显示" as legendGroup1
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "显示空闲" as s0
+  state "显示空闲，状态文件指向已死进程" as s1
+  state "显示空闲，状态文件指向运行中的终端" as s2
+  state "显示空闲，状态文件的进程号已被无关程序占用" as s3
+  state "显示被外部终端占用，状态文件的进程号已被无关程序占用" as s4
+  [*] --> s0
+  s0 --> s2 : 1. 终端启动 omp
+  s2 --> s1 : 2. 被记录的进程被强制关闭
+  s1 --> s3 : 3. 系统把该进程号分给无关程序
+  s3 --> s4 : 4. 周期检查刷新显示
+  class s0 group1Mixed
+  class s1 group1Mixed
+  class s2 group1Path
+  class s3 group1Path
+  class s4 group0Wrong

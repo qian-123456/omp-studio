@@ -1,0 +1,43 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Path fill:#d1f2eb,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group1 fill:#e8eaf6,stroke:#74757b,color:#1b2631
+  classDef group1Path fill:#e8eaf6,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group3 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group3Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group3Mixed fill:#d6eaf8,stroke:#d35400,stroke-width:4px,color:#7e5109
+  state "Legend" as legend {
+    state "正常" as legendGroup0
+    state "已完成" as legendGroup1
+    state "已删除" as legendGroup3
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup3 group3
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "已删除" as s0
+  state "已删除，却仍启动了运行" as s1
+  state "已完成·一次性：无下次触发，没有运行" as s2
+  state "运行中任务·一次性：已到点待领取，没有运行" as s3
+  state "运行中任务·一次性：等待下次触发，没有运行" as s4
+  [*] --> s4
+  s4 --> s3 : 1. 到达计划的触发时间
+  s3 --> s2 : 2. 调度器到点领取任务并推进下次时间
+  s2 --> s0 : 3. 删除任务
+  s0 --> s1 : 4. 调度器创建运行记录并开始运行
+  class s0 group3Mixed
+  class s1 group3Wrong
+  class s2 group1Path
+  class s3 group0Path
+  class s4 group0Path

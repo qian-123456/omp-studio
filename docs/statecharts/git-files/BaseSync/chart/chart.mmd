@@ -1,0 +1,237 @@
+---
+title: "基线同步"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "基础分支有新提交，分支无独有提交，工作区干净" as s0
+  state "基础分支有新提交，分支无独有提交，工作区干净，主工作区会挡住快进" as s1
+  state "基础分支有新提交，分支无独有提交，工作区干净，会与基础分支冲突" as s2
+  state "基础分支有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进" as s3
+  state "基础分支有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；界面显示失败" as s4
+  state "基础分支有新提交，分支无独有提交，工作区干净，会与基础分支冲突；界面显示失败" as s5
+  state "基础分支有新提交，分支无独有提交，工作区有改动" as s6
+  state "基础分支有新提交，分支无独有提交，工作区有改动，主工作区会挡住快进" as s7
+  state "基础分支有新提交，分支无独有提交，工作区有改动，会与基础分支冲突" as s8
+  state "基础分支有新提交，分支无独有提交，工作区有改动，会与基础分支冲突，主工作区会挡住快进" as s9
+  state "基础分支有新提交，分支有独有提交，工作区干净" as s10
+  state "基础分支有新提交，分支有独有提交，工作区干净，主工作区会挡住快进" as s11
+  state "基础分支有新提交，分支有独有提交，工作区干净，会与基础分支冲突" as s12
+  state "基础分支有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进" as s13
+  state "基础分支有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；界面显示失败" as s14
+  state "基础分支有新提交，分支有独有提交，工作区干净，会与基础分支冲突；界面显示失败" as s15
+  state "基础分支有新提交，分支有独有提交，工作区有改动" as s16
+  state "基础分支有新提交，分支有独有提交，工作区有改动，主工作区会挡住快进" as s17
+  state "基础分支有新提交，分支有独有提交，工作区有改动，会与基础分支冲突" as s18
+  state "基础分支有新提交，分支有独有提交，工作区有改动，会与基础分支冲突，主工作区会挡住快进" as s19
+  state "基础分支没有新提交，分支无独有提交，工作区干净" as s20
+  state "基础分支没有新提交，分支无独有提交，工作区干净，主工作区会挡住快进" as s21
+  state "基础分支没有新提交，分支无独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进" as s22
+  state "基础分支没有新提交，分支无独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进；界面显示成功" as s23
+  state "基础分支没有新提交，分支无独有提交，工作区干净，主工作区会挡住快进；界面显示成功" as s24
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突" as s25
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进" as s26
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；已并入基础分支，等待快进" as s27
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；已并入基础分支，等待快进；界面显示失败" as s28
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；已并入基础分支，等待快进；界面显示成功" as s29
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；界面显示失败" as s30
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；界面显示成功" as s31
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突；已并入基础分支，等待快进" as s32
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突；已并入基础分支，等待快进；界面显示失败" as s33
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突；已并入基础分支，等待快进；界面显示成功" as s34
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突；界面显示失败" as s35
+  state "基础分支没有新提交，分支无独有提交，工作区干净，会与基础分支冲突；界面显示成功" as s36
+  state "基础分支没有新提交，分支无独有提交，工作区干净；已并入基础分支，等待快进" as s37
+  state "基础分支没有新提交，分支无独有提交，工作区干净；已并入基础分支，等待快进；界面显示成功" as s38
+  state "基础分支没有新提交，分支无独有提交，工作区干净；界面显示成功" as s39
+  state "基础分支没有新提交，分支无独有提交，工作区有改动" as s40
+  state "基础分支没有新提交，分支无独有提交，工作区有改动，主工作区会挡住快进" as s41
+  state "基础分支没有新提交，分支无独有提交，工作区有改动，会与基础分支冲突" as s42
+  state "基础分支没有新提交，分支无独有提交，工作区有改动，会与基础分支冲突，主工作区会挡住快进" as s43
+  state "基础分支没有新提交，分支有独有提交，工作区干净" as s44
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进" as s45
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进" as s46
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进；界面显示失败" as s47
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进；界面显示失败；报错了但分支已多出合并提交" as s48
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进；界面显示成功" as s49
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；已并入基础分支，等待快进；界面显示成功；报错了但分支已多出合并提交" as s50
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；界面显示失败" as s51
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；界面显示失败；报错了但分支已多出合并提交" as s52
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；界面显示成功" as s53
+  state "基础分支没有新提交，分支有独有提交，工作区干净，主工作区会挡住快进；界面显示成功；报错了但分支已多出合并提交" as s54
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突" as s55
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进" as s56
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；已并入基础分支，等待快进" as s57
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；已并入基础分支，等待快进；界面显示失败" as s58
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突，主工作区会挡住快进；界面显示失败" as s59
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突；已并入基础分支，等待快进" as s60
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突；已并入基础分支，等待快进；界面显示失败" as s61
+  state "基础分支没有新提交，分支有独有提交，工作区干净，会与基础分支冲突；界面显示失败" as s62
+  state "基础分支没有新提交，分支有独有提交，工作区干净；已并入基础分支，等待快进" as s63
+  state "基础分支没有新提交，分支有独有提交，工作区干净；已并入基础分支，等待快进；界面显示成功" as s64
+  state "基础分支没有新提交，分支有独有提交，工作区干净；界面显示成功" as s65
+  state "基础分支没有新提交，分支有独有提交，工作区有改动" as s66
+  state "基础分支没有新提交，分支有独有提交，工作区有改动，主工作区会挡住快进" as s67
+  state "基础分支没有新提交，分支有独有提交，工作区有改动，会与基础分支冲突" as s68
+  state "基础分支没有新提交，分支有独有提交，工作区有改动，会与基础分支冲突，主工作区会挡住快进" as s69
+  [*] --> s0
+  [*] --> s1
+  [*] --> s2
+  [*] --> s3
+  [*] --> s6
+  [*] --> s7
+  [*] --> s8
+  [*] --> s9
+  [*] --> s10
+  [*] --> s11
+  [*] --> s12
+  [*] --> s13
+  [*] --> s16
+  [*] --> s17
+  [*] --> s18
+  [*] --> s19
+  [*] --> s20
+  [*] --> s21
+  [*] --> s25
+  [*] --> s26
+  [*] --> s40
+  [*] --> s41
+  [*] --> s42
+  [*] --> s43
+  [*] --> s44
+  [*] --> s45
+  [*] --> s55
+  [*] --> s56
+  [*] --> s66
+  [*] --> s67
+  [*] --> s68
+  [*] --> s69
+  s20 --> s37 : 点同步，无需并入
+  s20 --> s39 : 点变基，成功
+  s21 --> s22 : 点同步，无需并入
+  s21 --> s24 : 点变基，成功
+  s25 --> s32 : 点同步，无需并入
+  s25 --> s35 : 点变基，冲突后中止
+  s26 --> s27 : 点同步，无需并入
+  s26 --> s30 : 点变基，冲突后中止
+  s44 --> s63 : 点同步，无需并入
+  s44 --> s65 : 点变基，成功
+  s45 --> s46 : 点同步，无需并入
+  s45 --> s53 : 点变基，成功
+  s55 --> s60 : 点同步，无需并入
+  s55 --> s62 : 点变基，冲突后中止
+  s56 --> s57 : 点同步，无需并入
+  s56 --> s59 : 点变基，冲突后中止
+  s1 --> s46 : 点同步，并入基础分支
+  s2 --> s5 : 点同步，并入时冲突 or 点变基，冲突后中止
+  s3 --> s4 : 点同步，并入时冲突 or 点变基，冲突后中止
+  s12 --> s15 : 点同步，并入时冲突 or 点变基，冲突后中止
+  s13 --> s14 : 点同步，并入时冲突 or 点变基，冲突后中止
+  s39 --> s38 : 点同步，无需并入
+  s24 --> s23 : 点同步，无需并入
+  s32 --> s36 : 快进基础分支
+  s35 --> s33 : 点同步，无需并入
+  s27 --> s31 : 快进基础分支
+  s30 --> s28 : 点同步，无需并入
+  s65 --> s64 : 点同步，无需并入
+  s46 --> s51 : 快进基础分支
+  s53 --> s49 : 点同步，无需并入
+  s62 --> s61 : 点同步，无需并入
+  s59 --> s58 : 点同步，无需并入
+  s46 --> s52 : 快进基础分支
+  s36 --> s34 : 点同步，无需并入
+  s31 --> s29 : 点同步，无需并入
+  s51 --> s47 : 点同步，无需并入
+  s52 --> s48 : 点同步，无需并入
+  s52 --> s54 : 点变基，成功
+  s54 --> s50 : 点同步，无需并入
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works
+  class s22 works
+  class s23 works
+  class s24 works
+  class s25 works
+  class s26 works
+  class s27 works
+  class s28 works
+  class s29 works
+  class s30 works
+  class s31 works
+  class s32 works
+  class s33 works
+  class s34 works
+  class s35 works
+  class s36 works
+  class s37 works
+  class s38 works
+  class s39 works
+  class s40 works
+  class s41 works
+  class s42 works
+  class s43 works
+  class s44 works
+  class s45 works
+  class s46 works
+  class s47 works
+  class s48 wrong
+  class s49 works
+  class s50 wrong
+  class s51 works
+  class s52 wrong
+  class s53 works
+  class s54 wrong
+  class s55 works
+  class s56 works
+  class s57 works
+  class s58 works
+  class s59 works
+  class s60 works
+  class s61 works
+  class s62 works
+  class s63 works
+  class s64 works
+  class s65 works
+  class s66 works
+  class s67 works
+  class s68 works
+  class s69 works

@@ -1,0 +1,55 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 18 and seed 6140982925498519225 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 54285] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/DraftHandoff.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module DraftHandoff
+Starting... (2026-10-28 22:36:52)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:36:52.
+Error: Invariant SendShowsSession is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ handoff = "idle"
+/\ selectedSessionId = "none"
+/\ centerView = "session"
+/\ pendingSelected = TRUE
+/\ draftAlive = TRUE
+/\ userLeft = FALSE
+/\ previousCenterView = "none"
+
+State 2: <UserSendFromDraft line 38, col 5 to line 41, col 109 of module DraftHandoff>
+/\ handoff = "inflight"
+/\ selectedSessionId = "none"
+/\ centerView = "session"
+/\ pendingSelected = TRUE
+/\ draftAlive = TRUE
+/\ userLeft = FALSE
+/\ previousCenterView = "none"
+
+State 3: <UserOpenSettings line 45, col 5 to line 48, col 86 of module DraftHandoff>
+/\ handoff = "inflight"
+/\ selectedSessionId = "none"
+/\ centerView = "settings"
+/\ pendingSelected = TRUE
+/\ draftAlive = TRUE
+/\ userLeft = FALSE
+/\ previousCenterView = "session"
+
+State 4: <HandoffComplete line 66, col 5 to line 74, col 61 of module DraftHandoff>
+/\ handoff = "done"
+/\ selectedSessionId = "none"
+/\ centerView = "settings"
+/\ pendingSelected = FALSE
+/\ draftAlive = FALSE
+/\ userLeft = FALSE
+/\ previousCenterView = "session"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.3E-18
+26 states generated, 17 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:36:52)

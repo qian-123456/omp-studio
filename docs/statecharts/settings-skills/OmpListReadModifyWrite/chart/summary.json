@@ -1,0 +1,34 @@
+{
+  "view": "customer",
+  "modelStates": 10,
+  "modelTransitions": 14,
+  "chartStates": 6,
+  "chartTransitions": 8,
+  "chartStatus": {
+    "works": 3,
+    "wrong": 3,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "空闲，其他条目被清空",
+      "invariant": "OtherEntriesKept",
+      "rule": "规则：只切换一个条目时，列表里别的条目不会被清掉。",
+      "cause": null,
+      "readerSteps": 2,
+      "modelSteps": 3,
+      "counterexamples": 1,
+      "lastSteps": [
+        "把新列表写回配置"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

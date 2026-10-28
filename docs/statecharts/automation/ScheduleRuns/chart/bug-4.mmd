@@ -1,0 +1,39 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Path fill:#d1f2eb,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group1 fill:#e8eaf6,stroke:#74757b,color:#1b2631
+  classDef group1Wrong fill:#e8eaf6,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1Path fill:#e8eaf6,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "正常" as legendGroup0
+    state "已完成" as legendGroup1
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  state "已完成·重复(有次数上限)：无下次触发，正在运行" as s0
+  state "已完成·重复(有次数上限)：无下次触发，正在运行，次数超过上限" as s1
+  state "已完成·重复(有次数上限)：无下次触发，没有运行" as s2
+  state "运行中任务·重复(有次数上限)：等待下次触发，正在运行" as s3
+  state "运行中任务·重复(有次数上限)：等待下次触发，没有运行" as s4
+  [*] --> s4
+  s4 --> s3 : 2. 立即运行创建运行记录并开始运行
+  s3 --> s4 : 3. 运行正常结束
+  s4 --> s0 : 5. 立即运行创建运行记录并开始运行
+  s0 --> s2 : 6. 运行正常结束
+  s2 --> s1 : 8. 立即运行创建运行记录并开始运行
+  s4 --> s4 : 1. 点击立即运行，确认没有在运行的记录<br/>4. 点击立即运行，确认没有在运行的记录
+  s2 --> s2 : 7. 点击立即运行，确认没有在运行的记录
+  class s0 group1Path
+  class s1 group1Wrong
+  class s2 group1Path
+  class s3 group0Path
+  class s4 group0Path

@@ -1,0 +1,73 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 66 and seed 5026099864407690806 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 18486] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/BaseSync_rules.tla
+Parsing file <path>/BaseSync.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module BaseSync
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module BaseSync_rules
+Starting... (2026-10-29 00:38:27)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Finished computing initial states: 32 distinct states generated at 2026-10-29 00:38:27.
+<< "statechart broken",
+   [ behind |-> FALSE,
+     ahead |-> TRUE,
+     dirty |-> FALSE,
+     conflictBase |-> FALSE,
+     mainBlocks |-> TRUE,
+     mergedHere |-> TRUE,
+     result |-> "error",
+     step |-> "idle",
+     halfDone |-> TRUE ],
+   {"ErrorLeavesBranchUntouched"} >>
+<< "statechart broken",
+   [ behind |-> FALSE,
+     ahead |-> TRUE,
+     dirty |-> FALSE,
+     conflictBase |-> FALSE,
+     mainBlocks |-> TRUE,
+     mergedHere |-> TRUE,
+     result |-> "error",
+     step |-> "merged",
+     halfDone |-> TRUE ],
+   {"ErrorLeavesBranchUntouched"} >>
+<< "statechart broken",
+   [ behind |-> FALSE,
+     ahead |-> TRUE,
+     dirty |-> FALSE,
+     conflictBase |-> FALSE,
+     mainBlocks |-> TRUE,
+     mergedHere |-> TRUE,
+     result |-> "ok",
+     step |-> "idle",
+     halfDone |-> TRUE ],
+   {"ErrorLeavesBranchUntouched"} >>
+<< "statechart broken",
+   [ behind |-> FALSE,
+     ahead |-> TRUE,
+     dirty |-> FALSE,
+     conflictBase |-> FALSE,
+     mainBlocks |-> TRUE,
+     mergedHere |-> TRUE,
+     result |-> "ok",
+     step |-> "merged",
+     halfDone |-> TRUE ],
+   {"ErrorLeavesBranchUntouched"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.0E-16
+124 states generated, 74 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-29 00:38:27)

@@ -1,0 +1,145 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 23 and seed -6649530418463956811 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 158] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/InboxVisibility.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module InboxVisibility
+Starting... (2026-10-28 22:59:51)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Finished computing initial states: 6 distinct states generated at 2026-10-28 22:59:51.
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = FALSE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "all"
+
+State 2: <RunOkWithSession line 26, col 3 to line 30, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = FALSE
+/\ outcome = "ok"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "all"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = FALSE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "all"
+
+State 2: <RunFailWithSession line 33, col 3 to line 37, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = FALSE
+/\ outcome = "fail"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "all"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = TRUE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "all"
+
+State 2: <RunOkWithSession line 26, col 3 to line 30, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = TRUE
+/\ outcome = "ok"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "all"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = TRUE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "all"
+
+State 2: <RunFailWithSession line 33, col 3 to line 37, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = TRUE
+/\ outcome = "fail"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "all"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = FALSE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "important"
+
+State 2: <RunFailWithSession line 33, col 3 to line 37, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = FALSE
+/\ outcome = "fail"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "important"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = TRUE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "important"
+
+State 2: <RunOkWithSession line 26, col 3 to line 30, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = TRUE
+/\ outcome = "ok"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "important"
+
+Error: Invariant OneEntryPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ hasSess = FALSE
+/\ attn = TRUE
+/\ outcome = "none"
+/\ todoRow = "none"
+/\ sessRow = FALSE
+/\ policy = "important"
+
+State 2: <RunFailWithSession line 33, col 3 to line 37, col 31 of module InboxVisibility>
+/\ hasSess = TRUE
+/\ attn = TRUE
+/\ outcome = "fail"
+/\ todoRow = "open"
+/\ sessRow = TRUE
+/\ policy = "important"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.7E-17
+42 states generated, 32 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 22:59:51)

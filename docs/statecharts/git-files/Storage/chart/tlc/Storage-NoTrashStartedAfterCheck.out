@@ -1,0 +1,111 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 10 and seed -2310195017516377905 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 9794] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/Storage.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Storage
+Starting... (2026-10-28 23:04:49)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 23:04:49.
+Error: Invariant NoTrashStartedAfterCheck is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ stoppedLive = FALSE
+/\ checked = FALSE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "idle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 2: <TrashCheck line 58, col 3 to line 65, col 88 of module Storage>
+/\ stoppedLive = FALSE
+/\ checked = TRUE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "idle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 3: <StartLive line 21, col 3 to line 23, col 106 of module Storage>
+/\ stoppedLive = FALSE
+/\ checked = TRUE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "liveIdle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 4: <TrashApply line 69, col 3 to line 78, col 40 of module Storage>
+/\ stoppedLive = TRUE
+/\ checked = FALSE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "trashed"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+Error: Invariant NoTrashStartedAfterCheck is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ stoppedLive = FALSE
+/\ checked = FALSE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "idle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 2: <TrashCheck line 58, col 3 to line 65, col 88 of module Storage>
+/\ stoppedLive = FALSE
+/\ checked = TRUE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "idle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 3: <StartLive line 21, col 3 to line 23, col 106 of module Storage>
+/\ stoppedLive = FALSE
+/\ checked = TRUE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "liveIdle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = FALSE
+
+State 4: <TogglePin line 52, col 3 to line 54, col 104 of module Storage>
+/\ stoppedLive = FALSE
+/\ checked = TRUE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "liveIdle"
+/\ trashedPinned = FALSE
+/\ trashedHeld = FALSE
+/\ pinned = TRUE
+
+State 5: <TrashApply line 69, col 3 to line 78, col 40 of module Storage>
+/\ stoppedLive = TRUE
+/\ checked = FALSE
+/\ checkedPinned = FALSE
+/\ trashedWorking = FALSE
+/\ sess = "trashed"
+/\ trashedPinned = TRUE
+/\ trashedHeld = FALSE
+/\ pinned = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.0E-17
+48 states generated, 20 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 23:04:49)

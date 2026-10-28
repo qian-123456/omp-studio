@@ -1,0 +1,41 @@
+---
+title: "MCP编辑弹窗与写入"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "没有弹窗" as s0
+  state "没有弹窗，服务器已被外部删除" as s1
+  state "编辑弹窗可见" as s2
+  state "编辑弹窗已打开却看不见" as s3
+  [*] --> s0
+  s0 --> s2 : 点编辑
+  s0 --> s1 : 服务器被外部删除后列表重读
+  s2 --> s3 : 服务器被外部删除后列表重读
+  s2 --> s0 : 编辑器触发关闭回调
+  s1 --> s0 : 服务器被外部加回
+  s3 --> s2 : 服务器被外部加回
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 wrong

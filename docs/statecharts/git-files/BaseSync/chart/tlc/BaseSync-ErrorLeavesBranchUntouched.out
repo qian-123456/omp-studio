@@ -1,0 +1,56 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 18 and seed 2763797138626414690 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 18485] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/BaseSync.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module BaseSync
+Starting... (2026-10-29 00:38:26)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Finished computing initial states: 32 distinct states generated at 2026-10-29 00:38:26.
+Error: Invariant ErrorLeavesBranchUntouched is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ ahead = FALSE
+/\ result = "none"
+/\ dirty = FALSE
+/\ halfDone = FALSE
+/\ mergedHere = FALSE
+/\ step = "idle"
+/\ mainBlocks = TRUE
+/\ behind = TRUE
+/\ conflictBase = FALSE
+
+State 2: <SyncMerge line 26, col 3 to line 34, col 68 of module BaseSync>
+/\ ahead = TRUE
+/\ result = "none"
+/\ dirty = FALSE
+/\ halfDone = FALSE
+/\ mergedHere = TRUE
+/\ step = "merged"
+/\ mainBlocks = TRUE
+/\ behind = FALSE
+/\ conflictBase = FALSE
+
+State 3: <SyncFastForward line 55, col 3 to line 60, col 70 of module BaseSync>
+/\ ahead = TRUE
+/\ result = "error"
+/\ dirty = FALSE
+/\ halfDone = TRUE
+/\ mergedHere = TRUE
+/\ step = "idle"
+/\ mainBlocks = TRUE
+/\ behind = FALSE
+/\ conflictBase = FALSE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.8E-16
+118 states generated, 70 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-29 00:38:26)

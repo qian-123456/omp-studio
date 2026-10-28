@@ -1,0 +1,47 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 5 and seed 3123309498061999239 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 43272] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/TemplateSnapshot.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module TemplateSnapshot
+Starting... (2026-10-28 23:17:05)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 23:17:05.
+Error: Invariant MutationSurvives is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ snapshotInflight = 0
+/\ committed = FALSE
+/\ snapshotGeneration = 0
+/\ readValue = "empty"
+/\ snapshot = "empty"
+
+State 2: <Load line 8, col 5 to line 10, col 40 of module TemplateSnapshot>
+/\ snapshotInflight = 1
+/\ committed = FALSE
+/\ snapshotGeneration = 1
+/\ readValue = "old"
+/\ snapshot = "empty"
+
+State 3: <Publish line 12, col 5 to line 14, col 68 of module TemplateSnapshot>
+/\ snapshotInflight = 1
+/\ committed = TRUE
+/\ snapshotGeneration = 1
+/\ readValue = "old"
+/\ snapshot = "new"
+
+State 4: <Resolve line 16, col 5 to line 18, col 86 of module TemplateSnapshot>
+/\ snapshotInflight = 0
+/\ committed = TRUE
+/\ snapshotGeneration = 1
+/\ readValue = "old"
+/\ snapshot = "old"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.0E-18
+13 states generated, 9 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 23:17:05)

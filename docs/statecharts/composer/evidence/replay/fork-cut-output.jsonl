@@ -1,0 +1,4 @@
+{"type":"session","id":"p"}
+{"type":"custom","id":"e1","customType":"ompws-plan-state","data":{"enabled":true,"version":0,"phase":"planning"}}
+{"type":"message","id":"u1","message":{"role":"user","content":"plan it"}}
+{"type":"message","id":"a1","message":{"role":"assistant","content":[{"type":"text","text":"plan ready"}],"stopReason":"stop"}}

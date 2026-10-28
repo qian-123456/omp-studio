@@ -1,0 +1,95 @@
+---
+title: "MCP父子组件写入归属"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "目录为空：导入弹窗（本窗口正在保存），1次写入尚未返回" as s0
+  state "目录为空：导入弹窗（本窗口正在保存），2次写入尚未返回" as s1
+  state "目录为空：导入弹窗，0次写入尚未返回" as s2
+  state "目录为空：导入弹窗，1次写入尚未返回" as s3
+  state "目录为空：导入弹窗，2次写入尚未返回" as s4
+  state "目录为空：没有弹窗，0次写入尚未返回" as s5
+  state "目录为空：没有弹窗，1次写入尚未返回" as s6
+  state "目录为空：没有弹窗，2次写入尚未返回" as s7
+  state "目录为空：编辑弹窗（本窗口正在保存），1次写入尚未返回" as s8
+  state "目录为空：编辑弹窗（本窗口正在保存），2次写入尚未返回" as s9
+  state "目录为空：编辑弹窗，0次写入尚未返回" as s10
+  state "目录为空：编辑弹窗，1次写入尚未返回" as s11
+  state "目录为空：编辑弹窗，2次写入尚未返回" as s12
+  state "目录有服务器：导入弹窗（本窗口正在保存），1次写入尚未返回" as s13
+  state "目录有服务器：导入弹窗，0次写入尚未返回" as s14
+  state "目录有服务器：没有弹窗，0次写入尚未返回" as s15
+  state "目录有服务器：没有弹窗，1次写入尚未返回" as s16
+  state "目录有服务器：编辑弹窗（本窗口正在保存），1次写入尚未返回" as s17
+  state "目录有服务器：编辑弹窗，0次写入尚未返回" as s18
+  [*] --> s5
+  [*] --> s15
+  s15 --> s18 : 点添加服务器
+  s15 --> s14 : 点导入
+  s15 --> s16 : 点行内配置开关
+  s5 --> s10 : 点添加服务器
+  s5 --> s2 : 点导入
+  s18 --> s15 : 关闭弹窗但请求未取消
+  s18 --> s17 : 保存合法草稿
+  s14 --> s15 : 关闭弹窗但请求未取消
+  s14 --> s13 : 导入合法条目
+  s10 --> s5 : 关闭弹窗但请求未取消
+  s10 --> s8 : 保存合法草稿
+  s2 --> s5 : 关闭弹窗但请求未取消
+  s2 --> s0 : 导入合法条目
+  s17 --> s16 : 关闭弹窗但请求未取消
+  s13 --> s16 : 关闭弹窗但请求未取消
+  s8 --> s6 : 关闭弹窗但请求未取消
+  s0 --> s6 : 关闭弹窗但请求未取消
+  s6 --> s11 : 点添加服务器
+  s6 --> s3 : 点导入
+  s11 --> s6 : 关闭弹窗但请求未取消
+  s11 --> s9 : 保存合法草稿
+  s3 --> s6 : 关闭弹窗但请求未取消
+  s3 --> s1 : 导入合法条目
+  s9 --> s7 : 关闭弹窗但请求未取消
+  s1 --> s7 : 关闭弹窗但请求未取消
+  s7 --> s12 : 点添加服务器
+  s7 --> s4 : 点导入
+  s12 --> s7 : 关闭弹窗但请求未取消
+  s4 --> s7 : 关闭弹窗但请求未取消
+  class s0 works
+  class s1 wrong
+  class s2 works
+  class s3 works
+  class s4 wrong
+  class s5 works
+  class s6 works
+  class s7 wrong
+  class s8 works
+  class s9 wrong
+  class s10 works
+  class s11 works
+  class s12 wrong
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works

@@ -1,0 +1,219 @@
+---
+title: "会话运行状态"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef plainMixed fill:#f4f6f7,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group0 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group0Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0Mixed fill:#fdebd0,stroke:#d35400,stroke-width:4px,color:#7e5109
+  classDef group1 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group1Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group2Wrong fill:#e8f6e8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "显示进行中或等待" as legendGroup0
+    state "显示待处理结果" as legendGroup1
+    state "显示空闲类状态" as legendGroup2
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  class legendMixed plainMixed
+  state "会话显示「出错」（仍记为存活）" as g0 {
+    state "没有进程" as s0
+    state "没有进程，界面有待答卡片" as s1
+    state "进程已退出但句柄未清" as s2
+  }
+  state "会话显示「处理中」（仍记为存活）" as g1 {
+    state "没有进程，界面转圈" as s3
+    state "没有进程，界面转圈，1条消息在途" as s4
+    state "没有进程，界面转圈，界面有待答卡片，1条消息在途" as s5
+    state "进程已退出但句柄未清，界面有待答卡片，2条消息在途" as s6
+    state "进程已退出但句柄未清，界面转圈" as s7
+    state "进程空闲" as s8
+    state "进程空闲，3条消息在途" as s9
+    state "进程空闲，界面有待答卡片，2条消息在途" as s10
+  }
+  state "会话显示「待查看结果」（仍记为存活）" as g2 {
+    state "没有进程" as s11
+    state "没有进程，界面有待答卡片" as s12
+    state "进程已退出但句柄未清" as s13
+    state "进程空闲，1条消息在途" as s14
+    state "进程空闲，界面有待答卡片" as s15
+  }
+  state "会话显示「空闲」" as g3 {
+    state "没有进程" as s16
+    state "没有进程，2条消息在途" as s17
+    state "没有进程，界面有待答卡片，2条消息在途" as s18
+    state "没有进程，界面转圈，2条消息在途" as s19
+    state "进程在跑回合，2条消息在途" as s20
+    state "进程在跑回合，3条消息在途" as s21
+    state "进程在跑回合，界面转圈，3条消息在途" as s22
+    state "进程已退出但句柄未清，1条消息在途" as s23
+    state "进程已退出但句柄未清，2条消息在途" as s24
+    state "进程已退出但句柄未清，3条消息在途" as s25
+    state "进程已退出但句柄未清，4条消息在途" as s26
+    state "进程已退出但句柄未清，界面有待答卡片，4条消息在途" as s27
+    state "进程已退出但句柄未清，界面转圈，3条消息在途" as s28
+    state "进程空闲，1条消息在途" as s29
+    state "进程空闲，2条消息在途" as s30
+    state "进程空闲，5条消息在途" as s31
+    state "进程空闲，界面有待答卡片，4条消息在途" as s32
+    state "进程空闲，界面转圈，4条消息在途" as s33
+    state "进程空闲，界面转圈，界面有待答卡片，4条消息在途" as s34
+  }
+  state "会话显示「空闲」（仍记为存活）" as g4 {
+    state "没有进程" as s35
+    state "没有进程，1条消息在途" as s36
+    state "没有进程，界面有待答卡片，1条消息在途" as s37
+    state "进程已退出但句柄未清" as s38
+    state "进程已退出但句柄未清，1条消息在途" as s39
+    state "进程已退出但句柄未清，界面有待答卡片，1条消息在途" as s40
+    state "进程已退出但句柄未清，界面有待答卡片，3条消息在途" as s41
+    state "进程已退出但句柄未清，界面转圈，1条消息在途" as s42
+    state "进程已退出但句柄未清，界面转圈，2条消息在途" as s43
+    state "进程空闲，4条消息在途" as s44
+    state "进程空闲，界面有待答卡片，3条消息在途" as s45
+  }
+  state "会话显示「等待回答」（仍记为存活）" as g5 {
+    state "没有进程，界面有待答卡片" as s46
+    state "没有进程，界面转圈，界面有待答卡片" as s47
+  }
+  state "会话显示「等待批准」（仍记为存活）" as g6 {
+    state "没有进程，界面有待答卡片" as s48
+    state "没有进程，界面有待答卡片，1条消息在途" as s49
+    state "没有进程，界面转圈，界面有待答卡片" as s50
+    state "进程已退出但句柄未清，界面有待答卡片" as s51
+    state "进程空闲，2条消息在途" as s52
+    state "进程空闲，界面有待答卡片，1条消息在途" as s53
+  }
+  state "会话显示「出错」: 没有进程" as s54
+  state "会话显示「待查看结果」: 没有进程" as s55
+  state "会话显示「被中断」: 没有进程" as s56
+  [*] --> s16
+  s16 --> s29 : 点击继续，拉起进程
+  s29 --> s30 : 发送消息
+  s29 --> s20 : 进程开始一轮
+  s29 --> s23 : 进程退出
+  s30 --> s24 : 进程退出
+  s20 --> s21 : 进程请求批准或回答 or 发送消息 or<br/>进程写出计划续跑的结束
+  s20 --> s24 : 进程退出
+  s23 --> s24 : 监视器宣告进程退出
+  s23 --> s38 : 状态推导处理进程启动
+  s21 --> s25 : 进程退出
+  s21 --> s22 : 读到开始帧
+  s24 --> s25 : 监视器宣告进程退出
+  s24 --> s39 : 状态推导处理进程启动
+  s24 --> s17 : 监视器移除句柄
+  s25 --> s28 : 读到开始帧
+  s22 --> s33 : 进程写出正常结束 or 进程写出出错结束
+  s39 --> s38 : 状态推导处理发送 or 状态推导处理进程退出 or<br/>状态推导忽略续跑结束 or 状态推导处理撤销
+  s39 --> s42 : 读到开始帧
+  s39 --> s36 : 监视器移除句柄
+  s39 --> s2 : 状态推导处理进程退出 or 状态推导处理结束
+  s31 --> s44 : 状态推导处理进程启动
+  s28 --> s26 : 监视器宣告进程退出
+  s28 --> s43 : 状态推导处理进程启动
+  s33 --> s34 : 读到请求帧
+  s42 --> s7 : 状态推导处理开始
+  s38 --> s35 : 监视器移除句柄
+  s36 --> s54 : 状态推导处理进程退出 or 状态推导处理结束
+  s2 --> s0 : 监视器移除句柄
+  s43 --> s42 : 状态推导处理发送 or 状态推导处理进程退出
+  s26 --> s27 : 读到请求帧
+  s34 --> s32 : 读到结束帧
+  s27 --> s41 : 状态推导处理进程启动
+  s32 --> s31 : 回答卡片
+  s32 --> s45 : 状态推导处理进程启动
+  s41 --> s6 : 状态推导处理开始
+  s45 --> s10 : 状态推导处理开始
+  s17 --> s19 : 读到开始帧
+  s44 --> s9 : 状态推导处理开始
+  s7 --> s3 : 监视器移除句柄
+  s6 --> s40 : 状态推导处理进程退出
+  s10 --> s53 : 状态推导处理请求
+  s19 --> s4 : 状态推导处理开始
+  s40 --> s51 : 状态推导处理请求
+  s36 --> s37 : 读到请求帧
+  s4 --> s5 : 读到请求帧
+  s9 --> s52 : 状态推导处理请求
+  s53 --> s15 : 状态推导处理结束
+  s39 --> s13 : 状态推导处理结束
+  s37 --> s48 : 状态推导处理请求
+  s5 --> s50 : 状态推导处理请求
+  s17 --> s18 : 读到请求帧
+  s52 --> s14 : 状态推导处理结束
+  s37 --> s46 : 状态推导处理请求
+  s5 --> s47 : 状态推导处理请求
+  s13 --> s11 : 监视器移除句柄
+  s36 --> s55 : 状态推导处理结束
+  s18 --> s49 : 状态推导处理请求
+  s14 --> s8 : 状态推导处理回答
+  s49 --> s12 : 状态推导处理结束
+  s49 --> s1 : 状态推导处理结束
+  s36 --> s56 : 状态推导处理撤销
+  class s54 group1
+  class s0 group1Wrong
+  class s1 group1Wrong
+  class s2 group1
+  class s3 group0Wrong
+  class s4 group0
+  class s5 group0
+  class s6 group0
+  class s7 group0Mixed
+  class s8 group0Wrong
+  class s9 group0
+  class s10 group0
+  class s55 group1
+  class s11 group1Wrong
+  class s12 group1Wrong
+  class s13 group1
+  class s14 group1
+  class s15 group1Wrong
+  class s16 group2
+  class s17 group2
+  class s18 group2
+  class s19 group2
+  class s20 group2
+  class s21 group2
+  class s22 group2
+  class s23 group2
+  class s24 group2
+  class s25 group2
+  class s26 group2
+  class s27 group2
+  class s28 group2
+  class s29 group2
+  class s30 group2
+  class s31 group2
+  class s32 group2
+  class s33 group2
+  class s34 group2
+  class s35 group2Wrong
+  class s36 group2
+  class s37 group2
+  class s38 group2
+  class s39 group2
+  class s40 group2
+  class s41 group2
+  class s42 group2
+  class s43 group2
+  class s44 group2
+  class s45 group2
+  class s46 group0Wrong
+  class s47 group0Wrong
+  class s48 group0Wrong
+  class s49 group0
+  class s50 group0Wrong
+  class s51 group0Wrong
+  class s52 group0
+  class s53 group0
+  class s56 group1

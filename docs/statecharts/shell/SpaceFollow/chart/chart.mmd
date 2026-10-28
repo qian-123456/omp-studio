@@ -1,0 +1,94 @@
+---
+title: "空间跟随"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): the fix
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "空间与选中会话一致" as legendWorks
+    state "修复后一致" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "侧边栏展开，侧边栏显示代码空间" as g0 {
+    state "没有选中会话" as s0
+    state "选中了代码空间的会话" as s1
+    state "选中了研究空间的会话，选中的行不在列表里" as s2
+  }
+  state "侧边栏展开，侧边栏显示研究空间" as g1 {
+    state "没有选中会话" as s3
+    state "选中了代码空间的会话，选中的行不在列表里" as s4
+    state "选中了研究空间的会话" as s5
+  }
+  state "侧边栏收起，侧边栏显示代码空间" as g2 {
+    state "没有选中会话" as s6
+    state "选中了代码空间的会话" as s7
+    state "选中了研究空间的会话，选中的行不在列表里" as s8
+  }
+  state "侧边栏收起，侧边栏显示研究空间" as g3 {
+    state "没有选中会话" as s9
+    state "选中了代码空间的会话，选中的行不在列表里" as s10
+    state "选中了研究空间的会话" as s11
+  }
+  [*] --> s1
+  g0 --> s3 : 在侧边栏里手动切换空间
+  g1 --> s0 : 在侧边栏里手动切换空间
+  s1 --> s5 : 从收件箱等入口直接打开另一个会话
+  s1 --> s7 : 按下 Cmd+B 展开或收起侧边栏
+  s5 --> s1 : 从收件箱等入口直接打开另一个会话
+  s5 --> s11 : 按下 Cmd+B 展开或收起侧边栏
+  s7 --> s8 : 从收件箱等入口直接打开另一个会话
+  s7 --> s1 : 按下 Cmd+B 展开或收起侧边栏
+  s3 --> s1 : 从收件箱等入口直接打开另一个会话
+  s3 --> s5 : 从收件箱等入口直接打开另一个会话
+  s3 --> s9 : 按下 Cmd+B 展开或收起侧边栏
+  s11 --> s10 : 从收件箱等入口直接打开另一个会话
+  s11 --> s5 : 按下 Cmd+B 展开或收起侧边栏
+  s0 --> s1 : 从收件箱等入口直接打开另一个会话
+  s0 --> s5 : 从收件箱等入口直接打开另一个会话
+  s0 --> s6 : 按下 Cmd+B 展开或收起侧边栏
+  s8 --> s7 : 从收件箱等入口直接打开另一个会话
+  s8 --> s2 : 按下 Cmd+B 展开或收起侧边栏
+  s9 --> s10 : 从收件箱等入口直接打开另一个会话
+  s9 --> s11 : 从收件箱等入口直接打开另一个会话
+  s9 --> s3 : 按下 Cmd+B 展开或收起侧边栏
+  s10 --> s11 : 从收件箱等入口直接打开另一个会话
+  s10 --> s4 : 按下 Cmd+B 展开或收起侧边栏
+  s6 --> s7 : 从收件箱等入口直接打开另一个会话
+  s6 --> s8 : 从收件箱等入口直接打开另一个会话
+  s6 --> s0 : 按下 Cmd+B 展开或收起侧边栏
+  s2 --> s1 : 从收件箱等入口直接打开另一个会话
+  s2 --> s8 : 按下 Cmd+B 展开或收起侧边栏
+  s4 --> s5 : 从收件箱等入口直接打开另一个会话
+  s4 --> s10 : 按下 Cmd+B 展开或收起侧边栏
+  s7 --> s11 : with the fix, 从收件箱等入口直接打开另一个会话
+  s11 --> s7 : with the fix, 从收件箱等入口直接打开另一个会话
+  s9 --> s7 : with the fix, 从收件箱等入口直接打开另一个会话
+  s6 --> s11 : with the fix, 从收件箱等入口直接打开另一个会话
+  class s0 works
+  class s1 works
+  class s2 fixed
+  class s3 works
+  class s4 fixed
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 fixed
+  class s9 works
+  class s10 fixed
+  class s11 works

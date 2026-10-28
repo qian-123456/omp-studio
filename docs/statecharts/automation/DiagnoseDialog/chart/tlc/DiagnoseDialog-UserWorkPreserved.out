@@ -1,0 +1,1869 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 32 and seed 8650366685059331373 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 95439] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/DiagnoseDialog.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module DiagnoseDialog
+Starting... (2026-10-28 22:57:13)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:57:14.
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 4: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 5: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 4: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 5: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 6: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 8: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 8: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 7: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 8: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 7: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 8: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 9: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 10: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 10: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 10: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 11: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 10: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 11: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 10: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 11: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 10: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 11: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 12: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 10: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 11: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 12: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 13: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 10: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 11: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 12: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = FALSE
+
+State 13: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Error: Invariant UserWorkPreserved is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = FALSE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 2: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = FALSE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 0
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 3: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 4: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 5: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 1
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 6: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 7: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 8: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 2
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 9: <UserExecute line 37, col 3 to line 42, col 56 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = TRUE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 10: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 11: <PromptLoaded line 22, col 3 to line 24, col 72 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+State 12: <UserEditsPrompt line 27, col 3 to line 29, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = FALSE
+/\ edited = TRUE
+
+State 13: <UserChoosesSession line 32, col 3 to line 34, col 73 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = FALSE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = FALSE
+/\ chosen = TRUE
+/\ edited = TRUE
+
+State 14: <SessionsUpdated line 52, col 3 to line 58, col 39 of module DiagnoseDialog>
+/\ inFlight = TRUE
+/\ loading = TRUE
+/\ btnBusy = FALSE
+/\ open = TRUE
+/\ sent = 3
+/\ erased = TRUE
+/\ chosen = FALSE
+/\ edited = FALSE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.6E-16
+108 states generated, 59 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:57:14)

@@ -1,0 +1,34 @@
+{
+  "view": "customer",
+  "modelStates": 4,
+  "modelTransitions": 3,
+  "chartStates": 4,
+  "chartTransitions": 3,
+  "chartStatus": {
+    "works": 3,
+    "wrong": 1,
+    "fixed": 0,
+    "mixed": 0,
+    "after": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "启用失败：界面显示已禁用，配置里却已启用",
+      "invariant": "UiMatchesConfigAfterFailure",
+      "rule": "规则：扩展启用失败回滚后，界面显示的状态与配置里的状态一致。",
+      "cause": null,
+      "readerSteps": 2,
+      "modelSteps": 3,
+      "counterexamples": 1,
+      "lastSteps": [
+        "重命名文件失败"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

@@ -1,0 +1,437 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 28 and seed -4577375600029067379 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 52455] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/SpaceFollow.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module SpaceFollow
+Starting... (2026-10-28 22:35:23)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:35:23.
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 3: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "b"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 4: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 3: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 4: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 5: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 3: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 4: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "b"
+
+State 5: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 5: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "b"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 5: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "a"
+
+State 6: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 4: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 5: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 6: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 3: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 5: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 6: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 5: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 6: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 7: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "b"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 3: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 5: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 6: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "b"
+
+State 7: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "a"
+
+Error: Invariant SpaceMatchesSelection is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "a"
+/\ selectedId = "a"
+
+State 2: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = ResearchMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "b"
+
+State 3: <UserSwitchMode line 56, col 9 to line 60, col 55 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 4: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "b"
+/\ selectedId = "none"
+
+State 5: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = TRUE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 6: <ToggleSidebar line 48, col 5 to line 51, col 43 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "none"
+
+State 7: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "a"
+
+State 8: <SelectSession line 38, col 9 to line 44, col 32 of module SpaceFollow>
+/\ sidebarOpen = FALSE
+/\ activeMode = CodeMode
+/\ prevSelectedIdRef = "none"
+/\ selectedId = "b"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 4.4E-17
+61 states generated, 20 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:35:23)

@@ -1,0 +1,33 @@
+---
+title: "模板列表保存与迟到读取, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group0Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group1Path fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "保存被覆盖" as legendGroup0
+    state "正常" as legendGroup1
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  state "快照读取中；显示新配置；保存已确认" as s0
+  state "快照读取中；显示空白；尚未保存" as s1
+  state "读取已结束；显示旧配置；保存已确认" as s2
+  state "读取已结束；显示空白；尚未保存" as s3
+  [*] --> s3
+  s3 --> s1 : 1. 开始读取模板列表
+  s1 --> s0 : 2. 保存模板并显示新配置
+  s0 --> s2 : 3. 先前的读取返回配置
+  class s0 group1Path
+  class s1 group1Path
+  class s2 group0Wrong
+  class s3 group1Path

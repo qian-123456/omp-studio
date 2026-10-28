@@ -1,0 +1,70 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 77 and seed 6468788149990262732 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 53977] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MemoryFilesLoad.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/FiniteSets.tla
+Parsing file <path>/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module MemoryFilesLoad
+Starting... (2026-10-28 22:36:17)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:36:17.
+Error: Invariant MemoryListMatchesProject is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ mSlug = 1
+/\ mShown = 0
+/\ mInflight = {1}
+
+State 2: <MemorySwitchProject line 17, col 3 to line 18, col 25 of module MemoryFilesLoad>
+/\ mSlug = 2
+/\ mShown = 0
+/\ mInflight = {1, 2}
+
+State 3: <MemoryReadReturns line 22, col 3 to line 23, col 24 of module MemoryFilesLoad>
+/\ mSlug = 2
+/\ mShown = 2
+/\ mInflight = {1}
+
+State 4: <MemoryReadReturns line 22, col 3 to line 23, col 24 of module MemoryFilesLoad>
+/\ mSlug = 2
+/\ mShown = 1
+/\ mInflight = {}
+
+Error: Invariant MemoryListMatchesProject is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ mSlug = 1
+/\ mShown = 0
+/\ mInflight = {1}
+
+State 2: <MemorySwitchProject line 17, col 3 to line 18, col 25 of module MemoryFilesLoad>
+/\ mSlug = 2
+/\ mShown = 0
+/\ mInflight = {1, 2}
+
+State 3: <MemorySwitchProject line 17, col 3 to line 18, col 25 of module MemoryFilesLoad>
+/\ mSlug = 1
+/\ mShown = 0
+/\ mInflight = {1, 2}
+
+State 4: <MemoryReadReturns line 22, col 3 to line 23, col 24 of module MemoryFilesLoad>
+/\ mSlug = 1
+/\ mShown = 1
+/\ mInflight = {2}
+
+State 5: <MemoryReadReturns line 22, col 3 to line 23, col 24 of module MemoryFilesLoad>
+/\ mSlug = 1
+/\ mShown = 2
+/\ mInflight = {}
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.3E-17
+31 states generated, 13 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:36:17)

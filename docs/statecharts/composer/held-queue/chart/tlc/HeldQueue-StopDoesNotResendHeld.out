@@ -1,0 +1,1211 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 5 and seed -5316386964365170428 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 80105] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/HeldQueue.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/FiniteSets.tla
+Parsing file <path>/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module HeldQueue
+Starting... (2026-10-28 22:50:12)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:50:12.
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 5: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 5: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 6: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 5: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 6: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 4: <BatchSendSucceeds line 54, col 3 to line 60, col 91 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<1, 0>>
+
+State 5: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<1, 0>>
+
+State 6: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<1, 0>>
+
+State 7: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<1, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 4: <BatchSendSucceeds line 54, col 3 to line 60, col 91 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 1>>
+
+State 5: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 1>>
+
+State 6: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 1>>
+
+State 7: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 1>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <FreshTurnStarts line 103, col 3 to line 106, col 124 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 8: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 9: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <FreshTurnStarts line 103, col 3 to line 106, col 124 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 8: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 9: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 8: <FreshTurnStarts line 103, col 3 to line 106, col 124 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 9: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 10: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {1}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 8: <SendOneSucceeds line 82, col 3 to line 87, col 93 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<1, 0>>
+
+State 9: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {2}
+/\ discarded = {1}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<1, 0>>
+
+State 10: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {1}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<1, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 8: <FreshTurnStarts line 103, col 3 to line 106, col 124 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 9: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 10: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+Error: Invariant StopDoesNotResendHeld is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 2: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 3: <TypeWhileStreaming line 25, col 3 to line 29, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 0>>
+
+State 4: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1, 2}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 5: <BatchSendFails line 64, col 3 to line 69, col 105 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 6: <SendOneStarts line 73, col 3 to line 78, col 123 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1, 2}
+/\ discarded = {}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 7: <DeleteQueued line 96, col 3 to line 99, col 116 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {2}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = FALSE
+/\ delivered = <<0, 0>>
+
+State 8: <SendOneSucceeds line 82, col 3 to line 87, col 93 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 1>>
+
+State 9: <UserStop line 33, col 3 to line 36, col 120 of module HeldQueue>
+/\ draining = FALSE
+/\ batchItems = {}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {1}
+/\ discarded = {2}
+/\ stopRequested = TRUE
+/\ resentAfterStop = FALSE
+/\ streaming = TRUE
+/\ delivered = <<0, 1>>
+
+State 10: <TurnEnds line 40, col 3 to line 50, col 62 of module HeldQueue>
+/\ draining = TRUE
+/\ batchItems = {1}
+/\ submitted = {1, 2}
+/\ queuedBusy = {}
+/\ queues = {}
+/\ discarded = {2}
+/\ stopRequested = FALSE
+/\ resentAfterStop = TRUE
+/\ streaming = FALSE
+/\ delivered = <<0, 1>>
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.6E-15
+561 states generated, 170 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 12.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:50:12)

@@ -1,0 +1,48 @@
+---
+title: "手机端连接横幅, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "横幅：已断开" as g0 {
+    state "事件流存活，网络在线，配对有效" as s0
+    state "事件流存活，网络离线，配对有效" as s1
+  }
+  state "横幅：连接中" as g1 {
+    state "事件流存活，等待问候，网络在线，配对有效" as s2
+    state "无事件流，探测中，网络在线，配对有效" as s3
+  }
+  state "横幅：已连接: 事件流存活，网络在线，配对有效" as s4
+  state "横幅：未连接: 无事件流，网络在线，配对有效" as s5
+  [*] --> s5
+  s5 --> s3 : 1. 应用启动事件流
+  s3 --> s2 : 2. 探测请求成功并建立事件流
+  s2 --> s4 : 3. 收到服务器问候
+  s4 --> s1 : 4. 手机提示网络断开
+  s1 --> s0 : 5. 手机提示网络恢复
+  class s0 wrongPath
+  class s1 worksPath
+  class s4 worksPath
+  class s5 worksPath
+  class s2 worksPath
+  class s3 worksPath

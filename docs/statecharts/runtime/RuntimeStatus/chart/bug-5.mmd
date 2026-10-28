@@ -1,0 +1,72 @@
+---
+title: "会话运行状态, bug 5"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#fdebd0,stroke:#7f7668,color:#1b2631
+  classDef group0Wrong fill:#fdebd0,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0Path fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group1 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group1Path fill:#d6eaf8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group2 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group2Path fill:#e8f6e8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "显示进行中或等待" as legendGroup0
+    state "显示待处理结果" as legendGroup1
+    state "显示空闲类状态" as legendGroup2
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "会话显示「处理中」（仍记为存活）" as g0 {
+    state "进程空闲" as s0
+    state "进程空闲，3条消息在途" as s1
+  }
+  state "会话显示「空闲」" as g1 {
+    state "没有进程" as s2
+    state "进程在跑回合，2条消息在途" as s3
+    state "进程在跑回合，3条消息在途" as s4
+    state "进程在跑回合，界面转圈，3条消息在途" as s5
+    state "进程空闲，1条消息在途" as s6
+    state "进程空闲，5条消息在途" as s7
+    state "进程空闲，界面有待答卡片，4条消息在途" as s8
+    state "进程空闲，界面转圈，4条消息在途" as s9
+    state "进程空闲，界面转圈，界面有待答卡片，4条消息在途" as s10
+  }
+  state "会话显示「待查看结果」（仍记为存活）:<br/>进程空闲，1条消息在途" as s11
+  state "会话显示「空闲」（仍记为存活）:<br/>进程空闲，4条消息在途" as s12
+  state "会话显示「等待批准」（仍记为存活）:<br/>进程空闲，2条消息在途" as s13
+  [*] --> s2
+  s2 --> s6 : 1. 点击继续，拉起进程
+  s6 --> s3 : 2. 进程开始一轮
+  s3 --> s4 : 3. 进程请求批准或回答
+  s4 --> s5 : 4. 读到开始帧
+  s5 --> s9 : 5. 进程写出正常结束
+  s7 --> s12 : 9. 状态推导处理进程启动
+  s9 --> s10 : 6. 读到请求帧
+  s10 --> s8 : 7. 读到结束帧
+  s8 --> s7 : 8. 回答卡片
+  s12 --> s1 : 10. 状态推导处理开始
+  s1 --> s13 : 11. 状态推导处理请求
+  s13 --> s11 : 12. 状态推导处理结束
+  s11 --> s0 : 13. 状态推导处理回答
+  class s0 group0Wrong
+  class s1 group0Path
+  class s11 group1Path
+  class s2 group2Path
+  class s3 group2Path
+  class s4 group2Path
+  class s5 group2Path
+  class s6 group2Path
+  class s7 group2Path
+  class s8 group2Path
+  class s9 group2Path
+  class s10 group2Path
+  class s12 group2Path
+  class s13 group0Path

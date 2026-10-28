@@ -1,0 +1,33 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group0Path fill:#d1f2eb,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef group1 fill:#e8eaf6,stroke:#74757b,color:#1b2631
+  classDef group1Wrong fill:#e8eaf6,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group1Path fill:#e8eaf6,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "正常" as legendGroup0
+    state "已完成" as legendGroup1
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendWrong plainWrong
+  state "已完成·一次性：无下次触发，没有运行" as s0
+  state "已完成·一次性：等待下次触发，没有运行" as s1
+  state "运行中任务·一次性：已到点待领取，没有运行" as s2
+  state "运行中任务·一次性：等待下次触发，没有运行" as s3
+  [*] --> s3
+  s3 --> s2 : 1. 到达计划的触发时间
+  s2 --> s0 : 2. 调度器到点领取任务并推进下次时间
+  s0 --> s1 : 3. 把已执行的一次性任务改到新的未来时间
+  class s0 group1Path
+  class s1 group1Wrong
+  class s2 group0Path
+  class s3 group0Path

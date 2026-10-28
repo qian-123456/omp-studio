@@ -1,0 +1,18 @@
+{
+  "result": "confirmed",
+  "productionEntryPoints": [
+    "useModelTemplatesStore.load(true)",
+    "useModelTemplatesStore.setSnapshot(snapshot)"
+  ],
+  "mockedIo": [
+    "IPC snapshot/status",
+    "desktop change events"
+  ],
+  "observedBugSequence": [
+    "saved-template",
+    "before-save"
+  ],
+  "control": "Forced reads correctly suppress earlier completion",
+  "assertions": 4,
+  "limitation": "Consumer store replay, no rendered desktop or config writes."
+}

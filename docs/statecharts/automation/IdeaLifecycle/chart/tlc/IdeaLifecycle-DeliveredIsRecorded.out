@@ -1,0 +1,2705 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 86 and seed 7702463759250743157 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 89825] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/IdeaLifecycle.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module IdeaLifecycle
+Starting... (2026-10-28 22:54:17)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:54:17.
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 3: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 4: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 4: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 5: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 5: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 6: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 7: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 8: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 6: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 7: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "closed"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 8: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 8: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 3: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 4: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 5: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 6: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 7: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = FALSE
+
+State 8: <FillSendUpdateFail line 63, col 3 to line 66, col 80 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendOk line 24, col 3 to line 29, col 65 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "done"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 8: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 9: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+Error: Invariant DeliveredIsRecorded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = FALSE
+
+State 2: <DialogSendStatusFail line 33, col 3 to line 37, col 73 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 3: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 4: <UserTrash line 76, col 3 to line 80, col 58 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = FALSE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 5: <AgeTrash line 94, col 3 to line 96, col 81 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = TRUE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 6: <UserRestore line 83, col 3 to line 86, col 68 of module IdeaLifecycle>
+/\ userRestored = TRUE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "dispatched"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 7: <UserSetStatus line 69, col 3 to line 73, col 62 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = FALSE
+/\ delivered = TRUE
+
+State 8: <AgeFinished line 89, col 3 to line 91, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = TRUE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+State 9: <DialogClose line 48, col 3 to line 50, col 84 of module IdeaLifecycle>
+/\ userRestored = FALSE
+/\ trashed = FALSE
+/\ trashOld = TRUE
+/\ status = "inbox"
+/\ retry = FALSE
+/\ purged = FALSE
+/\ stale = TRUE
+/\ delivered = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.1E-15
+805 states generated, 180 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 7 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:54:17)

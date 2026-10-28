@@ -1,0 +1,67 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "正在创建辅助对话，显示待发气泡，输入框为空" as s0
+  state "空白辅助对话页，输入框有文字" as s1
+  state "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本带着计划模式" as s2
+  state "辅助对话已绑定，界面显示已发消息但发送失败，输入框为空，副本未带计划模式" as s3
+  state "辅助对话已绑定，首条消息发送中，输入框为空，副本带着计划模式" as s4
+  state "辅助对话已绑定，首条消息发送中，输入框为空，副本未带计划模式" as s5
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式" as s6
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，整理结论失败" as s7
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，正在整理结论" as s8
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本带着计划模式，结论已就绪" as s9
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式" as s10
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，整理结论失败" as s11
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，正在整理结论" as s12
+  state "辅助对话已绑定，首条消息已发出，输入框为空，副本未带计划模式，结论已就绪" as s13
+  [*] --> s1
+  s1 --> s0 : 点击发送首条消息
+  s0 --> s5 : 辅助对话创建成功
+  s5 --> s10 : 首条消息发送成功
+  s5 --> s3 : 首条消息发送失败
+  s0 --> s4 : 辅助对话创建成功
+  s4 --> s6 : 首条消息发送成功
+  s4 --> s2 : 首条消息发送失败
+  s10 --> s12 : 点击回传给父会话
+  s6 --> s8 : 点击回传给父会话
+  s12 --> s13 : 整理结论结束
+  s12 --> s11 : 整理结论结束
+  s8 --> s9 : 整理结论结束
+  s8 --> s7 : 整理结论结束
+  class s0 works
+  class s1 works
+  class s2 wrong
+  class s3 wrong
+  class s4 wrong
+  class s5 works
+  class s6 wrong
+  class s7 wrong
+  class s8 wrong
+  class s9 wrong
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works

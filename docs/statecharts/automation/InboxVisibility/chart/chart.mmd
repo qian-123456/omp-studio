@@ -1,0 +1,57 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Reached only after a bug" as legendAfter
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendAfter after
+  state "不放入收件箱；会话条目" as s0
+  state "不放入收件箱；没有条目" as s1
+  state "仅重要时提醒；会话条目" as s2
+  state "仅重要时提醒；会话条目＋结果待办" as s3
+  state "仅重要时提醒；没有条目" as s4
+  state "仅重要时提醒；结果待办" as s5
+  state "每次都提醒；会话条目" as s6
+  state "每次都提醒；会话条目＋结果待办" as s7
+  state "每次都提醒；没有条目" as s8
+  state "每次都提醒；结果待办" as s9
+  [*] --> s1
+  [*] --> s4
+  [*] --> s8
+  s8 --> s9 : 运行在会话中顺利结束 or 运行在启动会话前就失败
+  s8 --> s7 : 运行在会话中顺利结束 or 运行在会话中失败或超时
+  s4 --> s2 : 运行在会话中顺利结束
+  s4 --> s3 : 运行在会话中失败或超时 or 运行在会话中顺利结束
+  s4 --> s5 : 运行在启动会话前就失败 or 运行在会话中顺利结束
+  s1 --> s0 : 运行在会话中顺利结束 or 运行在会话中失败或超时
+  s7 --> s6 : 用户把结果待办标为完成
+  class s0 wrong
+  class s1 works
+  class s2 wrong
+  class s3 wrong
+  class s4 works
+  class s5 works
+  class s6 after
+  class s7 wrong
+  class s8 works
+  class s9 works

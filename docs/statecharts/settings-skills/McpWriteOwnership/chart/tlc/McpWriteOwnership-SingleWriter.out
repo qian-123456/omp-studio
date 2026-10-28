@@ -1,0 +1,105 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 26 and seed -4176470129644124302 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 7259] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/McpWriteOwnership.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module McpWriteOwnership
+Starting... (2026-10-28 23:03:30)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-28 23:03:30.
+Error: Invariant SingleWriter is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ busy = FALSE
+/\ dialog = "none"
+/\ localBusy = FALSE
+/\ writes = 0
+/\ emptyCatalog = TRUE
+
+State 2: <OpenEditor line 10, col 3 to line 13, col 45 of module McpWriteOwnership>
+/\ busy = FALSE
+/\ dialog = "editor"
+/\ localBusy = FALSE
+/\ writes = 0
+/\ emptyCatalog = TRUE
+
+State 3: <EditorSubmit line 24, col 3 to line 28, col 39 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "editor"
+/\ localBusy = TRUE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 4: <CloseChild line 20, col 3 to line 22, col 45 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "none"
+/\ localBusy = FALSE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 5: <OpenEditor line 10, col 3 to line 13, col 45 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "editor"
+/\ localBusy = FALSE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 6: <EditorSubmit line 24, col 3 to line 28, col 39 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "editor"
+/\ localBusy = TRUE
+/\ writes = 2
+/\ emptyCatalog = TRUE
+
+Error: Invariant SingleWriter is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ busy = FALSE
+/\ dialog = "none"
+/\ localBusy = FALSE
+/\ writes = 0
+/\ emptyCatalog = TRUE
+
+State 2: <OpenEditor line 10, col 3 to line 13, col 45 of module McpWriteOwnership>
+/\ busy = FALSE
+/\ dialog = "editor"
+/\ localBusy = FALSE
+/\ writes = 0
+/\ emptyCatalog = TRUE
+
+State 3: <EditorSubmit line 24, col 3 to line 28, col 39 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "editor"
+/\ localBusy = TRUE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 4: <CloseChild line 20, col 3 to line 22, col 45 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "none"
+/\ localBusy = FALSE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 5: <OpenImport line 15, col 3 to line 18, col 45 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "import"
+/\ localBusy = FALSE
+/\ writes = 1
+/\ emptyCatalog = TRUE
+
+State 6: <ImportSubmit line 30, col 3 to line 34, col 39 of module McpWriteOwnership>
+/\ busy = TRUE
+/\ dialog = "import"
+/\ localBusy = TRUE
+/\ writes = 2
+/\ emptyCatalog = TRUE
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 9.9E-18
+27 states generated, 14 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 23:03:30)

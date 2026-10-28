@@ -1,0 +1,81 @@
+---
+title: "服务面板列表"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group0 fill:#d1f2eb,stroke:#697976,color:#1b2631
+  classDef group1 fill:#e8f0fe,stroke:#74787f,color:#1b2631
+  classDef group2 fill:#d6eaf8,stroke:#6b757c,color:#1b2631
+  classDef group2Wrong fill:#d6eaf8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  state "Legend" as legend {
+    state "列表一致" as legendGroup0
+    state "请求进行中" as legendGroup1
+    state "列表与开关不一致" as legendGroup2
+    state "违反规则" as legendWrong
+  }
+  class legendGroup0 group0
+  class legendGroup1 group1
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "开关选了仅开发服务，显示的是全部端口列表" as s0
+  state "开关选了仅开发服务，显示的是全部端口列表，还有1个请求未返回" as s1
+  state "开关选了仅开发服务，显示的是全部端口列表，还有2个请求未返回" as s2
+  state "开关选了仅开发服务，显示的是开发服务列表" as s3
+  state "开关选了仅开发服务，显示的是开发服务列表，还有1个请求未返回" as s4
+  state "开关选了仅开发服务，显示的是开发服务列表，还有2个请求未返回" as s5
+  state "开关选了仅开发服务，还没有列表" as s6
+  state "开关选了仅开发服务，还没有列表，还有2个请求未返回" as s7
+  state "开关选了仅开发服务，还没有列表，还有3个请求未返回" as s8
+  state "开关选了全部端口，显示的是全部端口列表" as s9
+  state "开关选了全部端口，显示的是全部端口列表，还有1个请求未返回" as s10
+  state "开关选了全部端口，显示的是开发服务列表，还有1个请求未返回" as s11
+  state "开关选了全部端口，还没有列表，还有1个请求未返回" as s12
+  state "开关选了全部端口，还没有列表，还有2个请求未返回" as s13
+  [*] --> s6
+  s6 --> s12 : 点击全部端口开关
+  s6 --> s3 : 收到服务变化通知
+  s12 --> s7 : 点击全部端口开关
+  s12 --> s13 : 收到服务变化通知
+  s12 --> s9 : 一个列表请求返回
+  s3 --> s11 : 点击全部端口开关
+  s7 --> s5 : 收到服务变化通知
+  s7 --> s1 : 一个列表请求返回
+  s7 --> s4 : 一个列表请求返回
+  s13 --> s8 : 点击全部端口开关
+  s13 --> s10 : 一个列表请求返回
+  s9 --> s1 : 点击全部端口开关
+  s9 --> s10 : 收到服务变化通知
+  s11 --> s5 : 点击全部端口开关
+  s11 --> s9 : 一个列表请求返回
+  s5 --> s1 : 一个列表请求返回
+  s5 --> s4 : 一个列表请求返回
+  s1 --> s4 : 收到服务变化通知
+  s1 --> s3 : 一个列表请求返回
+  s4 --> s0 : 一个列表请求返回
+  s8 --> s2 : 一个列表请求返回
+  s8 --> s5 : 一个列表请求返回
+  s10 --> s2 : 点击全部端口开关
+  s10 --> s9 : 一个列表请求返回
+  s4 --> s3 : 一个列表请求返回
+  s0 --> s3 : 收到服务变化通知
+  s2 --> s1 : 一个列表请求返回
+  s2 --> s4 : 一个列表请求返回
+  s1 --> s0 : 一个列表请求返回
+  class s0 group2Wrong
+  class s1 group1
+  class s2 group1
+  class s3 group0
+  class s4 group1
+  class s5 group1
+  class s6 group0
+  class s7 group1
+  class s8 group1
+  class s9 group0
+  class s10 group1
+  class s11 group1
+  class s12 group1
+  class s13 group1

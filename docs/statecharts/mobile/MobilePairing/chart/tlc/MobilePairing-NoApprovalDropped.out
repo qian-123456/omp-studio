@@ -1,0 +1,4337 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 44 and seed 5669972978721337760 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 73919] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/MobilePairing.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module MobilePairing
+Starting... (2026-10-28 22:46:57)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:46:57.
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 11: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 9: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 11: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 8: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 9: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 10: <PhoneClosesStream line 91, col 5 to line 94, col 111 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 11: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 12: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 12: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 12: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 12: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 13: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 12: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 13: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 9: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 10: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 11: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 12: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 13: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 12: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 13: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 14: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 6: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 7: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 8: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 9: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 10: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 11: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 12: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 13: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 14: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 9: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 10: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 11: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 12: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 13: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 14: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "fresh"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Error: Invariant NoApprovalDropped is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 2: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 0
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "none"
+
+State 3: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 4: <OpenStream line 77, col 5 to line 80, col 125 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 5: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = FALSE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 6: <PhoneViews line 104, col 5 to line 107, col 119 of module MobilePairing>
+/\ pushedWhileViewing = FALSE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = FALSE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 0
+/\ tokenOwner = "phone"
+
+State 7: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = TRUE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 8: <RevokeAll line 68, col 5 to line 73, col 94 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "none"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 9: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "live"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 10: <EndStreamRevoked line 84, col 5 to line 87, col 125 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "none"
+
+State 11: <VisitPair line 59, col 9 to line 64, col 110 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 1
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "used"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 12: <CreatePairing line 45, col 5 to line 48, col 118 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "fresh"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 13: <ExpireCode line 52, col 5 to line 54, col 127 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = FALSE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 14: <Subscribe line 98, col 5 to line 100, col 121 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = FALSE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+State 15: <ApprovalRaised line 111, col 5 to line 122, col 80 of module MobilePairing>
+/\ pushedWhileViewing = TRUE
+/\ redeems = 0
+/\ phoneViewing = TRUE
+/\ recent = TRUE
+/\ stream = "none"
+/\ subscribed = TRUE
+/\ code = "expired"
+/\ droppedApproval = TRUE
+/\ pushed = 1
+/\ tokenOwner = "phone"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 5.9E-14
+2729 states generated, 480 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 17.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:46:58)

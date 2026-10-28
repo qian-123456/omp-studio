@@ -1,0 +1,65 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 5 and seed -2103568018583941013 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 17529] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PlanPreview_rules.tla
+Parsing file <path>/PlanPreview.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module PlanPreview
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module PlanPreview_rules
+Starting... (2026-10-28 23:07:18)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 23:07:18.
+<< "statechart broken",
+   [ chip |-> "plan",
+     planSend |-> "none",
+     planMode |-> FALSE,
+     planEditState |-> "none",
+     planRolesState |-> "none",
+     planVisit |-> 1,
+     planRolesWrite |-> 0,
+     planAppliedRef |-> FALSE,
+     planModelApplied |-> FALSE,
+     modelRoleFile |-> "A",
+     statusPlanModel |-> "none",
+     extSettingsRole |-> "A",
+     ompProcessModel |-> "O",
+     draftModel |-> "O",
+     draftBeforePreview |-> "O",
+     readFlight |->
+         [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE],
+     saveFlight |-> [st |-> "idle", visit |-> 0, value |-> "none"] ],
+   {"SettledChipShowsSavedRole"} >>
+<< "statechart broken",
+   [ chip |-> "plan",
+     planSend |-> "none",
+     planMode |-> FALSE,
+     planEditState |-> "none",
+     planRolesState |-> "none",
+     planVisit |-> 1,
+     planRolesWrite |-> 0,
+     planAppliedRef |-> FALSE,
+     planModelApplied |-> FALSE,
+     modelRoleFile |-> "A",
+     statusPlanModel |-> "none",
+     extSettingsRole |-> "A",
+     ompProcessModel |-> "O",
+     draftModel |-> "X",
+     draftBeforePreview |-> "X",
+     readFlight |->
+         [st |-> "idle", gen |-> 0, val |-> "none", cancelled |-> FALSE],
+     saveFlight |-> [st |-> "idle", visit |-> 0, value |-> "none"] ],
+   {"SettledChipShowsSavedRole"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.9E-14
+3141 states generated, 660 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 23:07:18)

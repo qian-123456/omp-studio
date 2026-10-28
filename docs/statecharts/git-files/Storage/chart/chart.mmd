@@ -1,0 +1,92 @@
+---
+title: "批量清理旧会话"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "会话已在应用里启动，当前空闲" as s0
+  state "会话已在应用里启动，当前空闲，已置顶" as s1
+  state "会话已在应用里启动，当前空闲，已置顶，清理检查已通过" as s2
+  state "会话已在应用里启动，当前空闲，清理检查已通过" as s3
+  state "会话已移入废纸篓" as s4
+  state "会话已移入废纸篓，已置顶，检查后才启动的会话被停掉并删除、检查后才置顶的会话被删" as s5
+  state "会话已移入废纸篓，已置顶，检查后才置顶的会话被删" as s6
+  state "会话已移入废纸篓，已置顶，终端占用的会话被删、检查后才置顶的会话被删" as s7
+  state "会话已移入废纸篓，检查后才启动的会话被停掉并删除" as s8
+  state "会话已移入废纸篓，终端占用的会话被删" as s9
+  state "会话正在回合中" as s10
+  state "会话正在回合中，已置顶" as s11
+  state "会话正在回合中，已置顶，清理检查已通过" as s12
+  state "会话正在回合中，清理检查已通过" as s13
+  state "会话空闲" as s14
+  state "会话空闲，已置顶" as s15
+  state "会话空闲，已置顶，清理检查已通过" as s16
+  state "会话空闲，清理检查已通过" as s17
+  state "会话被终端里的 omp 占用" as s18
+  state "会话被终端里的 omp 占用，已置顶" as s19
+  state "会话被终端里的 omp 占用，已置顶，清理检查已通过" as s20
+  state "会话被终端里的 omp 占用，清理检查已通过" as s21
+  [*] --> s14
+  s14 --> s0 : 在应用里启动会话
+  s14 --> s18 : 终端里的 omp 开始占用
+  s14 --> s15 : 置顶或取消置顶
+  s14 --> s17 : 点清理，检查通过
+  s0 --> s10 : 开始一个回合
+  s0 --> s1 : 置顶或取消置顶
+  s18 --> s19 : 置顶或取消置顶
+  s17 --> s3 : 在应用里启动会话
+  s17 --> s21 : 终端里的 omp 开始占用
+  s17 --> s16 : 置顶或取消置顶
+  s17 --> s4 : 真正移入废纸篓
+  s10 --> s11 : 置顶或取消置顶
+  s3 --> s13 : 开始一个回合
+  s3 --> s2 : 置顶或取消置顶
+  s3 --> s8 : 真正移入废纸篓
+  s21 --> s20 : 置顶或取消置顶
+  s21 --> s9 : 真正移入废纸篓
+  s16 --> s6 : 真正移入废纸篓
+  s13 --> s12 : 置顶或取消置顶
+  s2 --> s5 : 真正移入废纸篓
+  s20 --> s7 : 真正移入废纸篓
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 wrong
+  class s6 wrong
+  class s7 wrong
+  class s8 wrong
+  class s9 wrong
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works

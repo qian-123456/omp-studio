@@ -1,0 +1,37 @@
+---
+title: "供应商密钥保存, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): the fix
+  classDef plainFixed fill:#f4f6f7,stroke:#1e8449,stroke-width:4px,color:#145a32
+  classDef group0 fill:#fde2e2,stroke:#7f7171,color:#1b2631
+  classDef group0Fixed fill:#fde2e2,stroke:#1e8449,stroke-width:4px,color:#145a32
+  classDef group2 fill:#e2f5e9,stroke:#717b75,color:#1b2631
+  classDef group2Path fill:#e2f5e9,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "所选方式被忽略" as legendGroup0
+    state "正常" as legendGroup2
+    state "Fixed or new with the fix" as legendFixed
+  }
+  class legendGroup0 group0
+  class legendGroup2 group2
+  class legendFixed plainFixed
+  state "配置里是加密引用，加密库里有密钥，上次保存按所选方式生效" as s0
+  state "配置里是明文密钥，加密库里没有密钥" as s1
+  state "配置里是明文密钥，加密库里没有密钥，上次保存提示成功但所选方式没有生效" as s2
+  state "配置里是明文密钥，加密库里没有密钥，编辑表单打开，选的是加密保存，没有输入新密钥" as s3
+  state "配置里是明文密钥，加密库里没有密钥，编辑表单打开，选的是明文写入，没有输入新密钥" as s4
+  [*] --> s1
+  s1 --> s4 : 1. 打开供应商编辑表单
+  s4 --> s3 : 2. 切换密钥保存方式
+  s3 --> s2 : 3. 不输入新密钥直接保存
+  s3 --> s0 : with the fix, 不输入新密钥直接保存
+  class s0 group2Path
+  class s1 group2Path
+  class s2 group0Fixed
+  class s3 group2Path
+  class s4 group2Path

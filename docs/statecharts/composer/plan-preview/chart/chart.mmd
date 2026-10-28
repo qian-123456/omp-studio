@@ -1,0 +1,124 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+  }
+  class legendWorks works
+  class legendWrong wrong
+  state "待发送的计划标签：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲" as s0
+  state "待发送的计划标签：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲（读取角色中）" as s1
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中、读取角色中）" as s2
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s3
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲" as s4
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中、读取角色中）" as s5
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s6
+  state "待发送的计划标签：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（读取角色中）" as s7
+  state "待发送的计划标签：芯片显示计划模型乙，进程运行普通模型，已存角色计划模型乙" as s8
+  state "待发送的计划标签：芯片显示计划模型乙，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s9
+  state "待发送的计划标签：芯片显示计划模型乙，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s10
+  state "待发送的计划标签：芯片显示计划模型甲，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s11
+  state "待发送的计划标签：芯片显示计划模型甲，进程运行普通模型，已存角色计划模型甲" as s12
+  state "待发送的计划标签：芯片显示计划模型甲，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s13
+  state "普通输入：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型乙" as s14
+  state "普通输入：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s15
+  state "普通输入：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲" as s16
+  state "普通输入：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s17
+  state "普通输入：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙" as s18
+  state "普通输入：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s19
+  state "普通输入：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲" as s20
+  state "普通输入：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中、读取角色中）" as s21
+  state "普通输入：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s22
+  state "计划命令发送中：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型乙" as s23
+  state "计划命令发送中：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s24
+  state "计划命令发送中：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲" as s25
+  state "计划命令发送中：芯片显示另选普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s26
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙" as s27
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型乙（保存角色中）" as s28
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲" as s29
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中、读取角色中）" as s30
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（保存角色中）" as s31
+  state "计划命令发送中：芯片显示普通模型，进程运行普通模型，已存角色计划模型甲（读取角色中）" as s32
+  [*] --> s20
+  s20 --> s7 : 选中计划标签
+  s20 --> s16 : 选择另一个普通模型
+  s7 --> s5 : 在选择器里为计划挑模型
+  s7 --> s32 : 发送计划标签
+  s7 --> s4 : 角色读取静默失败
+  s16 --> s1 : 选中计划标签
+  s5 --> s21 : 删除计划标签
+  s5 --> s30 : 发送计划标签
+  s5 --> s6 : 角色读取静默失败
+  s5 --> s2 : 后台写入计划角色
+  s32 --> s29 : 角色读取静默失败 or 角色读取结果到达
+  s7 --> s12 : 角色读取结果到达
+  s1 --> s0 : 角色读取静默失败
+  s21 --> s22 : 角色读取静默失败 or 角色读取结果到达
+  s30 --> s31 : 角色读取静默失败 or 角色读取结果到达
+  s5 --> s13 : 角色读取结果到达
+  s6 --> s3 : 后台写入计划角色
+  s22 --> s19 : 后台写入计划角色
+  s31 --> s28 : 后台写入计划角色
+  s2 --> s9 : 角色读取结果到达
+  s3 --> s8 : 保存结果回到界面
+  s2 --> s11 : 角色读取结果到达
+  s12 --> s25 : 发送计划标签
+  s19 --> s18 : 保存角色失败 or 保存结果回到界面
+  s28 --> s27 : 保存角色失败 or 保存结果回到界面
+  s13 --> s17 : 删除计划标签
+  s13 --> s26 : 发送计划标签
+  s9 --> s10 : 后台写入计划角色
+  s8 --> s14 : 删除计划标签
+  s8 --> s23 : 发送计划标签
+  s9 --> s15 : 删除计划标签
+  s9 --> s24 : 发送计划标签
+  class s0 wrong
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 wrong
+  class s5 works
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 works
+  class s10 works
+  class s11 works
+  class s12 works
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 works
+  class s17 works
+  class s18 works
+  class s19 works
+  class s20 works
+  class s21 works
+  class s22 works
+  class s23 works
+  class s24 works
+  class s25 works
+  class s26 works
+  class s27 works
+  class s28 works
+  class s29 works
+  class s30 works
+  class s31 works
+  class s32 works

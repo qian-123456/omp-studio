@@ -1,0 +1,532 @@
+{
+  "slice": "composer",
+  "title": "输入、计划、暂存队列与侧聊状态审计",
+  "baseline": "7f85613a5ce16cae7ed5e0e3d24b51ecb4454658",
+  "coverage": [
+    {
+      "path": "src/features/chat/Composer.tsx",
+      "feature": "输入、待发计划标签、停止、模型预览",
+      "status": "modeled",
+      "reason": "预览/派发/停止/held 合同进入模型；附件具体内容不进入状态空间。"
+    },
+    {
+      "path": "src/features/chat/plan",
+      "feature": "计划角色选择与状态",
+      "status": "modeled",
+      "reason": "预览、状态发布、角色读写、取消所有权。"
+    },
+    {
+      "path": "src/features/chat/HeldQueueBar.tsx",
+      "feature": "逐条即时发送",
+      "status": "modeled",
+      "reason": "与批量发送共享忙碌预留，失败恢复。"
+    },
+    {
+      "path": "src/features/chat/QueuedBar.tsx",
+      "feature": "held 自动排空",
+      "status": "modeled",
+      "reason": "停止后 streaming 下降沿触发自动发送。"
+    },
+    {
+      "path": "src/features/chat/heldQueue.ts",
+      "feature": "held 队列存取与预留",
+      "status": "modeled",
+      "reason": "两消息有界抽象；持久化介质失败不建模。"
+    },
+    {
+      "path": "src/features/chat/send.ts",
+      "feature": "发送与中止",
+      "status": "modeled",
+      "reason": "公开 abortTurn、prompt 边界回放。"
+    },
+    {
+      "path": "src/features/chat/PlanPanel.tsx",
+      "feature": "计划审批界面",
+      "status": "modeled",
+      "reason": "模式退出后审批按钮不可用，创建新会话失败不回滚。"
+    },
+    {
+      "path": "src/features/sidechat/sideChatActions.ts",
+      "feature": "创建侧聊和首问",
+      "status": "modeled",
+      "reason": "创建成功后先回显再发问；失败只提示。"
+    },
+    {
+      "path": "src/features/sidechat/SideChatPanel.tsx",
+      "feature": "侧聊文本清空/恢复",
+      "status": "modeled",
+      "reason": "首问创建失败恢复与发送失败不恢复区分。"
+    },
+    {
+      "path": "src/features/sidechat/handbackRun.ts",
+      "feature": "回传生成",
+      "status": "modeled",
+      "reason": "忙碌/空闲/生成/提取摘要；主会话提交下游不推断。"
+    },
+    {
+      "path": "src-tauri/src/rpc/sidechat.rs",
+      "feature": "侧聊复制与提问",
+      "status": "modeled",
+      "reason": "截断副本失败时退回父文件；外部 ask 边界。"
+    },
+    {
+      "path": "src-tauri/src/rpc/fork.rs",
+      "feature": "普通分支",
+      "status": "modeled",
+      "reason": "仅无 pin 的 LastCompleteTurn 分支合同。"
+    },
+    {
+      "path": "src-tauri/src/rpc/forkcut.rs",
+      "feature": "记录截断和计划状态",
+      "status": "modeled",
+      "reason": "真实 Rust 入口回放；普通分支保留截断前的 custom 状态。"
+    },
+    {
+      "path": "extension/omp-workspace-plan.ts",
+      "feature": "计划运行时扩展",
+      "status": "modeled",
+      "reason": "注册命令、结束提醒、启动恢复与批准退出。"
+    },
+    {
+      "path": "src/stores/composer.ts",
+      "feature": "草稿和附件存储",
+      "status": "read-only",
+      "reason": "读取草稿/持久化/替换入口；payload、撤销和跨窗口存储不进入有限模型。"
+    },
+    {
+      "path": "src/features/chat/slash",
+      "feature": "斜杠命令解析、执行与状态",
+      "status": "read-only",
+      "reason": "阅读执行器合同；计划标签 dispatch 成功/失败进入 preview 模型；其他命令仅输入输出边界。"
+    },
+    {
+      "path": "src/features/sidechat/handbackLogic.ts",
+      "feature": "摘要提示与内容提取",
+      "status": "read-only",
+      "reason": "回传输入输出合同；文本解析纯函数不单独建图。"
+    },
+    {
+      "path": "src/features/sidechat/viewStore.ts",
+      "feature": "标签视图所有权",
+      "status": "read-only",
+      "reason": "阅读创建、绑定、关闭接口；多标签竞争不建模。"
+    },
+    {
+      "path": "src-tauri/src/rpc/plan_ext.rs",
+      "feature": "扩展安装",
+      "status": "read-only",
+      "reason": "部署/安装代码，无用户对话状态转换建模。"
+    },
+    {
+      "path": "src/features/sidechat/sideChatAttachments.ts",
+      "feature": "侧聊附件生命周期",
+      "status": "out-of-model",
+      "reason": "不推断上传与持久化成功；另列构建兼容性注记。"
+    },
+    {
+      "path": "src/features/sidechat/HandbackDialog.tsx",
+      "feature": "回传编辑对话框",
+      "status": "out-of-model",
+      "reason": "模型仅包含摘要 ready/error，不穷举编辑、复制和提交。"
+    },
+    {
+      "path": "src/features/sidechat/sideChatTitle.ts",
+      "feature": "标题生成",
+      "status": "out-of-model",
+      "reason": "输出文案纯转换，无独立状态建模。"
+    },
+    {
+      "path": "src/features/chat/AddMenuPopover.tsx",
+      "feature": "添加菜单",
+      "status": "out-of-model",
+      "reason": "呈现/选项不单独建模。"
+    },
+    {
+      "path": "src/features/chat/ContextPillBar.tsx",
+      "feature": "上下文选择和草稿 pill",
+      "status": "out-of-model",
+      "reason": "不是执行/计划状态权威来源；具体选择操作不单独建模。"
+    },
+    {
+      "path": "src/features/chat/ImageChips.tsx",
+      "feature": "附件展示",
+      "status": "out-of-model",
+      "reason": "文件字节、缩略图、token 估算和文件附件处理均作为不透明输入。"
+    },
+    {
+      "path": "src/features/chat/editDrafts.ts",
+      "feature": "编辑草稿",
+      "status": "out-of-model",
+      "reason": "不建模编辑原消息后的所有转换。"
+    },
+    {
+      "path": "src/features/chat/privacy",
+      "feature": "秘密标记",
+      "status": "out-of-model",
+      "reason": "privacy-providers 切片所有。"
+    },
+    {
+      "path": "src/features/chat/subagents",
+      "feature": "子代理显示",
+      "status": "out-of-model",
+      "reason": "runtime 切片所有。"
+    },
+    {
+      "path": "src/features/chat/visualize",
+      "feature": "可视化消息",
+      "status": "out-of-model",
+      "reason": "呈现与桥接，不属于本切片 submit/plan/held 生命周期。"
+    },
+    {
+      "path": "src/features/chat/share",
+      "feature": "消息分享",
+      "status": "out-of-model",
+      "reason": "不属于本切片 submit/plan/held 生命周期。"
+    },
+    {
+      "path": "src/features/chat/sketch",
+      "feature": "草图编辑",
+      "status": "out-of-model",
+      "reason": "附件 payload 内部状态不进入本模型。"
+    },
+    {
+      "path": "src/features/chat/find",
+      "feature": "消息查找",
+      "status": "out-of-model",
+      "reason": "视图导航归 shell；查找索引不进入本模型。"
+    },
+    {
+      "path": "src/features/chat/ask",
+      "feature": "追问面板",
+      "status": "out-of-model",
+      "reason": "运行时输入请求由 runtime 切片负责；本切片不重复。"
+    }
+  ],
+  "models": [
+    {
+      "name": "plan-preview",
+      "spec": "plan-preview/PlanPreview.tla",
+      "config": "plan-preview/PlanPreview.cfg",
+      "map": "plan-preview/PlanPreview.map.mjs",
+      "out": "plan-preview/PlanPreview-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"plan-preview/PlanPreview.tla\" --expect-broken SettledChipShowsSavedRole --cover --png",
+      "summary": "plan-preview/PlanPreview-statechart/summary.json",
+      "limits": [
+        "单调访问代次和写入代次各最多二次；更长历史不枚举。读写失败显式建模；运行中进程重载角色配置作为 ConfigReloads 边界。"
+      ],
+      "expectedBroken": [
+        "SettledChipShowsSavedRole"
+      ]
+    },
+    {
+      "name": "held-queue",
+      "spec": "held-queue/HeldQueue.tla",
+      "config": "held-queue/HeldQueue.cfg",
+      "map": "held-queue/HeldQueue.map.mjs",
+      "out": "held-queue/HeldQueue-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"held-queue/HeldQueue.tla\" --expect-broken StopDoesNotResendHeld --cover --png",
+      "summary": "held-queue/HeldQueue-statechart/summary.json",
+      "limits": [
+        "两条消息、单会话；发送抽象为接受或拒绝，运行时只输入 streaming 边沿；不推断服务端重复投递。"
+      ],
+      "expectedBroken": [
+        "StopDoesNotResendHeld"
+      ]
+    },
+    {
+      "name": "plan-stop",
+      "spec": "plan-stop/PlanStop.tla",
+      "config": "plan-stop/PlanStop.cfg",
+      "map": "plan-stop/PlanStop.map.mjs",
+      "out": "plan-stop/PlanStop-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"plan-stop/PlanStop.tla\" --cover --png",
+      "summary": "plan-stop/PlanStop-statechart/summary.json",
+      "limits": [
+        "依赖用户停止产生 aborted 消息；最多一个提醒和有限停止次数，不模拟真实模型或工具。"
+      ],
+      "expectedBroken": []
+    },
+    {
+      "name": "plan-stop-boundary",
+      "spec": "plan-stop-boundary/PlanStop.tla",
+      "config": "plan-stop-boundary/PlanStop.cfg",
+      "map": "plan-stop-boundary/PlanStop.map.mjs",
+      "out": "plan-stop-boundary/PlanStop-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"plan-stop-boundary/PlanStop.tla\" --expect-broken StopDoesNotRestartGeneration --cover --png",
+      "summary": "plan-stop-boundary/PlanStop-statechart/summary.json",
+      "limits": [
+        "与上一图相同，但假设停止不产生 aborted；只用于上游边界，不是已确认停止故障。"
+      ],
+      "expectedBroken": [
+        "StopDoesNotRestartGeneration"
+      ]
+    },
+    {
+      "name": "plan-approve",
+      "spec": "plan-approve/PlanApprove.tla",
+      "config": "plan-approve/PlanApprove.cfg",
+      "map": "plan-approve/PlanApprove.map.mjs",
+      "out": "plan-approve/PlanApprove-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"plan-approve/PlanApprove.tla\" --expect-broken FailedApprovalCanRetryAtOnce --cover --png",
+      "summary": "plan-approve/PlanApprove-statechart/summary.json",
+      "limits": [
+        "新上下文执行批准，创建会话成功/失败；不模拟 shell 导航内部。"
+      ],
+      "expectedBroken": [
+        "FailedApprovalCanRetryAtOnce"
+      ]
+    },
+    {
+      "name": "sidechat",
+      "spec": "sidechat/SideChat.tla",
+      "config": "sidechat/SideChat.cfg",
+      "map": "sidechat/SideChat.map.mjs",
+      "out": "sidechat/SideChat-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"sidechat/SideChat.tla\" --expect-broken EchoMeansMessageSent,FailedFirstMessageKeepsText,SideChatNeverInheritsPlanMode --cover --png",
+      "summary": "sidechat/SideChat-statechart/summary.json",
+      "limits": [
+        "一个新侧聊、一次首问和一次回传；未覆盖全体标签、附件、主工作区写权限和真实工具执行。"
+      ],
+      "expectedBroken": [
+        "EchoMeansMessageSent",
+        "FailedFirstMessageKeepsText",
+        "SideChatNeverInheritsPlanMode"
+      ]
+    },
+    {
+      "name": "fork-plan-state",
+      "spec": "fork-plan-state/ForkPlanState.tla",
+      "config": "fork-plan-state/ForkPlanState.cfg",
+      "map": "fork-plan-state/ForkPlanState.map.mjs",
+      "out": "fork-plan-state/ForkPlanState-statechart",
+      "regenerate": "node \"$STATECHART\" from-spec \"fork-plan-state/ForkPlanState.tla\" --expect-broken ForkKeepsParentPlanMode --cover --png",
+      "summary": "fork-plan-state/ForkPlanState-statechart/summary.json",
+      "limits": [
+        "四个非头部事件，一次完整轮次分支；消息内容和其他 custom 记录省略，forkcut 实际回放补充验证。"
+      ],
+      "expectedBroken": [
+        "ForkKeepsParentPlanMode"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "rule": "StopDoesNotResendHeld",
+      "title": "点击停止后，本地 held 文本仍被自动发送",
+      "model": "held-queue",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "运行中输入消息进入 held",
+        "点击停止",
+        "终止事件使 streaming 归零",
+        "自动排空并发送 held prompt"
+      ],
+      "reproduction": "replay/composer-replay.test.ts 中真实 abortTurn + QueuedBar 订阅；3/3 测试之一，断言复现行为而非期望修复。",
+      "evidence": [
+        "src/features/chat/send.ts:200-229",
+        "src/features/chat/QueuedBar.tsx:73-87",
+        "replay/run.log"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "FailedApprovalCanRetryAtOnce",
+      "title": "批准先退出计划，创建执行会话失败后不能直接在面板重试",
+      "model": "plan-approve",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "点击批准并新建上下文执行",
+        "扩展退出计划模式",
+        "创建会话失败",
+        "计划面板不再提供批准按钮"
+      ],
+      "reproduction": "真实 approvePlan 注入 createSession 拒绝验证命令顺序及错误；真实扩展注册命令回放验证 content 存在时批准后 enabled=false。面板按钮消失由源码佐证，未运行原生 UI。",
+      "evidence": [
+        "src/features/chat/plan/planActions.ts",
+        "src/features/chat/PlanPanel.tsx:66-67",
+        "extension/omp-workspace-plan.ts:434-446",
+        "replay/plan-extension-replay.mjs",
+        "replay/consumer-observations.json"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "EchoMeansMessageSent",
+      "title": "侧聊首问发送失败仍保留用户回显",
+      "model": "sidechat",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "创建侧聊成功",
+        "先写入用户回显",
+        "首次 ask 拒绝",
+        "回显未撤销"
+      ],
+      "reproduction": "真实 sendFirstMessage，mock 仅 RPC；消费者 pendingUserEchoes 仍含文本；非真实服务端投递证明。",
+      "evidence": [
+        "src/features/sidechat/sideChatActions.ts:81-100",
+        "replay/composer-replay.test.ts"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "FailedFirstMessageKeepsText",
+      "title": "侧聊首问发送失败后输入文字未回到草稿",
+      "model": "sidechat",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "面板清空草稿",
+        "创建侧聊成功",
+        "ask 失败仅提示错误"
+      ],
+      "reproduction": "回放验证 action 的失败不抛出及 echo；没有渲染 SideChatPanel 输入框回放，不能当作完整 UI 复现。",
+      "evidence": [
+        "src/features/sidechat/SideChatPanel.tsx:457-472",
+        "src/features/sidechat/sideChatActions.ts:99-100"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "SideChatNeverInheritsPlanMode",
+      "title": "侧聊截断副本写失败可能继承父计划模式",
+      "model": "sidechat",
+      "kind": "trace-and-source-only hypothesis",
+      "steps": [
+        "父处于计划模式",
+        "创建截断副本失败",
+        "退回原父文件分支"
+      ],
+      "reproduction": "没有通过 Rust side_chat_create 注入磁盘失败；只有 trace 和错误回退源码证据。",
+      "evidence": [
+        "src-tauri/src/rpc/sidechat.rs:48-58",
+        "src-tauri/src/rpc/forkcut.rs:32-41",
+        "src-tauri/src/rpc/forkcut.rs:92-95"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "ForkKeepsParentPlanMode",
+      "title": "完整轮次分支丢弃尾部计划开关，恢复成旧计划状态",
+      "model": "fork-plan-state",
+      "kind": "reproduced consumer behavior",
+      "steps": [
+        "写入计划开启记录",
+        "助手完成回答",
+        "写入计划关闭记录",
+        "LastCompleteTurn 截断",
+        "扩展 session_start 恢复副本"
+      ],
+      "reproduction": "真实 forkcut::truncate 产生副本；真实扩展 session_start 对 parent/fork 分别发布 false/true。fork_session RPC 本身和原生 UI 未运行；这是组件间公开函数/注册回调合同复现。",
+      "evidence": [
+        "src-tauri/src/rpc/fork.rs:31-39",
+        "src-tauri/src/rpc/forkcut.rs:100-118",
+        "extension/omp-workspace-plan.ts:453-459",
+        "replay/forkcut-replay/src/main.rs",
+        "replay/fork-extension-replay.mjs",
+        "replay/consumer-observations.json"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "StopDoesNotRestartGeneration",
+      "title": "停止消息是否标记 aborted 是提醒重启的上游边界",
+      "model": "plan-stop-boundary",
+      "kind": "design question",
+      "steps": [
+        "无计划文件时停止",
+        "若最后消息不是 aborted",
+        "agent_end 发送一次提醒触发新轮次"
+      ],
+      "reproduction": "真实扩展 handler：aborted 发送0次，stop/toolUse 各发送1次；没有证据证明上游用户停止会产出非 aborted。",
+      "evidence": [
+        "extension/omp-workspace-plan.ts:67-82",
+        "extension/omp-workspace-plan.ts:516-520",
+        "replay/plan-extension-replay.mjs",
+        "replay/consumer-observations.json"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    },
+    {
+      "rule": "SettledChipShowsSavedRole",
+      "title": "计划角色读取失败时未发送标签回退显示普通模型",
+      "model": "plan-preview",
+      "kind": "design question",
+      "steps": [
+        "选中未发送计划标签",
+        "角色读取静默失败",
+        "稳定后仍显示普通模型"
+      ],
+      "reproduction": "未回放失败角色读取的渲染组件。该无条件规则保留来暴露失败时的产品合同；它不是成功读写路径的缺陷，也不是模代次回绕产物。",
+      "evidence": [
+        "src/features/chat/Composer.tsx:884-894",
+        "src/features/chat/plan/planModelChoice.ts:49-50",
+        "plan-preview/PlanPreview-statechart/stories.md"
+      ],
+      "fixModelStatus": "未提出产品修复；无 fixed 模型，不声称已修复。"
+    }
+  ],
+  "verification": [
+    {
+      "command": "Individual from-spec commands recorded in models[].regenerate (equivalent to regenerate.sh entries)",
+      "exitCode": 0,
+      "result": "Each model command completed with exit0 for its final expectations; corrected preview bg_153. Combined regenerate.sh has not been run locally; main owns final full relocated run."
+    },
+    {
+      "command": "./node_modules/.bin/vitest run --config <scratch>/composer/replay/vitest.config.ts",
+      "exitCode": 0,
+      "result": "3/3 reproduction evidence tests passed; replay/run.log"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=forkcut-target cargo run --offline -q --manifest-path forkcut-replay/Cargo.toml; bun fork-extension-replay.mjs fork-cut-output.jsonl",
+      "exitCode": 0,
+      "result": "Parent restored plan=false, fork restored plan=true."
+    },
+    {
+      "command": "bun plan-extension-replay.mjs",
+      "exitCode": 0,
+      "result": "aborted reminder0; stop/toolUse reminder1; after valid-file approve enabled=false."
+    },
+    {
+      "command": "node uncited.mjs */*.tla",
+      "exitCode": 0,
+      "result": "citation-check.json: all seven arrays empty; source citations are traceability not whole-program proof."
+    }
+  ],
+  "implementationFindings": [
+    {
+      "title": "构建兼容性注记",
+      "evidence": "src/features/sidechat/sideChatAttachments.ts:48 uses Promise.withResolvers; TS2550 previously observed by main/contract, not rerun here.",
+      "kind": "build compatibility note"
+    }
+  ],
+  "blockers": [],
+  "sourceFiles": [
+    "extension/omp-workspace-plan.ts",
+    "src-tauri/src/rpc/fork.rs",
+    "src-tauri/src/rpc/forkcut.rs",
+    "src-tauri/src/rpc/plan_ext.rs",
+    "src-tauri/src/rpc/sidechat.rs",
+    "src/features/chat/AddMenuPopover.tsx",
+    "src/features/chat/Composer.tsx",
+    "src/features/chat/ContextPillBar.tsx",
+    "src/features/chat/HeldQueueBar.tsx",
+    "src/features/chat/ImageChips.tsx",
+    "src/features/chat/PlanPanel.tsx",
+    "src/features/chat/QueuedBar.tsx",
+    "src/features/chat/editDrafts.ts",
+    "src/features/chat/heldQueue.ts",
+    "src/features/chat/plan/planActions.ts",
+    "src/features/chat/plan/planModelChoice.ts",
+    "src/features/chat/plan/planStatus.ts",
+    "src/features/chat/send.ts",
+    "src/features/chat/slash/executors.ts",
+    "src/features/sidechat/HandbackDialog.tsx",
+    "src/features/sidechat/SideChatPanel.tsx",
+    "src/features/sidechat/handbackLogic.ts",
+    "src/features/sidechat/handbackRun.ts",
+    "src/features/sidechat/sideChatActions.ts",
+    "src/features/sidechat/sideChatAttachments.ts",
+    "src/features/sidechat/sideChatTitle.ts",
+    "src/features/sidechat/viewStore.ts",
+    "src/stores/composer.ts"
+  ]
+}

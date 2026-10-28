@@ -1,0 +1,20 @@
+{
+  "evidenceType": "observed console values from the already executed scratch replays; not a new run",
+  "forkCombined": {
+    "entrypoints": ["real forkcut::truncate(Cut::LastCompleteTurn)", "real extension registered session_start callback"],
+    "parentPlanEnabledAfterResume": false,
+    "forkPlanEnabledAfterStart": true,
+    "nativeForkSessionRpcExercised": false
+  },
+  "extensionAgentEnd": {
+    "abortedReminderTurns": 0,
+    "stopReminderTurns": 1,
+    "toolUseReminderTurns": 1,
+    "upstreamStopReasonVerified": false
+  },
+  "extensionApproval": {
+    "beforeApproval": {"enabled": true, "hasContent": true},
+    "afterApproveExecute": {"enabled": false},
+    "nativeUiExercised": false
+  }
+}

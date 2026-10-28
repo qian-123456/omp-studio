@@ -1,0 +1,57 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 98,
+  "modelTransitions": 301,
+  "chartStates": 35,
+  "chartTransitions": 119,
+  "chartStatus": {
+    "works": 33,
+    "wrong": 0,
+    "fixed": 2,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "chartGroups": [
+    {
+      "name": "压缩放行但进程未受保护",
+      "color": "#fde2e2",
+      "states": 2
+    },
+    {
+      "name": "安全",
+      "color": "#e2f5e9",
+      "states": 33
+    }
+  ],
+  "mixedGroups": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "密钥文件正常，文件里是最新隐私块，进程没有加载最新保护，压缩被放行",
+      "invariant": "CompactionHasNativeCoverage",
+      "rule": "只要压缩被放行，正在运行的 OMP 进程启动时读到的原生保护内容就必须是最新的。",
+      "cause": "原生保护写入失败时启动的会话进程拿到了正常摘要，之后写入恢复且摘要没变，压缩被放行，但这个进程从未加载过隐私块",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 4,
+      "lastSteps": [
+        "改标签或关联会话，保护内容不变"
+      ],
+      "startsHere": false,
+      "fix": "密钥文件已改回，应用还没重写，文件里没有隐私块，进程没有加载最新保护，压缩被拦下"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "PrivacyNative.tla": [],
+    "PrivacyNativeFixed.tla": []
+  },
+  "brokenProperties": []
+}

@@ -1,0 +1,3981 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 60 and seed -5737537983785281008 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 63259] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/FileEditorBuffer.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module FileEditorBuffer
+Starting... (2026-10-28 22:43:10)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:43:10.
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 6: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ConflictOverwrite line 61, col 3 to line 63, col 86 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 4
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 2
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 2
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ConflictOverwrite line 61, col 3 to line 63, col 86 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 3
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 3
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 3
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 3
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 4
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 6: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 3
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ConflictOverwrite line 61, col 3 to line 63, col 86 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 2
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 2
+
+State 8: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 5: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 5: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 6: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 4
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = FALSE
+/\ stamp = 4
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 3
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ConflictReload line 67, col 3 to line 70, col 52 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 7: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 3
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 8: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+State 9: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 4
+/\ loaded = 3
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 3
+/\ saving = FALSE
+/\ stamp = 3
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 0
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 1
+
+State 4: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 3
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 2
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ConflictReload line 67, col 3 to line 70, col 52 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 7: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 3
+/\ userWants = 0
+/\ loaded = 2
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 8: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 4
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 9: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 3
+/\ userWants = 4
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = TRUE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 8: <ConflictOverwrite line 61, col 3 to line 63, col 86 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 4
+
+State 9: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+State 10: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Error: Invariant TypedTextKept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ draft = 1
+/\ saveText = 0
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 2
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 2: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 0
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = FALSE
+/\ stamp = 1
+
+State 3: <SaveStart line 36, col 3 to line 38, col 85 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 2
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 4: <ReloadStart line 80, col 3 to line 84, col 81 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 0
+/\ loaded = 1
+/\ nextId = 3
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 5: <TypeText line 29, col 3 to line 32, col 77 of module FileEditorBuffer>
+/\ draft = 3
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = TRUE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 6: <ReloadDone line 88, col 3 to line 91, col 70 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 4
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 1
+/\ saving = TRUE
+/\ stamp = 1
+
+State 7: <ExternalWrite line 74, col 3 to line 76, col 89 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 8: <SaveConflicts line 53, col 3 to line 57, col 93 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = TRUE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 1
+
+State 9: <ConflictOverwrite line 61, col 3 to line 63, col 86 of module FileEditorBuffer>
+/\ draft = 1
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 1
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 4
+/\ saving = TRUE
+/\ stamp = 4
+
+State 10: <SaveSucceeds line 42, col 3 to line 49, col 67 of module FileEditorBuffer>
+/\ draft = 2
+/\ saveText = 2
+/\ userWants = 3
+/\ loaded = 2
+/\ nextId = 5
+/\ reloading = FALSE
+/\ conflict = FALSE
+/\ disk = 2
+/\ saving = FALSE
+/\ stamp = 2
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.5E-14
+1062 states generated, 424 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 01s at (2026-10-28 22:43:10)

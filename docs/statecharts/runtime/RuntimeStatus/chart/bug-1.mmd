@@ -1,0 +1,43 @@
+---
+title: "会话运行状态, bug 1"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef plainWrong fill:#f4f6f7,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2 fill:#e8f6e8,stroke:#747b74,color:#1b2631
+  classDef group2Wrong fill:#e8f6e8,stroke:#c0392b,stroke-width:4px,color:#7b241c
+  classDef group2Path fill:#e8f6e8,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  state "Legend" as legend {
+    state "显示空闲类状态" as legendGroup2
+    state "Breaks a rule" as legendWrong
+  }
+  class legendGroup2 group2
+  class legendWrong plainWrong
+  state "会话显示「空闲」" as g0 {
+    state "没有进程" as s0
+    state "进程已退出但句柄未清，1条消息在途" as s1
+    state "进程已退出但句柄未清，2条消息在途" as s2
+    state "进程空闲，1条消息在途" as s3
+  }
+  state "会话显示「空闲」（仍记为存活）" as g1 {
+    state "没有进程" as s4
+    state "进程已退出但句柄未清" as s5
+    state "进程已退出但句柄未清，1条消息在途" as s6
+  }
+  [*] --> s0
+  s0 --> s3 : 1. 点击继续，拉起进程
+  s3 --> s1 : 2. 进程退出
+  s1 --> s2 : 3. 监视器宣告进程退出
+  s2 --> s6 : 4. 状态推导处理进程启动
+  s6 --> s5 : 5. 状态推导处理进程退出
+  s5 --> s4 : 6. 监视器移除句柄
+  class s0 group2Path
+  class s1 group2Path
+  class s2 group2Path
+  class s3 group2Path
+  class s4 group2Wrong
+  class s5 group2Path
+  class s6 group2Path

@@ -1,0 +1,479 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 27 and seed -209557321275888736 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 80037] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/PlanStop.tla
+Parsing file <path>/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module PlanStop
+Starting... (2026-10-28 22:50:09)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:50:10.
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 4: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 5: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 6: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 4: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 5: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 6: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 4: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 5: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 6: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 7: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 8: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 9: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 3
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 4: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 5: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 6: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 7: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 8: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 9: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Error: Invariant StopDoesNotRestartGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 2: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "none"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 3: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 0
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 4: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 5: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 6: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 1
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 7: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+State 8: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 9: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 10: <ModelFinishes line 55, col 3 to line 57, col 25 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "idle"
+/\ stoppedByUser = FALSE
+/\ reminders = 1
+
+State 11: <SendMessage line 39, col 3 to line 44, col 91 of module PlanStop>
+/\ restartedAfterStop = FALSE
+/\ stopClicks = 2
+/\ planFileFound = FALSE
+/\ lastStopReason = "stop"
+/\ s_enabled = TRUE
+/\ turn = "user"
+/\ stoppedByUser = FALSE
+/\ reminders = 0
+
+State 12: <UserStopsTurn line 61, col 3 to line 64, col 67 of module PlanStop>
+/\ restartedAfterStop = TRUE
+/\ stopClicks = 3
+/\ planFileFound = FALSE
+/\ lastStopReason = "other"
+/\ s_enabled = TRUE
+/\ turn = "reminder"
+/\ stoppedByUser = TRUE
+/\ reminders = 1
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 7.7E-17
+77 states generated, 46 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-28 22:50:10)

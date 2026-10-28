@@ -1,0 +1,48 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "the fix",
+    "lacks": []
+  },
+  "modelStates": 8,
+  "modelTransitions": 22,
+  "chartStates": 8,
+  "chartTransitions": 24,
+  "chartStatus": {
+    "works": 7,
+    "wrong": 0,
+    "fixed": 1,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "regions": {
+    "drawn": false,
+    "why": "9 region states are not fewer than the 8 flat states"
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "中间显示分支草稿: 用户刚点了新建会话，新会话草稿被盖住",
+      "invariant": "NewSessionVisible",
+      "rule": "用户刚点了新建会话，中间区域就必须显示新的空白会话，而不是别的草稿。",
+      "cause": "分支草稿一直开着，新建会话草稿虽然建好了却被它盖住",
+      "readerSteps": 2,
+      "modelSteps": 3,
+      "counterexamples": 1,
+      "lastSteps": [
+        "按 Cmd+N 或点新建会话"
+      ],
+      "startsHere": false,
+      "fix": "中间显示新会话草稿: 用户刚点了新建会话"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "CenterPane.tla": [],
+    "CenterPaneFixed.tla": []
+  },
+  "brokenProperties": []
+}

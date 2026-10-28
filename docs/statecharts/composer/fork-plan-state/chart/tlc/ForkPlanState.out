@@ -1,0 +1,150 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 47 and seed 5706703259315604513 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 80075] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <path>/ForkPlanState_rules.tla
+Parsing file <path>/ForkPlanState.tla
+Parsing file <path>/Naturals.tla
+Parsing file <path>/Sequences.tla
+Parsing file <path>/TLC.tla
+Parsing file <path>/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module ForkPlanState
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module ForkPlanState_rules
+Starting... (2026-10-28 22:50:11)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-28 22:50:11.
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "answer", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOn", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOff", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "planOn", "answer", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "planOff", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "answer", "planOn", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "answer", "planOff", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOn", "answer", "answer", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "planOn", "answer", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "planOff", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "answer", "planOn", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "answer", "planOff", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"planOff", "answer", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOn", "planOn", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOn", "planOff", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOn", "answer", "planOff">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "on" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOff", "planOn", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOff", "planOff", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "planOff", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "answer", "planOn", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "answer", "planOff", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+<< "statechart broken",
+   [ transcript |-> <<"answer", "answer", "answer", "planOn">>,
+     forkMode |-> "lastComplete",
+     forkPlanOn |-> "off" ],
+   {"ForkKeepsParentPlanMode"} >>
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 0.0
+241 states generated, 241 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-10-28 22:50:11)
