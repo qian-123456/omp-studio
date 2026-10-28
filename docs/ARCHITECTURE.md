@@ -430,6 +430,9 @@ pub struct SubagentTranscript {
 // Catalog model (A); context_window comes from `omp models --json` `contextWindow` (None when unknown);
 // reasoning = `omp models --json` `reasoning` (None when omp omits it). `thinking` empty + reasoning true →
 // 「未配置思考等级」 chip; reasoning false → 「不支持思考」 (ThinkingLevelPicker via `thinkingChipState`).
+// Thinking popover UI: centered "High ›" status + description + effort slider in a fixed card; the full text list
+// (incl. auto) is a separate FloatingLayer above the status button, so opening it never changes card geometry.
+// Slider drag previews, release commits; the max stop keeps its original fill/shader colors.
 pub struct Model { pub provider: String, pub id: String, pub name: String, pub thinking: Vec<String>, pub context_window: Option<u64>, pub reasoning: Option<bool> }
 // models.yml contextWindow override edit; context_window None = delete the override
 pub struct ModelContextWindowEdit { pub provider_id: String, pub model_id: String, pub context_window: Option<u64> }

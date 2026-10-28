@@ -457,7 +457,9 @@ describe("Composer plan preview before the command is sent", () => {
 			(b) => b.textContent?.trim() === "high",
 		)!;
 		fireEvent.click(trigger);
-		const option = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+		const status = document.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"][aria-expanded]')!;
+		fireEvent.click(status);
+		const option = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(
 			(b) => b.querySelector(".font-medium")?.textContent === "low",
 		)!;
 		fireEvent.click(option);

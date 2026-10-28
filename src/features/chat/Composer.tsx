@@ -22,6 +22,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, ModelRoleSnapshot, SessionSnapshot } from "../../lib/contracts";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
 import { PLAN_ROLE, effectiveRoles, planRoleScope, resolvePlanChoice, savedPlanValue } from "./plan/planModelChoice";
+import { useDraftBaseContext, useDraftDefaultModel } from "./useDraftDefaultModel";
 import { clearPlanModelApplied, hasPlanModelApplied, markPlanModelApplied } from "./plan/planModelApplied";
 import { applyArgName, buildArgItems, type ArgCandidate } from "./slash/argComplete";
 import { findArgProvider } from "./slash/argProviders";
@@ -861,16 +862,19 @@ export function Composer({
 	);
 	const currentThinking = planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel ?? "auto";
 
+	const draftDefaultModel = useDraftDefaultModel(isLocalDraft && !sessionMeta?.model, sessionMeta?.cwd, models);
 	const sessionCurrent = useMemo(
 		// A read-only (terminal-driven) session has no live process of ours: its model
 		// is whatever the transcript last recorded, not a leftover get_state frame.
 		() =>
 			pickCurrentModel(
-				// A draft's own choice wins over the prewarmed process's default.
-				isLocalDraft || readonly ? [sessionMeta?.model, state.model] : [state.model, sessionMeta?.model],
+				// A draft's own choice wins over the prewarmed process's default; a blank draft shows the default role.
+				isLocalDraft || readonly
+					? [sessionMeta?.model, state.model, draftDefaultModel]
+					: [state.model, sessionMeta?.model],
 				models,
 			),
-		[readonly, isLocalDraft, state.model, sessionMeta?.model, models],
+		[readonly, isLocalDraft, state.model, sessionMeta?.model, draftDefaultModel, models],
 	);
 	const current = useMemo(
 		() => (planChoice ? pickCurrentModel([planChoice.key], models) : sessionCurrent),
@@ -905,15 +909,16 @@ export function Composer({
 	const contextWindow = currentModelOption?.contextWindow;
 	const liveUsage =
 		typeof contextRaw === "object" && contextRaw !== null ? (contextRaw as Record<string, unknown>) : null;
+	const draftBaseTokens = useDraftBaseContext(isLocalDraft, sessionId, sessionMeta?.cwd);
 	const contextUsageObj: Record<string, unknown> | null = liveUsage
 		? contextWindow && typeof liveUsage.tokens === "number"
 			? { ...liveUsage, contextWindow, percent: (liveUsage.tokens / contextWindow) * 100 }
 			: liveUsage
-		: snapshot?.contextTokens != null && contextWindow
+		: (snapshot?.contextTokens ?? (isLocalDraft ? (draftBaseTokens ?? 0) : null)) != null && contextWindow
 			? {
-					tokens: snapshot.contextTokens,
+					tokens: snapshot?.contextTokens ?? draftBaseTokens ?? 0,
 					contextWindow,
-					percent: (snapshot.contextTokens / contextWindow) * 100,
+					percent: ((snapshot?.contextTokens ?? draftBaseTokens ?? 0) / contextWindow) * 100,
 				}
 			: null;
 	const contextPct =
@@ -2844,7 +2849,6 @@ export function Composer({
 											value={currentThinking}
 											onSelect={(level) => {
 												void selectThinkingLevel(level);
-												setModelOpen(false);
 											}}
 										/>
 									)}
