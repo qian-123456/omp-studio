@@ -5,8 +5,8 @@
  * is 「未配置思考等级」 (reasoning model, opens settings) or 「不支持思考」. */
 
 import clsx from "clsx";
-import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { openSettingsTarget } from "../features/settings/settingsTargets";
 import { thinkingChipState } from "../lib/models";
 import { EffortSlider } from "./EffortSlider";
@@ -54,8 +54,8 @@ export function ThinkingLevelPicker({
 	value: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	/** A level was picked. The picker owns closing: list clicks close the popover,
-	 * slider picks keep it open — callers must not close it here. */
+	/** A level was picked (list or slider). The popover stays open; the list
+	 * closes itself. Callers must not close it here. */
 	onSelect: (level: string) => void;
 	/** Opens model settings from the 「未配置思考等级」 chip; defaults to Settings ▸ API 供应商. */
 	onConfigure?: () => void;
@@ -137,80 +137,102 @@ export function ThinkingLevelPicker({
 					layer="popover"
 					ignoreRefs={[ref]}
 					onDismiss={() => onOpenChange(false)}
-					className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
+					className="w-[288px] max-w-[calc(100vw-16px)] rounded-2xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]"
 				>
-					<ThinkingLevelMenu
-						levels={levels}
-						value={value}
-						onSelect={onSelect}
-						onClose={() => onOpenChange(false)}
-					/>
+					<ThinkingLevelControl levels={levels} value={value} onSelect={onSelect} />
 				</FloatingLayer>
 			)}
 		</div>
 	);
 }
 
-/** Popover body: the level list plus the effort slider. Mounted only while open,
- * so a slider preview never outlives the popover. A list click picks and closes;
- * the slider picks and stays open (so its max effect stays visible). */
-function ThinkingLevelMenu({
+const KNOWN_LEVELS: Record<string, true> = {
+	auto: true,
+	off: true,
+	minimal: true,
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+	max: true,
+};
+
+/** Display form of a level in the card's status line: known names get a
+ * capital first letter; unknown names are shown exactly as stored. */
+function statusName(level: string): string {
+	return Object.prototype.hasOwnProperty.call(KNOWN_LEVELS, level)
+		? level.charAt(0).toUpperCase() + level.slice(1)
+		: level;
+}
+
+/** Compact control body: status button + description + effort slider. The full
+ * text list is a separate floating menu above the status button, so opening it
+ * never changes the card geometry. Mounted only while its host is open, so a
+ * slider preview never outlives it. A list pick closes only the list; the
+ * slider commit changes nothing but the level (its max effect stays visible). */
+function ThinkingLevelControl({
 	levels,
 	value,
 	onSelect,
-	onClose,
 }: {
 	levels: string[];
 	value: string;
 	onSelect: (level: string) => void;
-	onClose: () => void;
 }) {
 	const { t } = useT();
 	// Level the slider shows ahead of `value`: while dragging, and after a commit
-	// until the caller reports the new value. The list highlight follows it.
+	// until the caller reports the new value.
 	const [preview, setPreview] = useState<string | null>(null);
 	useEffect(() => setPreview(null), [value]);
+	const [listOpen, setListOpen] = useState(false);
+	const buttonRef = useRef<HTMLButtonElement>(null);
+	const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+	const listId = useId();
 	const shown = preview ?? value;
 	const stops = levels.filter((level) => level !== "auto");
+	const cur = thinkingLabel(shown);
 	const commit = (index: number) => {
 		const level = stops[index];
 		if (level === undefined || level === value) setPreview(null);
 		else onSelect(level);
 	};
+	const pick = (level: string) => {
+		setListOpen(false);
+		buttonRef.current?.focus();
+		if (level !== value) onSelect(level);
+	};
+	const focusItem = (i: number) => {
+		const n = levels.length;
+		itemRefs.current[(i + n) % n]?.focus();
+	};
 	return (
-		<>
-			<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
-				{t("components.thinkingLevel")}
+		<div className="px-3 py-2.5">
+			<div className="flex justify-center">
+				<button
+					ref={buttonRef}
+					type="button"
+					aria-haspopup="menu"
+					aria-expanded={listOpen}
+					aria-controls={listOpen ? listId : undefined}
+					aria-label={`${t("components.thinkingLevel")}: ${statusName(shown)}`}
+					onClick={() => setListOpen((v) => !v)}
+					onKeyDown={(e) => {
+						if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+							e.preventDefault();
+							setListOpen(true);
+						}
+					}}
+					className="flex min-h-8 items-center gap-1 whitespace-nowrap px-1.5 text-[15px] font-medium text-[var(--accent)] transition-colors hover:opacity-80 focus-visible:rounded focus-visible:outline-2 focus-visible:outline-[var(--accent)] pointer-coarse:min-h-11"
+				>
+					<span>{statusName(shown)}</span>
+					<ChevronRight size={13} className="shrink-0" />
+				</button>
 			</div>
-			<div className="py-0.5">
-				{levels.map((level) => {
-					const opt = thinkingLabel(level);
-					return (
-						<button
-							key={level}
-							type="button"
-							onClick={() => {
-								onSelect(level);
-								onClose();
-							}}
-							className={clsx(
-								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
-								shown === level
-									? "bg-[var(--bg-active-fill)] text-[var(--text)]"
-									: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
-							)}
-						>
-							<div className="min-w-0 pr-2">
-								<div className="font-medium">{opt.label}</div>
-								{opt.desc && <div className="text-[10px] text-[var(--text-40,var(--text-dim))]">{opt.desc}</div>}
-							</div>
-							{value === level && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
-						</button>
-					);
-				})}
-			</div>
-			{stops.length > 1 && (
-				<div className="border-t border-[var(--line,var(--border-divider))] px-0.5 pb-0.5 pt-1">
+			{cur.desc && (
+				<div className="mt-0.5 text-center text-[13px] text-[var(--text-40,var(--text-dim))]">{cur.desc}</div>
+			)}
+			{stops.length > 0 && (
+				<div className="mt-2">
 					<EffortSlider
 						count={stops.length}
 						value={stops.indexOf(shown)}
@@ -222,12 +244,75 @@ function ThinkingLevelMenu({
 					/>
 				</div>
 			)}
-		</>
+			{listOpen && (
+				<FloatingLayer
+					anchor={buttonRef.current}
+					placement="top-start"
+					offset={6}
+					layer="menu"
+					role="menu"
+					aria-label={t("components.thinkingLevel")}
+					ignoreRefs={[buttonRef]}
+					onDismiss={() => {
+						setListOpen(false);
+					}}
+					className="w-[260px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
+				>
+					<div id={listId}>
+						<div className="border-b border-[var(--line,var(--border-divider))] px-3 py-2 text-[13px] text-[var(--text-40,var(--text-dim))]">
+							{t("components.thinkingLevel")}
+						</div>
+						<div className="py-0.5">
+							{levels.map((level, i) => {
+								const opt = thinkingLabel(level);
+								return (
+									<button
+										key={level}
+										ref={(el) => {
+											itemRefs.current[i] = el;
+										}}
+										type="button"
+										role="menuitemradio"
+										aria-checked={value === level}
+										onClick={() => pick(level)}
+										onKeyDown={(e) => {
+											if (e.key === "ArrowDown") {
+												e.preventDefault();
+												focusItem(i + 1);
+											} else if (e.key === "ArrowUp") {
+												e.preventDefault();
+												focusItem(i - 1);
+											} else if (e.key === "Escape") {
+												e.preventDefault();
+												setListOpen(false);
+												buttonRef.current?.focus();
+											}
+										}}
+										className={clsx(
+											"flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors",
+											shown === level
+												? "bg-[var(--bg-active-fill)] text-[var(--text)]"
+												: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+										)}
+									>
+										<div className="min-w-0 pr-2">
+											<div className="font-medium">{opt.label}</div>
+											{opt.desc && <div className="text-xs text-[var(--text-40,var(--text-dim))]">{opt.desc}</div>}
+										</div>
+										{value === level && <Check size={15} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
+									</button>
+								);
+							})}
+						</div>
+					</div>
+				</FloatingLayer>
+			)}
+		</div>
 	);
 }
 
-/** Inline thinking-level choice (pill row) for popovers where the separate chip
- * has been merged into the model chip. Same states as the chip: levels from the
+/** Inline thinking-level control for popovers where the separate chip has been
+ * merged into the model chip. Same states as the chip: levels from the
  * catalog, 「不支持思考」, or 「未配置思考等级」 (opens settings). */
 export function ThinkingLevelStrip({
 	levels,
@@ -244,6 +329,13 @@ export function ThinkingLevelStrip({
 }) {
 	const { t } = useT();
 	const chip = thinkingChipState(levels, reasoning);
+	if (chip.kind === "levels") {
+		return (
+			<div className="border-t border-[var(--line,var(--border-divider))]">
+				<ThinkingLevelControl levels={chip.levels} value={value} onSelect={onSelect} />
+			</div>
+		);
+	}
 	return (
 		<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-2">
 			<div className="pb-1 text-[11px] text-[var(--text-40,var(--text-dim))]">{t("components.thinkingLevel")}</div>
@@ -261,26 +353,6 @@ export function ThinkingLevelStrip({
 				>
 					{t("components.thinkingUnconfigured")}
 				</button>
-			)}
-			{chip.kind === "levels" && (
-				<div className="flex flex-wrap gap-1">
-					{chip.levels.map((level) => (
-						<button
-							key={level}
-							type="button"
-							title={thinkingLabel(level).desc}
-							onClick={() => onSelect(level)}
-							className={clsx(
-								"shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
-								value === level
-									? "border-[var(--text-40,var(--text-dim))] bg-[var(--bg-active-fill)] text-[var(--text)]"
-									: "border-[var(--line,var(--border-divider))] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
-							)}
-						>
-							{level}
-						</button>
-					))}
-				</div>
 			)}
 		</div>
 	);
