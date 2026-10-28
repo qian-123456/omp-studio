@@ -7,7 +7,8 @@
 //   plan-mode system context injected every turn.
 // - After each planning turn the newest `local://*-plan.md` is published to the
 //   app through the `ompws-plan` status key (JSON), where the user reviews it.
-// - `/plan-action approve|save|exit|status|run …` is how the app answers the review.
+// - `/plan-action enable|disable|approve|save|status|run …` is how the app switches plan mode and answers the review.
+//   Switching is explicit and idempotent (no toggle): bare `/plan` only enables.
 // State survives resume through a custom session entry.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -529,9 +530,11 @@ export default function planMode(pi: Pi) {
 			if (isSub) return;
 			const task = args.trim();
 			if (!task) {
-				if (s.enabled) await exit(ctx, true);
-				else await enter(ctx);
-				ctx.ui.notify(s.enabled ? "Plan mode on" : "Plan mode off");
+				if (s.enabled) ctx.ui.notify("Plan mode is already on");
+				else {
+					await enter(ctx);
+					ctx.ui.notify("Plan mode on");
+				}
 				return;
 			}
 			if (!s.enabled) await enter(ctx);
@@ -540,13 +543,25 @@ export default function planMode(pi: Pi) {
 	});
 
 	pi.registerCommand("plan-action", {
-		description: "OMP Workspace plan review actions (approve/save/exit/status/run)",
+		description: "OMP Workspace plan actions (enable/disable/approve/save/status/run)",
 		handler: async (args, ctx) => {
 			if (isSub) return;
 			const [action = "", ...rest] = args.trim().split(/\s+/);
 			if (action === "status") {
 				if (s.enabled) refreshPlan(ctx);
 				publish(ctx);
+				return;
+			}
+			if (action === "enable") {
+				if (!s.enabled) await enter(ctx);
+				else publish(ctx);
+				return;
+			}
+			if (action === "disable") {
+				if (s.enabled) {
+					await ctx.waitForIdle?.();
+					await exit(ctx, true);
+				} else publish(ctx);
 				return;
 			}
 			if (action === "run") {
@@ -569,10 +584,6 @@ export default function planMode(pi: Pi) {
 				return;
 			}
 			await ctx.waitForIdle?.();
-			if (action === "exit") {
-				await exit(ctx, true);
-				return;
-			}
 			refreshPlan(ctx);
 			const file = s.planFile;
 			const content = readText(file);

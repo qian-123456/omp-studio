@@ -804,16 +804,17 @@ and passed via `-e` in `prompt_shape_args` right after the privacy extension (so
 shape). It is inert outside `--mode rpc` and when the omp setting `plan.enabled` is false. Plan mode is real omp plan mode; the app keeps no
 toggle state and adds no prompt prefix (the old `[规划模式]` prefix is gone on desktop and mobile).
 A user stop (latest assistant message `stopReason: "aborted"` in `agent_end`) never triggers the "write the plan file" reminder, so one stop click ends the turn.
-The desktop composer shows the configured planning model as soon as plan mode is enabled; its model and thinking controls edit the `plan` role in its existing project scope or otherwise globally. Late asynchronous changes from another session or plan-mode visit never alter the current composer's model.
+The desktop composer previews the configured planning model and thinking level as soon as a `/plan` command chip is selected, including in an unsent local draft, as well as while backend plan mode is enabled. Its model and thinking controls edit the `plan` role in its existing project scope or otherwise globally.
+Previewing a pending command does not submit the command, activate backend plan mode, or replace the ordinary draft/session model; removing the command restores the ordinary model. Late asynchronous changes from another session or planning-preview visit never alter the current composer's model.
 - State contract: the extension publishes `extension_ui_request` frames `{method:"setStatus", statusKey:"ompws-plan", statusText:<JSON string>}`.
   `statusText` fields: `v` (schema version), `enabled`, `phase` (`planning` | `review`), `planFile`, `planUrl`, `title`, `content`,
   `prevContent`, `version`, `planModel`, `tiers[{role,spec}]`, `defaultRole`, `contextPercent`, `keepDisabled`. Desktop parses it into
   `useLive().sessions[id].plan` (`PlanStatus`, `features/chat/plan/planStatus.ts`); the Rust `SessionHandle.plan_status` caches the last parsed
   object (`rpc/process.rs::plan_status_from_frame`) and feeds mobile `composer-state.planMode` / `GET /sessions/{id}/plan-mode`.
   Plan mode on/off = `plan.enabled === true`.
-- Commands (sent as ordinary prompts): `/plan` toggles plan mode; `/plan <task>` enters plan mode and sends the task. Mobile
-  `POST /sessions/{id}/plan-mode` sends `/plan` (skipped when `{on}` already matches) and returns the new `{on}`.
-- `/plan-action <sub>`: `status` (re-publish state), `exit` (leave plan mode), `save` (persist the plan file),
+- Commands (sent as ordinary prompts): bare `/plan` only ENABLES plan mode (never turns it off; already on = notify, no change); `/plan <task>` enters plan mode (if off) and sends the task. Mobile
+  `POST /sessions/{id}/plan-mode` sends `/plan-action enable` or `/plan-action disable` (skipped when `{on}` already matches) and returns the new `{on}`.
+- `/plan-action <sub>`: `enable` / `disable` (explicit, idempotent switches; there is no toggle and no `exit`; the app's chip X, + menu, plan-panel 「启用」 button and mobile switch send these as silent host commands with no user echo bubble), `status` (re-publish state), `save` (persist the plan file),
   `approve <execute|compact|keep> [role]` (`execute` = the app opens a NEW session in the same cwd and sends `/plan-action run [@role] <planFile>`;
   `compact` = compact context, then execute in the same session; `keep` = execute in the same session with history kept, refused above 95%
   context (`keepDisabled`); the mobile 「执行计划」 button sends `/plan-action approve keep`), and `run [@role] <file>` (run the plan file,

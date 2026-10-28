@@ -43,8 +43,9 @@
 //!   `{op: "pause"|"resume"|"drop"}` → `{ok: true, goal}`. `DELETE /sessions/{id}/goal`
 //!   clears (= `op: "drop"`).
 //! - `GET /sessions/{id}/plan-mode` → `{on}`; `POST /sessions/{id}/plan-mode`
-//!   `{on?: bool}` (omitted = toggle) → `{on, sessionId?}`. Plan mode is real omp plan
-//!   mode from the bundled extension: toggling sends the `/plan` prompt, and the state
+//!   `{on?: bool}` (omitted = the opposite of the current state) → `{on, sessionId?}`.
+//!   Plan mode is real omp plan mode from the bundled extension: switching sends
+//!   `/plan-action enable` or `/plan-action disable` (never a toggle), and the state
 //!   is the session handle's cached `ompws-plan` status (`enabled`).
 //! - `GET /sessions/{id}/models` →
 //!   `{models: [{provider, id, name, thinking: [level], contextWindow?}], current: {provider, id}|null,
@@ -1712,8 +1713,18 @@ async fn plan_get<B: Backend>(
     Ok(Json(json!({"on": plan_enabled(&id)})))
 }
 
-/// Plan mode lives in the bundled omp extension: toggling sends the `/plan`
-/// prompt and waits (briefly) for the extension's `ompws-plan` status frame.
+/// Desired plan state → the explicit extension command (never a toggle).
+fn plan_command(want: bool) -> &'static str {
+    if want {
+        "/plan-action enable"
+    } else {
+        "/plan-action disable"
+    }
+}
+
+/// Plan mode lives in the bundled omp extension: this sends `/plan-action
+/// enable|disable` (never a toggle) and waits (briefly) for the extension's
+/// `ompws-plan` status frame.
 async fn plan_set<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
@@ -1721,10 +1732,11 @@ async fn plan_set<B: Backend>(
 ) -> ApiResult<Value> {
     load_session(&ctx, &id).await?;
     let cur = plan_enabled(&id);
-    if body.on == Some(cur) {
+    let want = body.on.unwrap_or(!cur);
+    if want == cur {
         return Ok(Json(json!({"on": cur})));
     }
-    let (real, _) = send_prompt_ex(&ctx, &id, "/plan", Vec::new(), None).await?;
+    let (real, _) = send_prompt_ex(&ctx, &id, plan_command(want), Vec::new(), None).await?;
     let target = real.as_deref().unwrap_or(&id);
     let mut on = plan_enabled(target);
     for _ in 0..60 {
@@ -1744,6 +1756,12 @@ async fn plan_set<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_command_is_explicit() {
+        assert_eq!(plan_command(true), "/plan-action enable");
+        assert_eq!(plan_command(false), "/plan-action disable");
+    }
 
     #[test]
     fn context_usage_from_live_state_and_snapshot() {

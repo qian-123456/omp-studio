@@ -71,7 +71,7 @@ When the agent is already running a turn, you can configure how new messages are
 
 ### Composer Add Menu & Modes
 Click `+` in the composer:
-- **Plan Mode (`/plan`)**: Requires the agent to produce a structured roadmap before executing changes. Enabling the mode does not open an empty panel; a newly completed plan opens the **Plan** panel for review and approval. Reopening a session with an existing plan does not force the panel open. The plan command chip clears after submission.
+- **Plan Mode (`/plan`)**: Requires the agent to produce a structured roadmap before executing changes. Enabling the mode does not open an empty panel; a newly completed plan opens the **Plan** panel for review and approval. Reopening a session with an existing plan does not force the panel open. The `/plan` command only enables plan mode and never turns it off; to disable it, click the plan tag (X) above the input or the Plan item in the `+` menu. Switching from the app is silent (no message appears in the thread). The plan command chip clears after submission.
 - **Goal Mode (`/goal <desc>`)**: Keeps a persistent objective pinned above the composer throughout the session.
 - **Sketchpad**: Vector drawing board for quick UI wireframes or architecture diagrams.
 - **Attachments**: Drag and drop images, logs, or select Finder items.

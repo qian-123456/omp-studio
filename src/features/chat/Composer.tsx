@@ -182,6 +182,7 @@ import {
 import { detectFirstWordSpace, detectSpaceToken, splitFirstWord } from "./slash/spaceToken";
 import { SlashMenu } from "./slash/SlashMenu";
 import { expandImagesForSend, expandImageTokens } from "./imageTokens";
+import { runPlanAction } from "./plan/planActions";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { cancelCompaction, runCompaction, useCompaction } from "./slash/compaction";
 import { isContextOverflow } from "./contextOverflow";
@@ -1203,11 +1204,12 @@ export function Composer({
 	const slashTarget = async (name: string): Promise<string> =>
 		isLocalDraft && !DRAFT_LOCAL_SLASH.has(name) ? materializeDraft(sessionId) : sessionId;
 
-	/** Plan mode is owned by the omp plan extension: `/plan` toggles it. */
-	const togglePlanMode = async () => {
+	/** Plan mode is owned by the omp plan extension. Explicit, idempotent,
+	 * silent host commands (`/plan-action enable|disable`): never a toggle. */
+	const setPlanMode = async (enable: boolean) => {
 		try {
 			const target = await slashTarget("plan");
-			await sendSlashPrompt(target, "/plan");
+			await runPlanAction(target, enable ? "enable" : "disable");
 		} catch (err) {
 			if (!isResumeCancelled(err))
 				toast.error(t("composer.cmdFailed", { name: "plan", error: errMsg(err) }));
@@ -2407,7 +2409,7 @@ export function Composer({
 					<div className="flex items-center gap-1 px-3 pt-2">
 						<button
 							type="button"
-							onClick={() => void togglePlanMode()}
+							onClick={() => void setPlanMode(false)}
 							title={t("chat.planMode.clickToDisable")}
 							className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 hover:bg-amber-500/20"
 						>
@@ -2772,7 +2774,7 @@ export function Composer({
 								onAttachFinder={() => void handleAttachFinder()}
 								onPickProject={() => setWorkspacePickerOpen(true)}
 								onGoal={handleInsertGoal}
-								onTogglePlan={() => void togglePlanMode()}
+								onTogglePlan={() => void setPlanMode(!planMode)}
 								onSketch={() => setSketchOpen(true)}
 							/>
 						)}

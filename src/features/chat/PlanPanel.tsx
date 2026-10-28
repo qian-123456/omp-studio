@@ -26,7 +26,6 @@ import {
 	planSections,
 } from "./plan/planStatus";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { sendSlashPrompt } from "./slash/executors";
 
 /** Widest the right panel goes (same clamp as the splitter). */
 const WIDE_WIDTH = 720;
@@ -65,7 +64,7 @@ export function PlanPanel() {
 function NotEnabled({ sessionId }: { sessionId: string }) {
 	const { t } = useT();
 	const enable = () => {
-		sendSlashPrompt(sessionId, "/plan").catch((err) => toast.error(t("chatView.plan.enableFailed", { error: errMsg(err) })));
+		runPlanAction(sessionId, "enable").catch((err) => toast.error(t("chatView.plan.enableFailed", { error: errMsg(err) })));
 	};
 	return (
 		<EmptyHint text={t("chatView.plan.emptyNotEnabled")}>
