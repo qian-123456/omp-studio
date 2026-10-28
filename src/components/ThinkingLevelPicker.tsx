@@ -222,10 +222,10 @@ function ThinkingLevelControl({
 							setListOpen(true);
 						}
 					}}
-					className="flex min-h-9 items-center gap-1 whitespace-nowrap px-1.5 text-xl font-semibold text-[var(--accent)] transition-colors hover:opacity-80 focus-visible:rounded focus-visible:outline-2 focus-visible:outline-[var(--accent)] pointer-coarse:min-h-11"
+					className="flex min-h-8 items-center gap-1 whitespace-nowrap px-1.5 text-[17px] font-medium text-[var(--accent)] transition-colors hover:opacity-80 focus-visible:rounded focus-visible:outline-2 focus-visible:outline-[var(--accent)] pointer-coarse:min-h-11"
 				>
 					<span>{statusName(shown)}</span>
-					<ChevronRight size={16} className="shrink-0" />
+					<ChevronRight size={14} className="shrink-0" />
 				</button>
 			</div>
 			{cur.desc && (
