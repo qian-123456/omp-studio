@@ -85,4 +85,35 @@ describe("slice marker measurement", () => {
 			container.remove();
 		}
 	});
+
+	it.each([
+		{ name: "syntax-highlighted line with its first token scrolled offscreen", rects: [new DOMRect(40, 100, 20, 20), new DOMRect(60, 100, 600, 20)], left: 90, top: 84 },
+		{ name: "single text fragment extending beyond both scroller edges", rects: [new DOMRect(40, 100, 600, 20)], left: 90, top: 84 },
+		{ name: "multi-line quote with its first line clipped vertically", rects: [new DOMRect(120, 40, 100, 20), new DOMRect(120, 100, 100, 20)], left: 110, top: 84 },
+	])("anchors the first visible fragment of a $name", ({ rects, left, top }) => {
+		const container = document.createElement("div");
+		container.innerHTML = '<div id="msg-overflow"><pre style="overflow-x: auto; overflow-y: auto"><code><span>1.</span> whole long line</code></pre></div>';
+		document.body.append(container);
+		Object.defineProperty(container, "clientWidth", { value: 500 });
+		const boxes = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+			return this.tagName === "PRE" ? new DOMRect(100, 80, 300, 80) : new DOMRect(0, 0, 500, 500);
+		});
+		const previousRects = Range.prototype.getClientRects;
+		Range.prototype.getClientRects = () => rects as unknown as DOMRectList;
+		try {
+			const sources = markerSources([{ ...msg("overflow", "1. whole long line"), itemId: "overflow" }], []);
+			const ranges: Range[] = [];
+			expect(measureMarkers(container, sources, ranges)).toMatchObject([{ left, top }]);
+			// Keep the entire quote for CSS Highlight, not only its visible token.
+			expect(ranges.map((range) => range.toString())).toEqual(["1. whole long line"]);
+			Range.prototype.getClientRects = () => [new DOMRect(40, 100, 20, 20)] as unknown as DOMRectList;
+			const hiddenRanges: Range[] = [];
+			expect(measureMarkers(container, sources, hiddenRanges)).toEqual([]);
+			expect(hiddenRanges).toEqual([]);
+		} finally {
+			Range.prototype.getClientRects = previousRects;
+			boxes.mockRestore();
+			container.remove();
+		}
+	});
 });

@@ -126,20 +126,28 @@ interface ItemText {
 	segments: TextSegment<Text>[];
 }
 
-/** True when `rect` lies entirely outside a scroll/clip ancestor of the range, up to `stop`. */
-function isClippedWithin(range: Range, rect: DOMRect, stop: HTMLElement): boolean {
+/** Intersects a text fragment with its scroll/clip ancestors, up to `stop`. */
+function visibleRectWithin(range: Range, rect: DOMRect, stop: HTMLElement): DOMRect | null {
+	let { left, right, top, bottom } = rect;
 	const start = range.startContainer;
 	let el: Element | null = start instanceof Element ? start : start.parentElement;
 	for (; el && el !== stop; el = el.parentElement) {
 		const style = getComputedStyle(el);
-		const clipsY = style.overflowY !== "visible";
-		const clipsX = style.overflowX !== "visible";
+		const clipsY = style.overflowY !== "" && style.overflowY !== "visible";
+		const clipsX = style.overflowX !== "" && style.overflowX !== "visible";
 		if (!clipsY && !clipsX) continue;
 		const box = el.getBoundingClientRect();
-		if (clipsY && (rect.top >= box.bottom || rect.bottom <= box.top)) return true;
-		if (clipsX && (rect.left >= box.right || rect.right <= box.left)) return true;
+		if (clipsY) {
+			top = Math.max(top, box.top);
+			bottom = Math.min(bottom, box.bottom);
+		}
+		if (clipsX) {
+			left = Math.max(left, box.left);
+			right = Math.min(right, box.right);
+		}
+		if (right <= left || bottom <= top) return null;
 	}
-	return false;
+	return new DOMRect(left, top, right - left, bottom - top);
 }
 
 /**
@@ -175,15 +183,19 @@ export function measureMarkers(
 		if (!hit) continue;
 		const range = segmentRange(item.segments, hit.start, hit.end);
 		if (!range) continue;
-		// Anchor to the first line box of the quote, not the union rect: a
-		// multi-line or indented selection's union starts far left of the text.
-		const first =
-			Array.from(range.getClientRects()).find((r) => r.width > 0) ??
-			range.getBoundingClientRect();
-		if (first.width === 0 && first.height === 0) continue;
-		// Text clipped by a collapsed code block (overflow-hidden) still has
-		// client rects; the badge would float over whatever sits below the clip.
-		if (isClippedWithin(range, first, item.el)) continue;
+		// Syntax-highlighted lines have a rect per token: their first token can
+		// be scrolled out while the rest of the quote is still visible. Anchor to
+		// the first visible fragment, clipped to the nested scroller, but retain
+		// the full range for highlighting. Fully collapsed quotes stay hidden.
+		const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+		if (rects.length === 0) rects.push(range.getBoundingClientRect());
+		let first: DOMRect | null = null;
+		for (const rect of rects) {
+			if (rect.width === 0 && rect.height === 0) continue;
+			first = visibleRectWithin(range, rect, item.el);
+			if (first) break;
+		}
+		if (!first) continue;
 		ranges.push(range);
 
 		// Centered over the quote's first character, just above its line, and

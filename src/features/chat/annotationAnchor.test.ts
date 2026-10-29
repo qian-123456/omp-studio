@@ -66,8 +66,20 @@ describe("locateQuote", () => {
 	it("ignores newline vs space differences in the quote", () => {
 		const hay = "first line\nsecond   line of text\nthird";
 		expect(covered(hay, "second line of text")).toBe("second   line of text");
-		// Only the first non-empty line is searched, so a multi-line quote anchors on its first line.
-		expect(covered(hay, "first\nline")).toBe("first");
+		// A multi-line quote is covered in full, whitespace differences included.
+		expect(covered(hay, "first\nline")).toBe("first line");
+	});
+
+	it("covers every line of a multi-line quote, not just the first", () => {
+		const hay = "intro\nalpha beta\n   gamma  delta\nepsilon\ntail";
+		expect(covered(hay, "alpha beta\ngamma delta\nepsilon")).toBe(
+			"alpha beta\n   gamma  delta\nepsilon",
+		);
+	});
+
+	it("stops where the text stops matching a multi-line quote", () => {
+		const hay = "alpha beta\ngamma delta\nzzz";
+		expect(covered(hay, "alpha beta\ngamma delta\nepsilon")).toBe("alpha beta\ngamma delta");
 	});
 
 	it("ignores whitespace differences inside the haystack", () => {
@@ -79,10 +91,10 @@ describe("locateQuote", () => {
 		expect(covered("one two three", "   two  \n")).toBe("two");
 	});
 
-	it("falls back to a shorter prefix when the full line is not found", () => {
+	it("falls back to the longest matching prefix when the full line is not found", () => {
 		const hay = "The cache is warm after the first request, then ...";
 		const quote = "The cache is warm after the first request, but the second one differs";
-		expect(covered(hay, quote)).toBe(quote.slice(0, 40));
+		expect(covered(hay, quote)).toBe("The cache is warm after the first request,");
 	});
 
 	it("returns null when nothing matches", () => {

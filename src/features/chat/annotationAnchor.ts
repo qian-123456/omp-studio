@@ -92,14 +92,22 @@ export function locateQuote(
 	const needles = quoteNeedles(quote);
 	if (needles.length === 0) return null;
 	const hay = normalizeWithMap(haystack);
+	const full = normalizeWithMap(quote).text;
 	for (const needle of needles) {
 		const matches = needleMatches(hay.text, needle);
 		if (matches.length === 0) continue;
 		const idx = matches[occurrence !== undefined && occurrence < matches.length ? occurrence : 0];
+		// A multi-line quote is anchored by its first line but must be covered in
+		// full: extend over as much of the quote as the text really continues with.
+		let len = needle.length;
+		while (len < full.length && idx + len < hay.text.length && hay.text[idx + len] === full[len]) {
+			len++;
+		}
+		while (len > needle.length && full[len - 1] === " ") len--;
 		return {
 			start: hay.map[idx],
 			// The last matched char is non-whitespace, so +1 is its exact raw end.
-			end: hay.map[idx + needle.length - 1] + 1,
+			end: hay.map[idx + len - 1] + 1,
 		};
 	}
 	return null;
