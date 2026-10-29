@@ -298,6 +298,13 @@ function MarkerLayer({
 			attributeFilter: ["style", "class"],
 		});
 		window.addEventListener("resize", schedule);
+		// Nested scrollers (code blocks, tables) move the quoted text without any
+		// DOM mutation. `scroll` does not bubble, so listen in the capture phase;
+		// the container's own scroll carries the markers with it and needs no work.
+		const onNestedScroll = (e: Event) => {
+			if (e.target !== container) schedule();
+		};
+		container.addEventListener("scroll", onNestedScroll, { capture: true, passive: true });
 		schedule();
 
 		return () => {
@@ -307,6 +314,7 @@ function MarkerLayer({
 			resizeObserver.disconnect();
 			mutationObserver.disconnect();
 			window.removeEventListener("resize", schedule);
+			container.removeEventListener("scroll", onNestedScroll, { capture: true });
 		};
 	}, [containerRef, sources]);
 
