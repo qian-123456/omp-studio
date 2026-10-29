@@ -6,28 +6,18 @@ Tauri 2 + React 19 + TS + Vite + Tailwind v4 desktop workbench for OMP agent ses
 
 **`docs/ARCHITECTURE.md` is the contract.** Types (§4), commands (§7), events (§5),
 DB schema (§6), file layout (§2), and cross-module APIs (§9) are pinned there.
-Do not change a contract silently — if a module truly needs one, note it in your
-final report under "Contract changes" with the exact diff.
+Do not change a contract silently — report any needed diff under "Contract changes".
 
-## OMP upstream reference (never reverse-engineer locally)
+## Upstream reference
 
-OMP (oh-my-pi) is open source at `https://github.com/can1357/oh-my-pi`.
-When investigating OMP CLI behaviors, slash commands, RPC protocols, frame types,
-or internal states:
-- **Always inspect the upstream source directly on GitHub** (via `gh api`, web
-  fetch, or repository search).
-- **Never reverse-engineer local binaries** (`~/.local/bin/omp` strings,
-  decompilation, or trial-and-error guessing). The upstream repository is the
-  canonical source of truth and much faster to check.
+OMP upstream repository (`https://github.com/can1357/oh-my-pi`) is the canonical truth.
+Always inspect GitHub source directly (via `gh api`, web fetch, or repo search); never reverse-engineer local binaries.
 
 ## Ownership (§2)
 
-Each module only edits files it owns (`[A]`/`[B]`/`[C]`/`[D]`/`[E]`/`[LEAD]` tags
-in the §2 layout). `[LEAD]` files are frozen after scaffold, except: a module MAY
-append its own deps to `Cargo.toml` / `package.json`, and MAY fix the body of its
-own command wrapper in `src/lib/ipc.ts` if a signature was wrong (report it).
-Cross-module Rust calls go only through the §9 `pub` functions; frontend
-cross-feature interaction goes only through `src/stores/*` and `src/lib/ipc.ts`.
+Each module only edits files it owns (`[A]`/`[B]`/`[C]`/`[D]`/`[E]`/`[LEAD]` tags in §2 layout).
+`[LEAD]` files are frozen after scaffold, except appending deps or fixing command wrappers in `src/lib/ipc.ts`.
+Cross-module Rust calls go only through §9 `pub` functions; frontend cross-feature interaction goes only through `src/stores/*` and `src/lib/ipc.ts`.
 
 ## Build / verify
 
@@ -45,69 +35,28 @@ cargo clippy                 # lint (must be clean)
 cargo fmt                    # format (CI expects fmt-clean)
 ```
 
-`sccache` is installed; export `RUSTC_WRAPPER=sccache` in your own shell to share
-the compile cache across worktrees (do not hardcode it in repo config).
+`sccache` is installed; export `RUSTC_WRAPPER=sccache` in your shell for cross-worktree compile cache.
 
-**Live dev app check (recurring mistake).** When a `pnpm tauri dev` instance is
-running from this worktree, every frontend change must end with a look at that
-window (bring it to front, screenshot it). A blank/white window is a failure,
-never "the window is off-screen": the webview did a full reload while files were
-half-edited (e.g. one file importing an export another edit had not added yet)
-and stays white even after the code is fixed. `touch index.html` makes Vite
-full-reload it; then confirm the app renders. Do not let several agents edit
-files that import each other while the live app is watching — land the shared
-module first.
+**Live dev app check.** Frontend changes require visually checking the live window (no white screen). If blank, run `touch index.html` to force Vite full-reload or use skill `omp-workspace-native-ui-acceptance`. Avoid concurrent edits to mutually-imported files while live app is watching.
 
-## Git worktrees (naming & isolation)
+## Git worktrees
 
-- **Distinctive names and paths.** When creating a new worktree, always use a
-  clear, task-specific path and branch name (e.g. `.worktrees/<feature-or-fix-slug>`
-  with branch `omp/<feature-or-fix-slug>`). Never use vague or generic names like
-  `temp`, `test`, `dev`, or `worktree-1`.
-- **Runtime & port isolation.** When running dev instances across multiple
-  worktrees simultaneously, distinguish them explicitly:
-  - Ensure dev servers run on distinct ports (e.g. `pnpm dev:preview` with an
-    isolated port and data directory) to prevent port collisions or crosstalk.
-  - Verify that the app window being checked matches the target worktree before
-    concluding smoke tests or UI validations.
-- **Strict stage isolation.** Stage only files modified for the current task
-  (`git add <paths>`), never `git add -A`, to avoid absorbing concurrent changes
-  from other sessions sharing the repo.
-- **Timely cleanup.** Remove finished or merged worktrees (`git worktree remove`)
-  promptly to keep the worktree list clean and avoid stale branches.
+- **Naming**: Use clear, task-specific path and branch names (e.g. `.worktrees/<slug>` on `omp/<slug>`), never generic names.
+- **Port & window isolation**: Run dev instances on distinct ports (e.g. `pnpm dev:preview`), and confirm the inspected window matches target worktree.
+- **Stage isolation & cleanup**: Stage only modified files for current task (`git add <paths>`, never `git add -A`). Remove finished worktrees promptly.
 
 ## Style
 
-- UI text: Simplified Chinese. Code, comments, commit messages: English.
 - No floating `latest`/`*` dependency versions.
 - Module stubs return `Err("not implemented")` / empty values until filled.
 - `src-tauri/prompts/*.md` are LLM prompt templates loaded via `include_str!`.
 
-## UI rules (recurring mistakes — check every UI change against these)
+## UI rules (check every UI change against these)
 
-- **Never stack long model/provider lists linearly.** Any model picker uses the
-  app's grouped two-pane picker (`ModelMenuContent` / `ModelSelect` in
-  `src/components/ModelSelect.tsx`: providers left, that provider's models right,
-  search flattens). Do not hand-roll a flat scrolling list of hundreds of models.
-- **No content-hiding ellipsis.** Text that matters (model names, locations,
-  before→after values, error messages) must be fully readable: wrap it, or give a
-  visible expand/「全部 N 处」 control. `truncate` alone, with no way to see the
-  rest, is a bug; probe/command errors are always shown in full (selectable).
-- **No "…" in button labels.** Write 「替换」, not 「替换…」 — users read the
-  trailing ellipsis as cut-off text.
-- **Actions must look like actions.** Buttons and status get visible shape:
-  filled/tinted buttons for primary actions, bordered or pill (capsule) buttons for
-  secondary ones, chips for counts/status. Never render a clickable action as plain
-  text that blends into the row.
-- **Multi-step flows can go back.** Every wizard step after the first has 「上一步」
-  and keeps the user's choices when going back.
-- **Options come from real data.** Choices such as thinking levels are read from
-  the selected model's catalog capabilities (`thinking`, via `resolveThinkingLevels`
-  in `src/lib/models.ts`) — never a hard-coded superset the model may not support.
-- **Plain labels.** Buttons and badges say what happens in everyday words
-  (「换成别的模型」), not jargon like 「覆盖目标」.
-- **Never use a raw z-index for floating UI.** Popovers, menus, modals, drawers,
-  hover cards, lightboxes and toasts use `FloatingLayer` / `Z_LAYER`
-  (`src/components/FloatingLayer.tsx`), or `z-(--z-modal)`-style classes in
-  `className`; only `z-0/10/20/30/40` for purely local stacking. Enforced by
-  `src/lib/zLayerGuard.test.ts`. See `docs/LAYERS.md`.
+- **Model picker**: Use app's grouped two-pane picker (`ModelMenuContent` / `ModelSelect`), never a flat linear list.
+- **No text truncation**: Important text (model names, locations, diffs, errors) must be fully readable (wrap or expandable 「全部 N 处」 control); errors shown in full.
+- **Button labels**: No trailing ellipsis (use 「替换」, not 「替换…」); use plain labels (「换成别的模型」, not jargon).
+- **Action appearance**: Buttons and status must have visible shape (tinted/filled primary, bordered/pill secondary, chips for counts), never plain text blending into rows.
+- **Wizard navigation**: Multi-step flows must allow going back (「上一步」) and keep previous choices.
+- **Capabilities from data**: Choices like thinking levels must be derived from model capabilities (`resolveThinkingLevels` in `src/lib/models.ts`).
+- **Floating UI layers**: Popovers, modals, drawers, toasts must use `FloatingLayer` / `Z_LAYER` (`docs/LAYERS.md`), never raw `z-*` classes (enforced by `zLayerGuard.test.ts`).
