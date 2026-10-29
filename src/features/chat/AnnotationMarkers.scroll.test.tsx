@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useComposer } from "../../stores/composer";
@@ -53,9 +53,9 @@ describe("AnnotationMarkers nested scrolling", () => {
 		const before = badge()!.style.left;
 
 		textLeft = 120;
-		act(() => {
-			container.querySelector("pre")!.dispatchEvent(new Event("scroll"));
-		});
-		await waitFor(() => expect(badge()!.style.left).not.toBe(before));
+		// Dispatched outside act(): the badge must already be repositioned in the
+		// same event turn, a trailing badge reads as damping.
+		container.querySelector("pre")!.dispatchEvent(new Event("scroll"));
+		expect(badge()!.style.left).not.toBe(before);
 	});
 });

@@ -3,6 +3,7 @@
  * come from `textAnnotationsOf`, the same numbering as the outgoing `[n]` blocks. */
 
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
 	sideChatAnnKey,
 	useComposer,
@@ -301,8 +302,12 @@ function MarkerLayer({
 		// Nested scrollers (code blocks, tables) move the quoted text without any
 		// DOM mutation. `scroll` does not bubble, so listen in the capture phase;
 		// the container's own scroll carries the markers with it and needs no work.
+		// Measured and committed synchronously: deferring to a frame makes the
+		// badge trail the text by a frame, which reads as damping.
 		const onNestedScroll = (e: Event) => {
-			if (e.target !== container) schedule();
+			if (e.target === container) return;
+			if (frame !== 0) cancelAnimationFrame(frame);
+			flushSync(measure);
 		};
 		container.addEventListener("scroll", onNestedScroll, { capture: true, passive: true });
 		schedule();
