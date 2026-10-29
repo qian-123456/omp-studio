@@ -15,6 +15,7 @@ import { tNow, useT } from "../../stores/language";
 import {
 	collectTextSegments,
 	locateQuote,
+	messageQuoteRoot,
 	segmentRange,
 	type TextSegment,
 } from "./annotationAnchor";
@@ -45,6 +46,7 @@ interface MarkerSource {
 	itemId: string;
 	quote: string;
 	occurrence?: number;
+	answerPart?: number;
 	title: string;
 	kind: MarkerKind;
 }
@@ -79,6 +81,7 @@ function messageMarkerSources(
 			itemId: a.itemId,
 			quote: a.text,
 			occurrence: a.occurrence,
+			answerPart: a.answerPart,
 			title:
 				kind === "main"
 					? tNow("chat.annotation.mainMarkerTitle", { n, label })
@@ -143,7 +146,7 @@ function isClippedWithin(range: Range, rect: DOMRect, stop: HTMLElement): boolea
  * out), quotes not found, and quotes whose text is hidden (collapsed content)
  * produce no marker.
  */
-function measureMarkers(
+export function measureMarkers(
 	container: HTMLElement,
 	sources: readonly MarkerSource[],
 	ranges: Range[],
@@ -155,14 +158,15 @@ function measureMarkers(
 	const out: MarkerPos[] = [];
 
 	for (const src of sources) {
-		let item = itemTexts.get(src.itemId);
+		const key = JSON.stringify([src.itemId, src.answerPart]);
+		let item = itemTexts.get(key);
 		if (item === undefined) {
-			const el = document.getElementById(`msg-${src.itemId}`);
+			const el = messageQuoteRoot(src.itemId, src.answerPart);
 			item =
 				el && container.contains(el)
 					? { el, ...collectTextSegments(el) }
 					: null;
-			itemTexts.set(src.itemId, item);
+			itemTexts.set(key, item);
 		}
 		if (!item) continue;
 

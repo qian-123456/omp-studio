@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* WebKit otherwise selects native list-marker boxes independently of the
+ * text. Keep the list gutters nonselectable and opt actual item content back
+ * in. Markdown wraps bare text in spans; native markers, counters, geometry,
+ * and accessible list semantics remain untouched. */
+[data-md-root] :is(ul, ol, li) {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+[data-md-root] li > :not(ul, ol, input) {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
 @theme {
 	--font-sans:
 		-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "PingFang SC",

@@ -2,7 +2,7 @@
  * Used by "定位到原消息": scroll to the exact quote, flash it, and report whether
  * it was found so callers can fall back to highlighting the whole message. */
 
-import { collectTextSegments, locateQuote, segmentRange } from "./annotationAnchor";
+import { collectTextSegments, locateQuote, messageQuoteRoot, segmentRange } from "./annotationAnchor";
 
 const LOCATE_HIGHLIGHT = "annotation-locate";
 const POLL_MS = 80;
@@ -16,21 +16,27 @@ let clearTimer = 0;
  * live store as (itemId, quote) only, so the annotation's recorded occurrence
  * is parked here, keyed the same way, until the quote is located.
  */
-const occurrenceHints = new Map<string, number>();
+const occurrenceHints = new Map<string, { occurrence?: number; answerPart?: number }>();
 const hintKey = (itemId: string, quote: string) => `${itemId}\u0000${quote}`;
 
-export function setQuoteOccurrenceHint(itemId: string, quote: string, occurrence?: number): void {
-	if (occurrence === undefined) occurrenceHints.delete(hintKey(itemId, quote));
-	else occurrenceHints.set(hintKey(itemId, quote), occurrence);
+export function setQuoteOccurrenceHint(itemId: string, quote: string, occurrence?: number, answerPart?: number): void {
+	if (occurrence === undefined && answerPart === undefined) occurrenceHints.delete(hintKey(itemId, quote));
+	else occurrenceHints.set(hintKey(itemId, quote), { occurrence, answerPart });
+}
+
+/** The virtualizer must mount the selected slice, not merely the first answer row. */
+export function quoteAnswerPartHint(itemId: string, quote?: string): number | undefined {
+	return quote === undefined ? undefined : occurrenceHints.get(hintKey(itemId, quote))?.answerPart;
 }
 
 /** Range of `quote` inside the rendered message `msg-<itemId>`, or null. */
 export function findQuoteRange(itemId: string, quote: string): Range | null {
-	const el = document.getElementById(`msg-${itemId}`);
+	const key = hintKey(itemId, quote);
+	const hint = occurrenceHints.get(key);
+	const el = messageQuoteRoot(itemId, hint?.answerPart);
 	if (!el) return null;
 	const { text, segments } = collectTextSegments(el);
-	const key = hintKey(itemId, quote);
-	const hit = locateQuote(text, quote, occurrenceHints.get(key));
+	const hit = locateQuote(text, quote, hint?.occurrence);
 	if (!hit) return null;
 	// One-shot: the hint only serves the click that set it (kept while the text is still rendering).
 	occurrenceHints.delete(key);

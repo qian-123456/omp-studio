@@ -119,7 +119,8 @@ import {
 	selectTailIndexes,
 } from "./renderBudget";
 import { claimEscape } from "../../lib/escapeClaim";
-import { flashQuote } from "./annotationLocate";
+import { flashQuote, quoteAnswerPartHint } from "./annotationLocate";
+import { answerPartAnchorId } from "./annotationAnchor";
 import { useSessionSubagents } from "./subagents/useSessionSubagents";
 import {
 	collectSubagentFacts,
@@ -789,7 +790,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					onToggle={() => block.answerItem && toggleShare(block.answerItem.id)}
 				>
 				<div
-					id={block.renderAnswerAnchor ? `msg-${block.answerItem.id}` : undefined}
+					id={answerPartAnchorId(block.answerItem.id, block.answerSliceIndex)}
+					data-message-item-id={block.answerItem.id}
+					data-answer-part={block.answerSliceIndex}
 					className={ANSWER_WRAP_CLASS}
 				>
 					<div className={ANSWER_TEXT_CLASS}>
@@ -1897,7 +1900,12 @@ export function MessageList({
 			return;
 
 		const targetId = scrollRequest.itemId;
+		const answerPart = quoteAnswerPartHint(targetId, scrollRequest.quote);
 		const targetIndex = rows.findIndex((b) => {
+			if (answerPart !== undefined) {
+				return b.type === "turn" && b.answerItem?.id === targetId &&
+					(b.answerSliceIndex ?? 0) === answerPart;
+			}
 			if (b.allItemIds.includes(targetId)) return true;
 			if (
 				b.type === "turn" &&

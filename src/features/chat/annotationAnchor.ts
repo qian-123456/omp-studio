@@ -5,6 +5,16 @@
  * and `segmentRange`'s Range construction touch the DOM.
  */
 
+/** Stable DOM anchor for an answer slice; part zero keeps the message anchor. */
+export function answerPartAnchorId(itemId: string, answerPart?: number): string {
+	return answerPart ? `msg-${itemId}-answer-part-${answerPart}` : `msg-${itemId}`;
+}
+
+/** Never fall back to another slice: its repeated quotes are different anchors. */
+export function messageQuoteRoot(itemId: string, answerPart?: number): HTMLElement | null {
+	return document.getElementById(answerPartAnchorId(itemId, answerPart));
+}
+
 /** Whitespace-normalised text plus, per normalised char, its raw index. */
 export interface NormalizedText {
 	text: string;

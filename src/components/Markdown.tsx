@@ -570,10 +570,25 @@ function MathBlock({
 	);
 }
 
+function MarkdownListItem({
+	children,
+	node: _node,
+	...props
+}: React.ComponentPropsWithoutRef<"li"> & { node?: unknown }) {
+	return (
+		<li {...props}>
+			{React.Children.map(children, (child) =>
+				typeof child === "string" ? <span>{child}</span> : child,
+			)}
+		</li>
+	);
+}
+
 const MARKDOWN_COMPONENTS = {
 	pre: PreBlock,
 	a: MarkdownLink,
 	table: TableBlock,
+	li: MarkdownListItem,
 	[FILE_LINK_TAG]: MarkdownFileLink,
 	img: MarkdownImage,
 	[MATH_BLOCK_TAG]: MathBlock,

@@ -33,6 +33,7 @@ const COMMENT_MAX_HEIGHT = 160;
 interface Sel {
 	text: string;
 	itemId?: string;
+	answerPart?: number;
 	/** Which repeated match of `text` inside the message was selected (see quoteOccurrence). */
 	occurrence?: number;
 	/** Viewport-space bounding rect of the selection; re-measured on scroll while commenting. */
@@ -134,7 +135,7 @@ export function SelectionToolbar({
 		(s: Sel) =>
 			docFile
 				? { source: "doc" as const, file: docFile, text: s.text }
-				: { source: "message" as const, text: s.text, itemId: s.itemId, occurrence: s.occurrence },
+				: { source: "message" as const, text: s.text, itemId: s.itemId, answerPart: s.answerPart, occurrence: s.occurrence },
 		[docFile],
 	);
 
@@ -267,11 +268,12 @@ export function SelectionToolbar({
 			}
 			const rect = range.getBoundingClientRect();
 			const node = range.commonAncestorContainer;
-			const msgEl = (node instanceof Element ? node : node.parentElement)?.closest(
-				'[id^="msg-"]',
+			const msgEl = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(
+				'[data-message-item-id], [id^="msg-"]',
 			);
-			const rawItemId = msgEl?.id.startsWith("msg-") ? msgEl.id.slice(4) : undefined;
-			const itemId = rawItemId && rawItemId !== "live" ? rawItemId : undefined;
+			const rawItemId = msgEl?.dataset.messageItemId ?? (msgEl?.id.startsWith("msg-") ? msgEl.id.slice(4) : undefined);
+			const itemId = rawItemId && rawItemId !== "live" && rawItemId !== "live-answer" ? rawItemId : undefined;
+			const answerPart = msgEl?.dataset.answerPart === undefined ? undefined : Number(msgEl.dataset.answerPart);
 			// Remember which repeated match was selected so the marker/locate land on it.
 			let occurrence: number | undefined;
 			if (msgEl && itemId) {
@@ -279,7 +281,7 @@ export function SelectionToolbar({
 				const start = segmentOffset(segments, range.startContainer, range.startOffset);
 				if (start !== null) occurrence = quoteOccurrence(full, text, start);
 			}
-			setSel({ text, itemId, occurrence, rect, range: range.cloneRange() });
+			setSel({ text, itemId, answerPart, occurrence, rect, range: range.cloneRange() });
 		};
 		const onDown = (e: Event) => {
 			if (isInteractiveInput(e.target)) return;

@@ -34,6 +34,43 @@ function dispatchContextMenu(target: Element, beforeSuppress?: (e: MouseEvent) =
 	return event;
 }
 
+describe("Markdown list markers", () => {
+	it("preserves ordered starts and nested list semantics without marker text nodes", () => {
+		const { container } = render(<Markdown text={"4. **动作的顺序**\n   - 子项目\n     - 更深一层\n5. 后续步骤"} />);
+		const ordered = container.querySelector("ol");
+		expect(ordered?.getAttribute("start")).toBe("4");
+		expect(ordered?.querySelectorAll(":scope > li")).toHaveLength(2);
+		expect(container.querySelectorAll("ul")).toHaveLength(2);
+		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+		const text: string[] = [];
+		while (walker.nextNode()) text.push(walker.currentNode.textContent ?? "");
+		expect(text.join("")).not.toMatch(/[•◦▪]|4\.|5\./);
+		expect(text.join("")).toContain("动作的顺序");
+		expect(text.join("")).toContain("更深一层");
+	});
+
+	it("wraps bare item text without adding glyphs or losing inline whitespace", () => {
+		const { container } = render(<Markdown text={"- 正文 **加粗** 空格 [链接](https://example.com)\n- 第二项"} />);
+		const first = container.querySelector("li")!;
+		expect(first.textContent).toBe("正文 加粗 空格 链接");
+		expect([...first.childNodes].every((node) => node.nodeType === Node.ELEMENT_NODE)).toBe(true);
+		expect(first.querySelector(":scope > span")?.textContent).toBe("正文 ");
+		expect(first.querySelector(":scope > strong")?.textContent).toBe("加粗");
+		expect(first.querySelector(":scope > a")?.textContent).toBe("链接");
+	});
+
+	it("keeps loose paragraphs and task-list checkboxes unchanged", () => {
+		const { container } = render(<Markdown text={"- 第一段\n\n  第二段\n\n- [ ] 待办\n- [x] 完成"} />);
+		expect(container.querySelectorAll("li:first-child > p")).toHaveLength(2);
+		const checkboxes = container.querySelectorAll<HTMLInputElement>("input[type='checkbox']");
+		expect(checkboxes).toHaveLength(2);
+		expect(checkboxes[0].disabled).toBe(true);
+		expect(checkboxes[0].checked).toBe(false);
+		expect(checkboxes[1].disabled).toBe(true);
+		expect(checkboxes[1].checked).toBe(true);
+	});
+});
+
 describe("Markdown context menus", () => {
 	it("preserves native link and image context menus", () => {
 		const root = document.createElement("div");

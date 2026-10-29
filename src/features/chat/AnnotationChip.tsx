@@ -137,7 +137,7 @@ function AnnotationEntry({
 						aria-label={t("chat.annotation.locateOriginal")}
 						title={t("chat.annotation.locateOriginal")}
 						onClick={() => {
-							setQuoteOccurrenceHint(a.itemId!, a.text, a.occurrence);
+							setQuoteOccurrenceHint(a.itemId!, a.text, a.occurrence, a.answerPart);
 							scrollToItem(anchorSessionId, a.itemId!, a.text);
 						}}
 						className={iconBtn}

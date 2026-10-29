@@ -251,3 +251,15 @@ describe("SelectionToolbar comment box", () => {
 		expect(annsOf("sess-1")).toHaveLength(1);
 	});
 });
+
+describe("streaming selection anchors", () => {
+	it("does not persist the transient live-answer DOM id as a real message id", () => {
+		render(<Host />);
+		screen.getByText(STREAM_TEXT).id = "msg-live-answer";
+		const ta = openCommentBox();
+		fireEvent.change(ta, { target: { value: "streaming quote" } });
+		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
+		expect(annsOf("sess-1")[0].text).toBe("world");
+		expect(annsOf("sess-1")[0].itemId).toBeUndefined();
+	});
+});

@@ -10,12 +10,14 @@ export interface Annotation {
 	source: "message" | "diff" | "doc" | "terminal";
 	text: string;
 	itemId?: string;
+	/** Answer slice index; when present, occurrence is local to this slice. */
+	answerPart?: number;
 	file?: string;
 	lines?: string;
 	comment?: string;
 	/** Free-form origin shown instead of the source kind (e.g. 「来自辅助对话：标题」). */
 	label?: string;
-	/** 0-based index of this quote among identical matches in its message (anchors repeated phrases). */
+	/** 0-based identical-match index within answerPart, or the whole message when absent. */
 	occurrence?: number;
 }
 

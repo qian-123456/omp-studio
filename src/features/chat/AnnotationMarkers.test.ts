@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import type { Annotation } from "../../stores/composer";
-import { markerSources } from "./AnnotationMarkers";
+import { markerSources, measureMarkers } from "./AnnotationMarkers";
 
 // AnnotationMarkers only touches useLive inside the marker onClick; the store
 // itself pulls in Tauri event plumbing that node cannot load.
@@ -54,5 +55,34 @@ describe("markerSources", () => {
 			text: "hunk",
 		};
 		expect(markerSources([diff, msg("m1", "q")], [])).toHaveLength(1);
+	});
+});
+
+describe("slice marker measurement", () => {
+	it("anchors the selected local occurrence regardless of other mounted parts", () => {
+		const container = document.createElement("div");
+		container.innerHTML = '<div id="msg-answer">repeat repeat</div><div id="msg-answer-answer-part-2">repeat repeat</div>';
+		document.body.append(container);
+		const rects = Range.prototype.getClientRects;
+		Range.prototype.getClientRects = () => [new DOMRect(60, 100, 80, 20)] as unknown as DOMRectList;
+		try {
+			const source = markerSources([{ ...msg("a", "repeat"), itemId: "answer", answerPart: 2, occurrence: 1 }], []);
+			const selected = document.getElementById("msg-answer-answer-part-2")!;
+			const ranges: Range[] = [];
+			expect(measureMarkers(container, source, ranges)).toHaveLength(1);
+			expect(ranges[0].startContainer).toBe(selected.firstChild);
+			expect(ranges[0].startOffset).toBe(7);
+			document.getElementById("msg-answer")!.remove();
+			const afterUnmount: Range[] = [];
+			expect(measureMarkers(container, source, afterUnmount)).toHaveLength(1);
+			expect(afterUnmount[0].startOffset).toBe(7);
+			selected.remove();
+			expect(measureMarkers(container, source, [])).toHaveLength(0);
+			container.append(selected);
+			expect(measureMarkers(container, source, [])).toHaveLength(1);
+		} finally {
+			Range.prototype.getClientRects = rects;
+			container.remove();
+		}
 	});
 });
