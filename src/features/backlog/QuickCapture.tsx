@@ -37,6 +37,7 @@ export function QuickCapture() {
 	}, [isVisible, initialText]);
 
 	if (!isVisible) return null;
+	// The title tab hangs above the card edge, so the layer must not clip its overflow.
 	return (
 		<FloatingLayer
 			anchor={anchor}
@@ -45,9 +46,17 @@ export function QuickCapture() {
 			onDismiss={closeModal}
 			role="dialog"
 			aria-label={t("backlog.quickCaptureAriaLabel")}
-			className="w-[520px] max-w-[calc(100vw-32px)] rounded-2xl !bg-[var(--bg-panel)] p-4"
+			className="mt-6 w-[436px] max-w-[calc(100vw-32px)] rounded-2xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-2.5 shadow-2xl"
+			style={{ overflow: "visible" }}
 		>
-			<div className="mb-2 px-1 text-[13px] font-medium text-[var(--text)]">{t("backlog.quickCaptureTitle")}</div>
+			{/* Top-left ear tab */}
+			<div
+				aria-hidden="true"
+				className="absolute -top-[23px] left-3.5 inline-flex h-[24px] items-center gap-1.5 rounded-t-lg border border-b-0 border-[var(--line,var(--border-divider))] bg-[var(--bg-panel)] px-2.5 text-[11px] font-medium text-[var(--text-60)] after:absolute after:-bottom-px after:left-0 after:right-0 after:h-[2px] after:bg-[var(--bg-panel)]"
+			>
+				<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+				<span>{t("backlog.quickCaptureTitle")}</span>
+			</div>
 			<IdeaCaptureBox
 				variant="quick"
 				autoFocus

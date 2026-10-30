@@ -1,4 +1,4 @@
-import { ArrowUp, Bug, ImagePlus, Lightbulb, Loader2, MessageSquare } from "lucide-react";
+import { ArrowUp, Bug, ImagePlus, Lightbulb, Loader2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { BacklogItem, BacklogKind, BacklogRef } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -127,8 +127,12 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			onBlur={(e) => {
 				if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setFocused(false);
 			}}
-			className={`border border-[color-mix(in_srgb,var(--border-divider)_45%,transparent)] bg-[var(--well-bg)] transition-[border-color,box-shadow] focus-within:border-[color-mix(in_srgb,var(--text-dim)_30%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--text-dim)_10%,transparent)] ${
-				expanded ? "rounded-[18px] px-2 pb-2 pt-1.5" : "rounded-full px-1.5 py-1"
+			className={`border transition-[border-color,box-shadow] focus-within:border-[color-mix(in_srgb,var(--text-dim)_30%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--text-dim)_10%,transparent)] ${
+				variant === "quick"
+					? "border-transparent bg-transparent p-0"
+					: `border-[color-mix(in_srgb,var(--border-divider)_45%,transparent)] bg-[var(--well-bg)] ${
+							expanded ? "rounded-[18px] px-2 pb-2 pt-1.5" : "rounded-full px-1.5 py-1"
+					  }`
 			} ${attach.dragging ? "outline-dashed outline-1 outline-[var(--accent)]" : ""}`}
 		>
 			{expanded && images.length > 0 && (
@@ -161,9 +165,8 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							void submit();
 						}}
 						placeholder={t("backlog.capturePlaceholder")}
-						minHeight={32}
-						maxHeight={variant === "quick" ? 220 : 160}
-						textClass="text-[13px] leading-5"
+						minHeight={variant === "quick" ? 28 : 32}
+						maxHeight={variant === "quick" ? 180 : 160}
 						bgClass="bg-transparent"
 						boxClass="border-transparent"
 					/>
@@ -173,49 +176,53 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			{expanded && (
 				// Keep focus in the editor while pressing pills, otherwise the card would collapse mid-click.
 				<div
-					className="mt-1 flex flex-wrap items-center gap-1.5 px-0.5"
+					className={`flex items-center gap-1.5 ${
+						variant === "quick"
+							? "mt-2 justify-between px-0.5"
+							: "mt-1 flex-wrap px-0.5"
+					}`}
 					onMouseDown={(e) => {
 						if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
 					}}
 				>
-					{imageButton}
-					<CaptureProjectSelect currentProject={currentProject} />
-					<div className="inline-flex items-center rounded-full border border-[var(--border-divider)] p-0.5">
-						{KIND_CONFIG.map(({ kind: k, labelKey, Icon }) => (
-							<button
-								key={k}
-								type="button"
-								onClick={() => {
-									setDraft({ kind: k });
-									setLastKind(k);
-								}}
-								aria-pressed={kind === k}
-								className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] transition-colors ${
-									kind === k
-										? KIND_META[k].tone
-										: "text-[var(--text-dim)] hover:text-[var(--text)]"
-								}`}
-							>
-								<Icon className="h-3 w-3" />
-								{t(labelKey)}
-							</button>
-						))}
+					<div className="flex min-w-0 items-center gap-1.5">
+						{imageButton}
+						<CaptureProjectSelect currentProject={currentProject} showIcon={variant !== "quick"} />
+						<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
+							{KIND_CONFIG.map(({ kind: k, labelKey, Icon }) => (
+								<button
+									key={k}
+									type="button"
+									onClick={() => {
+										setDraft({ kind: k });
+										setLastKind(k);
+									}}
+									aria-pressed={kind === k}
+									className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-[12px] transition-colors ${
+										kind === k
+											? KIND_META[k].tone
+											: "text-[var(--text-dim)] hover:text-[var(--text)]"
+									}`}
+								>
+									<Icon className="h-3 w-3" />
+									{t(labelKey)}
+								</button>
+							))}
+						</div>
+						{variant === "quick" && targetSessionId && (
+							<label className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-[12px] text-[var(--text-dim)] hover:text-[var(--text)]">
+								<input
+									type="checkbox"
+									checked={attachSession}
+									onChange={(e) => setAttachSession(e.target.checked)}
+									className="h-3 w-3"
+								/>
+								<span className="truncate" title={targetSession?.title || targetSessionId}>
+									{t("backlog.attachCurrentSession")}
+								</span>
+							</label>
+						)}
 					</div>
-					{variant === "quick" && targetSessionId && (
-						<label className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-[12px] text-[var(--text-dim)] hover:text-[var(--text)]">
-							<input
-								type="checkbox"
-								checked={attachSession}
-								onChange={(e) => setAttachSession(e.target.checked)}
-								className="h-3 w-3"
-							/>
-							<MessageSquare className="h-3 w-3 shrink-0" />
-							<span className="break-all" title={targetSession?.title || targetSessionId}>
-								{t("backlog.attachCurrentSession")}
-							</span>
-						</label>
-					)}
-					<span className="flex-1" />
 					{sendButton}
 				</div>
 			)}

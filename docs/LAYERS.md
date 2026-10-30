@@ -45,5 +45,10 @@ Rect/point anchors (context menus at the cursor) have no parent and use their ow
    `style={{ zIndex: Z_LAYER.modal }}`).
 3. Never write `z-50`, `z-[..]` or numeric `zIndex`. Only `z-0/10/20/30/40` for purely
    local stacking inside one card/panel.
-4. Need a new tier? Add it to `Z_LAYER` **and** `index.css`, then update this table; the
+4. A `FloatingLayer`'s `className` is skin only. Placement (`position: fixed`, `left`/`top`,
+   `z-index`, `max-height`, `visibility`) is pinned inline by the primitive, so a position
+   utility in the skin (`relative`, `absolute`, `sticky`) cannot silently drop the layer into
+   normal flow — where `top` becomes an offset from the page bottom and the dialog opens
+   outside the window.
+5. Need a new tier? Add it to `Z_LAYER` **and** `index.css`, then update this table; the
    guard test checks both agree.

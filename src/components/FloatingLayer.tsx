@@ -412,6 +412,11 @@ export function FloatingLayer({
 			)}
 			style={{
 				...style,
+				// Placement is owned here, not by className: a caller's skin that carries
+				// `relative`/`absolute` (e.g. to anchor a decorative tab) would otherwise
+				// win over the class-level `fixed` and drop the layer into normal flow,
+				// off the viewport. Inline wins over any utility class.
+				position: "fixed",
 				// Position must never animate: a `duration-*` class would otherwise
 				// transition left/top from the -9999 pre-measure spot (flies in from the far left).
 				transitionProperty: "none",

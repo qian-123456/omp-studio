@@ -26,6 +26,7 @@ function ProjectPickerPill({
 	rows,
 	onPick,
 	className = "",
+	showIcon = true,
 }: {
 	label: string;
 	title: string;
@@ -33,6 +34,7 @@ function ProjectPickerPill({
 	rows: PickerRow[];
 	onPick: (value: string) => void;
 	className?: string;
+	showIcon?: boolean;
 }) {
 	const { t } = useT();
 	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -48,7 +50,7 @@ function ProjectPickerPill({
 				aria-expanded={anchor !== null}
 				className={`inline-flex h-7 min-w-0 max-w-[180px] items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 text-[12px] text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] ${className}`}
 			>
-				<Folder className="h-3.5 w-3.5 shrink-0" />
+				{showIcon && <Folder className="h-3.5 w-3.5 shrink-0" />}
 				<span className="min-w-0 truncate">{label}</span>
 				<ChevronDown className="h-3 w-3 shrink-0" />
 			</button>
@@ -90,9 +92,11 @@ function ProjectPickerPill({
 export function CaptureProjectSelect({
 	currentProject,
 	className = "",
+	showIcon = true,
 }: {
 	currentProject: string | null;
 	className?: string;
+	showIcon?: boolean;
 }) {
 	const { t } = useT();
 	const pick = useBacklog((s) => s.captureProject);
@@ -123,6 +127,7 @@ export function CaptureProjectSelect({
 			rows={rows}
 			onPick={(v) => setPick(v === AUTO ? null : v)}
 			className={className}
+			showIcon={showIcon}
 		/>
 	);
 }

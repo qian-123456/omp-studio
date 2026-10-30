@@ -5,6 +5,7 @@
  * non-empty comment silently stages that comment as an annotation — Esc is
  * the only explicit discard) / 记到收集箱 (quick capture). */
 
+import clsx from "clsx";
 import { ArrowUp, BookmarkPlus, CornerUpLeft, MessageSquareQuote } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { SelectionBubble } from "../../components/SelectionBubble";
@@ -47,18 +48,25 @@ function BubbleAction({
 	icon,
 	label,
 	onClick,
+	primary = false,
 }: {
 	icon: ReactNode;
 	label: string;
 	onClick: () => void;
+	primary?: boolean;
 }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			className="flex h-7 items-center gap-1 whitespace-nowrap rounded px-2 text-[12px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+			className={clsx(
+				"flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium transition-colors cursor-pointer select-none",
+				primary
+					? "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-85"
+					: "text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]",
+			)}
 		>
-			<span className="shrink-0 opacity-70">{icon}</span>
+			<span className={clsx("shrink-0", primary ? "opacity-90" : "opacity-70")}>{icon}</span>
 			{label}
 		</button>
 	);
@@ -387,7 +395,7 @@ export function SelectionToolbar({
 	if (!sel) return null;
 
 	return (
-		<SelectionBubble anchor={sel.rect} ref={boxRef}>
+		<SelectionBubble anchor={sel.rect} ref={boxRef} className={commenting ? "!rounded-2xl !p-1.5" : undefined}>
 			{/* Read by MessageList: no auto-scroll while the annotation bubble is open. */}
 			<div data-selection-toolbar-active="true" className="contents">
 			{commenting ? (
@@ -465,7 +473,13 @@ export function SelectionToolbar({
 				</div>
 			) : (
 				<>
-					<BubbleAction icon={<MessageSquareQuote size={12} />} label={t("chatView.selection.actionAnnotate")} onClick={startComment} />
+					<BubbleAction
+						icon={<MessageSquareQuote size={12} />}
+						label={t("chatView.selection.actionAnnotate")}
+						onClick={startComment}
+						primary
+					/>
+					<span aria-hidden="true" className="h-3.5 w-px shrink-0 bg-[var(--line,var(--border))]" />
 					{!docFile && (
 						<BubbleAction
 							icon={<BookmarkPlus size={12} />}

@@ -107,6 +107,18 @@ function openCommentBox(): HTMLTextAreaElement {
 	return screen.getByRole("textbox", { name: "添加批注" }) as HTMLTextAreaElement;
 }
 
+describe("SelectionToolbar actions", () => {
+	it("clicking 记到收集箱 opens quick-capture modal and discards bubble", () => {
+		render(<Host />);
+		selectRange(6, 11);
+		const btn = screen.getByRole("button", { name: "记到收集箱" });
+		expect(btn).toBeTruthy();
+		fireEvent.click(btn);
+		expect(openModal).toHaveBeenCalledWith("quick-capture", { text: "world", sessionId: "sess-1" });
+		expect(screen.queryByRole("button", { name: "记到收集箱" })).toBeNull();
+	});
+});
+
 const annsOf = (key: string) => useComposer.getState().annotations[key];
 
 describe("SelectionToolbar comment box", () => {

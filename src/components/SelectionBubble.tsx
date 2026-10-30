@@ -24,10 +24,12 @@ export function SelectionBubble({
 	anchor,
 	ref,
 	children,
+	className,
 }: {
 	anchor: Anchor;
 	ref?: Ref<HTMLDivElement>;
 	children: ReactNode;
+	className?: string;
 }) {
 	const innerRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState<{ left: number; top: number; arrowX: number; above: boolean } | null>(null);
@@ -80,7 +82,10 @@ export function SelectionBubble({
 			onMouseDown={(e) => {
 				if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) e.preventDefault();
 			}}
-			className="fixed flex items-center gap-0.5 rounded-2xl border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-1.5 py-1.5 text-[11px] text-[var(--text-60,var(--text-muted))] shadow-lg"
+			className={clsx(
+				"fixed flex items-center gap-1 rounded-full border border-[var(--line,var(--border))] bg-[var(--bg-panel)] p-1 text-[11px] text-[var(--text-60,var(--text-muted))] shadow-lg",
+				className,
+			)}
 			style={{
 				zIndex: Z_LAYER.menu,
 				left: pos?.left ?? -9999,
