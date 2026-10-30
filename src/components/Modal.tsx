@@ -36,6 +36,10 @@ export interface ModalProps {
 	closeOnBackdrop?: boolean;
 	/** Escape closes the modal. Default true. */
 	closeOnEscape?: boolean;
+	/** Blur the background behind the dialog. Default true. */
+	backdropBlur?: boolean;
+	/** Extra classes for the backdrop overlay. */
+	backdropClassName?: string;
 	children: ReactNode;
 }
 
@@ -55,6 +59,8 @@ export function Modal({
 	ariaLabel,
 	closeOnBackdrop = true,
 	closeOnEscape = true,
+	backdropBlur = true,
+	backdropClassName,
 	children,
 }: ModalProps) {
 	const { t } = useT();
@@ -80,7 +86,11 @@ export function Modal({
 	return createPortal(
 		<div
 			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
+			className={clsx(
+				"fixed inset-0 flex items-center justify-center p-4",
+				backdropBlur && "backdrop-blur-md",
+				backdropClassName ?? "bg-[var(--overlay)]",
+			)}
 			onMouseDown={(e) => {
 				if (closeOnBackdrop && e.target === e.currentTarget) onCloseRef.current();
 			}}

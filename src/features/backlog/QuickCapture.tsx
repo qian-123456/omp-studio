@@ -42,7 +42,9 @@ export function QuickCapture() {
 		<Modal
 			onClose={closeModal}
 			size="none"
-			className="w-[510px] max-w-[calc(100vw-32px)] p-3 text-[var(--text)]"
+			backdropBlur={false}
+			backdropClassName="bg-transparent"
+			className="w-[510px] max-w-[calc(100vw-32px)] p-3 text-[var(--text)] shadow-2xl"
 			ariaLabel={t("backlog.quickCaptureAriaLabel")}
 		>
 			<div className="mb-1 flex shrink-0 items-center justify-between gap-2">

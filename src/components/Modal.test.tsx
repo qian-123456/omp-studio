@@ -98,4 +98,16 @@ describe("Modal", () => {
 		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(document.activeElement).toBe(opener);
 	});
+
+	it("supports disabling backdrop blur and custom backdrop classes", () => {
+		render(
+			<Modal ariaLabel="无模糊" onClose={() => {}} backdropBlur={false} backdropClassName="bg-transparent">
+				<p>content</p>
+			</Modal>,
+		);
+		const dialog = screen.getByRole("dialog", { name: "无模糊" });
+		const backdrop = dialog.parentElement!;
+		expect(backdrop.className).not.toContain("backdrop-blur-md");
+		expect(backdrop.className).toContain("bg-transparent");
+	});
 });
