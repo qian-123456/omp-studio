@@ -255,22 +255,44 @@ export function MemoryFilesPanel() {
 
 	// The list and the editor swap in place inside one long settings page. Without this, opening the editor
 	// keeps the list's scroll offset and lands mid-page (or in blank space); bring the editor to the top and
-	// put the list back where the user left it on return.
+	// put the list back where the user left it on return. The editor is shorter than the page, so the browser
+	// clamps the scroll offset the moment the views swap: the list offset is therefore captured before the swap,
+	// and the panel gets a temporary min-height that keeps the target offset reachable (held for the whole
+	// editing session; on return only until the list's text has loaded).
 	const rootRef = useRef<HTMLDivElement>(null);
 	const listScrollTop = useRef<number | null>(null);
 	const wasEditing = useRef(false);
+	const openEditor = (target: string) => {
+		listScrollTop.current = scrollParentOf(rootRef.current)?.scrollTop ?? null;
+		setRel(target);
+	};
 	useLayoutEffect(() => {
 		if (editing === wasEditing.current) return;
 		wasEditing.current = editing;
-		const scroller = scrollParentOf(rootRef.current);
-		if (!scroller) return;
+		const root = rootRef.current;
+		const scroller = scrollParentOf(root);
+		if (!root || !scroller) return;
+		const rootTop = root.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+		let target: number;
 		if (editing) {
-			listScrollTop.current = scroller.scrollTop;
-			rootRef.current?.scrollIntoView({ block: "start" });
+			target = rootTop;
 		} else if (listScrollTop.current !== null) {
-			scroller.scrollTop = listScrollTop.current;
+			target = listScrollTop.current;
 			listScrollTop.current = null;
+		} else {
+			return;
 		}
+		root.style.minHeight = `${Math.max(0, target + scroller.clientHeight - rootTop)}px`;
+		scroller.scrollTop = target;
+		const release = editing
+			? undefined
+			: window.setTimeout(() => {
+					root.style.minHeight = "";
+				}, 1500);
+		return () => {
+			window.clearTimeout(release);
+			root.style.minHeight = "";
+		};
 	}, [editing]);
 
 	const load = useCallback(() => ompMemoryRead(slug ?? "", rel ?? ""), [slug, rel]);
@@ -407,7 +429,7 @@ export function MemoryFilesPanel() {
 							file={f}
 							path={pathOf(f.rel)}
 							reloadToken={reloadToken}
-							onEdit={() => setRel(f.rel)}
+							onEdit={() => openEditor(f.rel)}
 						/>
 					))}
 				</SettingsCard>
@@ -428,7 +450,7 @@ export function MemoryFilesPanel() {
 									path={pathOf(f.rel)}
 									folderPath={pathOf(`skills/${name}`)}
 									reloadToken={reloadToken}
-									onEdit={() => setRel(f.rel)}
+									onEdit={() => openEditor(f.rel)}
 									onDelete={() => void deleteSkill(name)}
 								/>
 							);
