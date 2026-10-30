@@ -147,7 +147,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							void submit();
 						}}
 						placeholder={t("backlog.capturePlaceholder")}
-						minHeight={72}
+						minHeight={34}
 						maxHeight={220}
 						textClass="text-[13px] leading-relaxed"
 						bgClass="bg-transparent"
@@ -166,7 +166,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 					)}
 				</div>
 				<div
-					className="mt-3.5 flex items-center justify-between gap-2"
+					className="mt-2 flex items-center justify-between gap-2"
 					onMouseDown={(e) => {
 						if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
 					}}

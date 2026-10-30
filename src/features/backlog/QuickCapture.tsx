@@ -42,10 +42,10 @@ export function QuickCapture() {
 		<Modal
 			onClose={closeModal}
 			size="none"
-			className="w-[560px] max-w-[calc(100vw-32px)] p-4 text-[var(--text)]"
+			className="w-[510px] max-w-[calc(100vw-32px)] p-3 text-[var(--text)]"
 			ariaLabel={t("backlog.quickCaptureAriaLabel")}
 		>
-			<div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+			<div className="mb-1 flex shrink-0 items-center justify-between gap-2">
 				<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold tracking-[-0.018em] text-[var(--text)]">
 					<BookmarkPlus className="h-4 w-4 text-[var(--accent)]" />
 					<span>{t("backlog.quickCaptureTitle")}</span>
