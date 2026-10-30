@@ -2,7 +2,7 @@
 
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FolderOpen, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tNow, useT } from "../../../stores/language";
 import { NativeSelect } from "../../../components/NativeSelect";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
@@ -56,6 +56,15 @@ async function openWithDefaultEditor(path: string) {
 			toast.error(tNow("memoryRules.openFileFailed", { error: errMsg(e) }));
 		}
 	}
+}
+
+/** Nearest ancestor that actually scrolls (the settings page body). */
+function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
+	for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+		const oy = getComputedStyle(p).overflowY;
+		if (oy === "auto" || oy === "scroll") return p;
+	}
+	return null;
 }
 
 /** Loads a memory file's text; `null` while loading or when the file is missing. */
@@ -242,6 +251,27 @@ export function MemoryFilesPanel() {
 
 	const split = useMemo(() => splitMemoryFiles(files), [files]);
 	const selected = files.find((f) => f.rel === rel) ?? null;
+	const editing = Boolean(selected && slug);
+
+	// The list and the editor swap in place inside one long settings page. Without this, opening the editor
+	// keeps the list's scroll offset and lands mid-page (or in blank space); bring the editor to the top and
+	// put the list back where the user left it on return.
+	const rootRef = useRef<HTMLDivElement>(null);
+	const listScrollTop = useRef<number | null>(null);
+	const wasEditing = useRef(false);
+	useLayoutEffect(() => {
+		if (editing === wasEditing.current) return;
+		wasEditing.current = editing;
+		const scroller = scrollParentOf(rootRef.current);
+		if (!scroller) return;
+		if (editing) {
+			listScrollTop.current = scroller.scrollTop;
+			rootRef.current?.scrollIntoView({ block: "start" });
+		} else if (listScrollTop.current !== null) {
+			scroller.scrollTop = listScrollTop.current;
+			listScrollTop.current = null;
+		}
+	}, [editing]);
 
 	const load = useCallback(() => ompMemoryRead(slug ?? "", rel ?? ""), [slug, rel]);
 	const save = useCallback(
@@ -284,7 +314,7 @@ export function MemoryFilesPanel() {
 		const filePath = pathOf(selected.rel);
 		const skillName = skillNameOf(selected.rel);
 		return (
-			<div className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
+			<div ref={rootRef} className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
 				<div className="flex items-center gap-2 px-1">
 					<Button icon={ArrowLeft} onClick={closeEditor}>
 						{t("memoryRules.backToList")}
@@ -323,7 +353,7 @@ export function MemoryFilesPanel() {
 	}
 
 	return (
-		<div className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
+		<div ref={rootRef} className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
 			<div className="flex flex-wrap items-start justify-between gap-2 px-1">
 				<div>
 					<h3 className="text-sm font-semibold text-[var(--text)]">{t("memoryRules.title")}</h3>
