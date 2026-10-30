@@ -251,7 +251,8 @@ async fn pair_page(Query(q): Query<PairQuery>) -> Response {
     (
         [
             (header::CACHE_CONTROL, "no-store"),
-            (header::REFERRER_POLICY, "no-referrer"),
+            // A no-referrer policy makes form POSTs send an opaque/null Origin.
+            (header::REFERRER_POLICY, "same-origin"),
         ],
         Html(body),
     )
@@ -264,6 +265,26 @@ fn pair_failed_page() -> Response {
         <h3>配对失败</h3><p>配对码无效、已使用或已过期（5 分钟有效）。请在电脑上重新生成二维码。</p></body>";
     (StatusCode::FORBIDDEN, Html(body)).into_response()
 }
+
+fn pair_error_response(err: ApiError, json: bool) -> Response {
+    if json {
+        return err.into_response();
+    }
+    let body =
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>\
+        <body style='background:#0a0a0a;color:#e5e5e5;font-family:system-ui;padding:2em'>\
+        <h3>配对失败</h3><p>配对请求未通过来源校验。\
+        请重新打开电脑上的配对二维码，并在同一页面确认配对。</p></body>";
+    (
+        err.0,
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::REFERRER_POLICY, "same-origin"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
 #[derive(Clone, Copy, Debug)]
 pub struct TlsConnection;
 
@@ -273,13 +294,13 @@ async fn pair<B: Backend>(
     tls_ext: Option<axum::Extension<TlsConnection>>,
     req: Request,
 ) -> Response {
-    if let Err(err) = verify_csrf(&headers, tls_ext.is_some()) {
-        return err.into_response();
-    }
     let json = headers
         .get(header::CONTENT_TYPE)
         .and_then(|h| h.to_str().ok())
         .is_some_and(|v| v.starts_with("application/json"));
+    if let Err(err) = verify_csrf(&headers, tls_ext.is_some()) {
+        return pair_error_response(err, json);
+    }
     let q = if json {
         match Json::<PairQuery>::from_request(req, &ctx).await {
             Ok(Json(q)) => q,

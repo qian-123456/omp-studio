@@ -1288,8 +1288,11 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
-  (5 min, one-time) → URL `http://<lan-ip>:<port>/pair?code=…`, QR as SVG (`qrcode` crate). GET/HEAD display a non-consuming confirmation page.
-  CSRF-checked POST `/pair` exchanges the code for a random device token (stored hashed in `mobile_devices`) and sets an HttpOnly cookie; JSON `{code}` returns 204, form submission redirects to `/`. Invalid/expired/used codes return 403 even if an old cookie is valid. All `/api/*` require the cookie or `Authorization: Bearer`.
+  (5 min, one-time) → URL `http://<lan-ip>:<port>/pair?code=…`, QR as SVG (`qrcode` crate). GET/HEAD display a non-consuming confirmation page
+  with `Referrer-Policy: same-origin`, preserving the form POST's same-origin `Origin` without leaking the pairing URL cross-origin.
+  CSRF-checked POST `/pair` exchanges the code for a random device token (stored hashed in `mobile_devices`) and sets an HttpOnly cookie; JSON `{code}` returns 204, form submission redirects to `/`.
+  Rejected origins (including `null`) do not consume the code: browser forms receive a UTF-8 HTML error page, while JSON requests retain the JSON error/status.
+  Invalid/expired/used codes return 403 even if an old cookie is valid. All `/api/*` require the cookie or `Authorization: Bearer`.
   API: `GET /api/sessions` (id,label,title,status,pending,updatedAt,cwd), `GET /api/todos`, `POST /api/todos/:id/act {action}`,
   `GET /api/sessions/:id/pending-ui`, `POST /api/sessions/:id/ui-respond {response}`, `POST /api/sessions/:id/prompt {text}`,
   `POST /api/sessions/:id/resume`, `GET /api/sessions/:id/last` (last assistant text), `GET /api/events` (SSE: todos changed, session status changed).

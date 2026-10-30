@@ -207,12 +207,47 @@ async fn pairing_get_and_head_do_not_consume_code() {
         get(&uri, None),
         Request::head(&uri).body(Body::empty()).unwrap(),
     ] {
-        let (status, headers, _) = call(&h, req).await;
+        let (status, headers, body) = call(&h, req).await;
         assert_eq!(status, StatusCode::OK);
         assert!(!headers.contains_key(header::SET_COOKIE));
         assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        assert_eq!(headers[header::REFERRER_POLICY], "same-origin");
+        assert_eq!(headers[header::CONTENT_TYPE], "text/html; charset=utf-8");
+        if !body.is_empty() {
+            assert!(body.contains("<form method=post action=/pair>"));
+            assert!(body.contains(&format!("value='{code}'")));
+        }
     }
     assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
+    assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn pairing_same_origin_form_redirects_and_sets_cookie() {
+    let h = harness();
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let req = Request::post("/pair")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::HOST, "192.168.1.5:7788")
+        .header(header::ORIGIN, "http://192.168.1.5:7788")
+        .header(
+            header::REFERER,
+            format!("http://192.168.1.5:7788/pair?code={code}"),
+        )
+        .header("sec-fetch-site", "same-origin")
+        .body(Body::from(format!("code={code}")))
+        .unwrap();
+    let (status, headers, _) = call(&h, req).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/");
+    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.contains("HttpOnly"));
+    assert!(cookie.contains("SameSite=Lax"));
+    let cookie = cookie.split(';').next().unwrap();
+    assert_eq!(
+        call(&h, get("/api/sessions", Some(cookie))).await.0,
+        StatusCode::OK
+    );
     assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::FORBIDDEN);
 }
 
@@ -233,14 +268,47 @@ async fn pairing_json_result_is_for_this_code_not_an_existing_cookie() {
 }
 
 #[tokio::test]
-async fn pairing_post_rejects_cross_site_without_consuming_code() {
-    let h = harness();
-    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
-    let mut req = pair_request(&code);
-    req.headers_mut()
-        .insert("sec-fetch-site", "cross-site".parse().unwrap());
-    assert_eq!(call(&h, req).await.0, StatusCode::FORBIDDEN);
-    assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
+async fn pairing_rejects_untrusted_sources_without_consuming_code() {
+    for json in [false, true] {
+        for (origin, site) in [
+            ("http://192.168.1.5:7788", "cross-site"),
+            ("https://evil.example", "same-origin"),
+            ("null", "same-origin"),
+        ] {
+            let h = harness();
+            let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+            let mut req = if json {
+                post("/pair", "", json!({"code":code}))
+            } else {
+                pair_request(&code)
+            };
+            let headers = req.headers_mut();
+            headers.insert(header::HOST, "192.168.1.5:7788".parse().unwrap());
+            headers.insert(header::ORIGIN, origin.parse().unwrap());
+            headers.insert(
+                header::REFERER,
+                "http://192.168.1.5:7788/pair".parse().unwrap(),
+            );
+            headers.insert("sec-fetch-site", site.parse().unwrap());
+            let (status, headers, body) = call(&h, req).await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+            assert!(!headers.contains_key(header::SET_COOKIE));
+            assert!(!headers.contains_key(header::CONTENT_DISPOSITION));
+            if json {
+                assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+                let error: Value = serde_json::from_str(&body).unwrap();
+                assert!(error["error"].as_str().is_some_and(|s| !s.is_empty()));
+            } else {
+                assert_eq!(headers[header::CONTENT_TYPE], "text/html; charset=utf-8");
+                assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+                assert!(body.starts_with("<!doctype html>"));
+                assert!(body.contains("<meta charset=utf-8>"));
+                assert!(body.chars().any(|c| !c.is_ascii()));
+                assert!(!body.contains('\u{fffd}'));
+            }
+            assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
+        }
+    }
 }
 
 #[tokio::test]
@@ -499,6 +567,43 @@ async fn curl_end_to_end() {
             .await
             .unwrap()
     };
+    let pair_url = format!("{base}/pair?code={code}");
+    let out = curl(vec!["-i".into(), pair_url.clone()]).await;
+    assert!(out.status.success());
+    let response = String::from_utf8(out.stdout).unwrap();
+    let (headers, body) = response.split_once("\r\n\r\n").unwrap();
+    let headers = headers.to_ascii_lowercase();
+    assert!(headers.starts_with("http/1.1 200"));
+    assert!(headers.lines().any(|h| h == "referrer-policy: same-origin"));
+    assert!(headers
+        .lines()
+        .any(|h| h == "content-type: text/html; charset=utf-8"));
+    assert!(body.contains(&format!("value='{code}'")));
+
+    let out = curl(vec![
+        "-i".into(),
+        "-H".into(),
+        "Origin: null".into(),
+        "-e".into(),
+        pair_url.clone(),
+        "-d".into(),
+        format!("code={code}"),
+        format!("{base}/pair"),
+    ])
+    .await;
+    assert!(out.status.success());
+    let response = String::from_utf8(out.stdout).unwrap();
+    let (headers, body) = response.split_once("\r\n\r\n").unwrap();
+    let headers = headers.to_ascii_lowercase();
+    assert!(headers.starts_with("http/1.1 403"));
+    assert!(headers
+        .lines()
+        .any(|h| h == "content-type: text/html; charset=utf-8"));
+    assert!(!headers.contains("set-cookie:"));
+    assert!(!headers.contains("content-disposition:"));
+    assert!(body.starts_with("<!doctype html>"));
+    assert!(body.chars().any(|c| !c.is_ascii()));
+
     let jar_s = jar.to_string_lossy().to_string();
     let out = curl(vec![
         "-c".into(),
@@ -508,11 +613,16 @@ async fn curl_end_to_end() {
         "/dev/null".into(),
         "-w".into(),
         "%{http_code} %{url_effective}".into(),
+        "-H".into(),
+        format!("Origin: {base}"),
+        "-e".into(),
+        pair_url,
         "-d".into(),
         format!("code={code}"),
         format!("{base}/pair"),
     ])
     .await;
+    assert!(out.status.success());
     let summary = String::from_utf8_lossy(&out.stdout).to_string();
     // 503 hint page when the frontend bundle is not built.
     assert!(
