@@ -119,6 +119,105 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 		</button>
 	);
 
+	if (variant === "quick") {
+		return (
+			<div
+				ref={wrapRef}
+				{...attach.dropProps}
+				onFocus={() => setFocused(true)}
+				onBlur={(e) => {
+					if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setFocused(false);
+				}}
+				className={`flex flex-col bg-transparent ${attach.dragging ? "outline-dashed outline-1 outline-[var(--accent)]" : ""}`}
+			>
+				<div>
+					<IdeaEditor
+						ref={editorRef}
+						doc={doc}
+						autoFocus={autoFocus}
+						onChange={(d) => {
+							const r = reconcileDoc(d);
+							setDraft({ text: r.text, images: r.images });
+						}}
+						onPaste={attach.onPaste}
+						onKeyDown={(e) => {
+							if (e.key !== "Enter" || e.shiftKey) return;
+							e.preventDefault();
+							if (isComposing(e)) return;
+							void submit();
+						}}
+						placeholder={t("backlog.capturePlaceholder")}
+						minHeight={72}
+						maxHeight={220}
+						textClass="text-[13px] leading-relaxed"
+						bgClass="bg-transparent"
+						boxClass="border-transparent"
+					/>
+					{images.length > 0 && (
+						<div className="pt-2">
+							<ImageThumbs
+								paths={doc.images}
+								onRemove={(p) => {
+									const r = removeImage(doc, doc.images.indexOf(p) + 1);
+									setDraft({ text: r.text, images: r.images });
+								}}
+							/>
+						</div>
+					)}
+				</div>
+				<div
+					className="mt-3.5 flex items-center justify-between gap-2"
+					onMouseDown={(e) => {
+						if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+					}}
+				>
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						{imageButton}
+						<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5 bg-[var(--well-bg)]">
+							{KIND_CONFIG.map(({ kind: k, labelKey, Icon }) => (
+								<button
+									key={k}
+									type="button"
+									onClick={() => {
+										setDraft({ kind: k });
+										setLastKind(k);
+									}}
+									aria-pressed={kind === k}
+									className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium transition-colors ${
+										kind === k
+											? KIND_META[k].tone
+											: "text-[var(--text-dim)] hover:text-[var(--text)]"
+									}`}
+								>
+									<Icon className="h-3 w-3" />
+									{t(labelKey)}
+								</button>
+							))}
+						</div>
+						<CaptureProjectSelect currentProject={currentProject} showIcon />
+						{targetSessionId && (
+							<label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-1 text-[12px] text-[var(--text-dim)] hover:text-[var(--text)] select-none">
+								<input
+									type="checkbox"
+									checked={attachSession}
+									onChange={(e) => setAttachSession(e.target.checked)}
+									className="h-3.5 w-3.5 rounded border-[var(--border-divider)] accent-[var(--accent)]"
+								/>
+								<span className="whitespace-nowrap" title={targetSession?.title || targetSessionId}>
+									{t("backlog.attachCurrentSession")}
+								</span>
+							</label>
+						)}
+					</div>
+					<div className="flex shrink-0 items-center gap-1.5">
+						{sendButton}
+					</div>
+				</div>
+				{attach.fileInput}
+			</div>
+		);
+	}
+
 	return (
 		<div
 			ref={wrapRef}
@@ -127,12 +226,8 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			onBlur={(e) => {
 				if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setFocused(false);
 			}}
-			className={`border transition-[border-color,box-shadow] focus-within:border-[color-mix(in_srgb,var(--text-dim)_30%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--text-dim)_10%,transparent)] ${
-				variant === "quick"
-					? "border-transparent bg-transparent p-0"
-					: `border-[color-mix(in_srgb,var(--border-divider)_45%,transparent)] bg-[var(--well-bg)] ${
-							expanded ? "rounded-[18px] px-2 pb-2 pt-1.5" : "rounded-full px-1.5 py-1"
-					  }`
+			className={`border transition-[border-color,box-shadow] focus-within:border-[color-mix(in_srgb,var(--text-dim)_30%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--text-dim)_10%,transparent)] border-[color-mix(in_srgb,var(--border-divider)_45%,transparent)] bg-[var(--well-bg)] ${
+				expanded ? "rounded-[18px] px-2 pb-2 pt-1.5" : "rounded-full px-1.5 py-1"
 			} ${attach.dragging ? "outline-dashed outline-1 outline-[var(--accent)]" : ""}`}
 		>
 			{expanded && images.length > 0 && (
@@ -165,8 +260,8 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							void submit();
 						}}
 						placeholder={t("backlog.capturePlaceholder")}
-						minHeight={variant === "quick" ? 28 : 32}
-						maxHeight={variant === "quick" ? 180 : 160}
+						minHeight={32}
+						maxHeight={160}
 						bgClass="bg-transparent"
 						boxClass="border-transparent"
 					/>
@@ -176,18 +271,14 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			{expanded && (
 				// Keep focus in the editor while pressing pills, otherwise the card would collapse mid-click.
 				<div
-					className={`flex items-center gap-1.5 ${
-						variant === "quick"
-							? "mt-2 justify-between px-0.5"
-							: "mt-1 flex-wrap px-0.5"
-					}`}
+					className="mt-1 flex flex-wrap items-center gap-1.5 px-0.5"
 					onMouseDown={(e) => {
 						if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
 					}}
 				>
 					<div className="flex min-w-0 items-center gap-1.5">
 						{imageButton}
-						<CaptureProjectSelect currentProject={currentProject} showIcon={variant !== "quick"} />
+						<CaptureProjectSelect currentProject={currentProject} showIcon />
 						<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
 							{KIND_CONFIG.map(({ kind: k, labelKey, Icon }) => (
 								<button
@@ -209,19 +300,6 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 								</button>
 							))}
 						</div>
-						{variant === "quick" && targetSessionId && (
-							<label className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-[12px] text-[var(--text-dim)] hover:text-[var(--text)]">
-								<input
-									type="checkbox"
-									checked={attachSession}
-									onChange={(e) => setAttachSession(e.target.checked)}
-									className="h-3 w-3"
-								/>
-								<span className="truncate" title={targetSession?.title || targetSessionId}>
-									{t("backlog.attachCurrentSession")}
-								</span>
-							</label>
-						)}
 					</div>
 					{sendButton}
 				</div>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { FloatingLayer } from "../../components/FloatingLayer";
+import { useEffect } from "react";
+import { BookmarkPlus, X } from "lucide-react";
+import { Modal } from "../../components/Modal";
 import { onQuickCapture } from "../../lib/events";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
@@ -20,7 +21,6 @@ export function QuickCapture() {
 	const isVisible = modal?.name === "quick-capture";
 	const initialText = typeof modal?.props?.text === "string" ? modal.props.text : "";
 	const targetSessionId = typeof modal?.props?.sessionId === "string" ? modal.props.sessionId : undefined;
-	const [anchor] = useState(() => ({ x: 0, y: 0 }));
 
 	useEffect(() => {
 		const unlisten = onQuickCapture(() => {
@@ -37,25 +37,28 @@ export function QuickCapture() {
 	}, [isVisible, initialText]);
 
 	if (!isVisible) return null;
-	// The title tab hangs above the card edge, so the layer must not clip its overflow.
+
 	return (
-		<FloatingLayer
-			anchor={anchor}
-			placement="center"
-			layer="modal"
-			onDismiss={closeModal}
-			role="dialog"
-			aria-label={t("backlog.quickCaptureAriaLabel")}
-			className="mt-6 w-[436px] max-w-[calc(100vw-32px)] rounded-2xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-2.5 shadow-2xl"
-			style={{ overflow: "visible" }}
+		<Modal
+			onClose={closeModal}
+			size="none"
+			className="w-[560px] max-w-[calc(100vw-32px)] p-4 text-[var(--text)]"
+			ariaLabel={t("backlog.quickCaptureAriaLabel")}
 		>
-			{/* Top-left ear tab */}
-			<div
-				aria-hidden="true"
-				className="absolute -top-[23px] left-3.5 inline-flex h-[24px] items-center gap-1.5 rounded-t-lg border border-b-0 border-[var(--line,var(--border-divider))] bg-[var(--bg-panel)] px-2.5 text-[11px] font-medium text-[var(--text-60)] after:absolute after:-bottom-px after:left-0 after:right-0 after:h-[2px] after:bg-[var(--bg-panel)]"
-			>
-				<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-				<span>{t("backlog.quickCaptureTitle")}</span>
+			<div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+				<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold tracking-[-0.018em] text-[var(--text)]">
+					<BookmarkPlus className="h-4 w-4 text-[var(--accent)]" />
+					<span>{t("backlog.quickCaptureTitle")}</span>
+				</div>
+				<button
+					type="button"
+					onClick={closeModal}
+					title={t("components.closeEsc")}
+					aria-label={t("common.close")}
+					className="rounded-md p-1 text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+				>
+					<X className="h-3.5 w-3.5" />
+				</button>
 			</div>
 			<IdeaCaptureBox
 				variant="quick"
@@ -66,6 +69,6 @@ export function QuickCapture() {
 					closeModal();
 				}}
 			/>
-		</FloatingLayer>
+		</Modal>
 	);
 }

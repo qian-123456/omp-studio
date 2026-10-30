@@ -48,7 +48,7 @@ function ProjectPickerPill({
 				aria-label={t("backlog.assignProjectAria", { label })}
 				aria-haspopup="listbox"
 				aria-expanded={anchor !== null}
-				className={`inline-flex h-7 min-w-0 max-w-[180px] items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 text-[12px] text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] ${className}`}
+				className={`inline-flex h-7 min-w-0 max-w-[220px] items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 text-[12px] text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] ${className}`}
 			>
 				{showIcon && <Folder className="h-3.5 w-3.5 shrink-0" />}
 				<span className="min-w-0 truncate">{label}</span>
