@@ -33,6 +33,24 @@ export interface PlanStatus {
 	contextPercent: number | null;
 	/** Context is too full to keep it while executing. */
 	keepDisabled: boolean;
+	/** Plan the user approved; plan mode itself is off by then (`enabled: false`). */
+	approved?: ApprovedPlan | null;
+}
+
+/** handoff: runs in a fresh session; executing → completed | failed in this one. */
+export type ApprovedStatus = "handoff" | "executing" | "completed" | "failed";
+
+/** Read-only snapshot of an approved plan, persisted by the extension. */
+export interface ApprovedPlan {
+	planFile: string | null;
+	planUrl: string | null;
+	title: string | null;
+	content: string;
+	prevContent: string | null;
+	version: number;
+	status: ApprovedStatus;
+	/** Stop reason when `failed` ("aborted" | "error"). */
+	error: string | null;
 }
 
 export const PLAN_OFF: PlanStatus = {
@@ -64,6 +82,26 @@ function parseTiers(v: unknown): PlanTier[] {
 	return out;
 }
 
+const APPROVED_STATUSES: readonly ApprovedStatus[] = ["handoff", "executing", "completed", "failed"];
+
+/** The approved plan an off status still carries, or null. */
+function parseApproved(v: unknown): ApprovedPlan | null {
+	if (!v || typeof v !== "object") return null;
+	const o = v as Record<string, unknown>;
+	const content = strOrNull(o.content);
+	const status = APPROVED_STATUSES.find((s) => s === o.status);
+	if (!content || !status) return null;
+	return {
+		planFile: strOrNull(o.planFile),
+		planUrl: strOrNull(o.planUrl),
+		title: strOrNull(o.title),
+		content,
+		prevContent: strOrNull(o.prevContent),
+		version: typeof o.version === "number" ? o.version : 1,
+		status,
+		error: strOrNull(o.error),
+	};
+}
 /** Parse the extension's status text; null when it is not a plan status. */
 export function parsePlanStatus(text: unknown): PlanStatus | null {
 	if (typeof text !== "string") return null;
@@ -76,7 +114,10 @@ export function parsePlanStatus(text: unknown): PlanStatus | null {
 	if (!raw || typeof raw !== "object") return null;
 	const o = raw as Record<string, unknown>;
 	if (o.v !== 1) return null;
-	if (o.enabled !== true) return PLAN_OFF;
+	if (o.enabled !== true) {
+		const approved = parseApproved(o.approved);
+		return approved ? { ...PLAN_OFF, approved } : PLAN_OFF;
+	}
 	return {
 		enabled: true,
 		phase: o.phase === "review" ? "review" : "planning",

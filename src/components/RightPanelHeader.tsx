@@ -503,9 +503,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						<span>{t("rightPanel.newTerminal")}</span>
 					</button>
 					<div className="my-1 border-t border-[var(--border-divider)]" />
-					{/* 计划 is not a manual option: plan mode auto-opens it
-					    (see Composer / /plan). */}
-					{PRIMARY_TABS.filter((tab) => tab.id !== "plan" && tab.id !== "files").map((tab) => {
+					{PRIMARY_TABS.filter((tab) => tab.id !== "files").map((tab) => {
 						const Icon = tab.icon;
 						const badge = tabBadges[tab.id] ?? 0;
 						const isOpen = openRightTabs.includes(tab.id) && tab.id !== "sidechat";

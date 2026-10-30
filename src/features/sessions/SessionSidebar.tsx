@@ -1539,7 +1539,6 @@ export function SessionSidebar() {
 																			onBatchAction={handleBatchAction}
 																			withSpine
 																			large
-																			recentLimit={Infinity}
 																		/>
 																	</div>
 																) : (
@@ -1652,7 +1651,6 @@ export function SessionSidebar() {
 																		onRowFocus={focusList}
 																		onBatchAction={handleBatchAction}
 																		large
-																		recentLimit={Infinity}
 																	/>
 																</div>
 															)}
@@ -2357,7 +2355,7 @@ function subgroupLabel(sub: BranchSubgroup): string {
 	return sub.kind === "default" ? tNow("sessions.other") : sub.label;
 }
 
-function SessionList({
+export function SessionList({
 	sessions,
 	scopeKey,
 	withSpine = false,

@@ -508,16 +508,53 @@ pub async fn ensure_live(
     Ok(info)
 }
 
+/// The omp `prompt` command: `images` are native `ImageContent` blocks
+/// (`{type:"image", data(base64), mimeType}`); `followUp` while a turn runs.
+pub(crate) fn prompt_command(text: &str, streaming: bool, images: &[Value]) -> Value {
+    let mut command = json!({"type": "prompt", "message": text});
+    if !images.is_empty() {
+        command["images"] = Value::Array(images.to_vec());
+    }
+    if streaming {
+        command["streamingBehavior"] = json!("followUp");
+    }
+    command
+}
+
+/// Read local image files into omp `ImageContent` blocks, reusing the mobile
+/// prompt pipeline's validation (`build_images`: png/jpeg/gif/webp, base64).
+/// Any unreadable or unsupported file is an error: images are never dropped.
+pub fn image_blocks_from_paths(paths: &[String]) -> Result<Vec<Value>, String> {
+    use base64::Engine as _;
+    let mut images = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes = std::fs::read(path).map_err(|e| format!("无法读取图片 {path}：{e}"))?;
+        let mime = crate::mobile::api::media::sniff(&bytes)
+            .ok_or_else(|| format!("不支持的图片格式（仅 png/jpeg/gif/webp）：{path}"))?;
+        images.push(crate::mobile::api::chat::ImageIn {
+            mime: mime.to_string(),
+            data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        });
+    }
+    crate::mobile::api::chat::build_images(&images).map_err(|e| e.1)
+}
+
 /// ensure_live + prompt (followUp when streaming).
 pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Result<(), String> {
+    send_prompt_with_images(state, session_id, text, &[]).await
+}
+
+/// [`send_prompt`] carrying `ImageContent` blocks (see [`image_blocks_from_paths`]).
+pub async fn send_prompt_with_images(
+    state: &AppState,
+    session_id: &str,
+    text: &str,
+    images: &[Value],
+) -> Result<(), String> {
     let info = ensure_live(state, session_id, None).await?;
     let handle = refresh_privacy(state, &info.session_id).await?;
     let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
-    let command = if streaming {
-        json!({"type": "prompt", "message": text, "streamingBehavior": "followUp"})
-    } else {
-        json!({"type": "prompt", "message": text})
-    };
+    let command = prompt_command(text, streaming, images);
     handle.touch();
     process::send_command(&handle, command).await?;
     state.emit(AppEvent::PromptSent {

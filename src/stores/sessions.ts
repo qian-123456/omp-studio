@@ -165,15 +165,27 @@ let nextLoadId = 0;
 let latestAppliedLoadId = 0;
 const activeLoads = new Set<InFlightLoad>();
 const inFlightMarkSeen = new Set<string>();
-/** A session is only marked seen once the user actually dwells on it —
- * peeking and switching away must not drop the unread cue. */
-const MARK_SEEN_DWELL_MS = 2000;
+/** Coalesce rapid key-repeat selection changes only; marking is otherwise immediate. */
+const MARK_SEEN_DEBOUNCE_MS = 50;
 let markSeenTimer: number | null = null;
 let markSeenTargetId: string | null = null;
 
+/** True while the app window is visible and focused (the user can actually read). */
+function isAppForeground(): boolean {
+	if (typeof document === "undefined") return true;
+	return document.visibilityState !== "hidden" && document.hasFocus();
+}
+
+function needsSeen(sessionId: string): boolean {
+	const s = useSessions.getState().sessions[sessionId];
+	return !!s && (s.unread || s.status === "review" || s.pending === "review");
+}
+
 function scheduleMarkSessionSeen(sessionId: string | null): void {
 	if (typeof window === "undefined") return;
-	if (markSeenTargetId === sessionId) return;
+	// Same target: only re-fire when it picked up an unread/review cue while selected.
+	if (markSeenTargetId === sessionId && markSeenTimer !== null) return;
+	if (markSeenTargetId === sessionId && !(sessionId && needsSeen(sessionId))) return;
 	markSeenTargetId = sessionId;
 	if (markSeenTimer !== null) {
 		window.clearTimeout(markSeenTimer);
@@ -182,12 +194,18 @@ function scheduleMarkSessionSeen(sessionId: string | null): void {
 	if (!sessionId) return;
 	markSeenTimer = window.setTimeout(() => {
 		markSeenTimer = null;
+		// A hidden/unfocused window must keep its cue; forget the target so the
+		// next focus event re-schedules the view.
+		if (!isAppForeground()) {
+			markSeenTargetId = null;
+			return;
+		}
 		// Always record the view: besides clearing `unread`, it stamps
 		// `last_seen_at` (hides 中断 from the inbox) and accepts a pending review.
 		if (useSessions.getState().sessions[sessionId]) {
 			void markSessionSeen(sessionId);
 		}
-	}, MARK_SEEN_DWELL_MS);
+	}, MARK_SEEN_DEBOUNCE_MS);
 }
 
 export async function markSessionSeen(sessionId: string): Promise<void> {
@@ -196,8 +214,19 @@ export async function markSessionSeen(sessionId: string): Promise<void> {
 	if (!current) return;
 
 	inFlightMarkSeen.add(sessionId);
-	if (current.unread) {
-		useSessions.getState().upsert([{ ...current, unread: false }]);
+	const reviewStatus = current.status === "review";
+	const reviewPending = current.pending === "review";
+	if (current.unread || reviewStatus || reviewPending) {
+		// Mirror backend accept: only Review is cleared; other pending kinds
+		// (error/approval/question) and other statuses are preserved.
+		useSessions.getState().upsert([
+			{
+				...current,
+				unread: false,
+				...(reviewStatus ? { status: "idle" as const } : {}),
+				...(reviewPending ? { pending: null } : {}),
+			},
+		]);
 	}
 
 	try {
@@ -221,6 +250,7 @@ export function checkAndMarkSelectedSession(): void {
 }
 
 let uiUnsubscribe: (() => void) | null = null;
+let sessionsUnsubscribe: (() => void) | null = null;
 let windowFocusListener: (() => void) | null = null;
 
 export function setupMarkSeenSubscription(): () => void {
@@ -231,6 +261,20 @@ export function setupMarkSeenSubscription(): () => void {
 			} else {
 				// Leaving the session view or clearing selection cancels the pending mark.
 				scheduleMarkSessionSeen(null);
+			}
+		});
+	}
+	if (!sessionsUnsubscribe) {
+		// A turn finishing on the already-selected session must not leave a stuck cue.
+		sessionsUnsubscribe = useSessions.subscribe(() => {
+			const ui = useUi.getState();
+			if (
+				ui.selectedSessionId &&
+				ui.centerView === "session" &&
+				isAppForeground() &&
+				needsSeen(ui.selectedSessionId)
+			) {
+				scheduleMarkSessionSeen(ui.selectedSessionId);
 			}
 		});
 	}
@@ -247,6 +291,10 @@ export function setupMarkSeenSubscription(): () => void {
 			uiUnsubscribe();
 			uiUnsubscribe = null;
 		}
+		if (sessionsUnsubscribe) {
+			sessionsUnsubscribe();
+			sessionsUnsubscribe = null;
+		}
 		if (windowFocusListener && typeof window !== "undefined") {
 			window.removeEventListener("focus", windowFocusListener);
 			windowFocusListener = null;
@@ -254,8 +302,7 @@ export function setupMarkSeenSubscription(): () => void {
 	};
 }
 
-// Initialize mark-seen subscription eagerly at module scope
-setupMarkSeenSubscription();
+// Subscription is initialized after the `useSessions` store is created (see below).
 
 
 export const useSessions = create<SessionsState>((set) => ({
@@ -385,20 +432,6 @@ export const useSessions = create<SessionsState>((set) => ({
 			}
 			return { sessions };
 		});
-			for (const meta of list) {
-				if (meta.unread) {
-					const ui = useUi.getState();
-					if (
-						meta.id === ui.selectedSessionId &&
-						ui.centerView === "session" &&
-						typeof document !== "undefined" &&
-						typeof document.hasFocus === "function" &&
-						document.hasFocus()
-					) {
-						void markSessionSeen(meta.id);
-					}
-				}
-			}
 	},
 	remove: (ids) => {
 		if (ids.length === 0) return;
@@ -428,6 +461,9 @@ export const useSessions = create<SessionsState>((set) => ({
 		});
 	},
 }));
+
+// Initialize mark-seen subscription eagerly once the store exists.
+setupMarkSeenSubscription();
 
 let activeUnlisteners: UnlistenFn[] | null = null;
 let startEventsPromise: Promise<void> | null = null;

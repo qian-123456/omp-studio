@@ -2,13 +2,14 @@
  * the editable note popover (click) and the read-only hover card (hover). */
 
 import { Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { useT } from "../../stores/language";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { AnnotationImageButton, AnnotationImageStrip, useAnnotationImages } from "./AnnotationImages";
 import { QuoteBlock } from "./AnnotationQuote";
 
 const CARD_CLASS =
@@ -41,17 +42,50 @@ export function AnnotationNotePopover({
 	const [draft, setDraft] = useState(annotation.comment ?? "");
 	const draftRef = useRef(draft);
 	draftRef.current = draft;
+	const [images, setImages] = useState<string[]>(annotation.images ?? []);
+	const imagesRef = useRef(images);
+	imagesRef.current = images;
+	const setImagesSynced = useCallback((next: string[]) => {
+		imagesRef.current = next;
+		setImages(next);
+	}, []);
+
 	const settled = useRef(false);
+	const mounted = useRef(true);
+	const closeWhenIdle = useRef(false);
 	const popRef = useRef<HTMLDivElement>(null);
 	const id = annotation.id;
+	const imageInput = useAnnotationImages(
+		images,
+		(next) => {
+			setImagesSynced(next);
+			// Result landed after the popover unmounted (session switch): persist it directly.
+			if (!mounted.current) {
+				useComposer.getState().updateAnnotation(storeKey, id, {
+					images: next.length > 0 ? next : undefined,
+				});
+			}
+		},
+		() => {
+			if (closeWhenIdle.current) finish.current(true);
+		},
+	);
 
 	const finish = useRef((_save: boolean) => {});
 	finish.current = (save: boolean) => {
 		if (settled.current) return;
+		// An image is still being saved: stay open and save once it landed.
+		if (save && imageInput.pendingRef.current > 0) {
+			closeWhenIdle.current = true;
+			return;
+		}
 		settled.current = true;
+		// Discard (Esc) or done: pending results must not touch this annotation afterwards.
+		if (!save) imageInput.invalidate();
 		if (save) {
 			useComposer.getState().updateAnnotation(storeKey, id, {
 				comment: draftRef.current.trim() || undefined,
+				images: imagesRef.current.length > 0 ? imagesRef.current : undefined,
 			});
 		}
 		onClose();
@@ -85,15 +119,17 @@ export function AnnotationNotePopover({
 	// Unmount without an explicit close (session switch): keep the typed note.
 	// Must not touch `settled`: this cleanup also runs on StrictMode's simulated
 	// unmount, and a latched flag would turn every later close path into a no-op.
-	useEffect(
-		() => () => {
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
 			if (settled.current) return;
 			useComposer.getState().updateAnnotation(storeKey, id, {
 				comment: draftRef.current.trim() || undefined,
+				images: imagesRef.current.length > 0 ? imagesRef.current : undefined,
 			});
-		},
-		[storeKey, id],
-	);
+		};
+	}, [storeKey, id]);
 
 	return (
 		<FloatingLayer anchor={anchor} placement="bottom-start" className={CARD_CLASS}>
@@ -111,6 +147,7 @@ export function AnnotationNotePopover({
 					value={draft}
 					placeholder={t("chat.annotation.notePlaceholder")}
 					onChange={(e) => setDraft(e.target.value)}
+					onPaste={imageInput.onPaste}
 					onKeyDown={(e) => {
 						if (isComposing(e)) return;
 						if (e.key === "Enter" && !e.shiftKey) {
@@ -124,7 +161,10 @@ export function AnnotationNotePopover({
 				<div className="mt-1 text-[10px] leading-snug text-[var(--text-30,var(--text-dim))]">
 					{t("chat.annotation.keyHint")}
 				</div>
+				<AnnotationImageStrip paths={images} onRemove={imageInput.remove} className="mt-2" />
 				<div className="mt-2 flex items-center justify-between gap-2">
+					<div className="flex items-center gap-1">
+					<AnnotationImageButton onClick={imageInput.pick} busy={imageInput.busy} />
 					<button
 						type="button"
 						onClick={() => {
@@ -137,6 +177,7 @@ export function AnnotationNotePopover({
 						<Trash2 size={12} />
 						{t("common.delete")}
 					</button>
+					</div>
 					<button
 						type="button"
 						aria-label={t("chatView.selection.confirmAnnotationAria")}
@@ -180,10 +221,11 @@ export function AnnotationHoverCard({
 				</div>
 				<div className={`mt-1.5 border-l-2 border-[var(--text-30)] pl-2.5 ${QUOTE_CLASS}`}>{annotation.text}</div>
 				{annotation.comment && (
-					<div className="mt-1.5 whitespace-pre-wrap break-words text-[12px] text-[var(--text)]">
+					<div className="mt-1.5 whitespace-pre-wrap break-words border-l-2 border-transparent pl-2.5 text-[12px] text-[var(--text)]">
 						{t("chat.annotation.notePrefix", { comment: annotation.comment })}
 					</div>
 				)}
+				<AnnotationImageStrip paths={annotation.images} className="mt-1.5 border-l-2 border-transparent pl-2.5" />
 			</div>
 		</FloatingLayer>
 	);

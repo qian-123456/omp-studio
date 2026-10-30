@@ -3,7 +3,9 @@
  * the approved plan. */
 
 import { createSession, type CreateSessionResult } from "../../../lib/createSession";
+import { ensureLive } from "../../../lib/ensureLive";
 import { rpcSend } from "../../../lib/ipc";
+import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
 import type { PlanExecMode, PlanStatus } from "./planStatus";
@@ -18,10 +20,15 @@ interface ExecutionAttempt {
 // once run was accepted, retry must only finish approval, never execute twice.
 const executions = new Map<string, ExecutionAttempt>();
 
+const sendPlanAction = (sessionId: string, args: string) =>
+	rpcSend(sessionId, { type: "prompt", message: `/plan-action ${args}` });
+
 /** Run `/plan-action <args>` in the session without a user echo: it is a host
- * control command, not something the user typed. */
+ * control command, not something the user typed. An idle-suspended session is
+ * resumed first; a failed resume rejects and nothing is sent. */
 export async function runPlanAction(sessionId: string, args: string): Promise<void> {
-	await rpcSend(sessionId, { type: "prompt", message: `/plan-action ${args}` });
+	if (!useLive.getState().sessions[sessionId]?.alive) await ensureLive(sessionId);
+	await sendPlanAction(sessionId, args);
 }
 
 /**
@@ -62,13 +69,16 @@ export async function approvePlan(
 				// Publish the working stub only after the first prompt is accepted.
 				prompt: `/plan-action ${runArgs}`,
 			});
-			await runPlanAction(attempt.destination.sessionId, runArgs);
+			// The destination was just started by createSession; no resume needed.
+			await sendPlanAction(attempt.destination.sessionId, runArgs);
 			attempt.sent = true;
 			useSessions.getState().upsert([attempt.destination.stub]);
 		}
 		const next = attempt.destination!.sessionId;
 		await runPlanAction(sessionId, "approve execute");
 		useUi.getState().selectSession(next);
+		// The new session publishes the approved plan (status "executing"); keep it visible.
+		useUi.getState().setRightTab("plan");
 		executions.delete(sessionId);
 		return next;
 	};

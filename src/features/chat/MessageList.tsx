@@ -1,3 +1,4 @@
+import { isAnnotating } from "./annotationActive";
 import { openImageOrExplain } from "./imageAvailability";
 import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { trimSideChatItems } from "./sideChatView";
@@ -33,6 +34,7 @@ import { isResumeCancelled } from "../../lib/ensureLive";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { useT } from "../../stores/language";
+import { withModelNotices } from "./modelChangeRows";
 import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
 import { collectUserImages, queuedEchoIds, useLive, type CommandOutputEntry, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
@@ -44,8 +46,8 @@ import { useUi } from "../../stores/ui";
 import { StartHero } from "../../components/StartHero";
 import { openContextWindowForModel } from "../settings/settingsTargets";
 import { AnswerFooter } from "./AnswerFooter";
-import { isForkDraftId } from "../sessions/forkDraft";
 import { ClampedProse } from "./ClampedProse";
+import { isForkDraftId } from "../sessions/forkDraft";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
 import { useLineClampOverflow } from "../../lib/useLineClamp";
@@ -87,6 +89,7 @@ import {
 	formatDurationCompact,
 	formatMessageTimestamp,
 	groupTurnBlocks,
+	isBriefToolTransition,
 	latestRequestAnchor,
 	liveAnswerCandidate,
 	noticeLabel,
@@ -739,19 +742,23 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						{/* Interim assistant prose stays on the thread column right after
 						    its own fold: it was readable while streaming and must not
 						    vanish into the fold, nor land after the steer it preceded. */}
-						{seg.prose.map((step) =>
-							step.kind === "text" || step.kind === "narration" ? (
+						{seg.prose.map((step) => {
+							if (step.kind !== "text" && step.kind !== "narration") return null;
+							const body = <Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />;
+							const brief =
+								!streamingThisTurn &&
+								!awaitingSubagents &&
+								isBriefToolTransition(step, segments.slice(si + 1));
+							return (
 								<div
 									key={step.id}
 									id={`msg-${step.id}`}
 									className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
 								>
-									<ClampedProse>
-										<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
-									</ClampedProse>
+									{brief ? <ClampedProse>{body}</ClampedProse> : body}
 								</div>
-							) : null,
-						)}
+							);
+						})}
 					</React.Fragment>
 				);
 			})}
@@ -1297,9 +1304,7 @@ const StreamingRow = React.memo(function StreamingRow({
 						id={`msg-${step.id}`}
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
 					>
-						<ClampedProse>
-							<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
-						</ClampedProse>
+						<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
 					</div>,
 				);
 			}
@@ -1368,6 +1373,7 @@ export function MessageList({
 	);
 	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	const flowNotices = useLive((s) => s.sessions[sessionId]?.flowNotices);
+	const modelNotices = useLive((s) => s.sessions[sessionId]?.modelNotices);
 	const isStreamingActive = useLive(
 		(s) =>
 			Boolean(
@@ -1448,7 +1454,7 @@ export function MessageList({
 		scrollTimerRef.current = window.setTimeout(() => {
 			scrollTimerRef.current = 0;
 			const el = scrollRef.current;
-			if (el && shouldFollow(followRef.current)) {
+			if (el && shouldFollow(followRef.current) && !isAnnotating(el)) {
 				el.scrollTop = el.scrollHeight;
 				followRef.current = onWroteBottom(followRef.current, Date.now());
 			}
@@ -1499,11 +1505,14 @@ export function MessageList({
 	const withNotices = useMemo(
 		() =>
 			withLocalRows(
-				withRetryEpisodes(withFlowNotices(items, flowNotices ?? []), retryHistory ?? []),
+				withRetryEpisodes(
+					withFlowNotices(withModelNotices(items, modelNotices), flowNotices ?? []),
+					retryHistory ?? [],
+				),
 				localEchoes ?? EMPTY_ECHOES,
 				commandOutputs ?? EMPTY_OUTPUTS,
 			),
-		[items, flowNotices, retryHistory, localEchoes, commandOutputs],
+		[items, modelNotices, flowNotices, retryHistory, localEchoes, commandOutputs],
 	);
 	const visible = useMemo(() => filterVisibleItems(withNotices, false), [withNotices]);
 
@@ -1781,7 +1790,7 @@ export function MessageList({
 			// Pin in the same frame the content grew (before paint). A deferred
 			// write lets one frame paint at the old offset, which reads as the
 			// output block jittering on every streamed line.
-			if (el2 && shouldFollow(followRef.current)) {
+			if (el2 && shouldFollow(followRef.current) && !isAnnotating(el2)) {
 				el2.scrollTop = el2.scrollHeight;
 				followRef.current = onWroteBottom(followRef.current, Date.now());
 			} else if (el2) {
@@ -1824,7 +1833,7 @@ export function MessageList({
 	const totalSize = virtualizer.getTotalSize();
 	useLayoutEffect(() => {
 		const el = scrollRef.current;
-		if (el && shouldFollow(followRef.current)) {
+		if (el && shouldFollow(followRef.current) && !isAnnotating(el)) {
 			el.scrollTop = el.scrollHeight;
 			followRef.current = onWroteBottom(followRef.current, Date.now());
 		}

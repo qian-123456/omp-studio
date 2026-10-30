@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { confirmDialog } from "../../lib/dialogs";
 import { ensureLive, ResumeCancelledError } from "../../lib/ensureLive";
-import { privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
+import { imageContentsFromPaths, privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
 import { dropEchoesForTexts, restoreTextsToDraft, useLive } from "../../stores/live";
@@ -85,6 +85,18 @@ export async function sendPrompt(
 		);
 		if (!ok) throw new ResumeCancelledError();
 	}
+	// Native image blocks come from the one canonical Rust conversion (png/jpeg/gif/webp, base64).
+	// An unreadable or unsupported file fails the whole send before anything is echoed or sent, so
+	// the caller keeps its draft/images/annotations and the user can fix it and retry.
+	const imagePaths = [...new Set((opts?.images ?? []).map((i) => i.path).filter((p): p is string => !!p))];
+	let imageContent: Awaited<ReturnType<typeof imageContentsFromPaths>> = [];
+	if (imagePaths.length > 0) {
+		try {
+			imageContent = await imageContentsFromPaths(imagePaths);
+		} catch (err) {
+			throw new Error(`图片附件无法发送，请移除或替换后重试：${errMsg(err)}`);
+		}
+	}
 	// Optimistic echo: add before network calls so the user bubble appears
 	// immediately and never arrives after the assistant stream.
 	const steerEcho =
@@ -103,6 +115,7 @@ export async function sendPrompt(
 		}
 		const streaming = useLive.getState().sessions[sessionId]?.streaming === true;
 		const command: Record<string, unknown> = { type: "prompt", message: trimmed };
+		if (imageContent.length > 0) command.images = imageContent;
 		if (streaming) {
 			command.streamingBehavior = opts?.steer ? "steer" : "followUp";
 		}

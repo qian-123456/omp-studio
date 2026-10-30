@@ -5,6 +5,7 @@ import {
 	Folder,
 	GitBranch,
 	MessageSquare,
+	NotebookPen,
 	PanelRightClose,
 	SquareTerminal,
 } from "lucide-react";
@@ -42,6 +43,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 		{ id: "services", icon: Cpu, iconColor: "text-purple-400" },
 		{ id: "heatmap", icon: Coins, iconColor: "text-amber-400" },
 		{ id: "terminal", icon: SquareTerminal, iconColor: "text-emerald-400" },
+		{ id: "plan", icon: NotebookPen, iconColor: "text-amber-400" },
 	];
 
 	return (

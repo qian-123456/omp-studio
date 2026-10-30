@@ -40,7 +40,7 @@ fn err(code: StatusCode, msg: &str) -> ApiError {
 }
 
 /// MIME type by magic bytes (`None` when not one of the four allowed formats).
-fn sniff(bytes: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
         Some("image/png")
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {

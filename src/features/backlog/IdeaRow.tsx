@@ -112,20 +112,31 @@ export function IdeaRow(p: IdeaRowProps) {
 									onToggle={() => setExpanded((v) => !v)}
 								/>
 							</div>
-							{phase !== "trash" && !p.selecting && (
+							{phase !== "trash" && (
 								<span className="pointer-events-none absolute -top-0.5 right-0 flex items-center gap-2 rounded-full border border-[var(--border-divider)] bg-[var(--bg-panel)]/80 px-1.5 opacity-0 shadow-sm backdrop-blur-md transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
-									<button type="button" onClick={p.onStartEdit} className={ICON_BTN} title={t("common.edit")} aria-label={t("common.edit")}>
-										<Pencil className="h-3.5 w-3.5" />
-									</button>
 									<button
 										type="button"
-										onClick={() => void deleteIdeas(id)}
-										className={`${ICON_BTN} hover:text-[var(--status-error)]`}
-										title={t("common.delete")}
-										aria-label={t("common.delete")}
+										onClick={(e) => {
+											e.stopPropagation();
+											p.onStartEdit();
+										}}
+										className={ICON_BTN}
+										title={t("common.edit")}
+										aria-label={t("common.edit")}
 									>
-										<Trash2 className="h-3.5 w-3.5" />
+										<Pencil className="h-3.5 w-3.5" />
 									</button>
+									{!p.selecting && (
+										<button
+											type="button"
+											onClick={() => void deleteIdeas(id)}
+											className={`${ICON_BTN} hover:text-[var(--status-error)]`}
+											title={t("common.delete")}
+											aria-label={t("common.delete")}
+										>
+											<Trash2 className="h-3.5 w-3.5" />
+										</button>
+									)}
 								</span>
 							)}
 						</div>

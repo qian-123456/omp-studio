@@ -17,6 +17,7 @@ import { maskKey } from "./envparse";
 import { insecureHttpWarning } from "./httpWarning";
 import { KeyModeRadio } from "./KeyModeRadio";
 import { ModelPickerModal } from "./ModelPickerModal";
+import type { ModelCategory } from "./modelClass";
 import { type ModelRow, modelEntriesToRows, rowsToModelEntries } from "./modelEntry";
 import { KNOWN_APIS, PROVIDER_PRESETS } from "./presets";
 import { useProviders } from "./store";
@@ -29,6 +30,8 @@ export type ProviderDialogTarget =
 interface Props {
 	target: ProviderDialogTarget;
 	onClose: () => void;
+	/** Which tab the "fetch models" picker opens on (the other-model panel opens on "other"). */
+	pickerCategory?: ModelCategory;
 }
 
 const OTHER_API = "__other__";
@@ -41,7 +44,7 @@ const cellCls =
 const labelCls = "block text-xs font-medium text-neutral-200";
 const hintCls = "mt-0.5 text-[11px] text-neutral-400";
 
-export function ProviderDialog({ target, onClose }: Props) {
+export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Props) {
 	const { t } = useT();
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const rows = useProviders((s) => s.rows);
@@ -900,6 +903,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 			{discoveredModels && (
 				<ModelPickerModal
 					models={discoveredModels}
+					providerId={editing?.id ?? null}
+					initialCategory={pickerCategory}
 					existingModelIds={new Set(modelRows.map((r) => r.id.trim()).filter(Boolean))}
 					onClose={() => setDiscoveredModels(null)}
 					onAppend={(ids) => replaceModelRows(ids, true)}

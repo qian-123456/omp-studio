@@ -6,7 +6,7 @@
  */
 import clsx from "clsx";
 import { AlertCircle, Loader2, Send, Settings as SettingsIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyButton } from "../../components/CopyButton";
 import { isComposing } from "../../lib/hooks";
 import type { SessionMeta, TranscriptItem } from "../../lib/contracts";
@@ -18,12 +18,17 @@ import { useT, tNow } from "../../stores/language";
 import { type DiagnosticLens, type DiagnosticPrescription, distillSessionSkeleton } from "./distribution";
 import { useDoctor } from "./doctorStore";
 
-const LENS_KEYS: { value: DiagnosticLens; labelKey: string; hintKey: string }[] = [
+const PRESET_LENS_KEYS: { value: DiagnosticLens; labelKey: string; hintKey: string }[] = [
 	{ value: "cost", labelKey: "doctor.lensCostLabel", hintKey: "doctor.lensCostHint" },
 	{ value: "prompt", labelKey: "doctor.lensPromptLabel", hintKey: "doctor.lensPromptHint" },
 	{ value: "quality", labelKey: "doctor.lensQualityLabel", hintKey: "doctor.lensQualityHint" },
-	{ value: "freeform", labelKey: "doctor.lensFreeformLabel", hintKey: "doctor.lensFreeformHint" },
 ];
+
+/** Restore the preset lenses of the last run; a question-only run restores an empty selection. */
+function presetLenses(saved: DiagnosticLens[] | undefined): DiagnosticLens[] {
+	if (!saved || saved.length === 0) return ["cost"];
+	return saved.filter((l) => l !== "freeform");
+}
 
 const CARD = "rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3";
 
@@ -50,8 +55,15 @@ export function DoctorView({
 	const state = useDoctor((s) => s.bySession[sessionId]);
 	const settings = useSettings((s) => s.settings);
 	const doctorModel = settings?.doctorModel || "smol";
-	const [lens, setLens] = useState<DiagnosticLens>(state?.lens ?? "cost");
+	const [selectedLenses, setSelectedLenses] = useState<DiagnosticLens[]>(() => presetLenses(state?.lenses));
 	const [question, setQuestion] = useState("");
+	const lastSession = useRef(sessionId);
+	useEffect(() => {
+		if (lastSession.current === sessionId) return;
+		lastSession.current = sessionId;
+		setSelectedLenses(presetLenses(useDoctor.getState().bySession[sessionId]?.lenses));
+		setQuestion("");
+	}, [sessionId]);
 	const [followUp, setFollowUp] = useState("");
 
 	const localTokens = useMemo(() => {
@@ -68,11 +80,11 @@ export function DoctorView({
 	const running = state?.status === "running";
 	const result = state?.result ?? null;
 	const thread = state?.thread ?? [];
-	const canStart = !running && (lens !== "freeform" || question.trim().length > 0);
+	const canStart = !running && (selectedLenses.length > 0 || question.trim().length > 0);
 
 	const start = () => {
 		if (!canStart) return;
-		void useDoctor.getState().runDiagnosis(sessionId, lens, lens === "freeform" ? question.trim() : undefined);
+		void useDoctor.getState().runDiagnosis(sessionId, selectedLenses, question.trim() || undefined);
 	};
 	const sendFollowUp = () => {
 		const q = followUp.trim();
@@ -87,33 +99,41 @@ export function DoctorView({
 			<div className={CARD}>
 				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">{t("doctor.selectLens")}</div>
 				<div className="grid grid-cols-2 gap-1.5">
-					{LENS_KEYS.map((l) => (
-						<button
-							key={l.value}
-							type="button"
-							title={t(l.hintKey)}
-							onClick={() => setLens(l.value)}
-							className={clsx(
-								"rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all",
-								lens === l.value
-									? "border-[var(--accent)] bg-[var(--accent)]/10 text-neutral-100"
-									: "border-[var(--border)] text-neutral-400 hover:bg-[var(--bg-hover)]",
-							)}
-						>
-							{t(l.labelKey)}
-						</button>
-					))}
+					{PRESET_LENS_KEYS.map((l) => {
+						const active = selectedLenses.includes(l.value);
+						return (
+							<button
+								key={l.value}
+								type="button"
+								role="checkbox"
+								aria-checked={active}
+								title={t(l.hintKey)}
+								onClick={() =>
+									setSelectedLenses((cur) => (cur.includes(l.value) ? cur.filter((x) => x !== l.value) : [...cur, l.value]))
+								}
+								className={clsx(
+									"rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all",
+									active
+										? "border-[var(--accent)] bg-[var(--accent)]/10 text-neutral-100"
+										: "border-[var(--border)] text-neutral-400 hover:bg-[var(--bg-hover)]",
+								)}
+							>
+								<span className="mr-1">{active ? "☑" : "☐"}</span>
+								{t(l.labelKey)}
+							</button>
+						);
+					})}
 				</div>
-				<div className="mt-1.5 text-[10px] text-neutral-500">{t(LENS_KEYS.find((l) => l.value === lens)?.hintKey ?? "")}</div>
-				{lens === "freeform" && (
-					<textarea
-						value={question}
-						onChange={(e) => setQuestion(e.target.value)}
-						placeholder={t("doctor.freeformPlaceholder")}
-						rows={3}
-						className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 text-[11px] text-neutral-200 outline-none focus:border-[var(--accent)]"
-					/>
-				)}
+				<div className="mt-1.5 text-[10px] text-neutral-500">
+					{selectedLenses.map((l) => t(PRESET_LENS_KEYS.find((k) => k.value === l)?.hintKey ?? "")).filter(Boolean).join(" · ")}
+				</div>
+				<textarea
+					value={question}
+					onChange={(e) => setQuestion(e.target.value)}
+					placeholder={t("doctor.freeformPlaceholder")}
+					rows={3}
+					className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 text-[11px] text-neutral-200 outline-none focus:border-[var(--accent)]"
+				/>
 
 				<div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[10px]">
 					<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-emerald-400">

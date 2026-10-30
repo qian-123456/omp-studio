@@ -5,6 +5,7 @@
 import { useEffect, type RefObject } from "react";
 import { MODAL_SELECTOR } from "../../components/FloatingLayer";
 import { isImeActive, startImeWatch } from "../../lib/imeState";
+import { useUi } from "../../stores/ui";
 
 /** Marks a SessionView root so each composer only claims keys typed in its own view. */
 export const SESSION_VIEW_ATTR = "data-session-view";
@@ -67,8 +68,24 @@ export function ownsTarget(target: Element | null, ta: HTMLTextAreaElement, comp
 	const targetView = target?.closest(`[${SESSION_VIEW_ATTR}]`) ?? null;
 	if (targetView) return targetView === ta.closest(`[${SESSION_VIEW_ATTR}]`);
 	const lastView = lastReadView?.isConnected ? lastReadView : null;
-	return lastView ? lastView === ta.closest(`[${SESSION_VIEW_ATTR}]`) : !compact;
+	if (lastView) return lastView === ta.closest(`[${SESSION_VIEW_ATTR}]`);
+	// No view read yet: with the side-chat panel in front and its input mounted, keys belong to it.
+	const ui = useUi.getState();
+	const sideOpen = ui.rightOpen && ui.rightTab === "sidechat" && hasVisibleCompactComposer();
+	return sideOpen ? compact : !compact;
 }
+
+/** Compact (side-chat) composer textareas currently mounted. */
+const compactTextareas = new Set<RefObject<HTMLTextAreaElement | null>>();
+
+function hasVisibleCompactComposer(): boolean {
+	for (const ref of compactTextareas) {
+		const el = ref.current;
+		if (el?.isConnected && !el.disabled && (typeof el.checkVisibility !== "function" || el.checkVisibility())) return true;
+	}
+	return false;
+}
+
 
 /** Session view the user last clicked/scrolled in (null = outside any, e.g. sidebar).
  * Keys typed with no focus target belong to it, so reading the side chat then typing
@@ -95,11 +112,13 @@ export function useTypeToFocus(taRef: RefObject<HTMLTextAreaElement | null>, com
 			ta.setSelectionRange(ta.value.length, ta.value.length);
 		};
 		startImeWatch();
+		if (compact) compactTextareas.add(taRef);
 		const opts = { capture: true, passive: true } as const;
 		const reading = ["pointerdown", "wheel", "touchstart", "touchmove"] as const;
 		for (const n of reading) window.addEventListener(n, trackReading, opts);
 		window.addEventListener("keydown", onKey);
 		return () => {
+			compactTextareas.delete(taRef);
 			for (const n of reading) window.removeEventListener(n, trackReading, opts);
 			window.removeEventListener("keydown", onKey);
 		};

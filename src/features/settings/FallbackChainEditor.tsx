@@ -8,11 +8,10 @@
 import { Check, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { tNow, useT } from "../../stores/language";
-import { ModelSelect } from "../../components/ModelSelect";
+import { ModelSelect, type ModelExtraOption } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
 import { errMsg } from "../../lib/dialogs";
-import { isComposing } from "../../lib/hooks";
 import { ompConfigSet } from "../../lib/ipc";
 import { resolveThinkingLevels, toModelKey, type ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
@@ -70,27 +69,29 @@ export interface FallbackChainEditorProps {
 	emptyTitle: string;
 }
 
-/** One chain entry row: kind chip, raw text, thinking level picker, move/remove. */
+/** One chain entry row: kind chip, two-pane model picker (models, @roles, wildcards), thinking picker, move/remove. */
 function EntryRow({
 	index,
 	count,
 	value,
 	catalog,
+	models,
+	roleExtras,
 	busy,
 	onChange,
 	onMove,
 	onRemove,
-	onEnter,
 }: {
 	index: number;
 	count: number;
 	value: string;
 	catalog: Map<string, ModelOption>;
+	models: ModelOption[];
+	roleExtras: ModelExtraOption[];
 	busy: boolean;
 	onChange: (v: string) => void;
 	onMove: (delta: number) => void;
 	onRemove: () => void;
-	onEnter: () => void;
 }) {
 	const { t } = useT();
 	const { selector, level } = splitChainEntry(value);
@@ -132,22 +133,24 @@ function EntryRow({
 				{value.trim() !== "" && (
 					<Chip tone={chip.tone}>{chip.label}</Chip>
 				)}
-				<input
-					type="text"
-					value={selector}
-					disabled={busy}
-					onChange={(e) => handleSelectorChange(e.target.value)}
-					onKeyDown={(e) => {
-						if (isComposing(e)) return;
-						if (e.key === "Enter") {
-							e.preventDefault();
-							onEnter();
-						}
-					}}
-					spellCheck={false}
-					placeholder={t("settingsModels.chainInputPlaceholder")}
-					className={`min-w-0 flex-1 font-mono ${SMALL_INPUT}`}
-				/>
+				<div className="min-w-0 flex-1">
+					<ModelSelect
+						disabled={busy}
+						closeOnSelect
+						allowCustom
+						direction="down"
+						align="start"
+						widthClass="w-[380px]"
+						label={selector || t("settingsModels.chainInputPlaceholder")}
+						buttonClass={`${PICKER_BUTTON_CLASS} ${selector ? "font-mono" : "italic text-[var(--text-muted)]"}`}
+						models={models}
+						extras={roleExtras}
+						currentValue={selector}
+						onSelect={(v) => {
+							if (v) handleSelectorChange(v);
+						}}
+					/>
+				</div>
 				{!error && levels.length > 0 && (
 					<label className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-dim)]">
 						<span className="whitespace-nowrap">{t("settingsModels.thinkingIntensityLabel")}</span>
@@ -216,6 +219,7 @@ export function FallbackChainEditor({
 	const catalog = useMemo(() => new Map(models.map((m) => [toModelKey(m.provider, m.id), m])), [models]);
 	const providers = useMemo(() => [...new Set(models.map((m) => m.provider))].sort(), [models]);
 	const addableRoles = useMemo(() => roleIds.filter((r) => r !== chainKey), [roleIds, chainKey]);
+	const roleExtras = useMemo(() => addableRoles.map((r) => ({ value: `@${r}`, label: `@${r}` })), [addableRoles]);
 
 	// Blank rows are dropped on apply, so they neither count as changes nor as errors.
 	const cleaned = items.map((x) => x.trim()).filter((x) => x !== "");
@@ -284,11 +288,12 @@ export function FallbackChainEditor({
 					count={items.length}
 					value={item}
 					catalog={catalog}
+					models={models}
+					roleExtras={roleExtras}
 					busy={busy}
 					onChange={(v) => setItems(items.map((x, j) => (j === i ? v : x)))}
 					onMove={(d) => move(i, d)}
 					onRemove={() => setItems(items.filter((_, j) => j !== i))}
-					onEnter={() => void apply()}
 				/>
 			))}
 

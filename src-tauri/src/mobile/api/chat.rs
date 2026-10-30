@@ -342,13 +342,13 @@ fn check_upload_size(len: usize) -> Result<(), ApiError> {
 }
 
 #[derive(Deserialize)]
-struct ImageIn {
-    mime: String,
-    data: String,
+pub(crate) struct ImageIn {
+    pub(crate) mime: String,
+    pub(crate) data: String,
 }
 
 /// Validate images and convert to omp `ImageContent` blocks.
-fn build_images(images: &[ImageIn]) -> Result<Vec<Value>, ApiError> {
+pub(crate) fn build_images(images: &[ImageIn]) -> Result<Vec<Value>, ApiError> {
     let mut out = Vec::with_capacity(images.len());
     for img in images {
         let mime = img.mime.trim().to_ascii_lowercase();
@@ -1240,7 +1240,7 @@ async fn slash<B: Backend>(
             let info = crate::rpc::sidechat::create(&st, &id, None)
                 .await
                 .map_err(bad_gateway)?;
-            crate::rpc::sidechat::ask(&st, &info.session_id, args.to_string(), None)
+            crate::rpc::sidechat::ask(&st, &info.session_id, args.to_string(), None, None, None)
                 .await
                 .map_err(bad_gateway)?;
             ok(json!({"sessionId": info.session_id}))

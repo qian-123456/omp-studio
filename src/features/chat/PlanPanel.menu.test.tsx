@@ -10,12 +10,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import type { PlanStatus } from "./plan/planStatus";
+import { approvePlan } from "./plan/planActions";
 import { PlanPanel } from "./PlanPanel";
 
 vi.mock("./plan/planActions", () => ({
 	approvePlan: vi.fn(async () => {}),
 	runPlanAction: vi.fn(async () => {}),
 }));
+vi.mock("../../components/ModelSelect", () => ({
+	ModelMenuContent: ({ onSelect }: { onSelect: (key: string) => void }) => (
+		<button type="button" onClick={() => onSelect("p/m")}>
+			pick p/m
+		</button>
+	),
+}));
+vi.mock("../../stores/modelCatalog", () => ({
+	useModelOptions: () => CATALOG,
+}));
+const CATALOG = vi.hoisted(() => [{ provider: "p", id: "m", name: "Model M", thinking: ["low", "high"] }]);
 
 const SID = "plan-menu-1";
 
@@ -108,5 +120,28 @@ describe("PlanPanel approval dock menu", () => {
 		press(radios[1]);
 		expect(menu()).not.toBeNull();
 		expect(radios[1].getAttribute("aria-checked")).toBe("true");
+	});
+
+	it("picks a free model plus a thinking level and approves with that direct spec", async () => {
+		press(trigger());
+		press(screen.getByRole("radio", { name: "自选模型" }));
+		press(screen.getByRole("button", { name: "pick p/m" }));
+		// The picker closes and the model's own thinking levels appear.
+		expect(screen.queryByRole("button", { name: "pick p/m" })).toBeNull();
+		const levels = screen.getAllByRole("radio", { name: /^(auto|low|high|off)$/ }).map((el) => el.textContent);
+		expect(levels).toEqual(["auto", "off", "low", "high"]);
+		press(screen.getByRole("radio", { name: "high" }));
+		expect(trigger().textContent).toContain("Model M");
+		// A preset role goes back to role semantics.
+		press(screen.getByRole("radio", { name: "smol" }));
+		expect(trigger().textContent).not.toContain("Model M");
+		press(screen.getByRole("radio", { name: "自选模型" }));
+		press(screen.getByRole("button", { name: "pick p/m" }));
+		press(screen.getByRole("radio", { name: "high" }));
+		press(trigger());
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "批准并执行" }));
+		});
+		expect(vi.mocked(approvePlan)).toHaveBeenLastCalledWith(SID, expect.anything(), "execute", "p/m:high");
 	});
 });

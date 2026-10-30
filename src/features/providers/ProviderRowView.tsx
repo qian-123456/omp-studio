@@ -11,11 +11,13 @@ import {
 	Trash2,
 	TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProviderRow } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { tNow, useT } from "../../stores/language";
+import { useModelCatalog } from "../../stores/modelCatalog";
+import { catalogKeys, classifyModel, isProbeFailed, type ModelCategory } from "./modelClass";
 import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 import { Switch } from "../settings/Switch";
 import {
@@ -51,9 +53,11 @@ interface Props {
 	onEdit: () => void;
 	onSetKey: () => void;
 	onOauth: () => void;
+	/** Which model kinds the expanded list shows; "all" keeps the unfiltered legacy view. */
+	category?: ModelCategory | "all";
 }
 
-export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKey, onOauth }: Props) {
+export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKey, onOauth, category = "all" }: Props) {
 	const { t } = useT();
 	const encrypt = useProviders((s) => s.encrypt);
 	const decrypt = useProviders((s) => s.decrypt);
@@ -67,6 +71,9 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 	const [busy, setBusy] = useState(false);
 	const [note, setNote] = useState(false);
 	const [showAllModels, setShowAllModels] = useState(false);
+	const [probingAll, setProbingAll] = useState(false);
+	const catalog = useModelCatalog((s) => s.models);
+	const catalogSet = useMemo(() => catalogKeys(catalog), [catalog]);
 
 	const key = describeKey(row);
 	const badge = authBadge(row);
@@ -156,10 +163,34 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 	);
 
 	// Sort a display-only copy: provider configuration order remains unchanged for editors and persistence.
-	const sourceModels = [...row.models].sort((a, b) => {
-		const byCaseInsensitiveId = modelEntryId(a).localeCompare(modelEntryId(b), undefined, { sensitivity: "base" });
-		return byCaseInsensitiveId || modelEntryId(a).localeCompare(modelEntryId(b));
-	});
+	// Probe-failed (empty channel) models sink to the bottom but are never hidden.
+	const sourceModels = row.models
+		.filter((entry) => {
+			if (category === "all") return true;
+			const mid = modelEntryId(entry);
+			return classifyModel({ id: mid, inCatalog: catalogSet.has(`${row.id}::${mid}`) }) === category;
+		})
+		.sort((a, b) => {
+			const failed = (e: typeof a) => (isProbeFailed(modelTests[`${row.id}::${modelEntryId(e)}`]) ? 1 : 0);
+			const byFailed = failed(a) - failed(b);
+			if (byFailed) return byFailed;
+			const byCaseInsensitiveId = modelEntryId(a).localeCompare(modelEntryId(b), undefined, { sensitivity: "base" });
+			return byCaseInsensitiveId || modelEntryId(a).localeCompare(modelEntryId(b));
+		});
+	const handleProbeAll = async () => {
+		if (probingAll) return;
+		setProbingAll(true);
+		const ids = sourceModels.map(modelEntryId);
+		let cursor = 0;
+		const worker = async () => {
+			while (cursor < ids.length) await runModelTest(row.id, ids[cursor++]);
+		};
+		try {
+			await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+		} finally {
+			setProbingAll(false);
+		}
+	};
 	const visibleModels = showAllModels ? sourceModels : sourceModels.slice(0, MODELS_COLLAPSED);
 	const canDelete = row.origin === "custom" || row.origin === "override";
 	const testReason = row.testable ? null : t("providers.cannotTestReason");
@@ -311,6 +342,18 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 							<Pencil className="h-3 w-3" />
 							<span>{t("common.edit")}</span>
 						</button>
+						{sourceModels.length > 0 && (
+							<button
+								type="button"
+								onClick={() => void handleProbeAll()}
+								disabled={!row.testable || probingAll}
+								title={testReason ?? t("providers.probeAllRowTitle")}
+								className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
+							>
+								{probingAll ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+								<span>{t("providers.probeAllBtn")}</span>
+							</button>
+						)}
 						{canDelete && (
 							<button
 								type="button"
@@ -367,6 +410,14 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 													)}
 													<span>{t("providers.testBtn")}</span>
 												</button>
+												{isProbeFailed(modelTest) && (
+													<span
+														className="shrink-0 whitespace-nowrap rounded border border-rose-800/40 bg-rose-950/40 px-1.5 py-0.5 text-[10px] font-medium text-rose-300"
+														title={modelTest?.state === "done" ? modelTest.result.detail : undefined}
+													>
+														{t("providers.unavailableBadge")}
+													</span>
+												)}
 											</div>
 											{(spec.contextWindow != null || spec.maxTokens != null) && (
 												<div className="flex flex-wrap items-center gap-1 text-[10px]">

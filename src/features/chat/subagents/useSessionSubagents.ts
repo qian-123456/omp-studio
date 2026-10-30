@@ -70,9 +70,13 @@ export function mergeDiskAndLive(
 		const diskStatus = subagents[id]?.status;
 		const isDiskTerminal = isTerminalStatus(diskStatus);
 		// Terminal row statuses cannot be revived by stale non-terminal data.
-		const nextStatus = isDiskTerminal && !isTerminalStatus(info.status)
-			? diskStatus!
-			: info.status;
+		// Terminal status always wins: live terminal beats stale disk "running",
+		// and a terminal disk status is not revived by non-terminal live data.
+		const nextStatus = isTerminalStatus(info.status)
+			? info.status
+			: isDiskTerminal
+				? diskStatus!
+				: info.status;
 		subagents[id] = {
 			...subagents[id],
 			...info,
@@ -97,7 +101,12 @@ export function mergeDiskAndLive(
 			requests: prevRow?.requests ?? (p?.requests ? p.requests : undefined),
 			tokens: prevRow?.tokens ?? (p?.tokens ? p.tokens : undefined),
 			cost: prevRow?.cost ?? (p?.cost && p.cost > 0 ? p.cost : undefined),
-			durationMs: prevRow?.durationMs ?? (p?.durationMs && p.durationMs > 0 ? p.durationMs : undefined),
+			durationMs:
+				isTerminalStatus(nextStatus) && p?.durationMs && p.durationMs > 0
+					? p.durationMs
+					: (prevRow?.durationMs ?? (p?.durationMs && p.durationMs > 0 ? p.durationMs : undefined)),
+			startedAt: prevRow?.startedAt,
+			endedAt: prevRow?.endedAt,
 			currentTool: nextStatus === "running" ? p?.currentTool : undefined,
 			currentToolDetail: nextStatus === "running" ? (p?.currentToolIntent ?? p?.currentToolArgsKey) : undefined,
 			recentTools: p?.recentTools,
@@ -105,7 +114,12 @@ export function mergeDiskAndLive(
 	});
 	// Queued agents exist only in the dispatching task call's args/progress
 	// until omp starts them: surface those not yet tracked as pending.
-	const addPending = (toolCallId: string, args: unknown, details: unknown) => {
+	const addPending = (
+		toolCallId: string,
+		args: unknown,
+		details: unknown,
+		allowPending: boolean,
+	) => {
 		const merged = mergeAgents({
 			args,
 			details: asTaskDetails(details),
@@ -114,8 +128,15 @@ export function mergeDiskAndLive(
 			toolCallId,
 		});
 		for (const r of merged.rows) {
-			if (r.status !== "pending" || subagents[r.id]) continue;
-			const key = rows[r.id] ? `${toolCallId}:${r.id}` : r.id;
+			const existing = rows[r.id];
+			if (existing) {
+				// Carry the parent task call's context / solutionSpace onto rows
+				// tracked from disk or live frames.
+				if (r.sharedContext && !existing.sharedContext) existing.sharedContext = r.sharedContext;
+				if (r.solutionSpace && !existing.solutionSpace) existing.solutionSpace = r.solutionSpace;
+			}
+			if (!allowPending || r.status !== "pending" || subagents[r.id]) continue;
+			const key = existing ? `${toolCallId}:${r.id}` : r.id;
 			subagents[key] = {
 				status: "pending",
 				agent: r.agent,
@@ -127,8 +148,8 @@ export function mergeDiskAndLive(
 		}
 	};
 	for (const tool of Object.values(tools ?? {})) {
-		if (tool.status !== "running" || (tool.toolName !== "task" && tool.toolName !== "agent")) continue;
-		addPending(tool.toolCallId, tool.args, tool.details);
+		if (tool.toolName !== "task" && tool.toolName !== "agent") continue;
+		addPending(tool.toolCallId, tool.args, tool.details, tool.status === "running");
 	}
 	// A task call still being streamed by the model has no tool entry yet
 	// (its args can take minutes to arrive): its queued agents already count.
@@ -139,7 +160,7 @@ export function mergeDiskAndLive(
 			if (o.name !== "task" && o.name !== "agent") continue;
 			const id = String(o.id ?? "");
 			if (!id || tools?.[id]) continue;
-			addPending(id, o.input ?? o.arguments, null);
+			addPending(id, o.input ?? o.arguments, null, true);
 		}
 	}
 	return { subagents, rows };

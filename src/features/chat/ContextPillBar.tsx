@@ -585,6 +585,9 @@ export function ContextPillBar({
 		};
 	}, [cwd, meta?.git?.branch, nonce, isDraft, sessionId]);
 
+	// A side chat inherits its parent's workspace; the bar (and its divider line) would only add a stray rule above the composer.
+	if (meta?.kind === "side" || (meta?.forkDepth ?? 0) > 0) return null;
+
 	return (
 		<div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
 			<button

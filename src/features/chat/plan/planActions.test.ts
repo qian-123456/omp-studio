@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateSessionResult } from "../../../lib/createSession";
-import { approvePlan } from "./planActions";
+import { emptySessionLive, useLive } from "../../../stores/live";
+import { approvePlan, runPlanAction } from "./planActions";
 
 const h = vi.hoisted(() => ({
 	createSession: vi.fn(),
+	ensureLive: vi.fn(),
 	rpcSend: vi.fn(),
 	upsert: vi.fn(),
 	selectSession: vi.fn(),
@@ -12,8 +14,9 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("../../../lib/createSession", () => ({ createSession: h.createSession }));
 vi.mock("../../../lib/ipc", () => ({ rpcSend: h.rpcSend }));
+vi.mock("../../../lib/ensureLive", () => ({ ensureLive: h.ensureLive }));
 vi.mock("../../../stores/sessions", () => ({ useSessions: { getState: () => ({ sessions: h.sessions, upsert: h.upsert }) } }));
-vi.mock("../../../stores/ui", () => ({ useUi: { getState: () => ({ selectSession: h.selectSession }) } }));
+vi.mock("../../../stores/ui", () => ({ useUi: { getState: () => ({ selectSession: h.selectSession, setRightTab: vi.fn() }) } }));
 
 function destination(id: string): CreateSessionResult {
 	return {
@@ -49,6 +52,36 @@ beforeEach(() => {
 	});
 	h.upsert.mockImplementation(() => h.events.push("upsert"));
 	h.selectSession.mockImplementation(() => h.events.push("select"));
+});
+
+describe("plan actions on a cold session", () => {
+	it("resumes the session before sending the command", async () => {
+		await runPlanAction(source, "enable");
+		expect(h.ensureLive).toHaveBeenCalledWith(source);
+		expect(h.ensureLive.mock.invocationCallOrder[0]).toBeLessThan(h.rpcSend.mock.invocationCallOrder[0]);
+		expect(h.rpcSend).toHaveBeenCalledWith(source, { type: "prompt", message: "/plan-action enable" });
+	});
+
+	it("sends nothing and surfaces the error when the resume fails", async () => {
+		h.ensureLive.mockRejectedValueOnce(new Error("resume failed"));
+		await expect(runPlanAction(source, "enable")).rejects.toThrow("resume failed");
+		expect(h.rpcSend).not.toHaveBeenCalled();
+	});
+
+	it("does not resume a live session", async () => {
+		useLive.setState({ sessions: { [source]: { ...emptySessionLive(), alive: true } } });
+		await runPlanAction(source, "status");
+		expect(h.ensureLive).not.toHaveBeenCalled();
+		useLive.setState({ sessions: {} });
+	});
+
+	it("a failed source resume keeps approval retryable without a second destination run", async () => {
+		h.ensureLive.mockRejectedValueOnce(new Error("resume failed"));
+		await expect(approvePlan(source, plan, "execute", null)).rejects.toThrow("resume failed");
+		await approvePlan(source, plan, "execute", null);
+		expect(h.createSession).toHaveBeenCalledTimes(1);
+		expect(h.rpcSend.mock.calls.filter(([id]) => id === next)).toHaveLength(1);
+	});
 });
 
 describe("approvePlan fresh execution", () => {

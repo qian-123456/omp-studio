@@ -9,6 +9,9 @@ import type {
 	ProviderTestResult,
 	ProviderUpsert,
 } from "../../lib/contracts";
+import { invalidateWarmDrafts } from "../sessions/draftSession";
+import { markLiveSessionsStale } from "../sessions/modelRegistrySync";
+import { useModelCatalog } from "../../stores/modelCatalog";
 import {
 	providerSaveBuiltin,
 	providerDecrypt,
@@ -60,6 +63,17 @@ const failedTest = (e: unknown): TestStatus => ({
 	state: "done",
 	result: { ok: false, latencyMs: 0, detail: String(e) },
 });
+
+/**
+ * models.yml changed: refresh the catalog, drop blank prewarmed drafts, and mark live sessions
+ * stale. Stale sessions are restarted lazily when the user picks a model for them; nothing is
+ * restarted here.
+ */
+async function syncModelConfig(): Promise<void> {
+	await useModelCatalog.getState().refresh().catch(() => {});
+	await invalidateWarmDrafts().catch(() => {});
+	await markLiveSessionsStale().catch(() => {});
+}
 
 export const useProviders = create<ProvidersState>((set, get) => {
 	/** Replace a row in place (or append when new), keeping the list sorted by id. */
@@ -117,12 +131,14 @@ export const useProviders = create<ProvidersState>((set, get) => {
 		upsert: async (input, apiKey, keyMode) => {
 			const row = await providerUpsert(input, apiKey, keyMode);
 			applyRow(row, input.originalId ?? row.id);
+			await syncModelConfig();
 			return row;
 		},
 
 		saveBuiltin: async (input, apiKey, keyMode) => {
 			const row = await providerSaveBuiltin(input, apiKey, keyMode);
 			applyRow(row, input.id);
+			await syncModelConfig();
 			return row;
 		},
 
@@ -135,6 +151,7 @@ export const useProviders = create<ProvidersState>((set, get) => {
 		remove: async (id) => {
 			await providerDelete(id);
 			await get().load();
+			await syncModelConfig();
 			set((s) => ({
 				tests: Object.fromEntries(Object.entries(s.tests).filter(([key]) => key !== id)),
 				modelTests: Object.fromEntries(

@@ -1049,6 +1049,8 @@ export interface ModelSpec {
 export interface DiscoveredModel {
 	id: string;
 	name?: string | null;
+	/** From the provider's own listing metadata; absent = unknown (fall back to catalog / id heuristics). */
+	kind?: "chat" | "other" | null;
 }
 
 /** A provider model entry: bare id or a spec with per-model limits. */

@@ -52,7 +52,7 @@ export function QuoteBlock({
 }
 
 /** Quote strip: accent bar + muted text clamped to 2 lines, with a visible pill to read the rest. */
-function QuoteStrip({ card, numbered }: { card: QuoteCard; numbered: boolean }) {
+function QuoteStrip({ card }: { card: QuoteCard }) {
 	const { t } = useT();
 	const [expanded, setExpanded] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -60,9 +60,6 @@ function QuoteStrip({ card, numbered }: { card: QuoteCard; numbered: boolean }) 
 	return (
 		<div className="flex min-w-0 flex-col items-start gap-1">
 			<div className="flex w-full min-w-0 gap-2 border-l-2 border-[var(--accent)] pl-2 text-[12px] leading-relaxed text-[var(--text-60)]">
-				{numbered && (
-					<span className="shrink-0 whitespace-nowrap tabular-nums text-[var(--text-40)]">{card.n}</span>
-				)}
 				<div className="min-w-0 flex-1">
 					{card.label && <div className="break-words text-[11px] text-[var(--text-40)]">{card.label}</div>}
 					{card.quote && (
@@ -96,6 +93,7 @@ function QuoteStrip({ card, numbered }: { card: QuoteCard; numbered: boolean }) 
 
 /** Quote/note pairs at the top of a sent user bubble; numbers only when there are several. */
 export function QuoteCards({ cards }: { cards: readonly QuoteCard[] }) {
+	const numbered = cards.length > 1;
 	return (
 		<div className="flex flex-col gap-3 text-[13px] leading-5">
 			{cards.map((c, i) => (
@@ -103,14 +101,21 @@ export function QuoteCards({ cards }: { cards: readonly QuoteCard[] }) {
 					key={c.n}
 					data-testid="user-quote-card"
 					className={clsx(
-						"flex flex-col gap-1.5",
+						"flex gap-2",
 						i > 0 && "border-t border-[var(--ghost-hover)] pt-3",
 					)}
 				>
-					{(c.quote || c.label) && <QuoteStrip card={c} numbered={cards.length > 1} />}
-					{c.comment && (
-						<div className="whitespace-pre-wrap break-words pl-2.5 text-[var(--text)]">{c.comment}</div>
+					{/* Number sits in its own column so quote text and comment share one left edge. */}
+					{numbered && (
+						<span className="shrink-0 whitespace-nowrap pl-0.5 text-[12px] tabular-nums text-[var(--text-40)]">{c.n}</span>
 					)}
+					<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+						{(c.quote || c.label) && <QuoteStrip card={c} />}
+						{c.comment && (
+							// border-l-2 + pl-2 mirrors the quote strip so the comment starts exactly under the quoted text.
+							<div className="whitespace-pre-wrap break-words border-l-2 border-transparent pl-2 text-[var(--text)]">{c.comment}</div>
+						)}
+					</div>
 				</div>
 			))}
 		</div>

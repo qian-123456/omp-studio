@@ -18,6 +18,8 @@ const confirmDialog = vi.fn();
 
 vi.mock("../../lib/ipc", () => ({
 	rpcSend: (...a: unknown[]) => rpcSend(...a),
+	imageContentsFromPaths: async (paths: string[]) =>
+		paths.map(() => ({ type: "image", data: "AAAA", mimeType: "image/png" })),
 	takeoverExternal: vi.fn(),
 	privacyClassify: vi.fn(),
 	privacyMark: vi.fn(),

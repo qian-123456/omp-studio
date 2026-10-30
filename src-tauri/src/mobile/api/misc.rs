@@ -173,9 +173,16 @@ async fn sidechat_create<B: Backend>(
     let info = crate::rpc::sidechat::create(state, &id, body.model)
         .await
         .map_err(gateway)?;
-    crate::rpc::sidechat::ask(state, &info.session_id, body.question, body.selection)
-        .await
-        .map_err(gateway)?;
+    crate::rpc::sidechat::ask(
+        state,
+        &info.session_id,
+        body.question,
+        body.selection,
+        None,
+        None,
+    )
+    .await
+    .map_err(gateway)?;
     to_json(info)
 }
 

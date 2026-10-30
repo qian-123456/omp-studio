@@ -150,6 +150,18 @@ export type UserEcho = TranscriptItem & {
 	anchorId?: string | null;
 };
 
+/** A confirmed mid-session model switch, shown as a divider after `anchorId`. */
+export interface ModelSwitchNotice {
+	id: number;
+	/** `provider/id` of the new model. */
+	model: string;
+	/** Last transcript item when the switch was confirmed; null = head. */
+	anchorId: string | null;
+	ts: number;
+	/** Confirmed while a turn was running: the new model applies from the next request. */
+	pending?: boolean;
+}
+
 /** Compaction / handoff progress shown as a one-row divider in the thread. */
 export type FlowNoticeKind = "compaction" | "handoff";
 export interface FlowNotice {
@@ -232,6 +244,8 @@ export interface SessionLive {
 	liveRequests: LiveRequest[];
 	/** Compaction / handoff dividers, oldest first. */
 	flowNotices: FlowNotice[];
+	/** Client-side 「已切换模型」 dividers until the persisted model_change entry arrives. */
+	modelNotices?: ModelSwitchNotice[];
 	/** Messages omp itself holds back (steer / follow-up); texts only. */
 	ompQueue: OmpQueue;
 	/** Plan-mode state from the plan extension's setStatus frames; absent until one arrives. */
@@ -248,6 +262,7 @@ export const emptySessionLive = (): SessionLive => ({
 	pendingCommand: null,
 	liveRequests: [],
 	flowNotices: [],
+	modelNotices: [],
 	ompQueue: { steering: [], followUp: [] },
 	tools: {},
 	items: [],
@@ -624,6 +639,24 @@ export function archiveRetry(live: SessionLive, now: number): Partial<SessionLiv
 		retryNotices: [],
 		retryFallback: undefined,
 		retryHistory: [...(live.retryHistory ?? []), episode].slice(-MAX_RETRY_EPISODES),
+	};
+}
+
+/** Add a switch notice when `next` differs from the cached state's model. */
+export function noteModelSwitch(live: SessionLive, next: unknown): SessionLive {
+	const to = resolveCurrentModel(next).value;
+	const from = resolveCurrentModel(live.state?.model).value;
+	if (!to || !from || to === from || live.items.length === 0) return live;
+	const anchorId = live.items[live.items.length - 1].id;
+	const notices = live.modelNotices ?? [];
+	const last = notices[notices.length - 1];
+	if (last && last.model === to && last.anchorId === anchorId) return live;
+	return {
+		...live,
+		modelNotices: [
+			...notices,
+			{ id: nextOutputId++, model: to, anchorId, ts: Date.now(), pending: live.streaming || undefined },
+		].slice(-20),
 	};
 }
 
@@ -1298,6 +1331,10 @@ function reduce(
 			if (frame.success !== true) return live;
 			switch (frame.command) {
 				case "get_state": {
+					// The confirmed new model: compare the snapshot omp just returned
+					// against the previous one (a payload-less `model_changed` only
+					// triggers this get_state).
+					const noted = noteModelSwitch(live, data.model);
 					const ompQueue =
 						data.queuedMessages !== undefined
 							? ompQueueFrom(data.queuedMessages)
@@ -1308,7 +1345,7 @@ function reduce(
 						// way the end does — the wake-up / next user turn must not
 						// replay them.
 						return {
-							...live,
+							...noted,
 							state: data,
 							streaming: false,
 							streamingMessage: null,
@@ -1321,7 +1358,7 @@ function reduce(
 							ompQueue,
 						};
 					}
-					return { ...live, state: data, streaming: true, ompQueue };
+					return { ...noted, state: data, streaming: true, ompQueue };
 				}
 				case "get_available_commands":
 					return {
@@ -1331,6 +1368,12 @@ function reduce(
 								? normalizeCommands(data.commands)
 								: live.commands,
 					};
+				case "set_model": {
+					// A successful set_model returns the selected Model: that is the
+					// confirmed switch, applied from the next request on.
+					const noted = noteModelSwitch(live, data);
+					return noted === live ? live : { ...noted, state: { ...(noted.state ?? {}), model: data } };
+				}
 				case "get_subagents": {
 					// Only running agents are listed; finished ones stay client-side.
 					if (!Array.isArray(data.subagents)) return live;
@@ -1601,21 +1644,16 @@ export const useLive = create<LiveState>((set) => ({
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const known = new Set(live.items.map((i) => i.id));
+			const fresh = items.filter((i) => !known.has(i.id));
 			return {
 				sessions: {
 					...s.sessions,
 					[sessionId]: {
 						...live,
-						items: [
-							...live.items,
-							...items.filter((i) => !known.has(i.id)),
-						],
+						items: [...live.items, ...fresh],
 						nextOffset,
 						tailId: tailId ?? null,
-						pendingUserEchoes: reconcileEchoes(
-							live.pendingUserEchoes,
-							items.filter((i) => !known.has(i.id)),
-						),
+						pendingUserEchoes: reconcileEchoes(live.pendingUserEchoes, fresh),
 					},
 				},
 			};

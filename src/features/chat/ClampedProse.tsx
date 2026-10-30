@@ -1,6 +1,8 @@
-/** [B] Interim assistant prose between tool calls, folded to a fixed height
- * when long (with a visible 「展开全文」 pill) so scrolling back through a turn
- * is not dominated by narration. The final answer is never clamped. */
+/** [B] Brief interim assistant prose that only introduces tool work, folded to
+ * a fixed height when it still overflows (with a visible 「展开全文」 pill) so
+ * scrolling back through a turn is not dominated by it. Callers pass only
+ * confirmed brief tool transitions; the final answer, narration, formal or
+ * ambiguous prose are never clamped, and nothing clamps while a turn is active. */
 
 import clsx from "clsx";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
@@ -9,7 +11,14 @@ import { useT } from "../../stores/language";
 /** About 14 lines of body text. */
 const CLAMP_PX = 320;
 
-export function ClampedProse({ children }: { children: ReactNode }) {
+export function ClampedProse({
+	children,
+	streaming = false,
+}: {
+	children: ReactNode;
+	/** While true the prose is never clamped, so its height cannot snap down mid-stream. */
+	streaming?: boolean;
+}) {
 	const { t } = useT();
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const [overflows, setOverflows] = useState(false);
@@ -27,9 +36,9 @@ export function ClampedProse({ children }: { children: ReactNode }) {
 		return () => ro.disconnect();
 	}, []);
 
-	const clamped = overflows && !expanded;
+	const clamped = overflows && !expanded && !streaming;
 	return (
-		<div>
+		<div data-clamped-prose="">
 			<div
 				ref={bodyRef}
 				style={clamped ? { maxHeight: CLAMP_PX } : undefined}
@@ -41,7 +50,7 @@ export function ClampedProse({ children }: { children: ReactNode }) {
 			>
 				{children}
 			</div>
-			{overflows && (
+			{overflows && !streaming && (
 				<button
 					type="button"
 					onClick={() => setExpanded((v) => !v)}

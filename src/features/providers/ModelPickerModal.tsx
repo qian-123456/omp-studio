@@ -1,11 +1,21 @@
+import { Activity, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { SearchInput } from "../../components/SearchInput";
+import { Segmented } from "../../components/Segmented";
 import type { DiscoveredModel } from "../../lib/contracts";
 import { useT } from "../../stores/language";
+import { useModelCatalog } from "../../stores/modelCatalog";
+import { catalogKeys, classifyModel, isProbeFailed, type ModelCategory } from "./modelClass";
+import { useProviders } from "./store";
+
 interface Props {
 	models: DiscoveredModel[];
 	existingModelIds: Set<string>;
+	/** Saved provider id; availability probing needs a persisted provider (null while adding). */
+	providerId?: string | null;
+	/** Tab shown first. */
+	initialCategory?: ModelCategory;
 	onClose: () => void;
 	onAppend: (selectedIds: string[]) => void;
 	onReplace: (selectedIds: string[]) => void;
@@ -14,25 +24,53 @@ interface Props {
 const inputCls =
 	"w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 
+const PROBE_CONCURRENCY = 4;
+
 export function ModelPickerModal({
 	models,
 	existingModelIds,
+	providerId = null,
+	initialCategory = "chat",
 	onClose,
 	onAppend,
 	onReplace,
 }: Props) {
 	const { t } = useT();
+	const modelTests = useProviders((s) => s.modelTests);
+	const runModelTest = useProviders((s) => s.runModelTest);
 	const [search, setSearch] = useState("");
+	const [category, setCategory] = useState<ModelCategory>(initialCategory);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
+	const [probing, setProbing] = useState(false);
+
+	const testOf = (id: string) => (providerId ? modelTests[`${providerId}::${id}`] : undefined);
+
+	const catalog = useModelCatalog((s) => s.models);
+	const categoryOf = useMemo(() => {
+		const keys = catalogKeys(catalog);
+		return (m: DiscoveredModel): ModelCategory =>
+			classifyModel({ id: m.id, kind: m.kind, inCatalog: providerId ? keys.has(`${providerId}::${m.id}`) : false });
+	}, [catalog, providerId]);
+
+	const counts = useMemo(() => {
+		const other = models.filter((m) => categoryOf(m) === "other").length;
+		return { chat: models.length - other, other };
+	}, [models, categoryOf]);
+
 	const filtered = useMemo(() => {
 		const term = search.trim().toLowerCase();
-		if (!term) return models;
-		return models.filter(
-			(m) =>
-				m.id.toLowerCase().includes(term) ||
-				(m.name && m.name.toLowerCase().includes(term)),
-		);
-	}, [models, search]);
+		const inTab = models.filter((m) => categoryOf(m) === category);
+		const matched = term
+			? inTab.filter(
+					(m) =>
+						m.id.toLowerCase().includes(term) ||
+						(m.name && m.name.toLowerCase().includes(term)),
+				)
+			: inTab;
+		// Failed probes sink to the bottom (stable: Array.sort keeps relative order).
+		const failedKey = (id: string) => (providerId && isProbeFailed(modelTests[`${providerId}::${id}`]) ? 1 : 0);
+		return [...matched].sort((a, b) => failedKey(a.id) - failedKey(b.id));
+	}, [models, search, category, modelTests, providerId, categoryOf]);
 
 	const handleToggle = (id: string) => {
 		setSelected((prev) => {
@@ -47,7 +85,11 @@ export function ModelPickerModal({
 	};
 
 	const handleSelectAll = () => {
-		setSelected(new Set(filtered.map((m) => m.id)));
+		setSelected((prev) => {
+			const next = new Set(prev);
+			for (const m of filtered) if (!isProbeFailed(testOf(m.id))) next.add(m.id);
+			return next;
+		});
 	};
 
 	const handleDeselectAll = () => {
@@ -61,6 +103,33 @@ export function ModelPickerModal({
 
 	const handleReplace = () => {
 		onReplace(Array.from(selected));
+	};
+
+	/** Probe every model in the current tab; failures are kept, unchecked and sorted to the bottom. */
+	const handleProbeAll = async () => {
+		if (!providerId || probing) return;
+		setProbing(true);
+		const ids = filtered.map((m) => m.id);
+		let cursor = 0;
+		const worker = async () => {
+			while (cursor < ids.length) {
+				const id = ids[cursor++];
+				await runModelTest(providerId, id);
+				if (isProbeFailed(useProviders.getState().modelTests[`${providerId}::${id}`])) {
+					setSelected((prev) => {
+						if (!prev.has(id)) return prev;
+						const next = new Set(prev);
+						next.delete(id);
+						return next;
+					});
+				}
+			}
+		};
+		try {
+			await Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, ids.length) }, worker));
+		} finally {
+			setProbing(false);
+		}
 	};
 
 	return (
@@ -77,6 +146,28 @@ export function ModelPickerModal({
 						placeholder={t("providers.pickerSearchPlaceholder")}
 						inputClassName={`${inputCls} pl-8 pr-7`}
 					/>
+					<div className="flex items-center justify-between gap-2">
+						<Segmented
+							size="sm"
+							value={category}
+							onChange={setCategory}
+							aria-label={t("providers.pickerTypeAria")}
+							options={[
+								{ value: "chat", label: t("providers.pickerTabChat", { count: counts.chat }) },
+								{ value: "other", label: t("providers.pickerTabOther", { count: counts.other }), title: t("providers.pickerTabOtherTitle") },
+							]}
+						/>
+						<button
+							type="button"
+							onClick={() => void handleProbeAll()}
+							disabled={!providerId || probing || filtered.length === 0}
+							title={providerId ? t("providers.probeAllTitle") : t("providers.probeNeedSaved")}
+							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
+						>
+							{probing ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+							<span>{t("providers.probeAllBtn")}</span>
+						</button>
+					</div>
 
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-2">
@@ -111,6 +202,8 @@ export function ModelPickerModal({
 								{filtered.map((model) => {
 									const isSelected = selected.has(model.id);
 									const isExisting = existingModelIds.has(model.id);
+									const test = testOf(model.id);
+									const failed = isProbeFailed(test);
 									return (
 										<button
 											key={model.id}
@@ -151,10 +244,24 @@ export function ModelPickerModal({
 															{t("providers.pickerAdded")}
 														</span>
 													)}
+													{failed && (
+														<span
+															className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-950/40 text-rose-300 border border-rose-800/40"
+															title={test?.state === "done" ? test.result.detail : undefined}
+														>
+															{t("providers.unavailableBadge")}
+														</span>
+													)}
+													{test?.state === "testing" && <Loader2 size={11} className="animate-spin text-neutral-400" />}
 												</div>
 												{model.name && model.name !== model.id && (
 													<div className="mt-0.5 text-[11px] text-neutral-400 break-all">
 														{model.name}
+													</div>
+												)}
+												{failed && test?.state === "done" && (
+													<div className="mt-0.5 break-words text-[11px] text-rose-400" title={test.result.detail}>
+														{test.result.detail}
 													</div>
 												)}
 											</div>

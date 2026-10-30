@@ -33,6 +33,7 @@ import { RequestStatsLine, TurnSummaryRows } from "./RequestStatsLine";
 import { RetryNoticeRows } from "./RetryNoticeList";
 import type { FallbackInfo, RetryNotice } from "../../stores/retryNotice";
 import type { RequestStat } from "./requestStats";
+import { useValueFrozenWhileAnnotating } from "./annotationActive";
 import {
 	type ActivityGroupKind,
 	activityGroupSummary,
@@ -704,7 +705,7 @@ export function ExecutionDisclosure({
 	steps,
 	durationMs,
 	startedAt,
-	isStreaming,
+	isStreaming: isStreamingProp,
 	forceExpanded,
 	toolResultsByCallId,
 	highlightedStepId,
@@ -712,9 +713,9 @@ export function ExecutionDisclosure({
 	statsPlan,
 	/** Whole-turn totals shown as the first rows once expanded. */
 	turnStats,
-	liveOpen,
+	liveOpen: liveOpenProp,
 	hideHeader,
-	awaitingSubagents,
+	awaitingSubagents: awaitingSubagentsProp,
 }: {
 	sessionId: string;
 	steps: StepShape[];
@@ -735,6 +736,12 @@ export function ExecutionDisclosure({
 	awaitingSubagents?: boolean;
 }) {
 	const { t } = useT();
+	// While the user annotates text in the transcript, keep the disclosure's
+	// live/open presentation as it was: finishing subagents must not swap the
+	// header, add the divider or shift the rows under the selection.
+	const liveOpen = useValueFrozenWhileAnnotating(liveOpenProp);
+	const isStreaming = useValueFrozenWhileAnnotating(isStreamingProp);
+	const awaitingSubagents = useValueFrozenWhileAnnotating(awaitingSubagentsProp);
 	const { open: expanded, toggle } = useDisclosure(
 		forceExpanded || liveOpen ? true : forceExpanded,
 	);

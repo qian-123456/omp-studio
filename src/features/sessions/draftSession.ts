@@ -221,6 +221,20 @@ export async function releaseBlankDraft(id: string): Promise<void> {
 	await dropProcess(draft.sessionId);
 }
 
+/**
+ * Provider config changed: prewarmed processes loaded an older models.yml.
+ * Drop every idle, blank prewarmed process; drafts keep their input and respawn lazily.
+ */
+export async function invalidateWarmDrafts(): Promise<void> {
+	const drafts = Object.entries(usePendingSession.getState().drafts);
+	await Promise.all(drafts.map(async ([id, draft]) => {
+		const sessionId = draft.sessionId;
+		if (!sessionId || starts.has(id) || handoffs.has(id) || !isIdleBlankSession(sessionId)) return;
+		usePendingSession.getState().attach(id, null);
+		await dropProcess(sessionId);
+	}));
+}
+
 /** Explicit user discard: input, draft and any prewarmed process are removed. */
 export async function discardDraft(id: string): Promise<void> {
 	const draft = usePendingSession.getState().drafts[id];

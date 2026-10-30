@@ -98,6 +98,32 @@ export const isSideChatBusy = (childId: string): boolean =>
 	useLive.getState().sessions[childId]?.streaming === true;
 
 /**
+ * Open the dialog on what the side chat ALREADY said: the latest non-empty
+ * assistant reply becomes the draft, with no new turn and no prompt sent.
+ * With no reply yet the draft stays empty (the user can write it or press
+ * 「重新生成」, the only path that asks the model). Returns whether a reply was found.
+ */
+export async function prefillHandbackFromExisting(childId: string): Promise<boolean> {
+	if (useHandback.getState().runs[childId]?.phase === "running") return true;
+	const items = await loadItems(childId);
+	let last = "";
+	for (let i = items.length - 1; i >= 0; i--) {
+		const it = items[i];
+		if (it.kind === "assistant" && !it.hidden && it.text?.trim()) {
+			last = it.text.trim();
+			break;
+		}
+	}
+	useHandback.getState().set(childId, {
+		phase: "ready",
+		draft: last,
+		transcript: transcriptText(items),
+		error: null,
+	});
+	return last !== "";
+}
+
+/**
  * Ask the side chat to write its settled conclusions. No-op when a run is already
  * going (the dialog just re-attaches to it).
  */

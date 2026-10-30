@@ -306,6 +306,7 @@ pub fn run() {
             rpc::commands::takeover_external,
             rpc::commands::create_side_chat,
             rpc::commands::side_chat_ask,
+            rpc::commands::image_contents_from_paths,
             rpc::commands::fork_session,
             rpc::commands::subagent_list,
             rpc::commands::subagent_transcript,

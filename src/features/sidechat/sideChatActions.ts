@@ -11,7 +11,7 @@ import type { ComposerImage } from "../../stores/composer";
 import { createSideChat, sideChatAsk } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
-import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { type Annotation, annotationImageAttachments, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
 import { expandImagesForSend } from "../chat/imageTokens";
 import { useLive } from "../../stores/live";
@@ -19,7 +19,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { sideChatDefaultModelArg } from "./modelDefault";
 import { HANDBACK_ACTION_KEY, appendToDraft, handbackAnnotation } from "./handbackLogic";
-import { isSideChatBusy, startHandback, useHandback } from "./handbackRun";
+import { isSideChatBusy, prefillHandbackFromExisting, useHandback } from "./handbackRun";
 import { sideChatImageAttachments } from "./sideChatAttachments";
 import { openNewSideChat, useSideChatView } from "./viewStore";
 
@@ -53,7 +53,50 @@ export function firstMessageParts(
 	return { question, selection };
 }
 
-// A created session is not a bound thread until its first ask is accepted.
+/**
+ * Snapshot of the parent's in-flight turn as the user sees it right now and
+ * that may not be on disk yet: unflushed user prompts, streamed prose and
+ * running tool calls. Reasoning is never included. `undefined` when idle.
+ */
+export function liveTurnContext(parentId: string): string | undefined {
+	const live = useLive.getState().sessions[parentId];
+	if (!live) return undefined;
+	const lines: string[] = [];
+	for (const echo of live.pendingUserEchoes ?? []) {
+		if (echo.held || !echo.text?.trim()) continue;
+		lines.push(`[用户] ${echo.text.trim()}`);
+	}
+	const content = live.streamingMessage?.content;
+	if (Array.isArray(content)) {
+		const prose = content
+			.map((p) => (p && typeof p === "object" && "type" in p && p.type === "text" && "text" in p ? String(p.text ?? "") : ""))
+			.join("")
+			.trim();
+		if (prose) lines.push(`[助手（正在输出）] ${prose}`);
+	} else if (typeof content === "string" && content.trim()) {
+		lines.push(`[助手（正在输出）] ${content.trim()}`);
+	}
+	// Tools already in the transcript cache are covered by the backend's disk digest.
+	const cached = new Set((live.items ?? []).flatMap((it) => it.toolCalls.map((c) => c.id)));
+	for (const tool of Object.values(live.tools ?? {})) {
+		if (cached.has(tool.toolCallId)) continue;
+		let args = "";
+		try {
+			args = JSON.stringify(tool.args) ?? "";
+		} catch {
+			args = "";
+		}
+		const out = tool.text?.trim() ?? "";
+		if (tool.status === "running") {
+			lines.push(`[工具调用进行中] ${tool.toolName} ${args}${out ? ` 已有输出：${out}` : ""} （尚无最终结果）`);
+		} else {
+			const tag = tool.status === "error" ? "工具失败" : "工具结果";
+			lines.push(`[工具调用] ${tool.toolName} ${args}\n\n[${tag} ${tool.toolName}] ${out}`);
+		}
+	}
+	return lines.length ? lines.join("\n\n") : undefined;
+}
+
 // Keep it across failures so retrying does not create another side chat or use
 // the ordinary send path, which would omit the first-question boundary prompt.
 const firstQuestionSessions = new Map<string, string>();
@@ -91,9 +134,16 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 			sessionId = info.sessionId;
 			firstQuestionSessions.set(tabId, sessionId);
 		}
-		await sideChatAsk(sessionId, promptQuestion, selection);
+		const allAttachments = [
+			...imageAttachments,
+			...annotationImageAttachments(annotations ?? [], imageAttachments),
+		];
+		// Real image bytes go with the prompt (backend builds native ImageContent);
+		// a failure rejects here, keeps the draft and never downgrades to text-only.
+		const imagePaths = allAttachments.flatMap((a) => (typeof a.path === "string" && a.path ? [a.path] : []));
+		await sideChatAsk(sessionId, promptQuestion, selection, liveTurnContext(parentId), imagePaths);
 		// Only accepted messages become user echoes or consume staged attachments.
-		useLive.getState().addUserEcho(sessionId, shown, imageAttachments);
+		useLive.getState().addUserEcho(sessionId, shown, allAttachments);
 		await useSessions.getState().load().catch(() => {});
 		view.bindTab(parentId, tabId, sessionId);
 		firstQuestionSessions.delete(tabId);
@@ -151,8 +201,10 @@ export async function openHandback(childId: string): Promise<void> {
 		toast.info(tNow("sidechat.sideChatBusyWait"));
 		return;
 	}
+	// Fill from the side chat's latest reply; the summarize prompt is sent only
+	// when the user presses 「重新生成」 in the dialog.
+	await prefillHandbackFromExisting(childId);
 	useUi.getState().openModal(HANDBACK_MODAL, { childId });
-	await startHandback(childId);
 }
 
 /** Stage `text` as a quote chip in the parent's main composer, show the parent and focus its composer. Never sends. */

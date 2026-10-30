@@ -235,17 +235,26 @@ fn infer_status(
     if output.is_some() {
         return (SubagentStatus::Completed, output);
     }
-    // omp keeps the lock file while the child is alive; treat a recently
-    // touched lock (or a still-hot transcript) as running.
-    if fresh_enough(mtime(&lock)) || fresh_enough(file_mtime) {
+    // omp keeps the lock file while the child is alive; only an existing,
+    // recently touched lock proves a live child. A hot transcript alone does
+    // not: a finished child's final write is also "fresh" for minutes.
+    let stop = meta.last_stop_reason.as_deref().unwrap_or("");
+    let lock_alive = lock.exists() && fresh_enough(mtime(&lock));
+    if lock_alive {
         return (SubagentStatus::Running, None);
     }
-    let stop = meta.last_stop_reason.as_deref().unwrap_or("");
-    if stop.contains("error") || stop.contains("Error") {
-        return (SubagentStatus::Failed, None);
+    // Only stop reasons with known terminal semantics end a run. Anything else
+    // ("toolUse", "length", unknown/future reasons) falls through to the
+    // freshness / has-assistant heuristics below.
+    match stop {
+        "stop" | "end_turn" => return (SubagentStatus::Completed, None),
+        "error" => return (SubagentStatus::Failed, None),
+        "aborted" | "abort" | "cancelled" | "canceled" => return (SubagentStatus::Aborted, None),
+        _ => {}
     }
-    if stop.contains("abort") || stop.contains("cancel") {
-        return (SubagentStatus::Aborted, None);
+    if fresh_enough(file_mtime) {
+        // No terminal marker yet and the transcript is still being written.
+        return (SubagentStatus::Running, None);
     }
     if meta.has_assistant {
         // Idle, produced a final text, no output file.
@@ -777,6 +786,69 @@ mod tests {
         fs::remove_file(&file).unwrap();
         assert!(list_with(p, &root, &mut cache).unwrap().is_empty());
         assert!(cache.map.is_empty());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    fn meta_with_stop(stop: Option<&str>, has_assistant: bool) -> AgentMeta {
+        AgentMeta {
+            last_stop_reason: stop.map(str::to_string),
+            has_assistant,
+            ..Default::default()
+        }
+    }
+
+    fn stale() -> Option<SystemTime> {
+        Some(SystemTime::now() - Duration::from_secs(LOCK_FRESH.as_secs() + 60))
+    }
+
+    #[test]
+    fn infer_status_terminal_stop_beats_fresh_transcript() {
+        let (root, _p, dir) = setup();
+        let fresh = Some(SystemTime::now());
+        for (stop, want) in [
+            ("stop", SubagentStatus::Completed),
+            ("end_turn", SubagentStatus::Completed),
+            ("error", SubagentStatus::Failed),
+            ("aborted", SubagentStatus::Aborted),
+        ] {
+            let (st, _) = infer_status(&dir, "a", &meta_with_stop(Some(stop), true), fresh);
+            assert_eq!(st, want, "stop={stop}");
+        }
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn infer_status_non_terminal_stops_follow_freshness() {
+        let (root, _p, dir) = setup();
+        for stop in ["toolUse", "length", "weird_future_reason"] {
+            let m = meta_with_stop(Some(stop), true);
+            let (hot, _) = infer_status(&dir, "a", &m, Some(SystemTime::now()));
+            assert_eq!(hot, SubagentStatus::Running, "hot stop={stop}");
+            let (cold, _) = infer_status(&dir, "a", &m, stale());
+            assert_eq!(cold, SubagentStatus::Completed, "cold stop={stop}");
+        }
+        let (st, _) = infer_status(&dir, "a", &meta_with_stop(None, false), stale());
+        assert_eq!(st, SubagentStatus::Pending);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn infer_status_fresh_lock_means_running_even_after_terminal_stop() {
+        let (root, _p, dir) = setup();
+        // A retried "error" turn with the child still alive (lock present).
+        fs::write(dir.join(".a.jsonl.lock.os"), "").unwrap();
+        let (st, _) = infer_status(&dir, "a", &meta_with_stop(Some("error"), true), stale());
+        assert_eq!(st, SubagentStatus::Running);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn infer_status_output_file_is_completed() {
+        let (root, _p, dir) = setup();
+        fs::write(dir.join("a.md"), "out").unwrap();
+        let (st, out) = infer_status(&dir, "a", &meta_with_stop(Some("error"), true), stale());
+        assert_eq!(st, SubagentStatus::Completed);
+        assert!(out.is_some());
         fs::remove_dir_all(&root).ok();
     }
 }

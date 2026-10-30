@@ -223,6 +223,7 @@ export function SubagentSheet({
 	const [error, setError] = useState<string | null>(null);
 	const [systemOpen, setSystemOpen] = useState(false);
 	const [taskOpen, setTaskOpen] = useState(false);
+	const [contextOpen, setContextOpen] = useState(false);
 	const nextByteRef = useRef(0);
 	const itemsRef = useRef<TranscriptItem[]>([]);
 	const [items, setItems] = useState<TranscriptItem[]>([]);
@@ -282,7 +283,9 @@ export function SubagentSheet({
 		return undefined;
 	}, [effectiveStatus, startedAt, endedAt, now, row.durationMs]);
 
-	const duration = durationMs && durationMs > 0 ? formatDurationCompact(durationMs) : undefined;
+	const duration = durationMs && Math.round(durationMs / 1000) >= 1 ? formatDurationCompact(durationMs) : undefined;
+	const effectiveContext = context ?? row.sharedContext;
+	const failureText = row.error || row.abortReason;
 	const statusText = t(STATUS_TEXT_KEYS[effectiveStatus] ?? STATUS_TEXT_KEYS.pending);
 
 	const effectiveModel = summary?.model ?? row.model;
@@ -484,6 +487,20 @@ export function SubagentSheet({
 				<div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 					{tab === "overview" && (
 						<div className="space-y-4">
+							{failureText && (
+								<section
+									role="alert"
+									className="rounded-[14px] border border-[var(--status-error)]/40 bg-[var(--status-error)]/10 px-3 py-2.5"
+								>
+									<div className="mb-1 flex items-center justify-between">
+										<span className="text-[11px] font-medium text-[var(--status-error)]">{t("subagents.failureReason")}</span>
+										<CopyButton text={failureText} label={t("common.copy")} />
+									</div>
+									<p className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-5 text-[var(--text-60)] select-text">
+										{failureText}
+									</p>
+								</section>
+							)}
 							{assignmentText && (
 								<section className="rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2.5">
 									<div className="mb-1 flex items-center justify-between">
@@ -507,6 +524,37 @@ export function SubagentSheet({
 											{taskOpen ? t("common.collapse") : t("subagents.expandAll")}
 											<ChevronRight size={11} className={clsx("transition-transform", taskOpen ? "-rotate-90" : "rotate-90")} />
 										</button>
+									)}
+								</section>
+							)}
+							{row.solutionSpace && (
+								<section className="rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2.5">
+									<div className="mb-1 flex items-center justify-between">
+										<span className="text-[11px] text-[var(--text-40)]">{t("subagents.solutionSpace")}</span>
+										<CopyButton text={row.solutionSpace} label={t("common.copy")} />
+									</div>
+									<p className="whitespace-pre-wrap break-words text-[12.5px] leading-5 text-[var(--text-60)]">
+										{row.solutionSpace}
+									</p>
+								</section>
+							)}
+							{effectiveContext && (
+								<section className="rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2.5">
+									<div className="mb-1 flex items-center justify-between">
+										<button
+											type="button"
+											onClick={() => setContextOpen(!contextOpen)}
+											className="flex items-center gap-1 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text-60)]"
+										>
+											<ChevronRight size={11} className={clsx("transition-transform", contextOpen && "rotate-90")} />
+											{t("subagents.sharedContext")}
+										</button>
+										<CopyButton text={effectiveContext} label={t("common.copy")} />
+									</div>
+									{contextOpen && (
+										<pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-[var(--text-60)]">
+											{effectiveContext}
+										</pre>
 									)}
 								</section>
 							)}
@@ -615,16 +663,16 @@ export function SubagentSheet({
 									<p className="text-[12px] text-[var(--text-30)]">{t("subagents.noPrompt")}</p>
 								)}
 							</section>
-							{context && (
+							{effectiveContext && (
 								<section>
 									<div className="mb-1 flex items-center justify-between">
 										<span className="text-[11px] text-[var(--text-30)]">
 											{t("subagents.sharedContext")}
 										</span>
-										<CopyButton text={context} label={t("common.copy")} />
+										<CopyButton text={effectiveContext} label={t("common.copy")} />
 									</div>
 									<pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--text-40)]">
-										{context}
+										{effectiveContext}
 									</pre>
 								</section>
 							)}

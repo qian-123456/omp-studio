@@ -31,6 +31,7 @@ const BAR_MAX_PX = 26;
 // ChatGPT-style dock falloff: hovered bar is full length, neighbours ease off.
 const NEIGHBOR_PROGRESS = [1, 0.7, 0.4, 0.2];
 const TOOLTIP_CLOSE_DELAY_MS = 80;
+const HOVER_OPEN_DELAY_MS = 220;
 
 /** The user-query id a virtual row renders: `data-turn-id` when the row marks
  * itself, else the first `msg-<id>` anchor (on or inside it) that has a dash. */
@@ -87,6 +88,7 @@ export function ChatTrace({
 	const stripRef = useRef<HTMLDivElement>(null);
 	const railRef = useRef<HTMLDivElement>(null);
 	const closeTimer = useRef(0);
+	const openTimer = useRef(0);
 
 	// Idle highlight: among rendered user-query rows intersecting the viewport,
 	// the one whose start sits closest to the viewport top (NHt in the
@@ -189,10 +191,39 @@ export function ChatTrace({
 		setOverflowing(strip.scrollHeight > strip.clientHeight + 1);
 	}, [entries.length]);
 
-	useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+	useEffect(
+		() => () => {
+			window.clearTimeout(closeTimer.current);
+			window.clearTimeout(openTimer.current);
+		},
+		[],
+	);
+
+	// A text selection in progress (or made) must never be covered by the card.
+	useEffect(() => {
+		const onSelectionChange = () => {
+			const sel = window.getSelection();
+			if (sel && !sel.isCollapsed) {
+				window.clearTimeout(openTimer.current);
+				setOpenIndex(null);
+			}
+		};
+		// A press (start of a drag-select or click) cancels a pending open and closes a visible card at once.
+		const onPointerDown = () => {
+			window.clearTimeout(openTimer.current);
+			setOpenIndex(null);
+		};
+		document.addEventListener("selectionchange", onSelectionChange);
+		window.addEventListener("pointerdown", onPointerDown, true);
+		return () => {
+			document.removeEventListener("selectionchange", onSelectionChange);
+			window.removeEventListener("pointerdown", onPointerDown, true);
+		};
+	}, []);
 
 	const clearHover = useCallback(() => {
 		setFocusIndex(null);
+		window.clearTimeout(openTimer.current);
 		window.clearTimeout(closeTimer.current);
 		closeTimer.current = window.setTimeout(
 			() => setOpenIndex(null),
@@ -200,9 +231,22 @@ export function ChatTrace({
 		);
 	}, []);
 
-	const hoverIndex = useCallback((index: number) => {
+	const hoverIndex = useCallback((index: number, pointer?: { buttons: number }) => {
 		window.clearTimeout(closeTimer.current);
+		window.clearTimeout(openTimer.current);
 		setFocusIndex(index);
+		if (pointer) {
+			// Dragging a selection or holding a button: brushing the rail opens nothing.
+			if (pointer.buttons !== 0) return;
+			const sel = window.getSelection();
+			if (sel && !sel.isCollapsed) return;
+			openTimer.current = window.setTimeout(() => {
+				const cur = window.getSelection();
+				if (cur && !cur.isCollapsed) return;
+				setOpenIndex(index);
+			}, HOVER_OPEN_DELAY_MS);
+			return;
+		}
 		setOpenIndex(index);
 	}, []);
 
@@ -263,7 +307,7 @@ export function ChatTrace({
 										aria-posinset={i + 1}
 										aria-setsize={entries.length}
 										onClick={() => jump(entry)}
-										onPointerEnter={() => hoverIndex(i)}
+										onPointerEnter={(e) => hoverIndex(i, e)}
 										onFocus={() => hoverIndex(i)}
 										onBlur={clearHover}
 										className="flex h-2.5 w-full items-center justify-start rounded-sm"

@@ -27,7 +27,7 @@ pub(crate) fn truncate(
     cut: Cut<'_>,
     tmp_prefix: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    cut_copy(file, cut, tmp_prefix, false)
+    cut_copy(file, cut, tmp_prefix, false).map(|r| r.0)
 }
 
 /// Like [`truncate`], but the copy also has bundled plan mode switched off: a
@@ -38,6 +38,16 @@ pub(crate) fn truncate_for_side_chat(
     cut: Cut<'_>,
     tmp_prefix: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
+    cut_copy(file, cut, tmp_prefix, true).map(|r| r.0)
+}
+
+/// [`truncate_for_side_chat`] plus the number of parent transcript lines the
+/// fork inherits; everything after that index is what the fork is missing.
+pub(crate) fn truncate_for_side_chat_counted(
+    file: &str,
+    cut: Cut<'_>,
+    tmp_prefix: &str,
+) -> Result<(Option<std::path::PathBuf>, usize), String> {
     cut_copy(file, cut, tmp_prefix, true)
 }
 
@@ -68,7 +78,7 @@ fn cut_copy(
     cut: Cut<'_>,
     tmp_prefix: &str,
     drop_plan_mode: bool,
-) -> Result<Option<std::path::PathBuf>, String> {
+) -> Result<(Option<std::path::PathBuf>, usize), String> {
     let text =
         std::fs::read_to_string(file).map_err(|e| format!("无法读取会话文件 {file}：{e}"))?;
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -115,13 +125,119 @@ fn cut_copy(
     }
     let rewritten = kept.iter().any(|l| matches!(l, std::borrow::Cow::Owned(_)));
     if keep == lines.len() && !rewritten {
-        return Ok(None);
+        return Ok((None, keep));
     }
     let out = std::env::temp_dir().join(format!("{tmp_prefix}-{}.jsonl", uuid::Uuid::new_v4()));
     let mut body = kept.join("\n");
     body.push('\n');
     std::fs::write(&out, body).map_err(|e| format!("无法写入分支临时文件：{e}"))?;
-    Ok(Some(out))
+    Ok((Some(out), keep))
+}
+
+// The digest below shares the whole visible current turn without clipping.
+
+/// Plain text of a message `content` (string or array of text parts).
+fn content_text(content: &Value) -> String {
+    match content {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// Human-readable digest of the parent's transcript entries from line index
+/// `from` on: the part of the turn that [`Cut::LastCompleteTurn`] removed from
+/// the fork (the user's prompt, assistant prose, tool calls and their
+/// results). Never clipped. Empty when
+/// there is nothing after `from`.
+pub(crate) fn tail_digest(file: &str, from: Option<usize>) -> Result<String, String> {
+    let text =
+        std::fs::read_to_string(file).map_err(|e| format!("无法读取会话文件 {file}：{e}"))?;
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let from = from.unwrap_or_else(|| complete_prefix_len(&lines));
+    let mut blocks: Vec<String> = Vec::new();
+    let mut call_ids: Vec<(usize, String)> = Vec::new();
+    let mut result_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in lines.iter().skip(from) {
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if v.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let Some(msg) = v.get("message") else {
+            continue;
+        };
+        let content = msg.get("content").unwrap_or(&Value::Null);
+        match msg.get("role").and_then(Value::as_str) {
+            Some("user") => {
+                let t = content_text(content);
+                if !t.trim().is_empty() {
+                    blocks.push(format!("[用户] {}", t.trim()));
+                }
+            }
+            Some("assistant") => {
+                let Some(parts) = content.as_array() else {
+                    let t = content_text(content);
+                    if !t.trim().is_empty() {
+                        blocks.push(format!("[助手] {}", t.trim()));
+                    }
+                    continue;
+                };
+                for p in parts {
+                    match p.get("type").and_then(Value::as_str) {
+                        Some("text") => {
+                            let t = p.get("text").and_then(Value::as_str).unwrap_or("");
+                            if !t.trim().is_empty() {
+                                blocks.push(format!("[助手] {}", t.trim()));
+                            }
+                        }
+                        // Reasoning is never shown to the user, so it is not shared either.
+                        Some("toolCall" | "tool_use" | "toolUse") => {
+                            let name = p.get("name").and_then(Value::as_str).unwrap_or("?");
+                            let args = p
+                                .get("arguments")
+                                .or_else(|| p.get("input"))
+                                .map(|a| a.to_string())
+                                .unwrap_or_default();
+                            if let Some(id) = p.get("id").and_then(Value::as_str) {
+                                call_ids.push((blocks.len(), id.to_string()));
+                            }
+                            blocks.push(format!("[工具调用] {name} {args}"));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Some("toolResult") => {
+                if let Some(id) = msg
+                    .get("toolCallId")
+                    .or_else(|| msg.get("tool_use_id"))
+                    .and_then(Value::as_str)
+                {
+                    result_ids.insert(id.to_string());
+                }
+                let name = msg
+                    .get("toolName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("工具");
+                let t = content_text(content);
+                blocks.push(format!("[工具结果 {name}] {}", t.trim()));
+            }
+            _ => {}
+        }
+    }
+    // Tool calls whose result is not on disk yet are still running (or were never answered).
+    for (idx, id) in &call_ids {
+        if !result_ids.contains(id) {
+            blocks[*idx].push_str(" （尚无结果，可能仍在执行）");
+        }
+    }
+    Ok(blocks.join("\n\n"))
 }
 
 /// Number of leading lines forming complete turns only (see [`Cut::LastCompleteTurn`]).

@@ -26,6 +26,9 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 	return {
 		...orig,
 		rpcSend: h.rpcSend,
+		imageContentsFromPaths: vi.fn(async (paths: string[]) =>
+			paths.map(() => ({ type: "image" as const, data: "AAAA", mimeType: "image/png" })),
+		),
 		rpcEnsureLive: vi.fn(async () => ({ sessionId: SESSION })),
 		sessionUsage: vi.fn(async () => ({ available: false, tokens: 0 })),
 		sessionSnapshot: vi.fn(async () => ({})),

@@ -58,16 +58,26 @@ const OUTPUT_RULES = `输出要求（必须严格遵守）：
 3. systemicTags 用 1-4 个简短、规范化的中文标签描述问题类型，便于长期统计，例如「目标模糊」「范围蔓延」「过度设计」「缺少验收标准」「重复读取」「上下文浪费」「报错死循环」「高风险改动」「未验证完成」。同类问题使用同一标签。
 4. 禁止名词解释式的空话（例如「grep = 搜索」「token 是计费单位」）；每条结论必须是对本次会话的实质诊断。
 5. 禁止建议助手在未经用户同意的情况下自动修改 AGENTS.md、规则文件或创建技能；如确有必要，只能建议用户自行决定。
-6. 不要编造节省金额或百分比；骨架里没有的数据不要臆测。`;
+6. 不要编造节省金额或百分比；骨架里没有的数据不要臆测。
+7. 区分「当前仍未解决的问题」与「历史上已解决的报错」：骨架标明已恢复的报错只能作为背景，不得据此建议用户停止或重开会话；只有末尾仍有未解决的连续报错、且确无进展时，才可建议暂停并换思路。
+8. 诊断必须定位真实根因并给出具体、可执行的优化建议；会话健康、问题轻微时如实说明「整体健康」，不要为了显得有用而夸大风险，也不要照搬固定套话。`;
+
+export function normalizeLenses(lenses: DiagnosticLens | DiagnosticLens[]): DiagnosticLens[] {
+	const list = Array.isArray(lenses) ? lenses : [lenses];
+	const uniq = Array.from(new Set(list));
+	return uniq.length > 0 ? uniq : ["freeform"];
+}
 
 export function buildDiagnosisPrompt(
 	skeleton: SessionDiagnosticSkeleton,
-	lens: DiagnosticLens,
+	lenses: DiagnosticLens | DiagnosticLens[],
 	question?: string,
 ): string {
-	const parts = [SYSTEM_ROLE, LENS_FOCUS[lens]];
+	const selected = normalizeLenses(lenses);
+	const parts = [SYSTEM_ROLE, ...selected.map((l) => LENS_FOCUS[l])];
+	if (selected.length > 1) parts.push("请把以上所有视角综合成一份诊断：结论一句话概括，evidence 与 prescriptions 覆盖各视角的主要发现。");
 	const q = question?.trim();
-	if (q) parts.push(`【用户的问题】${q}`);
+	if (q) parts.push(`【用户的问题】${q}\n请在上述视角之外，同时直接回答这个问题。`);
 	parts.push(`【会话骨架】\n${skeleton.dehydratedPromptText}`);
 	parts.push(OUTPUT_RULES);
 	return parts.join("\n\n");
@@ -116,7 +126,9 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strList = (v: unknown): string[] =>
 	Array.isArray(v) ? v.map(str).filter(Boolean) : typeof v === "string" && v.trim() ? [v.trim()] : [];
 
-export function parseDiagnosis(raw: string, lens: DiagnosticLens): DiagnosticDiagnosisResult {
+export function parseDiagnosis(raw: string, lensInput: DiagnosticLens | DiagnosticLens[]): DiagnosticDiagnosisResult {
+	const lenses = normalizeLenses(lensInput);
+	const lens = lenses[0];
 	const json = extractJsonObject(raw);
 	if (!json) throw new Error(tNow("doctor.invalidJsonError"));
 	const obj = JSON.parse(json) as Record<string, unknown>;
@@ -135,6 +147,7 @@ export function parseDiagnosis(raw: string, lens: DiagnosticLens): DiagnosticDia
 		.slice(0, 3);
 	return {
 		lens,
+		lenses,
 		conclusion,
 		evidence: strList(obj.evidence),
 		rootCause: str(obj.rootCause),

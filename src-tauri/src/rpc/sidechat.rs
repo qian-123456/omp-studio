@@ -45,7 +45,7 @@ pub async fn create(
         child_count(state, parent_session_id).await + 1
     );
 
-    let trimmed_fork = prepare_fork(&parent_file)?;
+    let (trimmed_fork, fork_keep) = prepare_fork(&parent_file)?;
     let fork_file = trimmed_fork
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
@@ -72,6 +72,9 @@ pub async fn create(
         let _ = std::fs::remove_file(p);
     }
     let info = started?;
+    if let Ok(mut m) = FORK_CUTS.lock() {
+        m.insert(info.session_id.clone(), fork_keep);
+    }
 
     // B owns only these session_meta columns; A owns the rest of the row.
     {
@@ -106,15 +109,61 @@ pub async fn create(
 
 /// An empty parent has no transcript yet. A real transcript must be safely cut;
 /// reading/writing failures must never fall back to inheriting the original.
-fn prepare_fork(parent_file: &str) -> Result<Option<std::path::PathBuf>, String> {
+fn prepare_fork(parent_file: &str) -> Result<(Option<std::path::PathBuf>, usize), String> {
     if parent_file.is_empty() {
-        return Ok(None);
+        return Ok((None, 0));
     }
-    forkcut::truncate_for_side_chat(
+    forkcut::truncate_for_side_chat_counted(
         parent_file,
         forkcut::Cut::LastCompleteTurn,
         "omp-sidechat-fork",
     )
+}
+
+/// Parent transcript line count each side chat's fork inherited. Everything
+/// after it was NOT forked (the unfinished turn, plus anything finished since).
+static FORK_CUTS: std::sync::LazyLock<std::sync::Mutex<HashMap<String, usize>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// "In-progress turn" block for the first side-chat prompt: the parent's
+/// unfinished turn from disk (prompt, prose, tool calls/results) plus the
+/// frontend's not-yet-flushed live snapshot. `None` when there is nothing.
+fn in_progress_section(
+    side_session_id: &str,
+    parent_file: &str,
+    live_context: Option<&str>,
+) -> Option<String> {
+    let from = FORK_CUTS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(side_session_id).copied());
+    let disk = if parent_file.is_empty() {
+        String::new()
+    } else {
+        forkcut::tail_digest(parent_file, from).unwrap_or_else(|e| {
+            tracing::warn!("side chat in-progress context: {e}");
+            String::new()
+        })
+    };
+    let live = live_context.map(str::trim).unwrap_or("");
+    if disk.trim().is_empty() && live.is_empty() {
+        return None;
+    }
+    let mut out = String::from(
+        "## 当前正在处理的轮次实时进展 (In-Progress Turn Live Context)\n\
+         主会话此刻仍在处理下面这一轮（只读快照，仅供参考；工具调用若标注“尚无结果”表示尚未返回）：\n\n",
+    );
+    if !disk.trim().is_empty() {
+        out.push_str(disk.trim());
+    }
+    if !live.is_empty() {
+        if !disk.trim().is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str("[此刻正在进行]\n");
+        out.push_str(live);
+    }
+    Some(out)
 }
 
 /// `side_chat_ask` command implementation: send the side chat's first message
@@ -125,7 +174,11 @@ pub async fn ask(
     session_id: &str,
     question: String,
     selection: Option<String>,
+    live_context: Option<String>,
+    image_paths: Option<Vec<String>>,
 ) -> Result<(), String> {
+    // Real image bytes (native ImageContent), validated before anything is created or sent.
+    let image_blocks = rpc::image_blocks_from_paths(image_paths.as_deref().unwrap_or(&[]))?;
     let q = question.trim();
     if q.is_empty() {
         return Err("question must not be empty".into());
@@ -160,7 +213,15 @@ pub async fn ask(
         })
         .unwrap_or_else(|| paths::global_dir().to_string_lossy().to_string());
 
-    let context = build_context(state, &parent_id, &cwd, &selection, &question).await;
+    let mut context = build_context(state, &parent_id, &cwd, &selection, &question).await;
+    if let Some(section) = in_progress_section(
+        session_id,
+        parent.as_ref().map(|m| m.file.as_str()).unwrap_or(""),
+        live_context.as_deref(),
+    ) {
+        context.push_str("\n\n");
+        context.push_str(&section);
+    }
     let mut vars: HashMap<&str, String> = HashMap::new();
     vars.insert(
         "parent_label",
@@ -196,7 +257,7 @@ pub async fn ask(
     }
     catalog::recompute_async(state, Some(vec![session_id.to_string()])).await;
 
-    rpc::send_prompt(state, session_id, &prompt).await
+    rpc::send_prompt_with_images(state, session_id, &prompt, &image_blocks).await
 }
 
 /// Children already registered under this parent: session_meta rows plus any
@@ -330,7 +391,7 @@ mod tests {
 
     #[test]
     fn side_chat_without_parent_transcript_does_not_require_a_copy() {
-        assert!(prepare_fork("").unwrap().is_none());
+        assert!(prepare_fork("").unwrap().0.is_none());
     }
 
     #[test]
@@ -353,6 +414,94 @@ mod tests {
         );
         assert_eq!(parse_route(r#"{"route":"bogus","confidence":1.0}"#), None);
         assert_eq!(parse_route("no json here"), None);
+    }
+
+    #[test]
+    fn in_progress_context_lists_unfinished_turn_without_reasoning() {
+        let dir = std::env::temp_dir().join(format!("sidechat-tail-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("p.jsonl");
+        let lines = [
+            r#"{"type":"session","id":"p"}"#,
+            r#"{"type":"message","id":"u1","message":{"role":"user","content":"old question"}}"#,
+            r#"{"type":"message","id":"a1","message":{"role":"assistant","content":[{"type":"text","text":"old answer"}],"stopReason":"stop"}}"#,
+            r#"{"type":"message","id":"u2","message":{"role":"user","content":"fix the parser"}}"#,
+            r#"{"type":"message","id":"a2","message":{"role":"assistant","content":[{"type":"thinking","thinking":"SECRET"},{"type":"text","text":"looking"},{"type":"toolCall","id":"t1","name":"read","arguments":{"path":"a.rs"}},{"type":"toolCall","id":"t2","name":"bash","arguments":{"cmd":"ls"}}],"stopReason":"toolUse"}}"#,
+            r#"{"type":"message","id":"r1","message":{"role":"toolResult","toolCallId":"t1","toolName":"read","content":[{"type":"text","text":"file body"}]}}"#,
+        ];
+        std::fs::write(&f, lines.join("\n")).unwrap();
+        let (cut, keep) = prepare_fork(f.to_str().unwrap()).unwrap();
+        assert!(cut.is_some());
+        assert_eq!(keep, 3);
+        let digest = forkcut::tail_digest(f.to_str().unwrap(), Some(keep)).unwrap();
+        assert!(digest.contains("fix the parser") && digest.contains("looking"));
+        assert!(digest.contains("file body"));
+        assert!(!digest.contains("old answer") && !digest.contains("SECRET"));
+        // t2 has no result yet.
+        assert!(digest.contains("尚无结果"));
+        let _ = std::fs::remove_dir_all(&dir);
+        if let Some(c) = cut {
+            let _ = std::fs::remove_file(c);
+        }
+    }
+
+    #[test]
+    fn ask_context_never_duplicates_completed_history() {
+        let dir = std::env::temp_dir().join(format!("sidechat-tail-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("p.jsonl");
+        std::fs::write(
+            &f,
+            concat!(
+                r#"{"type":"session","id":"p"}"#, "\n",
+                r#"{"type":"message","id":"u1","message":{"role":"user","content":"q"}}"#, "\n",
+                r#"{"type":"message","id":"a1","message":{"role":"assistant","content":[{"type":"text","text":"a"}],"stopReason":"stop"}}"#, "\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(forkcut::tail_digest(f.to_str().unwrap(), None).unwrap(), "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const PNG_1X1: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn first_prompt_command_carries_real_image_bytes() {
+        use base64::Engine as _;
+        let dir = std::env::temp_dir().join(format!("sidechat-img-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("a.png");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(PNG_1X1)
+            .unwrap();
+        std::fs::write(&png, &bytes).unwrap();
+        let blocks = rpc::image_blocks_from_paths(&[png.to_str().unwrap().to_string()]).unwrap();
+        // This is exactly the frame `send_prompt_with_images` writes to omp.
+        let cmd = rpc::prompt_command("hello", false, &blocks);
+        assert_eq!(cmd["type"], "prompt");
+        assert_eq!(cmd["images"][0]["type"], "image");
+        assert_eq!(cmd["images"][0]["mimeType"], "image/png");
+        let sent = base64::engine::general_purpose::STANDARD
+            .decode(cmd["images"][0]["data"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(sent, bytes);
+        assert!(rpc::prompt_command("x", false, &[]).get("images").is_none());
+        assert_eq!(
+            rpc::prompt_command("x", true, &[])["streamingBehavior"],
+            "followUp"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_or_unsupported_images_are_errors_not_dropped() {
+        let dir = std::env::temp_dir().join(format!("sidechat-img-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let txt = dir.join("a.png");
+        std::fs::write(&txt, b"not an image").unwrap();
+        assert!(rpc::image_blocks_from_paths(&[txt.to_str().unwrap().to_string()]).is_err());
+        assert!(rpc::image_blocks_from_paths(&["/nonexistent/x.png".to_string()]).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

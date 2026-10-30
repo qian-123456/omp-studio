@@ -10,6 +10,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	Code2,
+	ExternalLink,
 	Loader2,
 	Maximize2,
 	RotateCw,
@@ -24,6 +25,7 @@ import React, {
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import { CopyButton } from "../../../components/CopyButton";
 import { errMsg } from "../../../lib/dialogs";
+import { openHtmlInBrowser } from "./openInBrowser";
 import { themeById, useResolvedThemeId } from "../../../lib/theme";
 import { toast } from "../../../lib/toast";
 import { tNow, useT } from "../../../stores/language";
@@ -417,6 +419,7 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 	const [fullscreen, setFullscreen] = useState(false);
 	const [showSource, setShowSource] = useState(false);
 	const { t } = useT();
+	const darkTheme = themeById(useResolvedThemeId())?.dark !== false;
 	if (streaming) {
 		return (
 			<div
@@ -460,6 +463,25 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 						resetMs={2000}
 						className={chromeButton}
 					/>
+					<button
+						type="button"
+						onClick={() => {
+							const doc = buildSrcDoc({
+								html,
+								theme: darkTheme ? "dark" : "light",
+								themeVars: collectVizThemeVars(),
+								bridgeSource: vizBridgeSource(MAX_WIDGET_STATE_BYTES),
+							});
+							void openHtmlInBrowser(doc).catch((e: unknown) =>
+								toast.error(t("visualize.openInBrowserFailed", { error: errMsg(e) })),
+							);
+						}}
+						className={chromeButton}
+						title={t("visualize.openInBrowser")}
+					>
+						<ExternalLink size={12} />
+						<span>{t("visualize.openInBrowser")}</span>
+					</button>
 					<button
 						type="button"
 						onClick={() => setFullscreen(true)}

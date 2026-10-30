@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import type { ImageAttachment } from "../lib/contracts";
 
 export interface Annotation {
 	id: string;
@@ -15,6 +16,8 @@ export interface Annotation {
 	file?: string;
 	lines?: string;
 	comment?: string;
+	/** Local image paths attached to this annotation's comment. */
+	images?: string[];
 	/** Free-form origin shown instead of the source kind (e.g. 「来自辅助对话：标题」). */
 	label?: string;
 	/** 0-based identical-match index within answerPart, or the whole message when absent. */
@@ -504,6 +507,38 @@ function isImageAnnotation(a: Annotation): boolean {
 	);
 }
 
+/** `[图片: path]` references appended to an annotation's comment so the agent can open the files. */
+function withImageRefs(comment: string | undefined, images: readonly string[] | undefined): string {
+	const refs = (images ?? []).map((p) => `[图片: ${p}]`).join(" ");
+	return [comment ?? "", refs].filter(Boolean).join(" ");
+}
+
+/**
+ * Outgoing attachments for the images owned by `anns` (deduped by path, also
+ * against `existing` composer attachments). Each marker equals the
+ * `[图片: path]` reference `formatWithAnnotations` writes into the message, so
+ * the payload and the text point at the same image. Senders MUST append this to
+ * their own `ImageAttachment[]` and pass the same annotation list to
+ * `formatWithAnnotations`; the images stay on the annotation (never copied into
+ * the composer's image list), so deleting the annotation releases them.
+ */
+export function annotationImageAttachments(
+	anns: readonly Annotation[],
+	existing: ReadonlyArray<{ path?: string | null }> = [],
+): ImageAttachment[] {
+	const seen = new Set(existing.map((i) => i.path).filter((p): p is string => !!p));
+	const out: ImageAttachment[] = [];
+	for (const a of anns) {
+		if (isImageAnnotation(a)) continue;
+		for (const path of a.images ?? []) {
+			if (seen.has(path)) continue;
+			seen.add(path);
+			out.push({ id: `annimg-${out.length + 1}-${path}`, path, marker: `[图片: ${path}]` });
+		}
+	}
+	return out;
+}
+
 export function formatWithAnnotations(
 	text: string,
 	anns: Annotation[],
@@ -513,9 +548,10 @@ export function formatWithAnnotations(
 	const blocks = nonImageAnns.map((a, i) => {
 		const n = i + 1;
 		const lines: string[] = [];
+		const comment = withImageRefs(a.comment, a.images);
 		if (a.source === "diff" && a.file) {
 			const where = a.lines ? ` 第 ${a.lines} 行` : "";
-			lines.push(`[${n}] 文件 ${a.file}${where}：${a.comment ?? ""}`.trimEnd());
+			lines.push(`[${n}] 文件 ${a.file}${where}：${comment}`.trimEnd());
 		} else {
 			const loc = a.file
 				? ` (${a.file}${a.lines ? ` ${a.lines}` : ""})`
@@ -529,8 +565,8 @@ export function formatWithAnnotations(
 				lines.push(`> ${line}`);
 			}
 		}
-		if (a.comment && !(a.source === "diff" && a.file)) {
-			lines.push(`批注：${a.comment}`);
+		if (comment && !(a.source === "diff" && a.file)) {
+			lines.push(`批注：${comment}`);
 		}
 		return lines.join("\n");
 	});

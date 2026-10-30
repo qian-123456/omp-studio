@@ -128,8 +128,30 @@ type Saved = {
 	version: number;
 	lastContent?: string;
 	prevContent?: string;
+	approved?: Approved;
 	phase: "planning" | "review";
 };
+/** Plan the user approved; kept after plan mode ends so the app can show how it went. */
+type Approved = {
+	planFile: string;
+	title: string;
+	content: string;
+	prevContent?: string;
+	version: number;
+	/** handoff: executes in a fresh session; executing → completed | failed in this one. */
+	status: "handoff" | "executing" | "completed" | "failed";
+	error?: string;
+};
+
+/** How an agent run ended: "ok", or the latest assistant's non-success stop reason. */
+export function turnEnd(messages: unknown): string {
+	if (!Array.isArray(messages)) return "ok";
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i] as { role?: string; stopReason?: string } | null;
+		if (m && m.role === "assistant") return m.stopReason === "aborted" || m.stopReason === "error" ? m.stopReason : "ok";
+	}
+	return "ok";
+}
 
 const PLAN_CONTEXT = (planUrl: string | undefined, hasTask: boolean) => `<critical>
 Plan mode active (OMP Workspace).
@@ -359,6 +381,9 @@ export default function planMode(pi: Pi) {
 
 	const persist = () => pi.appendEntry(STATE_ENTRY, s);
 
+	/** `provider/model[:thinking]` passes through; anything else is a model role. */
+	const resolveSpec = (role: string): string | undefined => (role.includes("/") ? role : roleSpec(pi, role));
+
 	const tiers = (): Tier[] => {
 		const order = settingsOf(pi)?.get?.("cycleOrder");
 		const roles = Array.isArray(order) && order.every((r) => typeof r === "string") ? (order as string[]) : DEFAULT_TIER_ORDER;
@@ -373,7 +398,26 @@ export default function planMode(pi: Pi) {
 	const publish = (ctx: Ctx) => {
 		if (isSub) return;
 		if (!s.enabled) {
-			ctx.ui.setStatus(STATUS_KEY, JSON.stringify({ v: 1, enabled: false }));
+			const a = s.approved;
+			ctx.ui.setStatus(
+				STATUS_KEY,
+				JSON.stringify({
+					v: 1,
+					enabled: false,
+					approved: a
+						? {
+								planFile: a.planFile,
+								planUrl: localUrl(ctx, a.planFile),
+								title: a.title,
+								content: a.content,
+								prevContent: a.prevContent ?? null,
+								version: a.version,
+								status: a.status,
+								error: a.error ?? null,
+							}
+						: null,
+				}),
+			);
 			return;
 		}
 		const pct = ctx.getContextUsage?.()?.percent;
@@ -434,9 +478,9 @@ export default function planMode(pi: Pi) {
 	};
 
 	/** Restore tools; `restoreModel` puts back the pre-plan model (execution role picks its own). */
-	const exit = async (ctx: Ctx, restoreModel: boolean) => {
+	const exit = async (ctx: Ctx, restoreModel: boolean, approved?: Approved) => {
 		const prev = s;
-		s = { enabled: false, version: 0, phase: "planning" };
+		s = { enabled: false, version: 0, phase: "planning", approved };
 		const available = new Set(pi.getAllTools().map((t) => t.name));
 		const tools = (prev.prevTools ?? []).filter((n) => available.has(n));
 		if (!tools.includes("read") && available.has("read")) tools.push("read");
@@ -463,7 +507,9 @@ export default function planMode(pi: Pi) {
 		if (s.enabled) {
 			const available = new Set(pi.getAllTools().map((t) => t.name));
 			await pi.setActiveTools([...PLAN_TOOLS].filter((n) => available.has(n)));
+			const before = s.version;
 			refreshPlan(ctx);
+			if (s.version !== before) persist();
 		}
 		publish(ctx);
 	});
@@ -517,13 +563,34 @@ export default function planMode(pi: Pi) {
 	});
 
 	pi.on("agent_end", (e: { messages?: unknown }, ctx: Ctx) => {
-		if (!s.enabled || isSub) return;
+		if (isSub) return;
+		if (!s.enabled) {
+			// The approved plan's execution turn finished: report how it ended.
+			if (s.approved?.status === "executing") {
+				const end = turnEnd(e?.messages);
+				s.approved = { ...s.approved, status: end === "ok" ? "completed" : "failed", error: end === "ok" ? undefined : end };
+				persist();
+				publish(ctx);
+			}
+			return;
+		}
 		const found = refreshPlan(ctx);
 		persist();
 		publish(ctx);
 		if (shouldRemind(found, reminders, e?.messages)) {
 			reminders += 1;
 			pi.sendMessage({ customType: REMINDER_TYPE, content: PLAN_REMINDER, display: false }, { triggerTurn: true });
+		}
+	});
+
+	// A plan file written mid-turn becomes a persisted version right away.
+	pi.on("tool_result", (_e: never, ctx: Ctx) => {
+		if (!s.enabled || isSub) return;
+		const before = s.version;
+		refreshPlan(ctx);
+		if (s.version !== before) {
+			persist();
+			publish(ctx);
 		}
 	});
 
@@ -551,7 +618,11 @@ export default function planMode(pi: Pi) {
 			if (isSub) return;
 			const [action = "", ...rest] = args.trim().split(/\s+/);
 			if (action === "status") {
-				if (s.enabled) refreshPlan(ctx);
+				if (s.enabled) {
+					const before = s.version;
+					refreshPlan(ctx);
+					if (s.version !== before) persist();
+				}
 				publish(ctx);
 				return;
 			}
@@ -576,8 +647,22 @@ export default function planMode(pi: Pi) {
 					ctx.ui.notify(`Plan file not found: ${file}`, "error");
 					return;
 				}
-				const spec = role ? roleSpec(pi, role) : undefined;
-				if (spec && !(await applySpec(pi, ctx, spec))) ctx.ui.notify(`Model for role ${role} is unavailable; keeping the current model.`, "warning");
+				// Publish first so the app never shows "plan mode off" while the model switches.
+				s.approved = { planFile: file, title: planTitle(content, file), content, version: 1, status: "executing" };
+				persist();
+				publish(ctx);
+				const spec = role ? resolveSpec(role) : undefined;
+				if (spec && !(await applySpec(pi, ctx, spec))) {
+					if (role?.includes("/")) {
+						// Explicit selection: fail visibly instead of executing on the previous model.
+						if (s.approved) s.approved = { ...s.approved, status: "failed", error: "model-unavailable" };
+						persist();
+						publish(ctx);
+						ctx.ui.notify(`Model ${role} is unavailable; the plan was not executed.`, "error");
+						return;
+					}
+					ctx.ui.notify(`Model ${role} is unavailable; keeping the current model.`, "warning");
+				}
 				pi.sendUserMessage(APPROVED_PROMPT(file, content, false, pi.getActiveTools().includes("todo")));
 				return;
 			}
@@ -618,8 +703,21 @@ export default function planMode(pi: Pi) {
 				ctx.ui.notify(`Context is ${Math.round(usage)}% full; compact or start fresh instead.`, "error");
 				return;
 			}
-			const spec = role ? roleSpec(pi, role) : undefined;
-			await exit(ctx, !spec);
+			const spec = role ? resolveSpec(role) : undefined;
+			// An explicitly chosen provider/model must apply before anything is dispatched; never run on another model.
+			if (role?.includes("/") && how !== "execute" && !(await applySpec(pi, ctx, role))) {
+				ctx.ui.notify(`Model ${role} is unavailable; the plan was not approved. Choose another model and retry.`, "error");
+				return;
+			}
+			await exit(ctx, !spec, {
+				planFile: file,
+				title: planTitle(content, file),
+				content,
+				prevContent: s.prevContent,
+				version: s.version,
+				// A fresh session executes elsewhere; this one only handed the plan off.
+				status: how === "execute" ? "handoff" : "executing",
+			});
 			// "execute" starts a fresh session in the app (`/plan-action run <file>` there).
 			if (how === "execute") return;
 			if (spec && !(await applySpec(pi, ctx, spec))) ctx.ui.notify(`Model for role ${role} is unavailable; keeping the current model.`, "warning");

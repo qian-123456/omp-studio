@@ -16,6 +16,8 @@ export default defineMessages({
 		fullscreen: "全屏",
 		fullscreenTitle: "可视化全屏",
 		exitFullscreen: "退出全屏",
+		openInBrowser: "浏览器打开",
+		openInBrowserFailed: "浏览器打开失败: {error}",
 	},
 	"en-US": {
 		openLinkFailed: "Failed to open link: {error}",
@@ -32,5 +34,7 @@ export default defineMessages({
 		fullscreen: "Fullscreen",
 		fullscreenTitle: "Fullscreen visualization",
 		exitFullscreen: "Exit fullscreen",
+		openInBrowser: "Open in browser",
+		openInBrowserFailed: "Failed to open in browser: {error}",
 	},
 });

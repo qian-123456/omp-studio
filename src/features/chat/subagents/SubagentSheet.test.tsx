@@ -105,4 +105,27 @@ describe("SubagentSheet", () => {
 		expect(screen.queryByText("0秒")).toBeNull();
 		expect(screen.queryByText("用时")).toBeNull();
 	});
+
+	it("overview shows failure reason, solution space and shared context from the row alone", async () => {
+		subagentTranscript.mockRejectedValueOnce(new Error("n/a"));
+		const r = {
+			...row("x"),
+			status: "failed" as const,
+			error: "sourceSession: must NOT have additional properties",
+			solutionSpace: "SOLSPACE-TEXT",
+			sharedContext: "CTX-TEXT",
+		};
+		render(<SubagentSheet parentFile="/s/parent.jsonl" onClose={() => {}} row={r} />);
+		expect(screen.getByText(/must NOT have additional properties/)).toBeTruthy();
+		expect(screen.getByText("SOLSPACE-TEXT")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: /共享上下文/ }));
+		expect(screen.getByText("CTX-TEXT")).toBeTruthy();
+	});
+
+	it("explicit context prop is used when passed (stream entry point)", async () => {
+		subagentTranscript.mockRejectedValueOnce(new Error("n/a"));
+		render(<SubagentSheet parentFile="/s/parent.jsonl" onClose={() => {}} row={row("y")} context="PROP-CTX" />);
+		fireEvent.click(screen.getByRole("button", { name: /共享上下文/ }));
+		expect(screen.getByText("PROP-CTX")).toBeTruthy();
+	});
 });

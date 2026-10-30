@@ -14,6 +14,7 @@ import {
 	buildFollowUpPrompt,
 	type DoctorHistoryEntry,
 	type DoctorTurn,
+	normalizeLenses,
 	parseDiagnosis,
 } from "./doctor";
 import {
@@ -26,7 +27,7 @@ import {
 export interface DoctorSessionState {
 	status: "idle" | "running" | "error";
 	error: string | null;
-	lens: DiagnosticLens;
+	lenses: DiagnosticLens[];
 	result: DiagnosticDiagnosisResult | null;
 	thread: DoctorTurn[];
 	skeletonTokens: number;
@@ -38,7 +39,7 @@ interface DoctorState {
 	history: DoctorHistoryEntry[];
 	/** Activity watermark attempted, including failures; auto mode waits for new activity. */
 	attemptedActivity: Record<string, number>;
-	runDiagnosis: (sessionId: string, lens: DiagnosticLens, question?: string) => Promise<void>;
+	runDiagnosis: (sessionId: string, lenses: DiagnosticLens | DiagnosticLens[], question?: string) => Promise<void>;
 	askFollowUp: (sessionId: string, question: string) => Promise<void>;
 	clear: (sessionId: string) => void;
 }
@@ -51,7 +52,7 @@ const HISTORY_CAP = 200;
 const EMPTY_SESSION: DoctorSessionState = {
 	status: "idle",
 	error: null,
-	lens: "cost",
+	lenses: ["cost"],
 	result: null,
 	thread: [],
 	skeletonTokens: 0,
@@ -110,7 +111,8 @@ export const useDoctor = create<DoctorState>((set, get) => {
 		history: loadHistory(),
 		attemptedActivity: loadAttempts(),
 
-		async runDiagnosis(sessionId, lens, question) {
+		async runDiagnosis(sessionId, lensesInput, question) {
+			const lenses = normalizeLenses(lensesInput);
 			if (get().bySession[sessionId]?.status === "running") return;
 			const activity = Date.parse(useSessions.getState().sessions[sessionId]?.updatedAt ?? "");
 			if (Number.isFinite(activity)) {
@@ -122,13 +124,13 @@ export const useDoctor = create<DoctorState>((set, get) => {
 					// Keep the in-memory watermark if storage is unavailable.
 				}
 			}
-			patch(sessionId, { status: "running", error: null, lens });
+			patch(sessionId, { status: "running", error: null, lenses });
 			try {
 				const skeleton = await getSkeleton(sessionId);
 				skeletonCache[sessionId] = skeleton;
-				const prompt = buildDiagnosisPrompt(skeleton, lens, question);
+				const prompt = buildDiagnosisPrompt(skeleton, lenses, question);
 				const raw = await heatmapDiagnose(prompt, null);
-				const result = parseDiagnosis(raw, lens);
+				const result = parseDiagnosis(raw, lenses);
 				const diagnosedAt = result.generatedAt;
 				const thread: DoctorTurn[] = question?.trim()
 					? [{ role: "user", text: question.trim(), at: diagnosedAt }]

@@ -3,13 +3,14 @@
  * delete and (for message quotes) locate-in-transcript actions. */
 
 import { ArrowLeftRight, LocateFixed, MessageSquareQuote, Pencil, Trash2, X } from "lucide-react";
-import { type FocusEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { claimEscape } from "../../lib/escapeClaim";
 import { setQuoteOccurrenceHint } from "./annotationLocate";
+import { AnnotationImageButton, AnnotationImageStrip, useAnnotationImages } from "./AnnotationImages";
 import { tNow, useT } from "../../stores/language";
 
 /** Grace period so the pointer can cross the (zero-gap) seam between chip and popover. */
@@ -67,27 +68,69 @@ function AnnotationEntry({
 	const [draft, setDraft] = useState("");
 	// Enter/Esc unmount the input, which can also fire blur; only the first commit counts.
 	const settledRef = useRef(true);
+	const [draftImages, setDraftImages] = useState<string[]>([]);
+	// Mirrors draftImages synchronously: an addition that lands right before a deferred save must be seen by it.
+	const draftImagesRef = useRef<string[]>([]);
+	const setDraftImagesSynced = useCallback((next: string[]) => {
+		draftImagesRef.current = next;
+		setDraftImages(next);
+	}, []);
+	// After the editor closed (e.g. the native picker stole focus) additions go straight to the store.
+	const changeImages = useCallback(
+		(next: string[]) => {
+			setDraftImagesSynced(next);
+			if (settledRef.current) {
+				useComposer.getState().updateAnnotation(sessionId, a.id, {
+					images: next.length > 0 ? next : undefined,
+				});
+			}
+		},
+		[sessionId, a.id],
+	);
+	const closeWhenIdleRef = useRef(false);
+	const finishRef = useRef<(save: boolean) => void>(() => {});
+	const imageInput = useAnnotationImages(editing ? draftImages : (a.images ?? []), changeImages, () => {
+		if (closeWhenIdleRef.current) {
+			closeWhenIdleRef.current = false;
+			finishRef.current(true);
+		}
+	});
 
 	const startEdit = () => {
 		setDraft(a.comment ?? "");
+		setDraftImagesSynced(a.images ?? []);
 		settledRef.current = false;
 		onEdit(a.id);
 	};
 
 	const finish = (save: boolean) => {
 		if (settledRef.current) return;
+		// An image is still being saved/picked: stay in edit mode and save once it landed.
+		if (save && imageInput.pendingRef.current > 0) {
+			closeWhenIdleRef.current = true;
+			return;
+		}
 		settledRef.current = true;
-		if (save) updateAnnotation(sessionId, a.id, { comment: draft.trim() || undefined });
+		// Esc: pending results belong to the discarded edit.
+		if (!save) imageInput.invalidate();
+		if (save) {
+			updateAnnotation(sessionId, a.id, {
+				comment: draft.trim() || undefined,
+				images: draftImagesRef.current.length > 0 ? draftImagesRef.current : undefined,
+			});
+		}
 		onEdit(null);
 	};
+	finishRef.current = finish;
 
 	// Edit opened from outside (marker badge): seed the draft once the entry is mounted.
 	useEffect(() => {
 		if (editing && settledRef.current) {
 			setDraft(a.comment ?? "");
+			setDraftImagesSynced(a.images ?? []);
 			settledRef.current = false;
 		}
-	}, [editing, a.comment]);
+	}, [editing, a.comment, a.images]);
 
 	return (
 		<li className="flex gap-2 px-3 py-2">
@@ -101,6 +144,7 @@ function AnnotationEntry({
 					{a.text}
 				</div>
 				{editing ? (
+					<>
 					<textarea
 						autoFocus
 						rows={2}
@@ -120,14 +164,23 @@ function AnnotationEntry({
 							}
 						}}
 						onBlur={() => finish(true)}
+						onPaste={imageInput.onPaste}
 						className="mt-1 w-full resize-none rounded-md border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:border-[var(--text-30,var(--border))]"
 					/>
+					<AnnotationImageStrip paths={draftImages} onRemove={imageInput.remove} className="mt-1" />
+					<div className="mt-1 flex items-center">
+						<AnnotationImageButton onClick={imageInput.pick} busy={imageInput.busy} />
+					</div>
+					</>
 				) : (
-					a.comment && (
-						<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
-							{t("chat.annotation.notePrefix", { comment: a.comment })}
-						</div>
-					)
+					<>
+						{a.comment && (
+							<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
+								{t("chat.annotation.notePrefix", { comment: a.comment })}
+							</div>
+						)}
+						<AnnotationImageStrip paths={a.images} className="mt-1" />
+					</>
 				)}
 			</div>
 			<div className="flex shrink-0 items-start gap-0.5 pt-px">

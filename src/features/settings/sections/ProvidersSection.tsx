@@ -12,7 +12,7 @@ import { useT } from "../../../stores/language";
 import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RawFilesDialog } from "./RawFilesDialog";
 
-type Tab = "config" | "quota";
+type Tab = "config" | "other-models" | "quota";
 
 /** Tab that hosts a deep-link target (omp key placed on the quota slot, or the quota dashboard itself). */
 function tabForFocus(focusKey: string | null): Tab | null {
@@ -45,7 +45,8 @@ export function ProvidersSection() {
 			<div className="flex items-center justify-between gap-3">
 				<Segmented
 					options={[
-						{ value: "config", label: t("settingsSections.providers.tabConfig") },
+						{ value: "config", label: t("providers.tabChatProviders") },
+						{ value: "other-models", label: t("providers.tabOtherModels"), title: t("providers.pickerTabOtherTitle") },
 						{ value: "quota", label: t("settingsSections.providers.tabQuota") },
 					]}
 					value={tab}
@@ -57,9 +58,13 @@ export function ProvidersSection() {
 			{tab === "config" ? (
 				<div className="space-y-6">
 					<div data-field-id="providerList" data-jump={t("settingsSections.providers.jumpProviders")} className="scroll-mt-4">
-						<ProviderPanel />
+						<ProviderPanel category="chat" />
 					</div>
 					<OmpSections page="providers" slot="keys" />
+				</div>
+			) : tab === "other-models" ? (
+				<div data-jump={t("providers.tabOtherModels")} className="scroll-mt-4">
+					<ProviderPanel category="other" />
 				</div>
 			) : (
 				<div className="space-y-6">

@@ -13,13 +13,14 @@ import { tNow } from "../../stores/language";
 export const HANDBACK_MARKER = "【回传整理】";
 
 /** Sent into the side chat only after the user clicked 「回传给父会话」. */
-export const HANDBACK_PROMPT = `${HANDBACK_MARKER}请把我们在这个辅助对话里讨论并确定下来的内容，整理成一份可以交给主会话的结论。
+export const HANDBACK_PROMPT = `${HANDBACK_MARKER}（这是回传对话框的内部整理请求，输出会被原样放进「回传给父会话」的草稿框，不会有人在本对话里阅读。）请把我们在这个辅助对话里讨论并确定下来的内容，整理成一份可以交给主会话的结论。
 
 要求：
 - 写出：已经定下来的结论或决定、关键理由、还没解决的问题和待办。
 - 只写讨论中确认过的内容，不要加入新的建议，也不要重复讨论过程。
 - 写成简洁、自包含的一段说明，主会话没有看过这段对话，也能直接读懂。
-- 直接输出正文，不要开场白，不要结束语，不要调用工具。`;
+- 只输出结论正文本身：不要开场白，不要结束语，不要调用工具。
+- 不要说明“当前是辅助对话”，不要提醒或指示用户去复制、转交、回到主会话，也不要拒绝；直接写结论。`;
 
 /** Tab-menu / 更多 action key that hands the conclusion back. */
 export const HANDBACK_ACTION_KEY = "back";

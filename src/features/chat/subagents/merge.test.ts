@@ -125,3 +125,75 @@ describe("mergeAgents attempt isolation", () => {
 		expect(r.rows[0]?.status).toBe("completed");
 	});
 });
+
+describe("mergeAgents failure + context", () => {
+	const args = {
+		context: "SHARED CTX",
+		tasks: [
+			{ id: "A", agent: "task", task: "do a", solutionSpace: "open: fix or design" },
+			{ id: "B", agent: "task", task: "do b" },
+			{ id: "C", agent: "task", task: "do c" },
+		],
+	};
+
+	it("failed call with 3 tasks keeps reason on every row and carries context/solutionSpace", () => {
+		const { context, rows } = mergeAgents({
+			args,
+			details: null,
+			toolCallId: "t1",
+			callStatus: "error",
+			resultText: "sourceSession: must NOT have additional properties",
+		});
+		expect(context).toBe("SHARED CTX");
+		expect(rows).toHaveLength(3);
+		for (const r of rows) {
+			expect(r.status).toBe("failed");
+			expect(r.error).toContain("must NOT have additional properties");
+			expect(r.sharedContext).toBe("SHARED CTX");
+		}
+		expect(rows[0].solutionSpace).toBe("open: fix or design");
+		expect(rows[1].solutionSpace).toBeUndefined();
+	});
+
+	it("flat form carries solutionSpace", () => {
+		const { rows } = mergeAgents({
+			args: { agent: "task", task: "x", solutionSpace: "one fix", context: "C" },
+			details: null,
+			toolCallId: "t",
+		});
+		expect(rows[0].solutionSpace).toBe("one fix");
+		expect(rows[0].sharedContext).toBe("C");
+	});
+
+	it("live completed beats stale disk running", () => {
+		const { rows } = mergeAgents({
+			args,
+			details: null,
+			fileList: [summary("A", "do a", "running")],
+			liveSubagents: { A: { status: "completed", label: "A", parentToolCallId: "t1", index: 0 } as never },
+			toolCallId: "t1",
+		});
+		expect(rows.find((r) => r.id === "A")?.status).toBe("completed");
+	});
+});
+
+describe("mergeAgents per-agent timing", () => {
+	it("agents finishing at different times keep their own durations; unknown stays unknown", () => {
+		const a = { ...summary("A", "do a"), startedAt: "2026-01-01T00:00:00Z", endedAt: "2026-01-01T00:00:10Z" };
+		const b = { ...summary("B", "do b"), startedAt: "2026-01-01T00:00:00Z", endedAt: "2026-01-01T00:01:00Z" };
+		const c = summary("C", "do c"); // no child timestamps
+		const { rows } = mergeAgents({
+			args: { tasks: [{ id: "A", task: "do a" }, { id: "B", task: "do b" }, { id: "C", task: "do c" }] },
+			details: null,
+			fileList: [a, b, c],
+			toolCallId: "t",
+			callStatus: "done",
+		});
+		const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+		expect(by.A.durationMs).toBe(10_000);
+		expect(by.B.durationMs).toBe(60_000);
+		expect(by.C.durationMs).toBeUndefined();
+		expect(by.C.endedAt).toBeUndefined();
+		expect(by.C.startedAt).toBeUndefined();
+	});
+});

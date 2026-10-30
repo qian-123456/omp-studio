@@ -11,6 +11,7 @@ import { SelectionBubble } from "../../components/SelectionBubble";
 import { isComposing } from "../../lib/hooks";
 import { Segmented } from "../../components/Segmented";
 import { type AnnotationTarget, useComposer } from "../../stores/composer";
+import { AnnotationImageButton, AnnotationImageStrip, useAnnotationImages } from "./AnnotationImages";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { resolveAnnotationKey, revealSideChatFor } from "../sidechat/annotationRoute";
@@ -105,17 +106,33 @@ export function SelectionToolbar({
 	draftRef.current = draft;
 	const commentingRef = useRef(commenting);
 	commentingRef.current = commenting;
+	const [images, setImages] = useState<string[]>([]);
+	const imagesRef = useRef<string[]>([]);
+	imagesRef.current = images;
+	const setImagesSynced = useCallback((next: string[]) => {
+		imagesRef.current = next;
+		setImages(next);
+	}, []);
+	const pendingActionRef = useRef<"submit" | "stage" | null>(null);
+	const idleRef = useRef<() => void>(() => {});
+	const imageInput = useAnnotationImages(images, setImagesSynced, () => idleRef.current());
+	const { pendingRef, invalidate: invalidateImages } = imageInput;
 
 	const clearSel = useCallback(() => {
 		// Snapshot-clear synchronously: a second dismiss in the same event (e.g.
 		// send's click followed by mouseup) must see "nothing open" and no-op.
 		selRef.current = null;
 		draftRef.current = "";
+		imagesRef.current = [];
 		commentingRef.current = false;
+		pendingActionRef.current = null;
+		// Pending image results belonged to this draft: drop them so they never reach the next one.
+		invalidateImages();
 		setSel(null);
 		setCommenting(false);
 		setDraft("");
-	}, []);
+		setImages([]);
+	}, [invalidateImages]);
 
 	// A depth-capped parent cannot fork another side chat: fall back to main.
 	const target: AnnotationTarget = tooDeep ? "main" : annotationTarget;
@@ -143,10 +160,12 @@ export function SelectionToolbar({
 	const stageDraft = useCallback(() => {
 		const sel = selRef.current;
 		const comment = draftRef.current.trim();
-		if (!sel || !commentingRef.current || !comment) return;
+		const images = imagesRef.current;
+		if (!sel || !commentingRef.current || (!comment && images.length === 0)) return;
 		const body = {
 			...quoteSource(sel),
-			comment,
+			comment: comment || undefined,
+			...(images.length > 0 ? { images } : {}),
 		};
 		const dest = destKey();
 		useComposer.getState().addAnnotation(dest, body);
@@ -160,6 +179,11 @@ export function SelectionToolbar({
 	 */
 	const dismiss = useCallback(
 		(mode: "stage" | "discard" = "stage") => {
+			// Click-away while an image is pending: stay open, stage once it landed.
+			if (mode === "stage" && commentingRef.current && pendingRef.current > 0) {
+				if (pendingActionRef.current !== "submit") pendingActionRef.current = "stage";
+				return;
+			}
 			if (mode === "stage") stageDraft();
 			clearSel();
 			const cur = window.getSelection();
@@ -167,7 +191,7 @@ export function SelectionToolbar({
 				cur.removeAllRanges();
 			}
 		},
-		[clearSel, stageDraft, containerRef],
+		[clearSel, stageDraft, containerRef, pendingRef],
 	);
 
 	const startComment = () => {
@@ -177,10 +201,16 @@ export function SelectionToolbar({
 
 	const submitQuote = () => {
 		if (!sel) return;
-		const comment = draft.trim();
+		// Enter / confirm while an image is still being saved: finish as soon as it lands.
+		if (pendingRef.current > 0) {
+			pendingActionRef.current = "submit";
+			return;
+		}
+		const comment = draftRef.current.trim();
 		const body = {
 			...quoteSource(sel),
 			comment: comment || undefined,
+			...(imagesRef.current.length > 0 ? { images: imagesRef.current } : {}),
 		};
 		// Main chat: the remembered target; inside a side chat: always its own composer.
 		const dest = destKey();
@@ -197,6 +227,13 @@ export function SelectionToolbar({
 				) ?? document.querySelector<HTMLTextAreaElement>("textarea");
 			ta?.focus();
 		}, 0);
+	};
+	// Runs when the last pending image addition ends: finish the submit/click-away that was waiting for it.
+	idleRef.current = () => {
+		const action = pendingActionRef.current;
+		pendingActionRef.current = null;
+		if (action === "submit") submitQuote();
+		else if (action === "stage") dismiss("stage");
 	};
 	// Move focus into the comment input once it is shown (the bubble is already
 	// positioned at this point, so the input is focusable).
@@ -240,6 +277,9 @@ export function SelectionToolbar({
 		};
 		const onUp = (e: MouseEvent) => {
 			if (isInteractiveInput(e.target)) return;
+			// An image is still being read/imported for the open draft: keep it as is (a
+			// new selection would swap the owner underneath the pending result).
+			if (pendingRef.current > 0) return;
 			// Focusing the comment input moves the browser selection into it; that
 			// must not re-derive (or clear) the captured selection.
 			if (boxRef.current?.contains(e.target as Node)) return;
@@ -348,8 +388,12 @@ export function SelectionToolbar({
 
 	return (
 		<SelectionBubble anchor={sel.rect} ref={boxRef}>
+			{/* Read by MessageList: no auto-scroll while the annotation bubble is open. */}
+			<div data-selection-toolbar-active="true" className="contents">
 			{commenting ? (
-				<div className={inSideChat ? "flex items-end gap-1.5 px-1.5 py-1" : "flex flex-col gap-1.5 px-1.5 py-1"}>
+				<div className="flex flex-col gap-1 px-1.5 py-1">
+				<AnnotationImageStrip paths={images} onRemove={imageInput.remove} className="px-1" />
+				<div className={inSideChat ? "flex items-end gap-1.5" : "flex flex-col gap-1.5"}>
 					<textarea
 						ref={inputRef}
 						rows={1}
@@ -378,6 +422,7 @@ export function SelectionToolbar({
 								e.preventDefault();
 							}
 						}}
+						onPaste={imageInput.onPaste}
 						placeholder={t("chatView.selection.annotatePlaceholder")}
 						aria-label={t("chatView.selection.annotateAria")}
 						className={`min-w-0 resize-none rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--text-30)] ${inSideChat ? "w-60" : "w-72"}`}
@@ -403,16 +448,20 @@ export function SelectionToolbar({
 								]}
 							/>
 						)}
-						<button
-							type="button"
-							aria-label={t("chatView.selection.confirmAnnotationAria")}
-							title={t("chatView.selection.confirmAnnotationTitle")}
-							onClick={submitQuote}
-							className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
-						>
-							<ArrowUp size={13} strokeWidth={2.5} />
-						</button>
+						<div className="flex shrink-0 items-center gap-1">
+							<AnnotationImageButton onClick={imageInput.pick} busy={imageInput.busy} />
+							<button
+								type="button"
+								aria-label={t("chatView.selection.confirmAnnotationAria")}
+								title={t("chatView.selection.confirmAnnotationTitle")}
+								onClick={submitQuote}
+								className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
+							>
+								<ArrowUp size={13} strokeWidth={2.5} />
+							</button>
+						</div>
 					</div>
+				</div>
 				</div>
 			) : (
 				<>
@@ -438,7 +487,9 @@ export function SelectionToolbar({
 						/>
 					)}
 				</>
+
 			)}
+			</div>
 		</SelectionBubble>
 	);
 }

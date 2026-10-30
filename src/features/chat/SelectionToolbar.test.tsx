@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useComposer } from "../../stores/composer";
@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
 	openNewSideChat: vi.fn(),
 	revealSideChat: vi.fn(),
 	setOpenChild: vi.fn(),
+	saveClipboardImage: vi.fn(async (_base64: string) => "/clip/pasted.png"),
 }));
 vi.mock("../../stores/sessions", () => ({
 	useSessions: (selector: (s: { sessions: typeof h.sessions }) => unknown) =>
@@ -40,6 +41,14 @@ vi.mock("../../stores/ui", () => ({
 		{ subscribe: () => () => {}, getState: () => ({ setRightTab, openModal }) },
 	),
 }));
+
+vi.mock("../../lib/ipc", () => ({
+	saveClipboardImage: h.saveClipboardImage,
+	importImageFile: vi.fn(async (p: string) => p),
+	clipboardFilePaths: vi.fn(async () => []),
+}));
+vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => p }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 beforeAll(() => {
 	class RO {
@@ -261,5 +270,122 @@ describe("streaming selection anchors", () => {
 		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
 		expect(annsOf("sess-1")[0].text).toBe("world");
 		expect(annsOf("sess-1")[0].itemId).toBeUndefined();
+	});
+});
+
+describe("comment image draft", () => {
+	/** Paste a screenshot, then wait until the saved image shows as a thumbnail (FileReader + save are async). */
+	const pasteImage = async (ta: HTMLTextAreaElement) => {
+		fireEvent.paste(ta, {
+			clipboardData: {
+				types: ["Files"],
+				items: [{ kind: "file", getAsFile: () => new File(["x"], "s.png", { type: "image/png" }) }],
+			},
+		});
+		await waitFor(() => expect(screen.getByAltText("批注图片")).toBeTruthy());
+	};
+
+	it("marks the open bubble and keeps draft + pasted image across a parent rerender", async () => {
+		const { rerender } = render(<Host />);
+		const ta = openCommentBox();
+		fireEvent.change(ta, { target: { value: "带图批注" } });
+		await pasteImage(ta);
+		expect(screen.getByAltText("批注图片")).toBeTruthy();
+		expect(document.querySelector('[data-selection-toolbar-active="true"]')).not.toBeNull();
+
+		// Tool completion / streaming update: the parent re-renders with new content.
+		rerender(<Host />);
+		expect((screen.getByRole("textbox", { name: "添加批注" }) as HTMLTextAreaElement).value).toBe("带图批注");
+		expect(screen.getByAltText("批注图片")).toBeTruthy();
+
+		fireEvent.keyDown(screen.getByRole("textbox", { name: "添加批注" }), { key: "Enter" });
+		expect(annsOf("sess-1")[0].images).toEqual(["/clip/pasted.png"]);
+		expect(document.querySelector('[data-selection-toolbar-active="true"]')).toBeNull();
+	});
+
+	it("an image-only annotation survives click-away and can drop the image again", async () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		await pasteImage(ta);
+		fireEvent.click(screen.getByRole("button", { name: "移除图片" }));
+		expect(screen.queryByAltText("批注图片")).toBeNull();
+		await pasteImage(ta);
+		fireEvent.mouseDown(document.body);
+		fireEvent.mouseUp(document.body);
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(annsOf("sess-1")[0].images).toEqual(["/clip/pasted.png"]);
+		expect(annsOf("sess-1")[0].comment).toBeUndefined();
+	});
+
+	/** Start a paste whose save stays pending until the returned `release(path)` is called. */
+	const pasteDeferred = async (ta: HTMLTextAreaElement) => {
+		let release!: (path: string) => void;
+		// Executor form on purpose: the project's TS target has no Promise.withResolvers (see sideChatAttachments).
+		h.saveClipboardImage.mockImplementationOnce(
+			() => new Promise<string>((resolve) => (release = resolve)),
+		);
+		const before = h.saveClipboardImage.mock.calls.length;
+		fireEvent.paste(ta, {
+			clipboardData: {
+				types: ["Files"],
+				items: [{ kind: "file", getAsFile: () => new File(["x"], "s.png", { type: "image/png" }) }],
+			},
+		});
+		await waitFor(() => expect(h.saveClipboardImage.mock.calls.length).toBe(before + 1));
+		return (path: string) => act(async () => release(path));
+	};
+
+	it("Enter while the image is still saving waits, then stages the comment with that image", async () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		fireEvent.change(ta, { target: { value: "等图" } });
+		const release = await pasteDeferred(ta);
+		fireEvent.keyDown(ta, { key: "Enter" });
+		// Nothing staged yet and the box is still open.
+		expect(annsOf("sess-1")).toBeUndefined();
+		expect(screen.getByRole("textbox", { name: "添加批注" })).toBeTruthy();
+		await release("/clip/late.png");
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(annsOf("sess-1")[0]).toMatchObject({ comment: "等图", images: ["/clip/late.png"] });
+		expect(screen.queryByRole("textbox", { name: "添加批注" })).toBeNull();
+	});
+
+	it("click-away while the image is still saving keeps the bubble open and stages once it lands", async () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		const release = await pasteDeferred(ta);
+		fireEvent.mouseDown(document.body);
+		fireEvent.mouseUp(document.body);
+		expect(annsOf("sess-1")).toBeUndefined();
+		await release("/clip/late.png");
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(annsOf("sess-1")[0].images).toEqual(["/clip/late.png"]);
+	});
+
+	it("Esc discards and invalidates the pending image: a later selection never receives it", async () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		const release = await pasteDeferred(ta);
+		fireEvent.keyDown(ta, { key: "Escape" });
+		expect(screen.queryByRole("textbox", { name: "添加批注" })).toBeNull();
+		const next = openCommentBox();
+		await release("/clip/stale.png");
+		expect(screen.queryByAltText("批注图片")).toBeNull();
+		fireEvent.change(next, { target: { value: "新批注" } });
+		fireEvent.keyDown(next, { key: "Enter" });
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(annsOf("sess-1")[0].images).toBeUndefined();
+	});
+
+	it("overlapping pastes: Enter waits for both", async () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		const releaseA = await pasteDeferred(ta);
+		const releaseB = await pasteDeferred(ta);
+		fireEvent.keyDown(ta, { key: "Enter" });
+		await releaseA("/clip/a.png");
+		expect(annsOf("sess-1")).toBeUndefined();
+		await releaseB("/clip/b.png");
+		expect(annsOf("sess-1")[0].images).toEqual(["/clip/a.png", "/clip/b.png"]);
 	});
 });

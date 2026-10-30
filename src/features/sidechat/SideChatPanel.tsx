@@ -40,6 +40,7 @@ import { SIDE_CHAT_TAB_ACTIONS, sendFirstMessage } from "./sideChatActions";
 import { visibleSideChatActions } from "./handbackLogic";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { isBlankTab, resolveActiveTab, useSideChatView } from "./viewStore";
+import { useTypeToFocus } from "../chat/useTypeToFocus";
 import { useT } from "../../stores/language";
 import {
 	imageFileToBase64,
@@ -96,6 +97,14 @@ function SideChatThread({ childId }: { childId: string }) {
 	const [open, setOpen] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
+
+	// Opening / switching to a side-chat thread puts the caret in its composer.
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			document.querySelector<HTMLTextAreaElement>(`textarea[data-composer="${CSS.escape(childId)}"]`)?.focus();
+		}, 50);
+		return () => clearTimeout(timer);
+	}, [childId]);
 	return (
 		<div className="flex h-full flex-col">
 			<div className="flex shrink-0 justify-end px-2 pt-1.5">
@@ -442,6 +451,13 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 		setError(null);
 	}, [tabId]);
 
+	// Opening (or switching to) a blank side chat puts the caret in its input.
+	useEffect(() => {
+		const timer = setTimeout(() => textareaRef.current?.focus(), 0);
+		return () => clearTimeout(timer);
+	}, [tabId]);
+	useTypeToFocus(textareaRef, true);
+
 	const send = async () => {
 		const q = question.trim();
 		if (busy || attachingImages > 0 || (!q && stagedAnns.length === 0 && images.length === 0)) return;
@@ -481,7 +497,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 		(question.trim().length > 0 || stagedAnns.length > 0 || images.length > 0);
 
 	return (
-		<div className="flex h-full flex-col">
+		<div data-session-view={tabId} className="flex h-full flex-col">
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
 				{pendingQuestion ? (
 					<div className="mb-2 ml-auto flex max-w-[85%] flex-col items-end gap-1">
@@ -543,7 +559,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 							onDragLeave={() => setIsDraggingOver(false)}
 							onDrop={onDrop}
 							className={clsx(
-								"relative rounded-[22px] border bg-[var(--bg-panel)] shadow-xs transition-colors focus-within:border-[var(--hairline-strong,var(--border))]",
+								"relative rounded-[22px] border bg-[var(--bg-panel)] transition-colors duration-150",
 								isDraggingOver
 									? "border-[var(--text-30,var(--border))]"
 									: "border-[var(--line,var(--border))]",
@@ -596,7 +612,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								}}
 								placeholder={t("sidechat.inputPlaceholder")}
 								rows={1}
-								className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 font-sans text-[13px] leading-[1.35] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[44px]"
+								className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[40px]"
 							/>
 
 							<div className="flex min-w-0 items-end justify-between gap-2 px-2.5 pb-2 text-[12px]">

@@ -83,7 +83,7 @@ function metaParts(row: AgentRow, t: ReturnType<typeof useT>["t"]): string[] {
 	if (row.thinkingLevel) parts.push(row.thinkingLevel);
 	if (row.toolCount && row.toolCount > 0) parts.push(t("subagents.toolCountShort", { count: row.toolCount }));
 	if (row.tokens && row.tokens > 0) parts.push(formatTokensShort(row.tokens));
-	if (row.durationMs && row.durationMs > 0 && row.status !== "pending") {
+	if (row.durationMs && Math.round(row.durationMs / 1000) >= 1 && row.status !== "pending") {
 		parts.push(formatDurationCompact(row.durationMs));
 	}
 	if (typeof row.cost === "number" && Number.isFinite(row.cost) && row.cost > 0) {
@@ -214,17 +214,21 @@ export function TaskToolBlock({
 	status,
 	details,
 	resultText,
-	startedAt,
-	endedAt,
 	expanded,
 }: TaskToolBlockProps) {
 	const { t } = useT();
-	// Collapsed by default like every activity row; running/error show via the
-	// header tone. A click or expand-all opens it.
-	const [open, setOpen] = useState(expanded === true);
+	const errorText = status === "error" ? resultText?.trim() || undefined : undefined;
+	// Collapsed by default like every activity row, but a failed dispatch opens
+	// so its error text is visible at once.
+	const [open, setOpen] = useState(expanded === true || Boolean(errorText));
 	useEffect(() => {
 		if (expanded !== undefined) setOpen(expanded);
 	}, [expanded]);
+	const hadError = useRef(false);
+	useEffect(() => {
+		if (errorText && !hadError.current && expanded === undefined) setOpen(true);
+		hadError.current = Boolean(errorText);
+	}, [errorText, expanded]);
 	const [expandedAll, setExpandedAll] = useState(false);
 	const [sheetId, setSheetId] = useState<string | null>(null);
 	const [fileList, setFileList] = useState<SubagentSummary[] | null>(null);
@@ -275,10 +279,8 @@ export function TaskToolBlock({
 				toolCallId,
 				callStatus: status,
 				resultText,
-				startedAt: startedAt ?? undefined,
-				endedAt: endedAt ?? undefined,
 			}),
-		[args, taskDetails, fileList, liveSubagents, toolCallId, status, resultText, startedAt, endedAt],
+		[args, taskDetails, fileList, liveSubagents, toolCallId, status, resultText],
 	);
 
 	const counts = countStatuses(rows.map((r) => r.status));
@@ -321,6 +323,13 @@ export function TaskToolBlock({
 								.filter(Boolean)
 								.join(" · ")}
 						</span>
+					) : errorText && !open ? (
+						<span
+							className="min-w-0 max-w-[60%] truncate text-[12px] text-[var(--status-error)]"
+							title={errorText}
+						>
+							{errorText.split("\n").find((l) => l.trim())}
+						</span>
 					) : !isActive && failed > 0 ? (
 						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
 							{t("subagents.failedCount", { count: failed })}
@@ -331,6 +340,19 @@ export function TaskToolBlock({
 
 			{open && (
 				<div className="flex flex-col ps-[14px] pb-1 pt-0.5">
+					{errorText && (
+						<div
+							role="alert"
+							className="mb-1 max-h-48 overflow-y-auto rounded-[10px] border border-[var(--status-error)]/40 bg-[var(--status-error)]/10 px-2.5 py-1.5"
+						>
+							<div className="mb-0.5 text-[11px] font-medium text-[var(--status-error)]">
+								{t("subagents.dispatchError")}
+							</div>
+							<p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-[var(--text-60)] select-text">
+								{errorText}
+							</p>
+						</div>
+					)}
 					{visible.map((row, i) => (
 						<AgentRowView
 							key={row.id}
@@ -351,7 +373,7 @@ export function TaskToolBlock({
 							</button>
 						</div>
 					)}
-					{total === 0 && (
+					{total === 0 && !errorText && (
 						<div className="px-1 py-0.5 text-[11px] text-[var(--text-30)]">
 							{resultText?.trim() || t("subagents.noRecord")}
 						</div>

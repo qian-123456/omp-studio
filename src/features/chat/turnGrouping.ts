@@ -313,8 +313,9 @@ export function noticeBody(item: TranscriptItem): string {
  * "" when the label already says everything (model_change, compaction, …).
  */
 export function noticeSummary(item: TranscriptItem): string {
+	// A client-side model-switch notice carries its "applies next request" note.
+	if (item.kind === "model_change") return item.text?.trim() ?? "";
 	if (
-		item.kind === "model_change" ||
 		item.kind === "compaction" ||
 		item.kind === "branch_summary" ||
 		item.kind === "thinking_level_change"
@@ -1101,6 +1102,30 @@ export function splitInterimProse<
 		else folded.push(step);
 	}
 	return { folded, prose };
+}
+
+/** Longest ordinary text (chars) still treated as a brief tool lead-in. */
+const BRIEF_TRANSITION_MAX_CHARS = 280;
+const STRUCTURED_MARKDOWN = /^\s{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s)|```|^\s*\|.*\|/m;
+
+/**
+ * True only for a confirmed brief tool transition: ordinary (non-narration)
+ * text, written in the same assistant message that issued tool calls, short,
+ * single paragraph, with no headings/lists/code/tables, and with tool work in
+ * a later slice of this stretch and no steer after it. Anything else (long,
+ * formal, narration, before a steer, ambiguous) stays fully visible.
+ */
+export function isBriefToolTransition(
+	step: { kind: string; text?: string; item?: TranscriptItem },
+	later: ReadonlyArray<{ type: string; folded?: unknown[] }>,
+): boolean {
+	if (step.kind !== "text" || step.item?.kind !== "assistant") return false;
+	if ((step.item.toolCalls?.length ?? 0) === 0) return false;
+	const text = (step.text ?? "").trim();
+	if (text === "" || text.length > BRIEF_TRANSITION_MAX_CHARS || text.includes("\n\n")) return false;
+	if (STRUCTURED_MARKDOWN.test(text)) return false;
+	if (later.some((s) => s.type === "steer")) return false;
+	return later[0]?.type === "steps" && (later[0].folded?.length ?? 0) > 0;
 }
 
 /** One chronological piece of a turn: activity (folded) with the interim

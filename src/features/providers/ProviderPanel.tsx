@@ -24,6 +24,8 @@ import {
 import { ProviderRowView, ROW_GRID } from "./ProviderRowView";
 import { SetKeyDialog } from "./SetKeyDialog";
 import { useProviders } from "./store";
+import { useModelCatalog } from "../../stores/modelCatalog";
+import { catalogKeys, classifyModel, type ModelCategory } from "./modelClass";
 
 function matchesQuery(row: ProviderRow, q: string): boolean {
 	const haystack = [row.id, row.displayName, row.baseUrl, row.api, ...row.models.map(modelEntryId)]
@@ -33,7 +35,7 @@ function matchesQuery(row: ProviderRow, q: string): boolean {
 	return haystack.includes(q);
 }
 
-export function ProviderPanel() {
+export function ProviderPanel({ category = "chat" }: { category?: ModelCategory } = {}) {
 	const { t } = useT();
 	const rows = useProviders((s) => s.rows);
 	const loaded = useProviders((s) => s.loaded);
@@ -68,10 +70,21 @@ export function ProviderPanel() {
 		}
 	}, [focusKey, focusRequest]);
 
-	const sorted = useMemo(
-	() => [...rows].sort((a, b) => a.id.localeCompare(b.id)),
-		[rows],
-	);
+	const catalog = useModelCatalog((s) => s.models);
+	const catalogSet = useMemo(() => catalogKeys(catalog), [catalog]);
+	const sorted = useMemo(() => {
+		const kindOf = (r: ProviderRow, id: string) => classifyModel({ id, inCatalog: catalogSet.has(`${r.id}::${id}`) });
+		const hasOther = (r: ProviderRow) => r.models.some((m) => kindOf(r, modelEntryId(m)) === "other");
+		if (category === "other") {
+			// Every provider stays reachable so non-chat models can be added through its edit dialog;
+			// providers that already host non-chat models come first.
+			return [...rows].sort((a, b) => Number(hasOther(b)) - Number(hasOther(a)) || a.id.localeCompare(b.id));
+		}
+		// Chat view hides providers that only host non-chat models.
+		return rows
+			.filter((r) => r.models.length === 0 || r.models.some((m) => kindOf(r, modelEntryId(m)) === "chat"))
+			.sort((a, b) => a.id.localeCompare(b.id));
+	}, [rows, category, catalogSet]);
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
 		return q ? sorted.filter((r) => matchesQuery(r, q)) : sorted;
@@ -307,6 +320,7 @@ export function ProviderPanel() {
 										onToggleExpand={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
 										onEdit={() => setDialog({ mode: "edit", row })}
 										onSetKey={() => setKeyDialogId(row.id)}
+										category={category}
 										onOauth={() => setOauthDialog(true)}
 									/>
 								)}
@@ -319,7 +333,7 @@ export function ProviderPanel() {
 			<div className="text-[11px] leading-relaxed text-neutral-600">
 				{t("providers.footerNote", { vaultPath: VAULT_PATH, modelsYmlPath: MODELS_YML_PATH })}
 			</div>
-			{dialog && <ProviderDialog target={dialog} onClose={() => setDialog(null)} />}
+			{dialog && <ProviderDialog target={dialog} onClose={() => setDialog(null)} pickerCategory={category} />}
 			{keyDialogRow && <SetKeyDialog row={keyDialogRow} onClose={() => setKeyDialogId(null)} />}
 			{oauthDialog && <OauthLoginDialog onClose={() => setOauthDialog(false)} />}
 		</div>

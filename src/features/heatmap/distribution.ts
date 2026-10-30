@@ -600,7 +600,10 @@ export interface DiagnosticPrescription {
 }
 
 export interface DiagnosticDiagnosisResult {
+	/** First selected direction; kept for single-lens consumers. */
 	lens: DiagnosticLens;
+	/** All directions selected for this run. */
+	lenses: DiagnosticLens[];
 	conclusion: string;
 	evidence: string[];
 	rootCause: string;
@@ -650,6 +653,7 @@ export function distillSessionSkeleton(
 	let turnIndex = 0;
 	let currentTurnActions: string[] = [];
 	let consecutiveErrors = 0;
+	let maxConsecutiveErrors = 0;
 
 	const skillCounts = new Map<string, number>();
 
@@ -692,15 +696,45 @@ export function distillSessionSkeleton(
 
 		if (item.toolResult?.isError) {
 			consecutiveErrors++;
+			maxConsecutiveErrors = Math.max(maxConsecutiveErrors, consecutiveErrors);
 			const errSnippet = item.toolResult.text.trim().slice(0, 150);
 			recentErrors.push(`[${item.toolResult.toolName} 报错] ${errSnippet}`);
 		} else if (item.toolResult) {
 			consecutiveErrors = 0;
+		} else if (item.kind === "assistant" && item.stopReason === "error") {
+			consecutiveErrors++;
+			maxConsecutiveErrors = Math.max(maxConsecutiveErrors, consecutiveErrors);
+			recentErrors.push(`[模型请求失败] ${(item.text ?? "").trim().slice(0, 150)}`);
+		} else if (
+			item.kind === "assistant" &&
+			item.stopReason === "stop" &&
+			item.toolCalls.length === 0 &&
+			(item.text ?? "").trim()
+		) {
+			// A normal completed assistant turn after failures means the session recovered.
+			consecutiveErrors = 0;
 		}
+	}
 
-		if (consecutiveErrors >= 2 && !wasteSignals.includes("连续工具报错撞墙")) {
-			wasteSignals.push("连续工具报错撞墙");
-		}
+	// Only the tail decides whether an error loop is still active. A trailing run of
+	// errors stays unresolved until a later successful tool result or a normal
+	// assistant completion resets it; earlier runs are kept as resolved history.
+	const tailUnresolvedErrors = consecutiveErrors > 0 ? recentErrors.slice(-consecutiveErrors) : [];
+	if (consecutiveErrors >= 2) {
+		wasteSignals.push(`会话末尾仍有 ${consecutiveErrors} 次连续未解决的报错`);
+	} else if (maxConsecutiveErrors >= 2) {
+		wasteSignals.push(`曾出现连续 ${maxConsecutiveErrors} 次报错，但后续已恢复正常（已解决，仅供参考）`);
+	}
+	const last = [...items].reverse().find((it) => !it.hidden);
+	let terminalState = "无数据";
+	if (last) {
+		if (last.kind === "user") terminalState = "进行中：等待助手响应";
+		else if (last.kind === "assistant" && last.stopReason === "error") terminalState = "最近一次模型请求失败（未恢复）";
+		else if (last.kind === "assistant" && last.stopReason === "aborted") terminalState = "已被用户中断";
+		else if (last.kind === "assistant" && last.toolCalls.length > 0 && !last.toolResult) terminalState = "进行中：工具调用执行中";
+		else if (last.kind === "assistant" && last.stopReason === "toolUse") terminalState = "进行中：等待工具结果";
+		else if (last.toolResult) terminalState = last.toolResult.isError ? "末尾为未解决的工具报错" : "进行中：等待助手处理工具结果";
+		else terminalState = "已正常完成最近一轮";
 	}
 
 	if (currentTurnActions.length > 0) {
@@ -722,7 +756,17 @@ export function distillSessionSkeleton(
 		`- 改动文件清单: ${filesTouched.length > 0 ? filesTouched.join(", ") : "无文件修改"}`,
 		`- 行为轨迹骨架:`,
 		...actionSkeleton.slice(-8).map((a) => `  * ${a}`),
-		recentErrors.length > 0 ? `- 最近报错:\n${recentErrors.slice(-4).map((e) => `  * ${e}`).join("\n")}` : "- 最近报错: 无",
+		`- 当前状态: ${terminalState}`,
+		tailUnresolvedErrors.length > 0
+			? `- 末尾未解决的报错（仍未恢复）:\n${tailUnresolvedErrors.slice(-4).map((e) => `  * ${e}`).join("\n")}`
+			: "- 末尾未解决的报错: 无",
+		recentErrors.length > tailUnresolvedErrors.length
+			? `- 历史报错（共 ${recentErrors.length} 条，其中 ${recentErrors.length - tailUnresolvedErrors.length} 条已被后续成功调用或正常回复恢复，仅作背景）:\n${recentErrors
+					.slice(0, recentErrors.length - tailUnresolvedErrors.length)
+					.slice(-3)
+					.map((e) => `  * ${e}`)
+					.join("\n")}`
+			: "",
 		wasteSignals.length > 0 ? `- 检测到的浪费信号: ${wasteSignals.join("; ")}` : "- 浪费信号: 无异常",
 	].filter(Boolean).join("\n");
 

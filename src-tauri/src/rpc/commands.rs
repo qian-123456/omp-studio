@@ -175,8 +175,26 @@ pub async fn side_chat_ask(
     session_id: String,
     question: String,
     selection: Option<String>,
+    live_context: Option<String>,
+    image_paths: Option<Vec<String>>,
 ) -> Result<(), String> {
-    crate::rpc::sidechat::ask(&state, &session_id, question, selection).await
+    crate::rpc::sidechat::ask(
+        &state,
+        &session_id,
+        question,
+        selection,
+        live_context,
+        image_paths,
+    )
+    .await
+}
+
+/// Local image files -> omp `ImageContent` blocks (`{type:"image", data, mimeType}`),
+/// the same validation as the mobile prompt pipeline. Errors on any unreadable or
+/// unsupported file so senders never silently downgrade to text-only.
+#[tauri::command]
+pub async fn image_contents_from_paths(paths: Vec<String>) -> Result<Vec<Value>, String> {
+    crate::rpc::image_blocks_from_paths(&paths)
 }
 
 /// Contract C5: subagent sessions of a parent session file

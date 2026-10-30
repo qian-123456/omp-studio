@@ -40,26 +40,77 @@ export interface InlineImageToken {
 	index: number;
 	path?: string;
 }
-export function renderHighlightedText(content: string) {
+/** Sessions with a pending `/plan` (menu-picked or typed) that has not been sent yet. */
+const planIntentBySession = new Set<string>();
+/** Shared by the textarea and its token backdrop so glyph advances and wrapping stay identical. */
+export const COMPOSER_TEXT_METRICS_CLASS =
+	"whitespace-pre-wrap break-words font-sans text-[var(--chat-font-size,14px)] leading-[1.35]";
+export const COMPOSER_TEXT_METRICS_STYLE = {
+	letterSpacing: "normal",
+	wordSpacing: "normal",
+	fontKerning: "normal",
+	fontVariantLigatures: "none",
+	fontFeatureSettings: "normal",
+	wordBreak: "normal",
+	overflowWrap: "break-word",
+	tabSize: 8,
+} as const;
+/** Interactive image tokens: the rendered token itself is the pointer target (see backdrop layering). */
+export interface HighlightImageOpen {
+	/** 1-based image number. */
+	onOpen: (num: number) => void;
+	/** Accessible name for an image token. */
+	label: string;
+	/** Only numbers with an attached image are interactive. */
+	count: number;
+}
+export function renderHighlightedText(content: string, image?: HighlightImageOpen) {
 	const regex = /(🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+\])/gu;
 	const parts: React.ReactNode[] = [];
 	let lastIdx = 0;
 	let match: RegExpExecArray | null;
+	// Plain text is mirrored for the textarea (already exposed to assistive tech): hide the copy
+	// per span so the interactive tokens stay in the accessibility tree. Inline spans keep layout.
+	const plain = (text: string, key: string) => (
+		<span key={key} aria-hidden="true">
+			{text}
+		</span>
+	);
 
 	while ((match = regex.exec(content)) !== null) {
 		if (match.index > lastIdx) {
-			parts.push(content.slice(lastIdx, match.index));
+			parts.push(plain(content.slice(lastIdx, match.index), `t${lastIdx}`));
 		}
 		const tokenText = match[0];
 		const numMatch = /\d+/.exec(tokenText);
 		const num = numMatch ? parseInt(numMatch[0], 10) : 1;
 		const palette = getImageTokenPalette(num);
+		const isImage = /^(?:🖼️|\[(?:Image|图片))/u.test(tokenText);
+		const interactive = image !== undefined && isImage && num >= 1 && num <= image.count;
 
 		parts.push(
 			<span
 				key={match.index}
-				className="underline decoration-2 underline-offset-[3px]"
+				className={clsx("underline decoration-2 underline-offset-[3px]", interactive && "relative z-20 pointer-events-auto cursor-pointer rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-current")}
 				style={{ color: palette.hex, textDecorationColor: palette.hex }}
+				{...(interactive
+					? {
+							role: "button",
+							tabIndex: 0,
+							"aria-label": `${image.label} ${tokenText}`,
+							title: image.label,
+							// Keep the textarea focused and its caret untouched; the token only activates.
+							onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+							onClick: () => image.onOpen(num),
+							// Native button semantics: Enter/Space only while this control itself has focus.
+							onKeyDown: (e: React.KeyboardEvent) => {
+								if (e.key !== "Enter" && e.key !== " ") return;
+								e.preventDefault();
+								e.stopPropagation();
+								image.onOpen(num);
+							},
+						}
+					: { "aria-hidden": true })}
 			>
 				{tokenText}
 			</span>,
@@ -68,7 +119,7 @@ export function renderHighlightedText(content: string) {
 	}
 
 	if (lastIdx < content.length) {
-		parts.push(content.slice(lastIdx));
+		parts.push(plain(content.slice(lastIdx), `t${lastIdx}`));
 	}
 	if (content.endsWith("\n")) {
 		parts.push("\n ");
@@ -134,7 +185,7 @@ import { planMessagePaste } from "./messagePastePlan";
 import { toast } from "../../lib/toast";
 import { modelSwitchNotice } from "./modelSwitchNotice";
 import { isComposing } from "../../lib/hooks";
-import { formatWithAnnotations, useComposer } from "../../stores/composer";
+import { annotationImageAttachments, formatWithAnnotations, useComposer } from "../../stores/composer";
 import { moveToMain, moveToSideChat } from "../sidechat/annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
 import { useUi } from "../../stores/ui";
@@ -224,6 +275,7 @@ import { GoalBar } from "./GoalBar";
 import { claimEscape } from "../../lib/escapeClaim";
 import { draftMeta, isLocalDraftId, usePendingSession } from "../sessions/pendingSession";
 import { materializeDraft, setDraftModel, setDraftThinking, warmDraft } from "../sessions/draftSession";
+import { prepareSessionForModelSelection } from "../sessions/modelRegistrySync";
 import { isSessionCompacting, runOrDeferThinkingLevel } from "./thinkingLevelSelection";
 
 /** Slash commands that only drive composer UI and therefore run on a local draft. */
@@ -432,6 +484,11 @@ export function Composer({
 	const streamingSendAction = resolveFollowUpAction(followUpBehavior, false, true);
 	const streamingAltAction = resolveFollowUpAction(followUpBehavior, true, true);
 	const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
+	const imageOpen: HighlightImageOpen = {
+		onOpen: (num) => setPreviewImageIndex(num - 1),
+		label: t("chat.clickToZoom"),
+		count: composerImages.length,
+	};
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
 	const setDismissed = useHeldQueue((s) => s.setDismissed);
@@ -586,7 +643,22 @@ export function Composer({
 	const planMode = useLive((s) => s.sessions[sessionId]?.plan?.enabled === true);
 	// A selected `/plan` chip is planning intent before anything is sent: it previews (and edits) the
 	// `plan` role without touching the backend or the ordinary model. `planMode` is the backend state.
-	const planPending = !readonly && chip?.name === "plan" && !chip.sub && chip.offset === undefined;
+	// `/plan` picked from the menu (or typed) is per-session intent, kept like the chip: it
+	// survives session switches and failed sends, and never occupies the chip slot.
+	const [planIntentBox, setPlanIntentBox] = useState<{ sid: string; on: boolean }>(() => ({
+		sid: sessionId,
+		on: planIntentBySession.has(sessionId),
+	}));
+	const planIntent = planIntentBox.sid === sessionId ? planIntentBox.on : planIntentBySession.has(sessionId);
+	const setPlanIntent = useCallback(
+		(on: boolean) => {
+			if (on) planIntentBySession.add(sessionId);
+			else planIntentBySession.delete(sessionId);
+			setPlanIntentBox({ sid: sessionId, on });
+		},
+		[sessionId],
+	);
+	const planPending = !readonly && (planIntent || (chip?.name === "plan" && !chip.sub && chip.offset === undefined));
 	const planPreview = planMode || planPending;
 	// undefined = no status frame yet (never a plan revision).
 	const planVersion = useLive((s) => s.sessions[sessionId]?.plan?.version);
@@ -1016,6 +1088,8 @@ export function Composer({
 		}
 		try {
 			if (!live?.alive) await ensureLive(sessionId);
+			const prep = await prepareSessionForModelSelection(sessionId);
+			if (prep.status === "failed") throw new Error(prep.error);
 			const cur = useLive.getState().sessions[sessionId];
 			const turnRunning = !!cur && (cur.streaming || cur.streamingMessage !== null);
 			await rpcSend(sessionId, payload);
@@ -1127,6 +1201,8 @@ export function Composer({
 			if (!live?.alive) await ensureLive(sessionId);
 			const setPayload = buildSetModelPayload(candidateKey, models);
 			if (setPayload) {
+				const prep = await prepareSessionForModelSelection(sessionId);
+				if (prep.status === "failed") throw new Error(prep.error);
 				await rpcSend(sessionId, setPayload);
 				await rpcSend(sessionId, { type: "get_state" });
 			}
@@ -1185,14 +1261,20 @@ export function Composer({
 		const ta = taRef.current;
 		if (!ta) return;
 		const fit = () => {
+			const savedScrollTop = ta.scrollTop;
 			ta.style.height = "auto";
 			const minH = compact ? 22 : 26;
 			const maxH = 220;
 			const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
 			ta.style.height = `${nextH}px`;
 			ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
+			// Collapsing the height clamps scrollTop to 0; restore it.
+			ta.scrollTop = savedScrollTop;
 			if (backdropRef.current) {
 				backdropRef.current.style.height = `${nextH}px`;
+				// Mirror the textarea's scrollbar gutter so both wrap at the same width.
+				const gutter = ta.offsetWidth - ta.clientWidth;
+				backdropRef.current.style.paddingRight = `calc(1rem + ${Math.max(gutter, 0)}px)`;
 				backdropRef.current.scrollTop = ta.scrollTop;
 			}
 		};
@@ -1225,13 +1307,15 @@ export function Composer({
 
 	/** Plan mode is owned by the omp plan extension. Explicit, idempotent,
 	 * silent host commands (`/plan-action enable|disable`): never a toggle. */
-	const setPlanMode = async (enable: boolean) => {
+	const setPlanMode = async (enable: boolean): Promise<boolean> => {
 		try {
 			const target = await slashTarget("plan");
 			await runPlanAction(target, enable ? "enable" : "disable");
+			return true;
 		} catch (err) {
 			if (!isResumeCancelled(err))
 				toast.error(t("composer.cmdFailed", { name: "plan", error: errMsg(err) }));
+			return false;
 		}
 	};
 
@@ -1255,6 +1339,7 @@ export function Composer({
 				tok.end,
 			);
 			// Replace any previous inline chip (its literal stays as plain text).
+			if (chip && chip.name === "plan" && !chip.sub && chip.offset === undefined) setPlanIntent(true);
 			setChip(next.chip);
 			setDraft(sessionId, next.text);
 			setCursorPos(next.caret);
@@ -1289,6 +1374,21 @@ export function Composer({
 		}
 		// Commands that take args or subcommands become a chip; the subcommand
 		// list opens right away (its first entry runs the command itself).
+		if (item.name === "plan" && !item.subOf) {
+			// `/plan` never occupies the chip slot, so it coexists with `/skill:…` chips.
+			const before = src.slice(0, tok.start);
+			setPlanIntent(true);
+			setText(`${before}${src.slice(tok.end)}`);
+			setCursorPos(before.length);
+			setMenuDismissed(true);
+			setTimeout(() => {
+				if (taRef.current) {
+					taRef.current.focus();
+					taRef.current.setSelectionRange(before.length, before.length);
+				}
+			}, 0);
+			return;
+		}
 		if (item.argHint || item.subcommands?.length) {
 			const before = src.slice(0, tok.start);
 			const after = src.slice(tok.end);
@@ -1393,6 +1493,13 @@ export function Composer({
 			setTimeout(() => setOverflowHighlighted(false), 2000);
 			return;
 		}
+		if (planIntent && !planMode) {
+			// `/plan` picked alongside other chips: enable plan mode first, the prompt (and any
+			// `/skill:` chip) then runs inside the plan turn. A failed enable keeps the draft,
+			// the chips and the pending intent so the user can simply retry.
+			if (!(await setPlanMode(true))) return;
+			setPlanIntent(false);
+		}
 		// Chip + args serialize to the exact `/name args` the user would have
 		// typed — history, masking and dispatch all run on that form.
 		const trimmedRaw = serializeChip(chip, raw).trim();
@@ -1453,7 +1560,7 @@ export function Composer({
 					await sendSlashPrompt(
 						target,
 						quoteBlocks ? `${command.trimEnd()}\n\n${quoteBlocks}` : command,
-						slashAttachments,
+						[...slashAttachments, ...annotationImageAttachments(textAnnotations, slashAttachments)],
 					);
 					finishPrivacySend();
 					setChip(null);
@@ -1489,13 +1596,19 @@ export function Composer({
 		const currentSessionFiles = useComposer.getState().files[sessionId] ?? [];
 		outgoingRaw = expandFilesForSend(outgoingRaw, currentSessionFiles);
 
-		const imageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
+		const mainImageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
 			id: img.id || `img-${i + 1}`,
 			path: img.path,
 			marker: `[Image #${i + 1}]`,
 			width: img.width,
 			height: img.height,
 		}));
+		// Annotation-owned images ship as real attachments (deduped by path) next to the
+		// main ones; the `[图片: path]` references are written by formatWithAnnotations.
+		const imageAttachments: ImageAttachment[] = [
+			...mainImageAttachments,
+			...annotationImageAttachments(textAnnotations, mainImageAttachments),
+		];
 
 		const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
 		const message = formatted;
@@ -1734,11 +1847,18 @@ export function Composer({
 		setDraft(sessionId, nextText);
 		const nextCursor = before.length + token.length;
 		setCursorPos(nextCursor);
+		const savedScroll = ta?.scrollTop ?? 0;
+		const ownerSid = sessionId;
 		setTimeout(() => {
-			if (taRef.current) {
-				taRef.current.focus();
-				taRef.current.setSelectionRange(nextCursor, nextCursor);
-			}
+			const el = taRef.current;
+			// The paste can resolve after a session switch: never touch another session's textarea.
+			if (!el || el.dataset.composer !== ownerSid) return;
+			el.focus({ preventScroll: true });
+			el.setSelectionRange(nextCursor, nextCursor);
+			// Keep the viewport where it was; only an insertion at the very end follows the caret.
+			el.scrollTop = savedScroll;
+			if (nextCursor >= currentText.length + token.length) el.scrollTop = el.scrollHeight;
+			if (backdropRef.current) backdropRef.current.scrollTop = el.scrollTop;
 		}, 0);
 	};
 
@@ -2438,6 +2558,20 @@ export function Composer({
 						</button>
 					</div>
 				)}
+				{!planMode && planIntent && !readonly && (
+					<div className="flex items-center gap-1 px-3 pt-2">
+						<button
+							type="button"
+							onClick={() => setPlanIntent(false)}
+							title={t("chat.planMode.clickToDisable")}
+							className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 hover:bg-amber-500/20"
+						>
+							<Lightbulb size={11} />
+							{t("chat.planMode.enabled")}
+							<X size={10} />
+						</button>
+					</div>
+				)}
 				{/* Annotation chip: one compact count pill; hover/focus lists the quotes. */}
 				{textAnnotations.length > 0 && (
 					<div className="px-3 pt-2.5">
@@ -2540,16 +2674,19 @@ export function Composer({
 					{hasInlineTokens && (
 						<div
 							ref={backdropRef}
-							aria-hidden="true"
-							className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-[var(--text)] select-none"
+							className={clsx(
+								COMPOSER_TEXT_METRICS_CLASS,
+								"pointer-events-none absolute inset-0 overflow-hidden px-4 pt-3 pb-1.5 text-[var(--text)] select-none",
+							)}
 							style={{
+								...COMPOSER_TEXT_METRICS_STYLE,
 								boxSizing: "border-box",
-								wordBreak: "break-word",
 							}}
 						>
 							{legacyChip && chip && (
 								<span
 									ref={chipElRef}
+									aria-hidden="true"
 									className="mr-[6px] inline-block h-[19px] align-top text-[13px] leading-[19px]"
 								>
 									<CommandChipBadge chip={chip} />
@@ -2557,24 +2694,24 @@ export function Composer({
 							)}
 							{inlineRange && chip ? (
 								<>
-									{renderHighlightedText(text.slice(0, inlineRange.start))}
+									{renderHighlightedText(text.slice(0, inlineRange.start), imageOpen)}
 									{/* The literal stays plain, breakable text like the textarea.
 									 * Center the badge without replacing it with an atomic box. */}
-									<span className="relative align-baseline">
+									<span className="relative align-baseline" aria-hidden="true">
 										<span className="invisible">{chipLiteral(chip)}</span>
 										<span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap">
 											<CommandChipBadge chip={chip} />
 										</span>
 									</span>
-									{renderHighlightedText(text.slice(inlineRange.end))}
+									{renderHighlightedText(text.slice(inlineRange.end), imageOpen)}
 									{text.slice(inlineRange.end).trim() === "" && chipHintText(chip) && (
-										<span className="text-[var(--text-30,var(--text-dim))]">
+										<span aria-hidden="true" className="text-[var(--text-30,var(--text-dim))]">
 											{chipHintText(chip)}
 										</span>
 									)}
 								</>
 							) : (
-								renderHighlightedText(text)
+								renderHighlightedText(text, imageOpen)
 							)}
 						</div>
 					)}
@@ -2717,9 +2854,10 @@ export function Composer({
 										? t("composer.placeholderStreaming")
 										: t("composer.placeholderDefault")
 						}
-						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0 }}
+						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0, ...COMPOSER_TEXT_METRICS_STYLE }}
 						className={clsx(
-							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))] disabled:cursor-not-allowed",
+							COMPOSER_TEXT_METRICS_CLASS,
+							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))] disabled:cursor-not-allowed",
 							hasInlineTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
 								: "relative text-[var(--text)]",

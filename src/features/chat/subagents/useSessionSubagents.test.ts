@@ -109,3 +109,50 @@ describe("mergeDiskAndLive", () => {
 		expect(subagentCounts(after.subagents).queued).toBe(2);
 	});
 });
+
+describe("mergeDiskAndLive context + status", () => {
+	const tools = {
+		t1: {
+			toolCallId: "t1",
+			toolName: "task",
+			args: {
+				context: "SHARED CTX",
+				tasks: [{ id: "0-Explore", agent: "explore", task: "Scan the repo", solutionSpace: "narrow" }],
+			},
+			intent: null,
+			status: "done" as const,
+			text: "",
+			details: null,
+		},
+	};
+
+	it("attaches sharedContext and solutionSpace to disk/live rows from a finished task call", () => {
+		const { rows } = mergeDiskAndLive(
+			[disk({ status: "completed" })],
+			{ "0-Explore": { status: "completed", label: "x", agent: "explore", parentToolCallId: "t1" } },
+			tools,
+		);
+		expect(rows["0-Explore"].sharedContext).toBe("SHARED CTX");
+		expect(rows["0-Explore"].solutionSpace).toBe("narrow");
+	});
+
+	it("live terminal wins over stale disk running; duration comes from child progress, not batch times", () => {
+		const { rows, subagents } = mergeDiskAndLive(
+			[disk({ status: "running", startedAt: null, endedAt: null })],
+			{
+				"0-Explore": {
+					status: "completed",
+					label: "x",
+					agent: "explore",
+					parentToolCallId: "t1",
+					progress: { durationMs: 22000, status: "completed" } as never,
+				},
+			},
+			{ t1: { ...tools.t1, startedAt: 1000, endedAt: 999999 } },
+		);
+		expect(subagents["0-Explore"].status).toBe("completed");
+		expect(rows["0-Explore"].status).toBe("completed");
+		expect(rows["0-Explore"].durationMs).toBe(22000);
+		expect(rows["0-Explore"].endedAt).toBeUndefined();
+	});
+});

@@ -20,6 +20,7 @@ export interface TaskArgItem {
 	task?: string;
 	assignment?: string;
 	description?: string;
+	solutionSpace?: string;
 }
 
 export interface AgentRow {
@@ -57,6 +58,10 @@ export interface AgentRow {
 	abortReason?: string;
 	/** Nested task details (sub-subagents) from live progress. */
 	inflightTaskDetails?: TaskToolDetails | null;
+	/** Free-form description of the solution space the dispatcher gave this task. */
+	solutionSpace?: string;
+	/** Shared `context` of the parent `task` call. */
+	sharedContext?: string;
 }
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -104,6 +109,7 @@ export function parseTaskArgs(args: unknown): {
 					task: asStr(it.task),
 					assignment: asStr(it.assignment),
 					description: asStr(it.description),
+					solutionSpace: asStr(it.solutionSpace),
 				};
 			}),
 		};
@@ -119,6 +125,7 @@ export function parseTaskArgs(args: unknown): {
 					task: asStr(o.task),
 					assignment: asStr(o.assignment),
 					description: asStr(o.description),
+					solutionSpace: asStr(o.solutionSpace),
 				},
 			],
 		};
@@ -269,8 +276,6 @@ export function mergeAgents(input: {
 	callStatus?: "running" | "done" | "error" | "called";
 	/** Tool result text, used as the failure reason of settled rows. */
 	resultText?: string;
-	startedAt?: number;
-	endedAt?: number;
 }): { context?: string; rows: AgentRow[] } {
 	const { context, items } = parseTaskArgs(input.args);
 	const rows = new Map<string, AgentRow>();
@@ -305,6 +310,7 @@ export function mergeAgents(input: {
 		r.assignment = it.assignment;
 		r.task = it.task ?? it.assignment;
 		r.line = it.description ?? firstLine(r.task);
+		r.solutionSpace = it.solutionSpace;
 	});
 
 	const owned = new Set<string>();
@@ -352,18 +358,13 @@ export function mergeAgents(input: {
 		applyLive(r, s);
 		if (!isTerminalStatus(normStatus(s.status))) confirmedLive.add(r.id);
 	}
-	if (input.callStatus === "done") {
-		const finishedIso = input.endedAt ? new Date(input.endedAt).toISOString() : undefined;
-		const startIso = input.startedAt ? new Date(input.startedAt).toISOString() : undefined;
-		for (const r of rows.values()) {
-			if (isTerminalStatus(r.status)) {
-				if (!r.endedAt && finishedIso) r.endedAt = finishedIso;
-				if (!r.startedAt && startIso) r.startedAt = startIso;
-				if (r.startedAt && r.endedAt && (!r.durationMs || r.durationMs <= 0)) {
-					const ms = Date.parse(r.endedAt) - Date.parse(r.startedAt);
-					if (Number.isFinite(ms) && ms > 0) r.durationMs = ms;
-				}
-			}
+	// Only the child's own timestamps/durations are trusted. The parent call's
+	// start/end spans the whole batch and must not be used as a per-agent time;
+	// unknown stays unknown.
+	for (const r of rows.values()) {
+		if (isTerminalStatus(r.status) && r.startedAt && r.endedAt && (!r.durationMs || r.durationMs <= 0)) {
+			const ms = Date.parse(r.endedAt) - Date.parse(r.startedAt);
+			if (Number.isFinite(ms) && ms > 0) r.durationMs = ms;
 		}
 	}
 	if (failedCall) {
@@ -380,5 +381,8 @@ export function mergeAgents(input: {
 	const rowsOut = [...rows.values()].sort(
 		(a, b) => a.index - b.index || a.id.localeCompare(b.id),
 	);
+	for (const r of rowsOut) {
+		if (context) r.sharedContext = context;
+	}
 	return { context, rows: rowsOut };
 }

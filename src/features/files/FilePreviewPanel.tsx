@@ -6,7 +6,7 @@
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, FolderOpen, RefreshCw, Save } from "lucide-react";
 import React, { Suspense, useEffect, useRef } from "react";
 import { errMsg } from "../../lib/dialogs";
@@ -21,10 +21,11 @@ import { Segmented } from "../../components/Segmented";
 import { Markdown } from "../../components/Markdown";
 import { useFileBuffer } from "../editor/useFileBuffer";
 import { useT } from "../../stores/language";
+import { buildHtmlPreviewDoc, HTML_PREVIEW_SANDBOX, isHtmlPreviewPath, relayedExternalUrl } from "./htmlPreview";
 
 const FileEditor = React.lazy(() => import("./FileEditor"));
 
-function ExternalActions({ path }: { path: string }) {
+function ExternalActions({ path, isHtml }: { path: string; isHtml?: boolean }) {
 	const { t } = useT();
 	const run = (fn: () => Promise<void>, what: string) => {
 		void fn().catch((e: unknown) => toast.error(t("files.actionFailed", { action: what, error: errMsg(e) })));
@@ -38,7 +39,7 @@ function ExternalActions({ path }: { path: string }) {
 				className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 			>
 				<ExternalLink size={13} />
-				{t("files.systemOpen")}
+				{isHtml ? t("files.openInBrowser") : t("files.systemOpen")}
 			</button>
 			<button
 				type="button"
@@ -86,6 +87,21 @@ function TextBody({ tab }: { tab: FileTab }) {
 	const sessionId = useUi((s) => s.selectedSessionId);
 	const previewRef = useRef<HTMLDivElement>(null);
 	const isMarkdown = /\.(md|markdown|mdx)$/i.test(tab.path);
+	const isHtml = isHtmlPreviewPath(tab.path);
+	const iframeRef = useRef<HTMLIFrameElement>(null);
+
+	// Links clicked inside the opaque-origin preview are relayed here; only
+	// http(s) from this frame is opened, in the system browser.
+	useEffect(() => {
+		if (!isHtml || tab.mode !== "preview") return;
+		const onMessage = (e: MessageEvent) => {
+			if (e.source !== iframeRef.current?.contentWindow) return;
+			const url = relayedExternalUrl(e.data);
+			if (url) void openUrl(url).catch((err: unknown) => toast.error(errMsg(err)));
+		};
+		window.addEventListener("message", onMessage);
+		return () => window.removeEventListener("message", onMessage);
+	}, [isHtml, tab.mode]);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -148,7 +164,7 @@ function TextBody({ tab }: { tab: FileTab }) {
 						<RefreshCw size={13} />
 						{t("editor.reload")}
 					</button>
-					<ExternalActions path={tab.path} />
+					<ExternalActions path={tab.path} isHtml={isHtml} />
 				</div>
 			</div>
 
@@ -178,9 +194,18 @@ function TextBody({ tab }: { tab: FileTab }) {
 					</Suspense>
 				</div>
 			) : (
-				<div ref={previewRef} className="min-h-0 flex-1 overflow-auto px-4 py-3">
+				<div ref={previewRef} className={isHtml ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-auto px-4 py-3"}>
 					{isMarkdown ? (
 						<Markdown text={draft} cwd={tab.cwd ?? tab.path.replace(/\/[^/]*$/, "")} />
+					) : isHtml ? (
+						<iframe
+							ref={iframeRef}
+							title={basename(tab.path)}
+							srcDoc={buildHtmlPreviewDoc(tab.path, draft)}
+							sandbox={HTML_PREVIEW_SANDBOX}
+							referrerPolicy="no-referrer"
+							className="h-full w-full border-0 bg-white"
+						/>
 					) : (
 						<pre className="select-text whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-[var(--text-60)]">
 							{draft}
@@ -212,7 +237,7 @@ export function FilePreviewPanel() {
 	const kind = previewKind(active.path);
 	return (
 		<React.Fragment key={active.path}>
-			{kind === "image" ? <ImageBody path={active.path} /> : <TextBody tab={active} />}
+			{kind === "image" && !isHtmlPreviewPath(active.path) ? <ImageBody path={active.path} /> : <TextBody tab={active} />}
 		</React.Fragment>
 	);
 }

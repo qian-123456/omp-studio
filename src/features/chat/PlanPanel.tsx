@@ -6,6 +6,9 @@
  * (fresh / compacted / kept context), execution model role, save-and-exit. */
 
 import clsx from "clsx";
+import { ModelMenuContent } from "../../components/ModelSelect";
+import { resolveThinkingLevels, toModelKey } from "../../lib/models";
+import { useModelOptions } from "../../stores/modelCatalog";
 import { Check, ChevronDown, NotebookPen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
@@ -18,18 +21,45 @@ import { useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import { approvePlan, runPlanAction } from "./plan/planActions";
 import {
+	type ApprovedPlan,
 	diffPlanLines,
 	effectiveExecMode,
 	type PlanExecMode,
 	type PlanStatus,
-	planBody,
 	planSections,
 } from "./plan/planStatus";
+
 import { SelectionToolbar } from "./SelectionToolbar";
+
+/** Banner text for the approved plan's real execution state. */
+function approvedLabel(a: ApprovedPlan): string {
+	if (a.status === "handoff") return "已批准计划 · 已在新会话中执行";
+	if (a.status === "completed") return "已批准计划 · 执行完成";
+	if (a.status === "failed" && a.error === "model-unavailable") return "已批准计划 · 所选模型不可用，未执行";
+	if (a.status === "failed") return a.error === "aborted" ? "已批准计划 · 执行已中止" : "已批准计划 · 执行失败";
+	return "已批准计划 · 正在执行";
+}
 
 /** Widest the right panel goes (same clamp as the splitter). */
 const WIDE_WIDTH = 720;
 const EXEC_MODES: PlanExecMode[] = ["execute", "compact", "keep"];
+
+/** Last plan body seen per session plus the body it replaced, so a diff exists
+ * even when the extension did not report `prevContent`. */
+const contentHistory = new Map<string, { content: string; prev: string | null }>();
+
+function trackPrevContent(sessionId: string, content: string, serverPrev: string | null): string | null {
+	const entry = contentHistory.get(sessionId);
+	if (!entry) {
+		contentHistory.set(sessionId, { content, prev: serverPrev });
+		return serverPrev;
+	}
+	if (entry.content !== content) {
+		entry.prev = serverPrev ?? entry.content;
+		entry.content = content;
+	}
+	return serverPrev ?? entry.prev;
+}
 
 /** Plan version the user has already looked at, per session (revision banner). */
 const seenVersion = new Map<string, number>();
@@ -39,16 +69,38 @@ export function PlanPanel() {
 	const { t } = useT();
 	const plan = useLive((s) => (sessionId ? s.sessions[sessionId]?.plan : undefined));
 	const streaming = useLive((s) => (sessionId ? s.sessions[sessionId]?.streaming === true : false));
-	const alive = useLive((s) => (sessionId ? s.sessions[sessionId]?.alive === true : false));
 
-	// A panel opened after the extension last published (window reload) asks for a fresh state.
+	// A panel opened with no known plan state (window reload, or a session whose process went idle)
+	// asks for a read-only status; runPlanAction wakes the local RPC without any model inference.
+	// Unknown is not "off": the Enable button must not appear until the state is actually known.
 	const hasPlan = plan !== undefined;
+	const [statusError, setStatusError] = useState<{ sessionId: string; error: string } | null>(null);
 	useEffect(() => {
-		if (sessionId && alive && !hasPlan && !streaming) void runPlanAction(sessionId, "status").catch(() => {});
-	}, [sessionId, alive, hasPlan, streaming]);
+		if (!sessionId || hasPlan || streaming) return;
+		let stale = false;
+		runPlanAction(sessionId, "status").catch((err) => {
+			if (!stale) setStatusError({ sessionId, error: errMsg(err) });
+		});
+		return () => {
+			stale = true;
+		};
+	}, [sessionId, hasPlan, streaming]);
 
 	if (!sessionId) return <EmptyHint text={t("chatView.plan.emptyNoSession")} />;
-	if (!plan?.enabled) return <NotEnabled sessionId={sessionId} />;
+	// Plan mode is off after approval; the extension still reports the approved plan and how it went.
+	if (!plan?.enabled && plan?.approved) {
+		const a = plan.approved;
+		const view: PlanStatus = { ...plan, phase: "review", planFile: a.planFile, planUrl: a.planUrl, title: a.title, content: a.content, prevContent: a.prevContent, version: a.version };
+		return <PlanReview key={sessionId} sessionId={sessionId} plan={view} streaming={streaming} approved={a} />;
+	}
+	if (!plan) {
+		return statusError?.sessionId === sessionId ? (
+			<EmptyHint text={t("chatView.plan.statusFailed", { error: statusError.error })} />
+		) : (
+			<EmptyHint text={t("chatView.plan.statusLoading")} />
+		);
+	}
+	if (!plan.enabled) return <NotEnabled sessionId={sessionId} />;
 	if (!plan.content) {
 		return (
 			<EmptyHint text={streaming ? t("chatView.plan.planning") : t("chatView.plan.waitingTask")}>
@@ -79,17 +131,32 @@ function NotEnabled({ sessionId }: { sessionId: string }) {
 	);
 }
 
-function PlanReview({ sessionId, plan, streaming }: { sessionId: string; plan: PlanStatus; streaming: boolean }) {
+function PlanReview({
+	sessionId,
+	plan,
+	streaming,
+	approved,
+}: {
+	sessionId: string;
+	plan: PlanStatus;
+	streaming: boolean;
+	approved?: ApprovedPlan;
+}) {
 	const { t } = useT();
 	const content = plan.content ?? "";
-	const body = useMemo(() => planBody(content), [content]);
+	// The full document (incl. its `# title`) renders in the body; no separate title header.
+	const body = content;
 	const sections = useMemo(() => planSections(content), [content]);
+	const prevContent = useMemo(
+		() => trackPrevContent(sessionId, content, plan.prevContent),
+		[sessionId, content, plan.prevContent],
+	);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [showDiff, setShowDiff] = useState(false);
 	const [curSection, setCurSection] = useState(0);
-	const [seen, setSeen] = useState(() => seenVersion.get(sessionId) ?? (plan.prevContent === null ? plan.version : plan.version - 1));
-	const revised = plan.prevContent !== null && plan.version > seen;
-	const revising = streaming;
+	const [seen, setSeen] = useState(() => seenVersion.get(sessionId) ?? (prevContent === null ? plan.version : plan.version - 1));
+	const revised = prevContent !== null && plan.version > seen;
+	const revising = streaming && !approved;
 
 	const markSeen = useCallback(() => {
 		seenVersion.set(sessionId, plan.version);
@@ -97,10 +164,10 @@ function PlanReview({ sessionId, plan, streaming }: { sessionId: string; plan: P
 	}, [sessionId, plan.version]);
 	// The first version needs no "updated" banner.
 	useEffect(() => {
-		if (plan.prevContent === null) markSeen();
-	}, [plan.prevContent, markSeen]);
+		if (prevContent === null) markSeen();
+	}, [prevContent, markSeen]);
 	// A new version replaces the diff view with the fresh text.
-	useEffect(() => setShowDiff(false), [plan.version]);
+	useEffect(() => setShowDiff(false), [plan.version, content]);
 
 	const planUrl = plan.planUrl ?? plan.planFile ?? "";
 	const annotations = useComposer((s) => s.annotations[sessionId]);
@@ -159,42 +226,57 @@ function PlanReview({ sessionId, plan, streaming }: { sessionId: string; plan: P
 
 	return (
 		<div className="@container relative flex h-full flex-col">
-			<div className="shrink-0 border-b border-[var(--border-divider)] px-4 pt-3 pb-2.5">
-				<div className="flex items-start gap-2">
-					<h1 className="min-w-0 flex-1 text-[15px] leading-[1.45] font-semibold break-words text-[var(--text)]">
-						{plan.title}
-					</h1>
-					{plan.prevContent !== null && !revising && (
-						<HeadButton
-							on={showDiff}
-							title={t("chatView.plan.diffTitle")}
-							onClick={() => {
-								setShowDiff((v) => !v);
-								markSeen();
-							}}
-						>
-							{showDiff ? t("chatView.plan.fullText") : t("chatView.plan.diff")}
-						</HeadButton>
+			{approved && (
+				<div
+					className={clsx(
+						"mx-3.5 mt-2.5 flex shrink-0 items-center gap-2 rounded-[10px] px-3 py-2 text-[12.5px] break-words",
+						approved.status === "failed"
+							? "bg-red-500/10 text-red-600 dark:text-red-400"
+							: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
 					)}
-					<HeadButton
-						on={wide}
-						title={wide ? t("chatView.plan.narrowTitle") : t("chatView.plan.widenTitle")}
-						onClick={toggleWide}
-					>
-						{wide ? t("chatView.plan.narrow") : t("chatView.plan.widen")}
-					</HeadButton>
-					<HeadButton title={t("chatView.plan.copyTitle")} onClick={copy}>
-						{t("chatView.plan.copy")}
-					</HeadButton>
+				>
+					{approved.status === "executing" ? (
+						<span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden />
+					) : (
+						<Check size={13} className="shrink-0" aria-hidden />
+					)}
+					{approvedLabel(approved)}
 				</div>
-				{showDiff && plan.prevContent !== null ? (
-					<DiffSummary before={plan.prevContent} after={content} version={plan.version} />
-				) : (
-					sections.length > 0 && (
-						<div className="mt-2 @min-[640px]:hidden">
+			)}
+			<div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5">
+				<div className="flex items-center gap-1.5">
+					{sections.length > 0 && !showDiff && (
+						<div className="min-w-0 flex-1 @min-[640px]:hidden">
 							<TocPill sections={sections} current={curSection} notes={sectionNotes} onJump={jump} />
 						</div>
-					)
+					)}
+					<div className="ml-auto flex shrink-0 items-center gap-1.5">
+						{prevContent !== null && !revising && (
+							<HeadButton
+								on={showDiff}
+								title={t("chatView.plan.diffTitle")}
+								onClick={() => {
+									setShowDiff((v) => !v);
+									markSeen();
+								}}
+							>
+								{showDiff ? t("chatView.plan.fullText") : t("chatView.plan.diff")}
+							</HeadButton>
+						)}
+						<HeadButton
+							on={wide}
+							title={wide ? t("chatView.plan.narrowTitle") : t("chatView.plan.widenTitle")}
+							onClick={toggleWide}
+						>
+							{wide ? t("chatView.plan.narrow") : t("chatView.plan.widen")}
+						</HeadButton>
+						<HeadButton title={t("chatView.plan.copyTitle")} onClick={copy}>
+							{t("chatView.plan.copy")}
+						</HeadButton>
+					</div>
+				</div>
+				{showDiff && prevContent !== null && (
+					<DiffSummary before={prevContent} after={content} version={plan.version} />
 				)}
 			</div>
 			{revising ? (
@@ -215,9 +297,9 @@ function PlanReview({ sessionId, plan, streaming }: { sessionId: string; plan: P
 						<TocList sections={sections} current={curSection} notes={sectionNotes} onJump={jump} />
 					</nav>
 				)}
-				<div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto px-6 pt-1 pb-24">
-					{showDiff && plan.prevContent !== null ? (
-						<DiffView before={plan.prevContent} after={content} />
+				<div ref={scrollRef} className={clsx("min-w-0 flex-1 overflow-y-auto px-6 pt-1", approved ? "pb-6" : "pb-24")}>
+					{showDiff && prevContent !== null ? (
+						<DiffView before={prevContent} after={content} />
 					) : (
 						<div data-plan-body className={clsx("py-3", revising && "opacity-70")}>
 							<Markdown text={body} sessionId={sessionId} />
@@ -225,15 +307,17 @@ function PlanReview({ sessionId, plan, streaming }: { sessionId: string; plan: P
 					)}
 				</div>
 			</div>
-			{!showDiff && !revising && (
+			{!showDiff && !revising && !approved && (
 				<SelectionToolbar sessionId={sessionId} containerRef={scrollRef} compact docFile={planUrl} />
 			)}
-			<ApprovalDock
-				sessionId={sessionId}
-				plan={plan}
-				disabled={revising}
-				pending={pendingBySection.total}
-			/>
+			{!approved && (
+				<ApprovalDock
+					sessionId={sessionId}
+					plan={plan}
+					disabled={revising}
+					pending={pendingBySection.total}
+				/>
+			)}
 		</div>
 	);
 }
@@ -459,6 +543,15 @@ function ApprovalDock({
 	const effective = effectiveExecMode(mode, plan);
 	const single = plan.tiers.length <= 1;
 	const tier = plan.tiers.find((x) => x.role === role) ?? null;
+	const [custom, setCustom] = useState<{ key: string; level: string } | null>(null);
+	const [customOpen, setCustomOpen] = useState(false);
+	const catalog = useModelOptions();
+	const customOption = custom ? catalog?.find((m) => toModelKey(m.provider, m.id) === custom.key) : undefined;
+	const customLevels = custom ? resolveThinkingLevels(undefined, customOption?.thinking, custom.level) : [];
+	const customSpec = custom ? (custom.level && custom.level !== "auto" ? `${custom.key}:${custom.level}` : custom.key) : null;
+	const customShort = custom ? (customOption?.name || custom.key.slice(custom.key.indexOf("/") + 1)) : "";
+	// Direct `provider/model[:thinking]` spec wins over a preset role.
+	const spec = customSpec ?? (single ? null : role);
 	const pct = plan.contextPercent === null ? null : Math.round(plan.contextPercent);
 	const modeLabel = (m: PlanExecMode) =>
 		m === "execute" ? t("chatView.plan.modeExecute") : m === "compact" ? t("chatView.plan.modeCompact") : t("chatView.plan.modeKeep");
@@ -474,7 +567,7 @@ function ApprovalDock({
 		approving.current = true;
 		setBusy(true);
 		try {
-			await approvePlan(sessionId, plan, effective, single ? null : role);
+			await approvePlan(sessionId, plan, effective, spec);
 			if (pending > 0) toast.info(t("chatView.plan.annotationsLeft", { count: pending }));
 		} catch (err) {
 			toast.error(t("chatView.plan.approveFailed", { error: errMsg(err) }));
@@ -494,7 +587,7 @@ function ApprovalDock({
 	};
 
 	return (
-		<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 bg-gradient-to-b from-transparent via-[var(--bg-panel)]/90 to-[var(--bg-panel)] px-4 pt-7 pb-3.5">
+		<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 px-4 pt-0 pb-3.5">
 			{pending > 0 && (
 				<button
 					type="button"
@@ -518,7 +611,7 @@ function ApprovalDock({
 					className="inline-flex h-[34px] items-center gap-1.5 whitespace-nowrap rounded-full pr-2.5 pl-3.5 text-[12.5px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] aria-expanded:bg-[var(--ghost-hover)]"
 				>
 					<b className="font-medium text-[var(--text)]">{modeLabel(effective)}</b>
-					{!single && role && <span>· {role}</span>}
+					{(custom || !single) && (custom || role) && <span>· {custom ? customShort : role}</span>}
 					<ChevronDown size={11} className={clsx("opacity-60 transition-transform", menuOpen && "rotate-180")} />
 				</button>
 				<button
@@ -556,33 +649,87 @@ function ApprovalDock({
 						/>
 					);
 				})}
-				{!single && (
-					<>
-						<hr className="mx-0.5 my-1.5 border-[var(--border-divider)]" />
-						<MenuCaption>{t("chatView.plan.execModel")}</MenuCaption>
-						<div role="radiogroup" className="mx-1.5 flex rounded-lg bg-black/10 p-0.5 dark:bg-black/25">
-							{plan.tiers.map((x) => (
-								<button
-									key={x.role}
-									type="button"
-									role="radio"
-									aria-checked={x.role === role}
-									onClick={() => setRole(x.role)}
-									className={clsx(
-										"min-w-0 flex-1 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] transition-colors",
-										x.role === role ? "bg-[var(--bg-panel)] font-semibold text-[var(--text)] shadow-sm" : "text-[var(--text-60)] hover:text-[var(--text)]",
-									)}
-								>
-									{x.role}
-								</button>
-							))}
-						</div>
-						{tier && (
-							<div className="px-2 pt-1.5 pb-1 text-[12px] break-words text-[var(--text-60)]">
-								<b className="font-medium text-[var(--text)]">{tier.role}</b> · {tier.spec}
-							</div>
+				<hr className="mx-0.5 my-1.5 border-[var(--border-divider)]" />
+				<MenuCaption>{t("chatView.plan.execModel")}</MenuCaption>
+				<div role="radiogroup" className="mx-1.5 flex rounded-lg bg-black/10 p-0.5 dark:bg-black/25">
+					{plan.tiers.map((x) => (
+						<button
+							key={x.role}
+							type="button"
+							role="radio"
+							aria-checked={!custom && x.role === role}
+							onClick={() => {
+								setRole(x.role);
+								setCustom(null);
+								setCustomOpen(false);
+							}}
+							className={clsx(
+								"min-w-0 flex-1 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] transition-colors",
+								!custom && x.role === role ? "bg-[var(--bg-panel)] font-semibold text-[var(--text)] shadow-sm" : "text-[var(--text-60)] hover:text-[var(--text)]",
+							)}
+						>
+							{x.role}
+						</button>
+					))}
+					<button
+						type="button"
+						role="radio"
+						aria-checked={!!custom}
+						title="从模型列表中任选一个模型与思考等级"
+						onClick={() => setCustomOpen((v) => !v)}
+						className={clsx(
+							"min-w-0 flex-1 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] transition-colors",
+							custom || customOpen ? "bg-[var(--bg-panel)] font-semibold text-[var(--text)] shadow-sm" : "text-[var(--text-60)] hover:text-[var(--text)]",
 						)}
-					</>
+					>
+						自选模型
+					</button>
+				</div>
+				{customOpen && (
+					<div className="mx-1.5 mt-1.5 overflow-hidden rounded-lg border border-[var(--border-divider)]">
+						<ModelMenuContent
+							models={catalog ?? []}
+							currentValue={custom?.key ?? ""}
+							closeOnSelect
+							onSelect={(key) => {
+								if (!key.includes("/")) return;
+								setCustom({ key, level: "auto" });
+								setCustomOpen(false);
+							}}
+						/>
+					</div>
+				)}
+				{custom && customLevels.length > 1 && (
+					<div className="mx-1.5 mt-1.5 flex flex-wrap gap-1" role="radiogroup" aria-label="思考等级">
+						{customLevels.map((lv) => (
+							<button
+								key={lv}
+								type="button"
+								role="radio"
+								aria-checked={custom.level === lv}
+								onClick={() => setCustom({ key: custom.key, level: lv })}
+								className={clsx(
+									"whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
+									custom.level === lv
+										? "border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)]"
+										: "border-[var(--border-divider)] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]",
+								)}
+							>
+								{lv}
+							</button>
+						))}
+					</div>
+				)}
+				{custom ? (
+					<div className="px-2 pt-1.5 pb-1 text-[12px] break-all text-[var(--text-60)]">
+						<b className="font-medium text-[var(--text)]">自选</b> · {customSpec}
+					</div>
+				) : (
+					tier && (
+						<div className="px-2 pt-1.5 pb-1 text-[12px] break-words text-[var(--text-60)]">
+							<b className="font-medium text-[var(--text)]">{tier.role}</b> · {tier.spec}
+						</div>
+					)
 				)}
 				<hr className="mx-0.5 my-1.5 border-[var(--border-divider)]" />
 				<MenuRow

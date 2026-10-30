@@ -319,6 +319,52 @@ fn count_models(body: &str, api: ProviderApi) -> Option<usize> {
 pub struct DiscoveredModel {
     pub id: String,
     pub name: Option<String>,
+    /// `"chat"` / `"other"` when the provider's own listing metadata says so; `None` = unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+/// Classify a model-list item from the provider's own metadata (never from the id).
+/// Gemini: `supportedGenerationMethods`; OpenRouter-style: `architecture.output_modalities`
+/// / `output_modalities`; Together/Cohere-style: `type`.
+pub(crate) fn discovered_kind(item: &serde_json::Value) -> Option<String> {
+    let chat = || Some("chat".to_string());
+    let other = || Some("other".to_string());
+    if let Some(methods) = item
+        .get("supportedGenerationMethods")
+        .and_then(|m| m.as_array())
+    {
+        let has = |name: &str| methods.iter().any(|m| m.as_str() == Some(name));
+        if has("generateContent") || has("streamGenerateContent") {
+            return chat();
+        }
+        if !methods.is_empty() {
+            return other();
+        }
+    }
+    let outputs = item
+        .get("architecture")
+        .and_then(|a| a.get("output_modalities"))
+        .or_else(|| item.get("output_modalities"))
+        .and_then(|m| m.as_array());
+    if let Some(outputs) = outputs {
+        if !outputs.is_empty() {
+            return if outputs.iter().any(|m| m.as_str() == Some("text")) {
+                chat()
+            } else {
+                other()
+            };
+        }
+    }
+    if let Some(kind) = item.get("type").and_then(|t| t.as_str()) {
+        match kind.to_ascii_lowercase().as_str() {
+            "chat" | "language" | "llm" | "text" | "completion" => return chat(),
+            "embedding" | "embeddings" | "image" | "audio" | "rerank" | "moderation" | "video"
+            | "tts" | "stt" | "transcribe" => return other(),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Fetches available models directly from the provider's API endpoint (without CORS restrictions).
@@ -393,6 +439,7 @@ pub async fn provider_fetch_models(
                             models.push(DiscoveredModel {
                                 id,
                                 name: display_name,
+                                kind: discovered_kind(item),
                             });
                         }
                     }
@@ -405,7 +452,11 @@ pub async fn provider_fetch_models(
                     if let Some(name) = item.get("name").and_then(|s| s.as_str()) {
                         let id = name.to_string();
                         if seen.insert(id.clone()) {
-                            models.push(DiscoveredModel { id, name: None });
+                            models.push(DiscoveredModel {
+                                id,
+                                name: None,
+                                kind: None,
+                            });
                         }
                     }
                 }
@@ -433,7 +484,11 @@ pub async fn provider_fetch_models(
                             .filter(|d| *d != raw_id)
                             .map(|s| s.to_string());
                         if seen.insert(id.clone()) {
-                            models.push(DiscoveredModel { id, name: display });
+                            models.push(DiscoveredModel {
+                                id,
+                                name: display,
+                                kind: discovered_kind(item),
+                            });
                         }
                     }
                 }
@@ -494,6 +549,27 @@ pub async fn provider_test_model(
 
     let status = response.status();
     if status.is_success() {
+        let raw_body = response.text().await.unwrap_or_default();
+        match probe_body_verdict(api, &raw_body) {
+            ProbeVerdict::Ok => {}
+            ProbeVerdict::Empty => {
+                return Ok(ProviderTestResult {
+                    ok: false,
+                    latency_ms,
+                    detail: "API 返回空响应（0 token，stopReason=stop）— 该模型在当前中转站可能无可用上游渠道".into(),
+                });
+            }
+            ProbeVerdict::Malformed => {
+                let snippet = sanitize_error_detail(status, &raw_body, key.as_deref());
+                return Ok(ProviderTestResult {
+                    ok: false,
+                    latency_ms,
+                    detail: format!(
+                        "API 返回了无法识别的响应（不是有效的对话补全 JSON）— {snippet}"
+                    ),
+                });
+            }
+        }
         Ok(ProviderTestResult {
             ok: true,
             latency_ms,
@@ -507,6 +583,132 @@ pub async fn provider_test_model(
             latency_ms,
             detail,
         })
+    }
+}
+
+/// Outcome of inspecting a 2xx probe body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProbeVerdict {
+    /// Real output: text, reasoning, tool call, or a billed token.
+    Ok,
+    /// Well-formed but carries no output (or a wrapped upstream `error`): empty relay channel.
+    Empty,
+    /// Not JSON, or not the protocol's completion shape (e.g. an HTML error page served with 200).
+    Malformed,
+}
+
+/// A 2xx status alone is not proof of a live upstream: relay stations return HTML, empty
+/// completions or wrapped errors with 200.
+pub(crate) fn probe_body_verdict(api: ProviderApi, raw_body: &str) -> ProbeVerdict {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw_body) else {
+        return ProbeVerdict::Malformed;
+    };
+    if !v.is_object() {
+        return ProbeVerdict::Malformed;
+    }
+    // Relay stations sometimes wrap upstream failures in a 200 `{"error": ...}` body.
+    if v.get("error").is_some_and(|e| !e.is_null()) {
+        return ProbeVerdict::Empty;
+    }
+    let shaped = match api {
+        ProviderApi::OpenaiCompletions => v.get("choices").is_some_and(|c| c.is_array()),
+        ProviderApi::Anthropic => v.get("content").is_some_and(|c| c.is_array()),
+        ProviderApi::Gemini => v.get("candidates").is_some_and(|c| c.is_array()),
+        ProviderApi::OpenaiResponses => v.get("output").is_some_and(|c| c.is_array()),
+        ProviderApi::Ollama => v.get("response").is_some_and(|c| c.is_string()),
+    };
+    if !shaped {
+        return ProbeVerdict::Malformed;
+    }
+    if probe_json_is_empty(api, &v) {
+        ProbeVerdict::Empty
+    } else {
+        ProbeVerdict::Ok
+    }
+}
+
+fn probe_json_is_empty(api: ProviderApi, v: &serde_json::Value) -> bool {
+    let non_empty_str = |x: Option<&serde_json::Value>| {
+        x.and_then(|s| s.as_str())
+            .is_some_and(|s| !s.trim().is_empty())
+    };
+    let non_empty_arr =
+        |x: Option<&serde_json::Value>| x.and_then(|a| a.as_array()).is_some_and(|a| !a.is_empty());
+    match api {
+        ProviderApi::OpenaiCompletions => {
+            let Some(choices) = v.get("choices").and_then(|c| c.as_array()) else {
+                return false;
+            };
+            if choices.is_empty() {
+                return true;
+            }
+            choices.iter().all(|c| {
+                let m = c.get("message").or_else(|| c.get("delta"));
+                let has_content = m.is_some_and(|m| {
+                    let content = m.get("content");
+                    non_empty_str(content)
+                        || non_empty_arr(content)
+                        || non_empty_str(m.get("reasoning_content"))
+                        || non_empty_str(m.get("reasoning"))
+                        || non_empty_arr(m.get("tool_calls"))
+                        || m.get("function_call").is_some_and(|f| !f.is_null())
+                });
+                let tokens = v
+                    .get("usage")
+                    .and_then(|u| u.get("completion_tokens"))
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or(0);
+                let finish = c
+                    .get("finish_reason")
+                    .and_then(|f| f.as_str())
+                    .unwrap_or("");
+                // max_tokens=1 can legitimately end with "length"; only flag stop/error/missing.
+                !has_content && tokens == 0 && matches!(finish, "stop" | "error" | "")
+            })
+        }
+        ProviderApi::Anthropic => {
+            let Some(content) = v.get("content").and_then(|c| c.as_array()) else {
+                return false;
+            };
+            let tokens = v
+                .get("usage")
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+            content.is_empty() && tokens == 0
+        }
+        ProviderApi::Gemini => {
+            let Some(cands) = v.get("candidates").and_then(|c| c.as_array()) else {
+                return false;
+            };
+            cands.is_empty()
+                || cands.iter().all(|c| {
+                    let parts = c.get("content").and_then(|x| x.get("parts"));
+                    !non_empty_arr(parts)
+                        && v.get("usageMetadata")
+                            .and_then(|u| u.get("candidatesTokenCount"))
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0)
+                            == 0
+                })
+        }
+        ProviderApi::OpenaiResponses => {
+            let Some(output) = v.get("output").and_then(|o| o.as_array()) else {
+                return false;
+            };
+            let tokens = v
+                .get("usage")
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+            output.is_empty() && tokens == 0
+        }
+        ProviderApi::Ollama => {
+            v.get("response")
+                .and_then(|r| r.as_str())
+                .is_some_and(|r| r.trim().is_empty())
+                && v.get("eval_count").and_then(|t| t.as_u64()).unwrap_or(0) == 0
+        }
     }
 }
 
@@ -1130,5 +1332,134 @@ mod tests {
             "https://g.dev/v1beta/models"
         );
         assert_eq!(url("http://l:11434", Ollama), "http://l:11434/api/tags");
+    }
+    #[test]
+    fn probe_detects_empty_and_error_200_bodies() {
+        use ProviderApi::*;
+        // Empty completion: stop with no content and 0 tokens.
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                r#"{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"completion_tokens":0}}"#
+            ),
+            ProbeVerdict::Empty
+        );
+        assert_eq!(
+            probe_body_verdict(OpenaiCompletions, r#"{"choices":[]}"#),
+            ProbeVerdict::Empty
+        );
+        // 200 carrying an upstream error.
+        assert_eq!(
+            probe_body_verdict(OpenaiCompletions, r#"{"error":{"message":"no channel"}}"#),
+            ProbeVerdict::Empty
+        );
+        assert_eq!(
+            probe_body_verdict(Anthropic, r#"{"content":[],"usage":{"output_tokens":0}}"#),
+            ProbeVerdict::Empty
+        );
+        assert_eq!(
+            probe_body_verdict(Gemini, r#"{"candidates":[]}"#),
+            ProbeVerdict::Empty
+        );
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiResponses,
+                r#"{"output":[],"usage":{"output_tokens":0}}"#
+            ),
+            ProbeVerdict::Empty
+        );
+    }
+
+    #[test]
+    fn probe_accepts_content_reasoning_and_tool_calls() {
+        use ProviderApi::*;
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                r#"{"choices":[{"message":{"content":"hi"},"finish_reason":"stop"}]}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                r#"{"choices":[{"message":{"content":"","reasoning_content":"thinking"},"finish_reason":"length"}]}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                r#"{"choices":[{"message":{"content":null,"tool_calls":[{"id":"1"}]},"finish_reason":"tool_calls"}]}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        // max_tokens=1 truncation with a real token is still a live upstream.
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                r#"{"choices":[{"message":{"content":""},"finish_reason":"length"}],"usage":{"completion_tokens":1}}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        assert_eq!(
+            probe_body_verdict(
+                Anthropic,
+                r#"{"content":[{"type":"text","text":"h"}],"usage":{"output_tokens":1}}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        assert_eq!(
+            probe_body_verdict(
+                Gemini,
+                r#"{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}"#
+            ),
+            ProbeVerdict::Ok
+        );
+        // Non-JSON body: cannot prove emptiness.
+        assert_eq!(
+            probe_body_verdict(OpenaiCompletions, "ok"),
+            ProbeVerdict::Malformed
+        );
+        assert_eq!(
+            probe_body_verdict(
+                OpenaiCompletions,
+                "<html><body>502 Bad Gateway</body></html>"
+            ),
+            ProbeVerdict::Malformed
+        );
+        assert_eq!(
+            probe_body_verdict(Anthropic, r#"{"id":"x"}"#),
+            ProbeVerdict::Malformed
+        );
+    }
+
+    #[test]
+    fn discovered_kind_prefers_provider_metadata() {
+        let v = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+        assert_eq!(
+            discovered_kind(&v(r#"{"supportedGenerationMethods":["embedContent"]}"#)).as_deref(),
+            Some("other")
+        );
+        assert_eq!(
+            discovered_kind(&v(r#"{"supportedGenerationMethods":["generateContent"]}"#)).as_deref(),
+            Some("chat")
+        );
+        assert_eq!(
+            discovered_kind(&v(r#"{"architecture":{"output_modalities":["image"]}}"#)).as_deref(),
+            Some("other")
+        );
+        assert_eq!(
+            discovered_kind(&v(
+                r#"{"architecture":{"output_modalities":["text","image"]}}"#
+            ))
+            .as_deref(),
+            Some("chat")
+        );
+        assert_eq!(
+            discovered_kind(&v(r#"{"type":"rerank"}"#)).as_deref(),
+            Some("other")
+        );
+        assert_eq!(discovered_kind(&v(r#"{"id":"x"}"#)), None);
     }
 }

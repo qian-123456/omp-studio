@@ -247,12 +247,20 @@ export const sideChatAsk = (
 	sessionId: string,
 	question: string,
 	selection?: string,
+	liveContext?: string,
+	imagePaths?: string[],
 ) =>
 	invoke<void>("side_chat_ask", {
 		sessionId,
 		question,
 		selection: selection ?? null,
+		liveContext: liveContext ?? null,
+		imagePaths: imagePaths?.length ? imagePaths : null,
 	});
+
+/** Local image files -> omp `ImageContent` blocks (`{type,data,mimeType}`); rejects on unreadable/unsupported files. */
+export const imageContentsFromPaths = (paths: string[]) =>
+	invoke<Array<{ type: "image"; data: string; mimeType: string }>>("image_contents_from_paths", { paths });
 
 /**
  * Full-session fork of the parent (cut at the last complete turn, or exactly
