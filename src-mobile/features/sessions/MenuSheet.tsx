@@ -172,39 +172,39 @@ export function MenuSheet({
 				}`}
 				style={{ paddingTop: "var(--m-safe-top)", paddingBottom: "var(--m-safe-bottom)" }}
 			>
-				<header className="flex h-16 shrink-0 items-center gap-2.5 pr-3 pl-5">
-					<AppMark size={26} />
-					<span className="min-w-0 flex-1 text-m-lg font-medium whitespace-nowrap">OMP</span>
-					<IconButton variant="filled" icon={<Search {...I} />} label="搜索会话" onClick={() => go(paths.search())} />
-					<IconButton variant="filled" icon={<X {...I} />} label="关闭导航" onClick={onClose} />
+				<header className="flex h-12 shrink-0 items-center gap-2 px-3">
+					<AppMark size={24} />
+					<span className="min-w-0 flex-1 text-m-md font-medium whitespace-nowrap">OMP</span>
+					<IconButton variant="plain" size="sm" icon={<Search {...I} />} label="搜索会话" onClick={() => go(paths.search())} />
+					<IconButton variant="plain" size="sm" icon={<X {...I} />} label="关闭导航" onClick={onClose} />
 				</header>
 
 				<div className="shrink-0">
-					<div className="flex flex-col gap-1 px-3 pt-2">
+					<div className="flex flex-wrap gap-1 px-3">
 						<button
 							type="button"
 							onClick={() => {
 								onClose();
 								onNewSession?.();
 							}}
-							className="flex h-12 w-full items-center gap-3.5 rounded-m-pill bg-m-surface px-4 text-left text-m-md text-m-text transition-colors duration-(--m-dur-fast) active:bg-m-surface-2"
+							className="flex min-h-11 w-full items-center gap-2.5 rounded-m-md bg-m-surface px-3 text-left text-m-md text-m-text transition-colors duration-(--m-dur-fast) active:bg-m-surface-2"
 						>
-							<SquarePen {...I} className="text-m-text-2" />
+							<SquarePen {...I} size={20} className="text-m-text-2" />
 							<span className="whitespace-nowrap">发起新对话</span>
 						</button>
 						<button
 							type="button"
 							onClick={() => go(paths.schedules())}
-							className="flex h-12 w-full items-center gap-3.5 rounded-m-pill px-4 text-left text-m-md text-m-text transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
+							className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-m-md px-2 text-left text-m-sm text-m-text-2 transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
 						>
-							<Clock {...I} className="text-m-text-2" />
+							<Clock {...I} size={18} className="text-m-text-2" />
 							<span className="whitespace-nowrap">定时任务</span>
 						</button>
 					</div>
 
-					<div className="flex items-center gap-2 px-4 pt-4 pb-2">
+					<div className="flex flex-wrap items-center gap-x-2 px-3 py-1">
 						<ModeSwitch />
-						<Segmented label="视图" className="min-w-0 flex-1" value={viewMode} options={VIEW_OPTIONS} onChange={setViewMode} />
+						<Segmented label="视图" className="min-w-fit flex-1 whitespace-nowrap [&]:p-0.5 [&>button]:px-2 [&>button]:shadow-none" value={viewMode} options={VIEW_OPTIONS} onChange={setViewMode} />
 					</div>
 				</div>
 				<div className="m-noscrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">

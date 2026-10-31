@@ -32,9 +32,9 @@ export function ModeSwitch({ onChange }: { onChange?: () => void }) {
 				aria-haspopup="menu"
 				aria-label={`${modeLabel(mode)}空间，点击切换`}
 				onClick={() => setOpen(true)}
-				className="group flex min-h-11 shrink-0 items-center"
+				className="flex min-h-11 min-w-11 shrink-0 items-center rounded-m-md px-2 transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
 			>
-				<span className="relative inline-flex h-9 items-center gap-1.5 rounded-m-pill bg-m-surface pr-2.5 pl-3 text-m-sm font-medium whitespace-nowrap text-m-text transition-colors duration-(--m-dur-fast) group-active:bg-m-surface-2">
+				<span className="relative inline-flex h-8 items-center gap-1.5 text-m-sm font-medium whitespace-nowrap text-m-text-2">
 					<Icon size={16} strokeWidth={1.75} className="text-m-text-2" />
 					{modeLabel(mode)}
 					<ChevronDown size={16} strokeWidth={1.75} className="text-m-text-3" />

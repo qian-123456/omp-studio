@@ -73,7 +73,7 @@ export function ChronologicalView({
 		<div className="flex flex-col pb-2">
 			{groups.map((g) => (
 				<section key={g.label} aria-label={g.label}>
-					<h3 className="sticky top-0 z-(--z-base) bg-m-bg px-5 pt-5 pb-1.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">
+					<h3 className="sticky top-0 z-(--z-base) bg-m-bg px-5 pt-3 pb-1 text-m-xs font-medium whitespace-nowrap text-m-text-3">
 						{g.label}
 					</h3>
 					{g.sessions.map((s) => (

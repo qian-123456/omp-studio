@@ -69,7 +69,7 @@ const HeaderView = memo(
 		const chips = row.tags.length > 0 || row.bubbles != null;
 		return (
 			<div
-				className={`flex items-start gap-1 pr-2 ${sec ? "pt-2" : ""} ${row.dim ? "opacity-70" : ""}`}
+				className={`flex items-start gap-1 pr-2 ${sec ? "pt-1" : ""} ${row.dim ? "opacity-70" : ""}`}
 				style={{ paddingLeft: 8 + row.depth * 16 }}
 			>
 				<button
@@ -81,7 +81,7 @@ const HeaderView = memo(
 					<span className="flex h-[22px] w-5 shrink-0 items-center justify-center text-m-text-2">{ICONS[row.icon]}</span>
 					<span className="min-w-0 flex-1">
 						<span className="flex items-start gap-1.5">
-							<span className={`min-w-0 break-words text-m-text ${sec ? "text-m-md font-medium" : "text-m-sm"}`}>{row.title}</span>
+							<span className={`min-w-0 break-words text-m-text ${sec ? "text-m-sm font-semibold" : "text-m-sm font-medium"}`}>{row.title}</span>
 							{row.count != null && (
 								<Chip>{row.count}</Chip>
 							)}
@@ -134,7 +134,7 @@ const HeaderView = memo(
 const MoreView = memo(
 	function MoreView({ row }: { row: Extract<FlatRow, { t: "more" }> }) {
 		return (
-			<div className="flex flex-wrap items-center gap-2 py-1.5 pr-4" style={{ paddingLeft: 20 + row.depth * 16 }}>
+			<div className="flex flex-wrap items-center gap-2 pr-4" style={{ paddingLeft: 20 + row.depth * 16 }}>
 				{row.expandText && (
 					<Button size="sm" className="min-h-11" variant="tonal" onClick={() => useTree.getState().expand(row.moreKey, row.expandTo)}>
 						{row.expandText}

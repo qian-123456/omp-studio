@@ -122,7 +122,7 @@ export const SessionRow = memo(function SessionRow({ s, depth = 0, current, onMo
 					else nav.push(paths.chat(s.id));
 				}}
 				{...lp.handlers}
-				className={`flex min-h-12 w-full items-start gap-3 rounded-m-md px-3 py-2.5 text-left select-none transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover ${
+				className={`flex min-h-11 w-full items-start gap-3 rounded-m-md px-3 py-2.5 text-left select-none transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover ${
 					current ? "bg-m-surface" : ""
 				}`}
 			>
