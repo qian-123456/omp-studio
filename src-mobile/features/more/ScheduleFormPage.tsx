@@ -29,6 +29,20 @@ interface Dir {
 	label?: string;
 }
 
+// Native iOS date/time inputs have an intrinsic minimum width; constrain them to the field.
+const formInputCls = `${inputCls} block min-w-0 max-w-full box-border`;
+
+/** Keep WebKit's native date control inside a separately sized and rounded field. */
+function DateTimeInput({ type, value, onChange }: { type: "time" | "datetime-local"; value: string; onChange: (value: string) => void }) {
+	return (
+		<span data-date-input-frame className="relative block h-12 min-w-0 w-full overflow-hidden rounded-[14px] bg-m-surface focus-within:ring-2 focus-within:ring-m-accent">
+			<input type={type} value={value} onChange={(e) => onChange(e.target.value)}
+				className={`${formInputCls} absolute inset-0 h-full appearance-none bg-transparent focus:ring-0`}
+				style={{ WebkitAppearance: "none", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", background: "transparent" }} />
+		</span>
+	);
+}
+
 const KIND_OPTIONS = (Object.keys(KIND_LABEL) as CadenceKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }));
 const RUN_MODE_OPTIONS = (Object.keys(RUN_MODE_LABEL) as RunMode[]).map((k) => ({ value: k, label: RUN_MODE_LABEL[k] }));
 const NOTIFY_OPTIONS = (Object.keys(NOTIFY_LABEL) as NotifyMode[]).map((k) => ({ value: k, label: NOTIFY_LABEL[k] }));
@@ -38,7 +52,7 @@ const err = (msg?: string): ReactNode => (msg ? <span role="alert">{msg}</span> 
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<section className="flex flex-col gap-4">
+		<section className="flex min-w-0 flex-col gap-4">
 			<h2 className="px-1 text-m-lg text-m-text">{title}</h2>
 			{children}
 		</section>
@@ -85,7 +99,7 @@ export function ScheduleFormPage({ id }: { id?: string }) {
 	}, [id]);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col bg-m-bg text-m-text">
+		<div className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-m-bg text-m-text">
 			<PageHeader title={id ? "编辑定时任务" : "新建定时任务"} />
 			{data ? (
 				<Form key={data.existing?.id ?? "new"} dirs={data.dirs} existing={data.existing} />
@@ -153,15 +167,15 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 
 	return (
 		<>
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-				<div className="flex flex-col gap-9 px-4 pt-3 pb-8">
+			<div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+				<div className="flex min-w-0 w-full flex-col gap-9 px-4 pt-3 pb-4">
 					<Section title="任务内容">
 						<Field label="名称" error={err(errors.name)}>
-							<input className={inputCls} value={f.name} placeholder="例如：每日晨报" onChange={(e) => set({ name: e.target.value })} />
+							<input className={formInputCls} value={f.name} placeholder="例如：每日晨报" onChange={(e) => set({ name: e.target.value })} />
 						</Field>
 						<Field label="提示词" error={err(errors.prompt)} hint="每次运行时发送给 agent">
 							<textarea
-								className={`${inputCls} min-h-32 resize-none leading-6`}
+								className={`${formInputCls} min-h-32 resize-none leading-6`}
 								rows={5}
 								value={f.prompt}
 								placeholder="定时发送给 agent 的提示词"
@@ -204,9 +218,9 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 						<Segmented label="重复方式" value={f.kind} options={KIND_OPTIONS} onChange={(v) => set({ kind: v })} />
 						{f.kind === "interval" && (
 							<Field label="每隔" error={err(errors.iv)}>
-								<span className="flex gap-2">
+								<span className="flex min-w-0 gap-2">
 									<input
-										className={inputCls}
+										className={formInputCls}
 										type="number"
 										inputMode="numeric"
 										min={1}
@@ -225,7 +239,7 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 						{f.kind === "daily" && (
 							<>
 								<Field label="时间" error={err(errors.time)}>
-									<input className={inputCls} type="time" value={f.time} onChange={(e) => set({ time: e.target.value })} />
+									<DateTimeInput type="time" value={f.time} onChange={(value) => set({ time: value })} />
 								</Field>
 								<Group label="星期" hint="不选则按天重复">
 									<div className="flex flex-wrap justify-between gap-1">
@@ -249,36 +263,36 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 									</div>
 								</Group>
 								<Field label={f.weekdays.length ? "每隔几周" : "每隔几天"}>
-									<input className={inputCls} type="number" inputMode="numeric" min={1} value={f.every} onChange={(e) => set({ every: e.target.value })} />
+									<input className={formInputCls} type="number" inputMode="numeric" min={1} value={f.every} onChange={(e) => set({ every: e.target.value })} />
 								</Field>
 							</>
 						)}
 						{f.kind === "once" && (
 							<Field label="运行时间" error={err(errors.at)}>
-								<input className={inputCls} type="datetime-local" value={f.at} onChange={(e) => set({ at: e.target.value })} />
+								<DateTimeInput type="datetime-local" value={f.at} onChange={(value) => set({ at: value })} />
 							</Field>
 						)}
 						{f.kind === "monthly" && (
 							<>
 								<Field label="每月几号" error={err(errors.mday)} hint="超过当月天数时按当月最后一天运行">
-									<input className={inputCls} type="number" inputMode="numeric" min={1} max={31} value={f.mday} onChange={(e) => set({ mday: e.target.value })} />
+									<input className={formInputCls} type="number" inputMode="numeric" min={1} max={31} value={f.mday} onChange={(e) => set({ mday: e.target.value })} />
 								</Field>
 								<Field label="时间" error={err(errors.mTime)}>
-									<input className={inputCls} type="time" value={f.mTime} onChange={(e) => set({ mTime: e.target.value })} />
+									<DateTimeInput type="time" value={f.mTime} onChange={(value) => set({ mTime: value })} />
 								</Field>
 								<Field label="每隔几个月">
-									<input className={inputCls} type="number" inputMode="numeric" min={1} value={f.mEvery} onChange={(e) => set({ mEvery: e.target.value })} />
+									<input className={formInputCls} type="number" inputMode="numeric" min={1} value={f.mEvery} onChange={(e) => set({ mEvery: e.target.value })} />
 								</Field>
 							</>
 						)}
 						{f.kind !== "once" && (
 							<>
 								<Field label="结束时间（可选）" error={err(errors.endAt)}>
-									<input className={inputCls} type="datetime-local" value={f.endAt} onChange={(e) => set({ endAt: e.target.value })} />
+									<DateTimeInput type="datetime-local" value={f.endAt} onChange={(value) => set({ endAt: value })} />
 								</Field>
 								<Field label="最多运行次数（可选）" error={err(errors.maxRuns)}>
 									<input
-										className={inputCls}
+										className={formInputCls}
 										type="number"
 										inputMode="numeric"
 										min={1}
@@ -302,7 +316,7 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 					</Section>
 				</div>
 			</div>
-			<div className="shrink-0 bg-m-bg px-4 pt-2" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 12px)" }}>
+			<div className="min-w-0 w-full shrink-0 bg-m-bg px-4 pt-2" style={{ paddingBottom: "max(12px, min(var(--m-safe-bottom), 34px))" }}>
 				{errCount > 0 && (
 					<div role="alert" className="mb-2 px-1 text-m-sm text-m-danger">
 						有 {errCount} 项需要修改，请查看上方标红提示

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PageProps } from "../../core/nav";
+import { errorMessage } from "../../core/api";
 import { startViewingPresence } from "../../core/presence";
 import { useSession } from "../../core/stores/sessions";
-import { Spinner } from "../../ui";
+import { Spinner, toast } from "../../ui";
 import { STATUS_LABEL } from "../../core/types";
 import { MenuSheet } from "../sessions/MenuSheet";
 import { NewSessionSheet } from "../sessions";
@@ -34,21 +35,33 @@ function ResumeBar({ sessionId }: { sessionId: string }) {
 	const [busy, setBusy] = useState(false);
 	if (!isDeadStatus(session?.status, working)) return null;
 	return (
-		<div className="flex shrink-0 items-center gap-3 border-t border-m-border bg-m-surface px-4 py-2">
-			<span className="min-w-0 flex-1 text-m-sm text-m-text-2">
-				会话{STATUS_LABEL[session?.status ?? ""] ?? "已停止"}，发送消息或点击恢复
-			</span>
-			<button
-				type="button"
-				disabled={busy}
-				onClick={() => {
-					setBusy(true);
-					void controller.resume().finally(() => setBusy(false));
-				}}
-				className="min-h-11 whitespace-nowrap rounded-m-pill bg-m-accent px-5 text-m-sm font-medium text-m-accent-text active:opacity-80 disabled:opacity-50"
-			>
-				{busy ? <Spinner size={14} /> : "恢复"}
-			</button>
+		<div className="flex shrink-0 justify-center px-4 py-2">
+			<div className="inline-flex max-w-full items-center gap-2 rounded-m-pill bg-m-surface py-1 pl-4 pr-1 shadow-m-pop">
+				<span className="min-w-0 break-words text-m-xs text-m-text-2">
+					会话{STATUS_LABEL[session?.status ?? ""] ?? "已停止"}
+				</span>
+				<button
+					type="button"
+					disabled={busy}
+					aria-busy={busy}
+					onClick={async () => {
+						if (busy) return;
+						setBusy(true);
+						try {
+							await controller.resume();
+						} catch (e) {
+							// The controller reports API failures; this covers unexpected rejections.
+							toast(`恢复失败：${errorMessage(e)}`, { kind: "error" });
+						} finally {
+							setBusy(false);
+						}
+					}}
+					className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-m-pill bg-m-accent-soft px-4 text-m-sm font-medium text-m-accent-soft-text active:opacity-80 disabled:opacity-50"
+				>
+					{busy && <Spinner size={14} />}
+					{busy ? "恢复中" : "恢复"}
+				</button>
+			</div>
 		</div>
 	);
 }

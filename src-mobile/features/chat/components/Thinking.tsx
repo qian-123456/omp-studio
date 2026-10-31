@@ -1,5 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { memo, useState } from "react";
+import { copyText } from "../../../core/lib/format";
+import { Button, Markdown, toast } from "../../../ui";
 import { thinkingLabel } from "../lib/turns";
 
 /** Open state survives remounts of the row (window paging, live → persisted). */
@@ -44,8 +46,12 @@ export const Thinking = memo(function Thinking({
 				/>
 			</button>
 			{open && (
-				<div className="m-selectable mt-1 mb-2 whitespace-pre-wrap break-words border-l-2 border-m-border pl-4 text-m-sm leading-6 text-m-text-2">
-					{text}
+				<div className="m-selectable mt-1 mb-2 max-h-80 overflow-y-auto overscroll-contain break-words border-l-2 border-m-border pl-4 text-m-sm leading-6 text-m-text-2">
+					<Markdown text={text} className="m-md-quiet" streaming={live} visualizeEnabled={false} />
+					<div className="sticky bottom-0 flex justify-end gap-2 bg-m-bg py-1">
+						<Button size="sm" variant="ghost" onClick={toggle}>收起思考</Button>
+						<Button size="sm" variant="ghost" onClick={() => void copyText(text).then((ok) => toast(ok ? "已复制" : "复制失败", { kind: ok ? "success" : "error" }))}>复制</Button>
+					</div>
 				</div>
 			)}
 		</div>

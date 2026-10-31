@@ -2,6 +2,7 @@ import { ChevronRight, ClipboardList, Copy, Download, Ellipsis, RotateCcw } from
 import { memo, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "../../../core/api";
 import { copyText } from "../../../core/lib/format";
+import { nav, paths } from "../../../core/nav";
 import { usePrefs } from "../../../core/stores/prefs";
 import type { ImageRef, Item, ToolItem } from "../../../core/types";
 import { Button, IconButton, Markdown, openImage, toast } from "../../../ui";
@@ -203,16 +204,15 @@ function ProcessFold({
 	);
 }
 
-function PlanCard({ text, sessionId, running }: { text: string; sessionId: string; running: boolean }) {
+function PlanCard({ text, sessionId, turnId, running, status }: { text: string; sessionId: string; turnId: string; running: boolean; status: "review" | "pending" | "executing" | "completed" | "failed" | "handoff" }) {
 	const { controller } = useChatUi();
 	const [busy, setBusy] = useState(false);
 
 	const execute = async () => {
 		setBusy(true);
 		try {
-			controller.patchState({ planMode: false });
-			const ok = await controller.send("/plan-action approve keep", "followUp");
-			if (ok) toast("已开始执行计划", { kind: "success" });
+			const ok = await controller.approvePlan(turnId, text);
+			if (ok) toast("计划已批准，等待执行确认", { kind: "success" });
 		} finally {
 			setBusy(false);
 		}
@@ -237,19 +237,19 @@ function PlanCard({ text, sessionId, running }: { text: string; sessionId: strin
 			<div className="flex items-center gap-3">
 				<ClipboardList size={22} strokeWidth={1.75} aria-hidden className="shrink-0 text-m-text-2" />
 				<div className="min-w-0 flex-1">
-					<div className="text-m-md font-medium">计划已生成</div>
-					<div className="text-m-xs text-m-text-3">执行，或继续补充要求后再生成</div>
+					<div className="text-m-md font-medium">{({ review: "计划已生成", pending: "等待执行确认", executing: "计划执行中", completed: "计划已完成", failed: "计划执行失败", handoff: "计划已移交" })[status]}</div>
+					<div className="text-m-xs text-m-text-3">{status === "review" ? "执行，或补充要求后再生成" : status === "pending" ? "批准请求已接受，正在确认执行状态" : "查看已批准的计划与执行状态"}</div>
 				</div>
 				<IconButton size="sm" icon={<Copy size={20} strokeWidth={1.75} />} label="复制计划" onClick={() => void copy()} />
 				<IconButton size="sm" icon={<Download size={20} strokeWidth={1.75} />} label="下载 .md 文件" onClick={download} />
 			</div>
-			<div className="mt-4 flex gap-2">
-				<Button variant="tonal" className="flex-1" disabled={running || busy} onClick={() => controller.focusComposer()}>
-					修改计划
-				</Button>
-				<Button variant="primary" className="flex-1" busy={busy} disabled={running} onClick={() => void execute()}>
-					执行计划
-				</Button>
+			<div className="mt-4 flex flex-wrap gap-2">
+				{status === "review" ? (
+					<>
+						<Button variant="tonal" className="flex-1 whitespace-nowrap" disabled={running || busy} onClick={() => controller.stageAnnotation(text, "请按以下要求修改计划：\n")}>修改计划</Button>
+						<Button variant="primary" className="flex-1 whitespace-nowrap" busy={busy} disabled={running} onClick={() => void execute()}>执行计划</Button>
+					</>
+				) : <Button variant="tonal" className="flex-1 whitespace-nowrap" onClick={() => nav.push(paths.plan(sessionId))}>查看计划</Button>}
 			</div>
 		</div>
 	);
@@ -260,6 +260,11 @@ export const TurnView = memo(function TurnView({ turn, isLast, sessionId }: { tu
 	const live = useChat((s) => (isLast ? s.live : null));
 	const working = useChat((s) => (isLast ? s.working : false));
 	const planMode = useChat((s) => (isLast ? s.cstate?.planMode === true : false));
+	const planStatus = useChat((s) => isLast ? s.cstate?.planStatus : null);
+	const acceptedPlan = useChat((s) => s.acceptedPlan?.turnId === turn.id ? s.acceptedPlan : null);
+	const approved = planStatus?.approved;
+	const cardStatus = approved?.status ?? (acceptedPlan ? "pending" : "review");
+	const planText = approved?.content ?? acceptedPlan?.content ?? (planStatus?.enabled && planStatus.phase === "review" ? planStatus.content : null);
 	const running = isLast && working;
 	const parts = useMemo(() => mergeLive(turn, live), [turn, live]);
 	// The previous answer row becomes a step once a newer message streams text.
@@ -308,7 +313,7 @@ export const TurnView = memo(function TurnView({ turn, isLast, sessionId }: { tu
 							<span className="m-shimmer">思考中</span>
 						</div>
 					)}
-					{planMode && answerText && !parts.liveText && <PlanCard text={answerText} sessionId={sessionId} running={running} />}
+					{(planText || (planMode && answerText && !parts.liveText && !planStatus)) && <PlanCard text={planText || answerText} sessionId={sessionId} turnId={turn.id} running={running} status={cardStatus} />}
 					{answerText && !running && (
 						<div className="-ml-3 mt-1 flex flex-wrap items-center">
 							<IconButton

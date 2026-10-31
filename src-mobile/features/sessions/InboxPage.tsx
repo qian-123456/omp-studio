@@ -1,37 +1,98 @@
-import { Inbox } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCheck, Inbox, MoreHorizontal } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths, type PageProps } from "../../core/nav";
 import { relTime, sessionName } from "../../core/lib/format";
 import { events } from "../../core/sse";
-import { Button, EmptyState, ListGroup, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
+import { BottomSheet, Button, EmptyState, IconButton, ListGroup, MenuRow, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
 import { INBOX_TITLES, inboxSections, type InboxData } from "./inbox";
 import { STATUS_DOT, statusLine } from "./SessionRow";
 import { TodosPane } from "./TodosPane";
 import { openTodos, startTodosSync, useTodos } from "./todos";
 import type { TreeSession } from "./tree";
+import { refreshAll } from "./treeStore";
 
-/** One session inside an inbox card: tap opens it; unread/error rows carry a 「已读」 capsule. */
-function InboxRow({ s, onOpen, onSeen }: { s: TreeSession; onOpen: () => void; onSeen?: () => void }) {
+/** Swipe right to read; the action sheet provides the same keyboard-accessible action. */
+function InboxRow({ s, onOpen, onSeen }: { s: TreeSession; onOpen: () => void; onSeen?: () => Promise<void> }) {
+	const [actionsOpen, setActionsOpen] = useState(false);
+	const [reading, setReading] = useState(false);
+	const [offset, setOffset] = useState(0);
+	const pending = useRef(false);
+	const suppressClickUntil = useRef(0);
+	const gesture = useRef<{ id: number; x: number; y: number; dx: number; axis: "x" | "y" | null } | null>(null);
 	const st = s.status || "idle";
 	const line = [statusLine(s), relTime(s.updatedAt)].filter(Boolean).join(" · ");
+	const markRead = async () => {
+		if (!onSeen || pending.current) return;
+		pending.current = true;
+		setReading(true);
+		try {
+			await onSeen();
+			setActionsOpen(false);
+		} finally {
+			pending.current = false;
+			setReading(false);
+		}
+	};
+	const finishSwipe = (e: ReactPointerEvent<HTMLDivElement>) => {
+		const g = gesture.current;
+		if (!g || g.id !== e.pointerId) return;
+		gesture.current = null;
+		setOffset(0);
+		if (g.axis) suppressClickUntil.current = Date.now() + 500;
+		if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+		if (e.type === "pointerup" && g.axis === "x" && g.dx >= 80) void markRead();
+	};
 	return (
-		<div className="m-list-row flex items-stretch pl-4 active:bg-m-surface-hover">
-			<span aria-hidden className="flex w-6 shrink-0 items-center justify-center">
-				<span className={`size-2.5 rounded-m-pill ${STATUS_DOT[st] ?? "bg-m-surface-2"}`} />
-			</span>
-			<span className="m-list-sep ml-4 flex min-w-0 flex-1 items-center gap-2 pr-3">
-				<button type="button" onClick={onOpen} className="min-h-14 min-w-0 flex-1 py-3 text-left">
-					<span className="block text-m-md break-words text-m-text">{sessionName(s)}</span>
-					{line && <span className="mt-0.5 block text-m-xs break-words text-m-text-3">{line}</span>}
-				</button>
-				{onSeen && (
-					<Button size="sm" className="min-h-11" variant="tonal" onClick={onSeen}>
-						已读
-					</Button>
-				)}
-			</span>
-		</div>
+		<>
+			<div
+				className="m-list-row relative overflow-hidden"
+				style={{ touchAction: "pan-y pinch-zoom" }}
+				onPointerDown={(e) => {
+					if (!onSeen || pending.current || !e.isPrimary || e.button !== 0 || (e.target as HTMLElement).closest("[data-inbox-actions]")) return;
+					suppressClickUntil.current = 0;
+					gesture.current = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, axis: null };
+				}}
+				onPointerMove={(e) => {
+					const g = gesture.current;
+					if (!g || g.id !== e.pointerId) return;
+					const dx = e.clientX - g.x;
+					const dy = e.clientY - g.y;
+					if (!g.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 10) {
+						g.axis = dx > 0 && dx > Math.abs(dy) * 1.3 ? "x" : "y";
+						suppressClickUntil.current = Date.now() + 500;
+						if (g.axis === "x") e.currentTarget.setPointerCapture(e.pointerId);
+					}
+					if (g.axis !== "x") return;
+					e.preventDefault();
+					g.dx = Math.max(0, dx);
+					setOffset(Math.min(112, g.dx));
+				}}
+				onPointerUp={finishSwipe}
+				onPointerCancel={finishSwipe}
+				onLostPointerCapture={finishSwipe}
+				onClickCapture={(e) => {
+					if (e.detail !== 0 && Date.now() < suppressClickUntil.current) { e.preventDefault(); e.stopPropagation(); }
+				}}
+			>
+				{onSeen && <div aria-hidden className="absolute inset-y-0 left-0 flex w-28 items-center justify-center gap-2 bg-m-accent-soft text-m-sm whitespace-nowrap text-m-accent-soft-text"><CheckCheck size={20} />已读</div>}
+				<div className="relative flex items-stretch bg-m-card pl-4" style={{ transform: `translateX(${offset}px)` }}>
+					<span aria-hidden className="flex w-6 shrink-0 items-center justify-center">
+						<span className={`size-2.5 rounded-m-pill ${STATUS_DOT[st] ?? "bg-m-surface-2"}`} />
+					</span>
+					<span className="m-list-sep ml-4 flex min-w-0 flex-1 items-center gap-2 pr-3">
+						<button type="button" onClick={onOpen} className="min-h-14 min-w-11 flex-1 py-3 text-left active:bg-m-surface-hover">
+							<span className="block text-m-md break-words text-m-text">{sessionName(s)}</span>
+							{line && <span className="mt-0.5 block text-m-xs break-words text-m-text-3">{line}</span>}
+						</button>
+						{onSeen && <span data-inbox-actions><IconButton icon={<MoreHorizontal size={20} />} label={`会话操作：${sessionName(s)}`} disabled={reading} onClick={() => setActionsOpen(true)} /></span>}
+					</span>
+				</div>
+			</div>
+			<BottomSheet open={actionsOpen} onClose={() => setActionsOpen(false)} title="会话操作">
+				<MenuRow icon={<CheckCheck size={22} />} label="标记已读" disabled={reading} onClick={() => void markRead()} />
+			</BottomSheet>
+		</>
 	);
 }
 
@@ -77,7 +138,7 @@ export function InboxPage(_props: PageProps) {
 		async (s: TreeSession) => {
 			try {
 				await api("POST", `/left/inbox/${encodeURIComponent(s.id)}/seen`);
-				await load();
+				await Promise.all([load(), refreshAll()]);
 			} catch (e) {
 				toast(`操作失败：${errorMessage(e)}`, { kind: "error" });
 			}
@@ -92,7 +153,7 @@ export function InboxPage(_props: PageProps) {
 		try {
 			const r = await api<{ count?: number }>("POST", "/left/inbox/read-all");
 			toast(`已标记 ${r.count ?? 0} 个会话`, { kind: "success" });
-			await load();
+			await Promise.all([load(), refreshAll()]);
 		} catch (e) {
 			toast(`操作失败：${errorMessage(e)}`, { kind: "error" });
 		} finally {
@@ -144,7 +205,7 @@ export function InboxPage(_props: PageProps) {
 											if (markable) void seen(s);
 											nav.push(paths.chat(s.id));
 										}}
-										onSeen={markable ? () => void seen(s) : undefined}
+										onSeen={markable ? () => seen(s) : undefined}
 									/>
 								))}
 							</ListGroup>

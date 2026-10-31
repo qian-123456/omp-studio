@@ -1,5 +1,5 @@
-import { ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, ChevronRight } from "lucide-react";
+import { isValidElement, type ReactNode } from "react";
 
 /**
  * Grouped card (docs/MOBILE_DESIGN.md §3): 13px grey section label, 24-radius `--m-card` card,
@@ -46,13 +46,13 @@ export function ListRow({
 	subtitle?: ReactNode;
 	right?: ReactNode;
 	onClick?: () => void;
-	/** Defaults to true when `onClick` is set and no `right` control is given. */
+	/** Defaults to true when `onClick` is set, including rows with a right value. */
 	chevron?: boolean;
 	danger?: boolean;
 	disabled?: boolean;
 	className?: string;
 }) {
-	const showChevron = chevron ?? (onClick != null && right == null);
+	const showChevron = chevron ?? (onClick != null);
 	const inner = (
 		<>
 			{icon != null && (
@@ -106,15 +106,16 @@ export function MenuRow({
 			disabled={disabled}
 			aria-current={selected || undefined}
 			className={`flex min-h-13 w-full items-center gap-4 px-5 py-2.5 text-left active:bg-m-surface-hover disabled:opacity-40 ${
-				danger ? "text-m-danger" : "text-m-text"
+				danger ? "text-m-danger" : selected ? "text-m-accent" : "text-m-text"
 			}`}
 		>
-			{icon != null && <span className={`flex w-6 shrink-0 items-center justify-center ${danger ? "" : "text-m-text-2"}`}>{icon}</span>}
+			{icon != null && <span className={`flex w-6 shrink-0 items-center justify-center ${danger || selected ? "" : "text-m-text-2"}`}>{icon}</span>}
 			<span className="min-w-0 flex-1">
-				<span className="block text-m-md break-words">{label}</span>
+				<span className={`block text-m-md break-words ${selected ? "font-medium" : ""}`}>{label}</span>
 				{hint != null && <span className="mt-0.5 block text-m-xs break-words text-m-text-3">{hint}</span>}
 			</span>
 			{right != null && <span className="flex shrink-0 items-center text-m-sm whitespace-nowrap text-m-text-3">{right}</span>}
+			{selected && !(isValidElement(right) && right.type === Check) && <Check size={20} className="shrink-0 text-m-accent" aria-hidden />}
 		</button>
 	);
 }

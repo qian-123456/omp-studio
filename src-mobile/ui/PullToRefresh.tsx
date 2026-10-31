@@ -81,7 +81,10 @@ export function PullToRefresh({
 		};
 
 		const onStart = (e: TouchEvent) => {
-			armed = !disabled && !refreshing && scroller.scrollTop <= 0 && e.touches.length === 1;
+			// A gesture starting on a control belongs to that control, not refresh.
+			const target = e.target instanceof Element ? e.target : null;
+			const interactive = target?.closest("button, a[href], input, textarea, select, summary, [role='button'], [contenteditable]:not([contenteditable='false']), [data-pull-refresh-ignore]");
+			armed = !interactive && !disabled && !refreshing && scroller.scrollTop <= 0 && e.touches.length === 1;
 			if (!armed && !refreshing) paint(0, true);
 			pulling = false;
 			if (armed) {

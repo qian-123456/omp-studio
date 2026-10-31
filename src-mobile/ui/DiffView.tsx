@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import { CodeBlock } from "./CodeBlock";
 
 export type DiffLineKind = "add" | "del" | "hunk" | "meta" | "ctx";
 
@@ -40,50 +41,28 @@ const KIND_CLASS: Record<DiffLineKind, string> = {
 	ctx: "text-m-text-2",
 };
 
-const CHUNK = 100;
-const LINE_PX = 18;
-const WINDOW_THRESHOLD = 400;
-
-function Lines({ lines }: { lines: readonly string[] }) {
-	return (
-		<>
-			{lines.map((line, i) => (
-				<div key={i} className={`h-4.5 whitespace-pre px-3 leading-[18px] ${KIND_CLASS[classifyDiffLine(line)]}`}>
-					{line === "" ? " " : line}
-				</div>
-			))}
-		</>
-	);
-}
-
-export const DiffView = memo(function DiffView({ diff, className = "" }: { diff: string; className?: string }) {
-	const lines = useMemo(() => {
-		const all = diff.split("\n");
-		if (all.length > 1 && all[all.length - 1] === "") all.pop();
-		return all;
+export const DiffView = memo(function DiffView({
+	diff,
+	className = "",
+	lineNumbers = false,
+}: {
+	diff: string;
+	className?: string;
+	lineNumbers?: boolean;
+}) {
+	const content = useMemo(() => {
+		const lines = diff.split("\n");
+		if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+		return lines.flatMap((line, index) => [
+			<span key={index} className={`inline-block min-w-full ${KIND_CLASS[classifyDiffLine(line)]}`}>
+				{line || " "}
+			</span>,
+			index < lines.length - 1 ? "\n" : null,
+		]);
 	}, [diff]);
-	const chunks = useMemo(() => {
-		if (lines.length <= WINDOW_THRESHOLD) return null;
-		const out: string[][] = [];
-		for (let i = 0; i < lines.length; i += CHUNK) out.push(lines.slice(i, i + CHUNK));
-		return out;
-	}, [lines]);
 	return (
-		<div
-			className={`overflow-x-auto rounded-m-md bg-m-code-bg font-m-mono text-m-xs ${className}`}
-		>
-			<div className="w-max min-w-full py-1">
-				{chunks
-					? chunks.map((chunk, i) => (
-							<div
-								key={i}
-								style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${chunk.length * LINE_PX}px` }}
-							>
-								<Lines lines={chunk} />
-							</div>
-						))
-					: <Lines lines={lines} />}
-			</div>
-		</div>
+		<CodeBlock code={diff} lang="diff" className={className} lineNumbers={lineNumbers}>
+			{content}
+		</CodeBlock>
 	);
 });

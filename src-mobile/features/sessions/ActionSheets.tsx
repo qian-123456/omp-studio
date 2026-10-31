@@ -1,12 +1,14 @@
-import { Archive, ArchiveRestore, Check, MessageSquare, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Copy, FolderInput, GitBranch, MessageSquare, Pencil, Pin, PinOff, Play, Trash2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { nav, paths } from "../../core/nav";
-import { sessionName } from "../../core/lib/format";
+import { copyText, sessionName } from "../../core/lib/format";
 import { isDraftId } from "../../core/types";
-import { BottomSheet, Button, MenuRow, TextField, confirm } from "../../ui";
-import { discardDraft, patchSession } from "./actions";
-import { needsAttn, type TreeSession } from "./tree";
+import { BottomSheet, Button, MenuRow, TextField, confirm, toast } from "../../ui";
+import { assignToWorkspace, discardDraft, patchSession } from "./actions";
+import { api, errorMessage } from "../../core/api";
+import { useTree } from "./treeStore";
+import { needsAttn, type DirEntry, type TreeSession } from "./tree";
 
 export interface SheetItem {
 	key: string;
@@ -119,6 +121,7 @@ interface SheetState {
 /** Session row actions (open / rename / pin / archive / draft discard). Render `node` once in the page. */
 export function useSessionActions(onOpen?: (s: TreeSession) => void): { openActions: (s: TreeSession) => void; node: ReactNode } {
 	const [sheet, setSheet] = useState<SheetState | null>(null);
+	const [assign, setAssign] = useState<{ s: TreeSession; dirs: DirEntry[] } | null>(null);
 	const [prompt, setPrompt] = useState<{ s: TreeSession; initial: string } | null>(null);
 	const close = useCallback(() => setSheet(null), []);
 	// Keep the last content mounted while the sheet plays its exit transition.
@@ -152,6 +155,26 @@ export function useSessionActions(onOpen?: (s: TreeSession) => void): { openActi
 					icon: s.pinned ? <PinOff {...ICON} /> : <Pin {...ICON} />,
 					run: () => void patchSession(s, { pinned: !s.pinned }),
 				},
+				{
+					key: "assign", label: "归入工作区", icon: <FolderInput {...ICON} />,
+					run: () => void (async () => {
+						try {
+							const result = await api<{ dirs: DirEntry[] }>("GET", "/left/dirs");
+							const dirs = (result.dirs ?? []).filter((d) => d.kind === "workspace" && d.mode === useTree.getState().mode && d.workspaceId);
+							if (!dirs.length) toast("当前空间还没有工作区");
+							else setAssign({ s, dirs });
+						} catch (error) { toast(`加载工作区失败：${errorMessage(error)}`, { kind: "error" }); }
+					})(),
+				},
+				...(s.status === "interrupted" || s.status === "suspended" ? [{
+					key: "resume", label: "恢复会话", icon: <Play {...ICON} />,
+					run: () => void (async () => {
+						try { await api("POST", `/sessions/${encodeURIComponent(s.id)}/resume`, {}); onOpen ? onOpen(s) : nav.push(paths.chat(s.id)); }
+						catch (error) { toast(`恢复会话失败：${errorMessage(error)}`, { kind: "error" }); }
+					})(),
+				}] : []),
+				{ key: "copy-id", label: "复制会话 ID", icon: <Copy {...ICON} />, run: () => void copyText(s.id).then((ok) => toast(ok ? "已复制会话 ID" : "复制失败", { kind: ok ? "success" : "error" })) },
+				...(s.git?.branch ? [{ key: "copy-branch", label: "复制分支名", icon: <GitBranch {...ICON} />, run: () => void copyText(s.git!.branch!).then((ok) => toast(ok ? "已复制分支名" : "复制失败", { kind: ok ? "success" : "error" })) }] : []),
 				s.archived
 					? {
 							key: "unarchive",
@@ -178,6 +201,7 @@ export function useSessionActions(onOpen?: (s: TreeSession) => void): { openActi
 	const node = (
 		<>
 			<ActionSheet open={sheet !== null} title={shown?.title} items={shown?.items ?? []} onClose={close} />
+			<ActionSheet open={assign !== null} title="归入工作区" items={(assign?.dirs ?? []).map((d) => ({ key: d.path, label: d.label || d.path, hint: d.label ? <span className="break-all">{d.path}</span> : undefined, run: () => { if (assign && d.workspaceId) void assignToWorkspace([assign.s], d.workspaceId); } }))} onClose={() => setAssign(null)} />
 			<PromptSheet
 				open={prompt !== null}
 				title="重命名会话"

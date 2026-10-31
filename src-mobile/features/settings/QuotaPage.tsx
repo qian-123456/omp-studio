@@ -1,5 +1,5 @@
 import { Gauge, RefreshCw, UserRound, WifiOff } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { Button, Chip, EmptyState, IconButton, PageHeader, PullToRefresh, Spinner } from "../../ui";
 import {
@@ -103,6 +103,8 @@ export function QuotaPage() {
 	const [refreshing, setRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [now, setNow] = useState(() => Date.now());
+	const mounted = useRef(true);
+	const request = useRef<{ controller: AbortController; refresh: boolean; promise: Promise<void> } | null>(null);
 
 	// Keep countdowns current.
 	useEffect(() => {
@@ -110,24 +112,41 @@ export function QuotaPage() {
 		return () => clearInterval(t);
 	}, []);
 
-	const load = useCallback(async (refresh: boolean) => {
+	const load = useCallback((refresh: boolean): Promise<void> => {
+		if (!mounted.current) return Promise.resolve();
+		const current = request.current;
+		if (current) {
+			return refresh && !current.refresh ? current.promise.then(() => load(true)) : current.promise;
+		}
 		if (refresh) setRefreshing(true);
 		else setLoading(true);
-		setError(null);
-		try {
-			const res = await api<unknown>("GET", refresh ? "/quota?refresh=true" : "/quota");
-			setData(normalizeQuotaData(res));
-			setNow(Date.now());
-		} catch (e) {
-			setError(errorMessage(e, "获取用量配额失败"));
-		} finally {
-			setLoading(false);
-			setRefreshing(false);
-		}
+		const controller = new AbortController();
+		const promise = (async () => {
+			try {
+				const result = await api<unknown>("GET", refresh ? "/quota?refresh=true" : "/quota", undefined, { signal: controller.signal });
+				if (controller.signal.aborted) return;
+				setData(normalizeQuotaData(result));
+				setError(null);
+				setNow(Date.now());
+			} catch (e) {
+				if (!controller.signal.aborted) setError(errorMessage(e, "获取用量配额失败"));
+			} finally {
+				if (request.current?.controller === controller) request.current = null;
+				if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); }
+			}
+		})();
+		request.current = { controller, refresh, promise };
+		return promise;
 	}, []);
 
 	useEffect(() => {
+		mounted.current = true;
 		void load(false);
+		return () => {
+			mounted.current = false;
+			request.current?.controller.abort();
+			request.current = null;
+		};
 	}, [load]);
 
 	const accounts = data?.providers.reduce((sum, p) => sum + p.accounts.length, 0) ?? 0;
@@ -163,7 +182,7 @@ export function QuotaPage() {
 						<EmptyState
 							icon={<WifiOff size={24} strokeWidth={1.75} />}
 							title="加载失败"
-							hint={<span className="m-selectable">{error}</span>}
+							hint={<span className="m-selectable whitespace-pre-wrap break-words">{error}</span>}
 							action={
 								<Button variant="tonal" onClick={() => void load(false)}>
 									重试
@@ -173,11 +192,13 @@ export function QuotaPage() {
 					)}
 					{error && data && (
 						<div role="alert" className="mx-4 rounded-m-lg bg-m-danger-bg px-4 py-3 text-m-sm break-words text-m-danger">
-							<span className="m-selectable">刷新失败：{error}</span>
+							<div className="font-medium">刷新失败，当前显示上次获取的数据</div>
+							<div className="m-selectable mt-1 whitespace-pre-wrap break-words">{error}</div>
+							<Button size="sm" variant="tonal" className="mt-2" disabled={refreshing || loading} onClick={() => void load(true)}>重试刷新</Button>
 						</div>
 					)}
 
-					{data && data.providers.length === 0 && !loading && (
+					{data && data.providers.length === 0 && !loading && !error && (
 						<EmptyState
 							icon={<Gauge size={24} strokeWidth={1.75} />}
 							title="暂无订阅或配额"

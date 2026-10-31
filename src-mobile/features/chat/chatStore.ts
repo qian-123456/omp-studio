@@ -4,6 +4,7 @@
  * (streaming only changes `live`; the persisted rows keep identity).
  */
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { PlanStatus } from "../../../src/features/chat/plan/planStatus";
 import { api, errorMessage, LONG_TIMEOUT_MS, upload } from "../../core/api";
 import { nav, paths } from "../../core/nav";
 import { buildPendingResponse, doneOption, nextMultiChoice, type PendingAnswer } from "../../core/pendingUi";
@@ -46,6 +47,7 @@ export interface ComposerState {
 	model?: string | null;
 	thinkingLevel?: string | null;
 	planMode?: boolean;
+	planStatus?: PlanStatus | null;
 	goal?: Goal | null;
 	contextTokens?: number | null;
 	contextWindow?: number | null;
@@ -90,6 +92,7 @@ export interface ChatState {
 	forkFrom: ForkFrom | null;
 	compacting: boolean;
 	delivery: PromptDeliveryState | null;
+	acceptedPlan: { turnId: string; content: string } | null;
 }
 
 // Promise.withResolvers is missing on older iOS Safari, which this bundle targets.
@@ -138,6 +141,7 @@ export class ChatController {
 	private fetchAgain = false;
 	private fetchTimer: ReturnType<typeof setTimeout> | undefined;
 	private stateTimer: ReturnType<typeof setInterval> | undefined;
+	private approvalTimer: ReturnType<typeof setTimeout> | undefined;
 	private lastSend = 0;
 	private attSeq = 0;
 	private optSeq = 0;
@@ -178,6 +182,7 @@ export class ChatController {
 			forkFrom: null,
 			compacting: false,
 			delivery: loadDelivery(id),
+			acceptedPlan: null,
 		}));
 		this.touchDraft = createDebounce(() => this.draftActivity(true), DRAFT_ACTIVITY_DEBOUNCE_MS);
 	}
@@ -226,6 +231,7 @@ export class ChatController {
 		this.offs = [];
 		clearInterval(this.stateTimer);
 		clearTimeout(this.fetchTimer);
+		clearTimeout(this.approvalTimer);
 		if (this.rafId) cancelAnimationFrame(this.rafId);
 		this.touchDraft.cancel();
 		const pendingHandoff = this.handoffText;
@@ -383,7 +389,9 @@ export class ChatController {
 			if (this.disposed) return;
 			const prev = this.state.cstate;
 			if (st.thinkingLevel == null && prev?.thinkingLevel) st.thinkingLevel = prev.thinkingLevel;
-			this.set({ cstate: st });
+			const authoritative = Object.prototype.hasOwnProperty.call(st, "planStatus");
+			if (authoritative) clearTimeout(this.approvalTimer);
+			this.set({ cstate: st, ...(authoritative ? { acceptedPlan: null } : {}) });
 			if (st.streaming && !this.stream.working) this.setWorking(true);
 			else if (!st.streaming && this.stream.working && !this.stream.live && Date.now() - this.lastSend > 4000) {
 				const s = useSessions.getState().byId[this.id];
@@ -603,15 +611,13 @@ export class ChatController {
 		const trimmed = text.trim();
 		if (s.forkFrom && trimmed) {
 			this.composer?.set("");
-			await this.runCommand("fork", trimmed, text);
-			return true;
+			return this.runCommand("fork", trimmed, text);
 		}
 		if (intent === "slash") {
 			const p = parseSlashInput(trimmed);
 			if (p) {
 				this.composer?.set("");
-				await this.runCommand(p.name, p.args, text);
-				return true;
+				return this.runCommand(p.name, p.args, text);
 			}
 		}
 		return this.sendPrompt(trimmed, behavior);
@@ -681,7 +687,7 @@ export class ChatController {
 	}
 
 	/** Execute `/name args` through the server: shows `output` locally, follows `sessionId` for /new and /fork. */
-	async runCommand(name: string, args: string, restore?: string): Promise<void> {
+	async runCommand(name: string, args: string, restore?: string): Promise<boolean> {
 		const id = this.id;
 		this.lastSend = Date.now();
 		const fork = name === "fork" ? this.state.forkFrom : null;
@@ -702,10 +708,27 @@ export class ChatController {
 			else if (!r.output && !r.forwarded) toast(`/${name} 已执行`);
 			if (!this.disposed) void this.loadState();
 			useSessions.getState().refresh().catch(() => {});
+			return true;
 		} catch (e) {
 			if (!this.disposed && restore !== undefined) this.composer?.set(restore);
 			toast(`/${name}：${errorMessage(e)}`, { kind: "error" });
+			return false;
 		}
+	}
+
+	/** Approval is a host command: never consume the user's draft or attachments. */
+	async approvePlan(turnId: string, content: string): Promise<boolean> {
+		if (this.state.delivery || this.state.acceptedPlan) return false;
+		const ok = await this.runCommand("plan-action", "approve keep");
+		if (!ok || this.disposed) return false;
+		this.patchState({ planMode: false });
+		clearTimeout(this.approvalTimer);
+		this.set({ acceptedPlan: { turnId, content } });
+		this.approvalTimer = setTimeout(() => {
+			if (!this.disposed) this.set({ acceptedPlan: null });
+		}, 30_000);
+		void this.loadState();
+		return true;
 	}
 
 	async compact(): Promise<void> {

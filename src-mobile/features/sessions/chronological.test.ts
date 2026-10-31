@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("groupByTime", () => {
-	it("groups sessions into today, yesterday, this calendar week, and earlier", () => {
+	it("groups sessions into today, yesterday, this calendar week, and calendar months", () => {
 		const now = new Date();
 		const todayIso = new Date(now.getTime() - 1000 * 60).toISOString();
 		const yesterdayIso = new Date(now.getTime() - 86400000).toISOString();
@@ -36,20 +36,20 @@ describe("groupByTime", () => {
 		];
 
 		const groups = groupByTime(sessions);
-		expect(groups.map((g) => g.label)).toEqual(["今天", "昨天", "本周", "更早"]);
+		expect(groups.map((g) => g.label)).toEqual(["今天", "昨天", "本周", "2026年10月"]);
 		expect(groups[0].sessions.map((s) => s.id)).toEqual(["s1"]);
 		expect(groups[1].sessions.map((s) => s.id)).toEqual(["s2"]);
 		expect(groups[2].sessions.map((s) => s.id)).toEqual(["s3"]);
 		expect(groups[3].sessions.map((s) => s.id)).toEqual(["s4"]);
 	});
 
-	it("puts the previous Sunday into 更早, not 本周, and sorts newest first", () => {
+	it("puts the previous Sunday into its calendar month, not 本周, and sorts newest first", () => {
 		const groups = groupByTime([
 			makeSession("sunday", new Date(2026, 9, 25, 20).toISOString()),
 			makeSession("monday", new Date(2026, 9, 26, 9).toISOString()),
 			makeSession("tuesday", new Date(2026, 9, 27, 9).toISOString()),
 		]);
-		expect(groups.map((g) => g.label)).toEqual(["本周", "更早"]);
+		expect(groups.map((g) => g.label)).toEqual(["本周", "2026年10月"]);
 		expect(groups[0].sessions.map((s) => s.id)).toEqual(["tuesday", "monday"]);
 		expect(groups[1].sessions[0].id).toBe("sunday");
 	});

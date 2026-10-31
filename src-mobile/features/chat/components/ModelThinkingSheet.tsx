@@ -1,7 +1,7 @@
-import { Check, ChevronLeft, Search } from "lucide-react";
+import { Check, ChevronLeft, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage } from "../../../core/api";
-import { BottomSheet, Button, EmptyState, ListGroup, ListRow, Segmented, Spinner, toast } from "../../../ui";
+import { BottomSheet, Button, EmptyState, IconButton, ListGroup, ListRow, Segmented, Spinner, toast } from "../../../ui";
 import {
 	currentModelOpt,
 	filterModels,
@@ -152,7 +152,7 @@ export function ModelThinkingSheet({
 					)}
 				</section>
 
-				<label className="mx-4 mt-6 flex min-h-12 items-center gap-3 rounded-m-pill bg-m-surface px-4">
+				<label className="mx-4 mt-6 flex min-h-12 items-center gap-3 rounded-m-pill bg-m-surface py-0.5 pr-1 pl-4">
 					<Search size={18} className="shrink-0 text-m-text-3" aria-hidden />
 					<input
 						type="search"
@@ -160,8 +160,13 @@ export function ModelThinkingSheet({
 						onChange={(e) => setQ(e.target.value)}
 						placeholder="搜索模型或供应商"
 						aria-label="搜索模型"
-						className="min-h-11 min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none placeholder:text-m-text-3"
+						className="min-h-11 min-w-0 flex-1 bg-transparent text-m-md text-m-text outline-none placeholder:text-m-text-3 [&::-webkit-search-cancel-button]:appearance-none"
 					/>
+					{q !== "" && (
+						<span className="shrink-0" onPointerDown={(event) => event.preventDefault()}>
+							<IconButton icon={<X size={18} />} label="清除模型搜索" variant="plain" onClick={() => setQ("")} />
+						</span>
+					)}
 				</label>
 
 				{searching ? (
@@ -177,19 +182,7 @@ export function ModelThinkingSheet({
 					)
 				) : activeModels ? (
 					<section>
-						{groups.length > 1 && (
-							<div className="px-3 pt-3">
-								<button
-									type="button"
-									onClick={() => setProvider(null)}
-									className="flex min-h-11 items-center gap-1 rounded-m-pill pr-3 text-m-md text-m-accent active:bg-m-surface-hover"
-								>
-									<ChevronLeft size={22} />
-									全部供应商
-								</button>
-							</div>
-						)}
-						<ListGroup title={`${provider} · ${activeModels.length} 个模型`} className={groups.length > 1 ? "[&>h3]:pt-1" : ""}>
+						<ListGroup title={`${provider} · ${activeModels.length} 个模型`}>
 							{activeModels.map((m) => modelRow(m, false))}
 						</ListGroup>
 					</section>
@@ -215,7 +208,19 @@ export function ModelThinkingSheet({
 	}
 
 	return (
-		<BottomSheet open={open} onClose={onClose} title="模型" subtitle={curOpt ? modelLabel(curOpt) : current ? `${current.provider ? `${current.provider}/` : ""}${current.id}` : undefined} fullHeight>
+		<BottomSheet
+			open={open}
+			onClose={onClose}
+			title="模型"
+			subtitle={curOpt ? modelLabel(curOpt) : current ? `${current.provider ? `${current.provider}/` : ""}${current.id}` : undefined}
+			fullHeight
+			headerRight={!searching && activeModels && groups.length > 1 ? (
+				<Button variant="ghost" onClick={() => setProvider(null)} className="mr-auto gap-1 whitespace-nowrap text-m-accent">
+					<ChevronLeft size={22} aria-hidden />
+					全部供应商
+				</Button>
+			) : undefined}
+		>
 			{body}
 		</BottomSheet>
 	);

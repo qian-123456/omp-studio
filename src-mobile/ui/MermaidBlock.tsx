@@ -89,28 +89,30 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 		}
 	};
 
-	const tabBtn = "flex min-h-11 items-center px-0.5";
+	const tabBtn = "flex min-h-11 min-w-11 shrink-0 items-center px-0.5";
 	const tabPill = (active: boolean) =>
 		`flex h-8 items-center whitespace-nowrap rounded-m-pill px-3 text-m-xs transition-colors ${
 			active ? "bg-m-surface text-m-text" : "text-m-text-3 active:bg-m-surface-hover"
 		}`;
 	const circle = "flex h-8 w-8 items-center justify-center rounded-m-pill bg-m-surface text-m-text-2 active:bg-m-surface-2";
+	const tabs = (
+		<div className="flex shrink-0 items-center">
+			<button type="button" aria-pressed={!showSource} className={tabBtn} onClick={() => setShowSource(false)}>
+				<span className={tabPill(!showSource)}>图表</span>
+			</button>
+			<button type="button" aria-pressed={showSource} className={tabBtn} onClick={() => setShowSource(true)}>
+				<span className={tabPill(showSource)}>源码</span>
+			</button>
+		</div>
+	);
 
 	return (
-		<div className={`my-4 overflow-hidden rounded-m-md bg-m-code-bg ${className}`}>
-			<div className="flex items-center justify-between pr-1 pl-4">
-				<div className="flex items-center gap-2">
+		<div className={`my-4 min-w-0 overflow-hidden rounded-m-md bg-m-code-bg ${className}`}>
+			{state.status !== "error" && !showSource && (
+			<div className="flex flex-wrap items-center justify-between gap-x-2 pr-1 pl-4">
+				<div className="flex flex-wrap items-center gap-x-2">
 					<span className="whitespace-nowrap font-m-mono text-m-xs text-m-text-3">mermaid</span>
-					{state.status !== "error" && (
-						<div className="flex items-center">
-							<button type="button" aria-pressed={!showSource} className={tabBtn} onClick={() => setShowSource(false)}>
-								<span className={tabPill(!showSource)}>图表</span>
-							</button>
-							<button type="button" aria-pressed={showSource} className={tabBtn} onClick={() => setShowSource(true)}>
-								<span className={tabPill(showSource)}>源码</span>
-							</button>
-						</div>
-					)}
+					{tabs}
 				</div>
 				<div className="flex items-center">
 					{state.status === "ready" && !showSource && (
@@ -137,6 +139,7 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 					</button>
 				</div>
 			</div>
+			)}
 
 			{state.status === "error" && (
 				<div>
@@ -145,7 +148,7 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 						<button
 							type="button"
 							onClick={() => setRetrySeq((s) => s + 1)}
-							className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-m-pill px-3 text-m-xs font-medium active:opacity-70"
+							className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-m-pill px-3 text-m-xs font-medium active:opacity-70"
 						>
 							<RefreshCw size={13} />
 							重试
@@ -156,22 +159,26 @@ export const MermaidBlock = React.memo(function MermaidBlock({
 			)}
 
 			{state.status !== "error" && showSource && (
-				<CodeBlock code={source} lang="mermaid" className="rounded-none bg-transparent" />
+				<CodeBlock code={source} lang="mermaid" className="rounded-none bg-transparent" headerActions={tabs} />
 			)}
 
 			{state.status === "ready" && !showSource && (
-				<div
-					className="cursor-zoom-in overflow-x-auto px-4 pt-1 pb-4"
-					onClick={onFullscreen}
-					title="点击全屏缩放"
-				>
-					<img
-						src={state.src}
-						alt="Mermaid diagram"
-						draggable={false}
-						style={{ width: state.width ?? undefined, maxWidth: "100%" }}
-						className="mx-auto block h-auto select-none"
-					/>
+				<div className="overflow-x-auto px-4 pt-1 pb-4">
+					<button
+						type="button"
+						onClick={onFullscreen}
+						aria-label="全屏查看图表"
+						className="mx-auto block min-h-11 min-w-11 cursor-zoom-in"
+						style={{ width: state.width ?? "max-content" }}
+					>
+						<img
+							src={state.src}
+							alt="Mermaid diagram"
+							draggable={false}
+							style={{ width: state.width ?? undefined, maxWidth: "none" }}
+							className="block h-auto select-none"
+						/>
+					</button>
 				</div>
 			)}
 

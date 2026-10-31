@@ -25,8 +25,8 @@ other third-party brand asset. System fonts + `lucide-react` icons + our own `Ap
   expands on tap.
 - ChatGPT interaction logic: plus button opens an attachment/actions sheet; model title opens a
   picker sheet; tap a collapsed line to expand; long-press a message for actions; swipe from
-  the left edge (or tap ≡) for the drawer; floating ↓ button when scrolled up; send turns into
-  stop while generating.
+  the left edge (or tap ≡) for the drawer; floating ↓ button when scrolled up. Stop stays
+  available while generating; a new draft can expose Send beside it rather than replacing it.
 
 ## 2. Tokens (`styles/tokens.css`)
 
@@ -125,83 +125,200 @@ On home the 工具 button is hidden (no session yet). No status text under the t
 ### 4.2 Home
 Black (or white) canvas; dark mode gets a very soft blue radial glow rising from the bottom
 (like the reference), light mode a faint pastel one. Centre: `AppMark` 40px + greeting
-「今天想做点什么？」 in `--m-fs-display`. No chips/suggestions, no mode tabs, no username.
-Bottom: the same composer as chat (§4.4). Sending creates the session in the default folder and
-replaces the route with the chat; the user's text appears immediately (optimistic), never an
-error page.
+「今天想做点什么？」 in `--m-fs-display`. No starter suggestions, mode tabs or username.
+Above the composer, a compact current-workspace pill shows the selected directory and opens
+the directory/worktree picker. Selecting a directory does not create a session. Send and
+file actions revalidate the exact selected `cwd`; they must not silently substitute the
+default or main project directory. Home plan mode is local draft state until sending.
+Bottom: the same composer as chat (§4.4). Sending creates the session in the selected
+directory and replaces the route with chat; the user's text appears optimistically.
 
-### 4.3 Drawer (full-screen, slides from the left)
-Covers the whole screen (`--m-bg`), swipe-left or ✕ closes.
-- Header: `AppMark` + 「OMP」 brand in `--m-fs-lg`, right: search circle, close circle.
-- 「发起新对话」 full-width `--m-surface` capsule (pencil icon, left aligned), then flat rows
-  「定时任务」 (clock). Search lives in the header button.
-- Space switcher (代码 / 通用对话 / 学习…) as a small tonal pill with chevron, next to a
-  `Segmented` 「按项目 | 按时间」.
-- 按项目: project row = folder icon + name (full path on second line, wrapped, 13px grey) +
-  count chip + `+` circle. Reuse registered worktrees by `workspaceId` and their actual `cwd`,
-  including paths outside the project directory; worktree rows are indented with a branch icon.
-  New worktrees must be created and registered on desktop; mobile must explain this limitation,
-  not imply that it creates a worktree or silently substitute the main project directory.
-  Session rows: title (wrap to 2 lines max is OK; full title on long-press sheet), relative
-  time, status dot (running = pulsing accent, needs-you = warn, error = danger).
-- 按时间: date-grouped sections (今天 / 昨天 / 本周 / 更早) of session rows with status dot.
-- Bottom bar (pinned, `--m-bg` with top hairline): 收件箱 (bell + count badge) · 订阅与配额 ·
-  设置 gear — three equal tappable cells with icon above a 13px label, or icon+label rows.
+### 4.3 Drawer (left panel with scrim)
+The `--m-bg` panel is 88% of the viewport, capped at 360px, leaving a translucent
+`--m-scrim` backdrop. Tap the scrim, swipe left or tap ✕ to close. A vertical list scroll
+must not be mistaken for a close gesture; a cancelled horizontal swipe springs back.
+- Header: 48px row with a 24px `AppMark` + medium-weight 「OMP」 brand in `--m-fs-md`;
+  plain search and close icons each retain an independent ≥44×44px target.
+- 「发起新对话」 full-width, 44px-high `--m-surface` button with softly rounded corners
+  (pencil icon, left aligned), followed by side-by-side secondary shortcuts 「定时任务」
+  and 「灵感收件箱」 in that order, each with a ≥44×44px target. Search lives in the header.
+  Skills is not a drawer item; use 设置 ▸ Agent 能力 ▸ 技能与命令.
+- Space switcher (代码 / 通用对话 / 学习…) is transparent with a chevron and a ≥44×44px
+  target, next to the shared `Segmented` 「按项目 | 按时间」 with compact padding and a
+  shadowless selected pill; each segment retains a ≥44×44px target. Busy/count cues come
+  from the complete current-space
+  tree, deduplicated across pinned and grouped rows; do not invent counts for other spaces.
+- 按项目 follows the desktop hierarchy: coloured folder icon, modest medium-weight project heading, collapsed
+  status bubbles and an independent ≥44px `+` target. Worktree/branch subgroups are indented,
+  use a monospace title and a quiet 「主目录」 or 「已清理」 badge. Avoid raw multiline path
+  clutter in headers, but retain a way to inspect the full path.
+- Reuse registered worktrees by `workspaceId` and their actual `cwd`, including paths outside
+  the project directory. New worktrees are created and registered on desktop; explain this
+  limitation rather than implying mobile creates one or falling back to the main directory.
+- Session rows are 44px high and use the desktop-style `--m-tree-line` trunk, `├─` branch ticks and a rounded
+  `╰─` final elbow beneath an open project/subgroup. The selected row is a rounded highlight;
+  side chats/forks have distinct icons, with an unread dot and tabular relative time.
+  A faded single-line title must still be available in full through the long-press actions.
+  Right swipe toggles the real read/unread state; left swipe archives. Drafts do not offer
+  the read toggle. Expansion uses quiet hairline 「+ 展开 N 条」 / 「收起」 dividers with reduced
+  vertical spacing, alongside compact project/subgroup gaps; all interactive targets remain ≥44×44px.
+- 按时间 groups recent sessions by date, then older sessions by 「YYYY年M月」 with sticky,
+  softly blurred headers rather than one unbounded 「更早」 group.
+- Bottom bar (pinned, `--m-bg` with top hairline and safe-area padding): 收件箱 (bell +
+  count badge) · 订阅与配额 · 设置 — three equal tappable cells with short nonwrapping labels.
 
 ### 4.4 Composer
 Floating capsule at the bottom, 16px side margin, `--m-composer-bg` with
-`--m-composer-shadow`, radius 28, min height 56. Single-line: `[+]  placeholder  [🎤] [send]`. When text wraps the
-capsule grows (max 40% of viewport) and the buttons stay on the bottom row.
-- `+` opens the ChatGPT-style **actions sheet**: top row of three large tiles
-  (文件 · Finder 选中项 · 草图), then `MenuRow`s: 在项目中工作, 目标, 规划模式 (with a Switch).
-- Mic: tap to record (button turns into a red pulsing stop), transcript is inserted at the
-  caret, never auto-sent.
-- Send: 40px circle, `--m-accent-soft`; disabled look when empty. While generating it is a
-  stop button (square icon) in the same place.
-- Status row above the capsule (13px, `--m-text-3`, no background): left = folder icon +
-  folder name (tap → sheet with full path + switch), right = 「上下文 37%」 (tap → compact
-  sheet with a usage bar and 「压缩上下文」 button). Plan mode shows a small accent capsule
-  「规划模式 ✕」 at the left of this row instead of the folder.
+`--m-composer-shadow`, radius 28, min height 56. Single-line: `[+] placeholder [🎤] [send]`.
+Actual textarea height determines multiline layout; the capsule grows up to 40% of the
+viewport and buttons remain on the bottom row.
+- `+` opens the ChatGPT-style **actions sheet** with file, 「电脑端选中项」, sketch,
+  native 「拍照」 (`capture="environment"`) and 「相册」 image inputs, plus project,
+  goal and planning actions. Camera/gallery use the normal upload and attachment flow.
+- Mic: tap to record (button turns into a red pulsing stop); transcript is inserted at the
+  caret, never auto-sent. Hardware keyboard Enter and Cmd/Ctrl+Enter can send without a
+  hover-capable pointer; composition and intentional line breaks remain distinct.
+- Send: 40px visible circle inside a ≥44px target, `--m-accent-soft`; disabled when empty.
+  While generating, Stop remains visible and clickable. A nonempty draft or attachments
+  exposes Send beside Stop, preserving the follow-up/interruption choice.
+- Status row above the capsule: a stable, single-line horizontally scrollable strip contains
+  the working-directory selector, optional 「规划模式 ✕」 chip and compact
+  「后续提问」 / 「插话打断」 control. Plan mode never replaces the directory selector.
+  Context usage stays pinned on the right and opens usage/compaction controls. Starting or
+  ending generation must not add/remove a separate full-height mode row.
 
 ### 4.5 Thread
 - User message: right-aligned capsule bubble, `--m-bubble-user-bg`, radius 24 (single line =
   full capsule), padding 12×18, max width 85%, 17px.
-- Assistant: full-width plain text, `--m-fs-body`, no avatar, 20px gutter.
-- Thinking: one line 「已思考 12 秒 ›」 in `--m-text-3`; while running 「思考中」 with a
-  shimmering text effect. Tap expands the reasoning in a quiet left-ruled block.
-- Tools: consecutive tool calls collapse into one line 「已运行 6 个步骤 · 57 秒 ›」.
-  Expanded: each tool is a row (icon, verb + target in one readable line, status). Tap a row
-  for args/result in an 18-radius `--m-surface` block, full text, monospace, horizontally
-  scrollable for code only. Errors show in full in danger text.
-- Turn footer: icon-only plain buttons (copy, retry, more) 13px grey, plus a quiet 13px stat
-  text (time · tokens) — no emoji.
-- Plan card, question card, approval card: 24-radius `--m-surface` cards, title row with icon,
-  body, capsule buttons at the bottom (primary on the right). Questions: progress 「问题 1/3」,
-  radio/checkbox rows ≥ 52px, free-text field, 跳过 / 上一题 / 下一题.
-- ↓ button: 40px filled circle centred above the composer when not at bottom.
-- Subagent capsule: small pill floating at the top-right of the thread (below the top bar),
-  e.g. 「● 2 运行 · 5 完成」; never overlaps text horizontally — it is part of a sticky row with
-  its own height, not absolutely positioned over content.
+- Assistant: full-width plain text, `--m-fs-body`, no avatar, 20px gutter. Loading earlier
+  turns compensates the scroll-height change to preserve the reading position. The floating
+  ↓ control carries an unread/streaming cue when new content arrives away from the bottom.
+- Thinking: one quiet line 「已思考 12 秒 ›」; while running 「思考中」. Expanded reasoning
+  uses Markdown in a height-limited scrolling region with sticky collapse/copy controls.
+- Tools: consecutive calls collapse into 「已运行 6 个步骤 · 57 秒 ›」. Each expanded
+  tool row has a disclosure arrow; structured/code output uses `CodeBlock`, results have
+  Copy, and full errors remain readable rather than clipped.
+- Turn footer: plain copy/retry/more actions plus quiet time/token stats. The message actions
+  sheet includes 「引用回复」 to insert a quotation into the composer without sending it.
+- Plan, question and approval cards use 24-radius `--m-surface` cards and capsule actions.
+  Questions show progress and explicit single/multiple-choice hints; focused answers scroll
+  into view above the keyboard. Long-path approval actions stack rather than clip labels.
+  「修改计划」 prepares a revision draft; successful execution exposes 「查看计划」 and an
+  executing state, not another implicit model call.
+- Subagent summary occupies its own sticky row below the top bar, never overlays prose.
+  The tree has compact 14px indentation and independent subtree-collapse controls. Detail
+  updates reuse shared SSE, incremental `fromByte` reads, single-flight plus one trailing
+  refresh, and approximately 600ms coalescing. A 5s fallback runs only while mounted,
+  visible and running. Hide/unmount clears timers/listeners and aborts owned requests;
+  resuming retains the cursor. Initial/reset reads may still read the full transcript:
+  this is bounded request work, not zero overhead or a guarantee of no full-file reads.
+  「停止当前回合」 requires confirmation and stops the parent session's current turn,
+  not just the displayed child; a rejected stop remains an error, not a success notice.
 
 ### 4.6 Sheets and pickers
-- Model + thinking sheet: thinking levels from the model's catalog as a `Segmented` (or slider)
-  on top; below, providers as rows → tap drills into that provider's models (back chevron);
-  search field at the top flattens results. Selected model shows a check.
-- Tools sheet (工具 button): 5 rows — 文件, Git, 终端, 辅助对话, 服务 (icon + hint).
-- Action sheets: `MenuRow`s, destructive rows in danger colour at the end.
+- Model + thinking sheet: catalog thinking levels appear above provider/model rows; search
+  flattens results and can be cleared. The provider-back control stays in the sticky header.
+- The tools menu and shared workspace bar expose 文件, Git, 终端, 辅助对话 and 服务.
+  「计划」 is conditional on the approved snapshot's `status === "executing"`, independent
+  of whether planning mode is enabled. An already-open plan page retains its own entry
+  when execution completes; ordinary chat/tools must not show a plan entry merely because
+  plan mode is on. Opening the page is a read-only action, not approval or execution.
+- Action sheets use `MenuRow`s, with destructive actions in danger colour at the end.
 
 ### 4.7 Settings (`/settings`)
 Gemini settings sheet layout rendered as a full page: `--m-bg-elev` canvas, close circle
-top-right, large 「设置」 title, then a single `ListGroup` 「订阅与配额」 on top, then six groups with
-the desktop names: 常规 · 模型 · 会话 · Agent 能力 · 连接 · 帮助. Rows: icon + label + chevron
-(value text on the right where useful, e.g. 主题 「跟随系统」). Sub-pages push with
-`PageHeader` + grouped cards. Quota page: one card per provider/account with 5 小时 / 7 天
-progress bars (accent fill on `--m-surface-2` track), reset countdown, account line.
+top-right, large 「设置」 title, then 「订阅与配额」 and the six desktop-named groups:
+常规 · 模型 · 会话 · Agent 能力 · 连接 · 帮助. Rows use icon + label + chevron and optional
+current value; sub-pages push with `PageHeader` + grouped cards.
+- Agent 能力 ▸ 技能与命令 opens `/skills`, backed by the real skill/extension catalog,
+  content and toggle APIs, not a fixed six-item sheet. Row/detail opening and the toggle
+  reserve separate targets, with no nested buttons. Catalog entries are not proof of what
+  an individual session has loaded.
+- Mount only the selected settings sheet. Closing keeps that instance with `open=false`
+  for its exit/local draft; selecting another replaces it rather than keeping all sheets
+  mounted. Auxiliary-model settings go directly to cwd-scoped roles. Thinking is an inline
+  explanation with the existing persisted hide-thinking control, not a dead-end sheet.
+- MCP configuration, agent definitions, rule files and memory are explicitly desktop-managed
+  read-only notices: no corresponding mobile settings read APIs exist. Do not display fake
+  current lists, editable examples, creates/toggles or save notices. Session subagent history
+  is not agent definitions; the skills catalog is not a loaded-memory/session snapshot.
+- Numeric settings debounce for 350ms per key and coalesce to the latest trailing value;
+  boolean/enum changes save immediately through the same per-key serialization. Blur,
+  leaving the group and page teardown flush pending numbers. A failed latest save restores
+  the last successfully persisted value and shows the full error, not a false success.
+- Role model-only/thinking-only edits and reversible provider-URL-only edits save directly
+  with a guarded Undo action. Compound role changes, inheritance restoration, typed provider
+  keys and URLs without a known inverse retain confirmation. Undo rereads the actual value
+  and is invalidated by newer changes; it must not overwrite intervening configuration.
+- Fallback-chain Save stays above the safe bottom with 12px extra padding; reorder actions
+  reserve independent ≥44px bounds rather than overlapping adjacent controls.
+- Quota uses provider/account cards with real progress, reset countdown and account
+  information. A failed refresh retains the previous real data and timestamp with an
+  explicit stale notice, full error and Retry; unknown metrics are never invented.
 
-### 4.8 Tool pages (files, git, terminal, side chat, services)
-`PageHeader` + content. Lists use `ListGroup`; diffs/code use the mono block style; terminal
-keeps its accessory key bar (Tab, Esc, Ctrl, arrows) as 36px-high tonal capsules inside
-≥44px-high targets (the visible capsules are ≥48px wide).
+### 4.8 Tool pages (files, git, terminal, side chat, services, plan)
+`PageHeader` + shared `WorkspacePanelBar` + content. The bar switches between
+对话 · 文件 · Git · 终端 · 辅助 · 服务, with the conditional plan entry defined in §4.6.
+It remains available in Git diff and side-chat thread views using the parent session ID.
+Loaded content remains visible during refresh or refresh errors; changing resources clears
+stale data and cancels the old request. Lists use `ListGroup`; code/diffs use shared renderers.
+- Files render source directly with `CodeBlock`, not generated Markdown fences.
+- Git pins its commit field/actions outside the scroller above the safe bottom. Commit
+  submits only currently staged changes; per-file actions and all-visible pending/staged
+  actions state their scope and count explicitly. Errors remain visible.
+- Terminal uses real page-owned PTY tabs (maximum four). Switching preserves each mounted
+  terminal, stream and input; confirmed close removes only the target after server success.
+  Leaving the page closes owned instances. The keyboard-aware accessory bar is fixed above
+  `--m-kb` with safe-area padding and reserved content space. Tab/Esc/Ctrl/arrows, clipboard
+  Paste, display-only Clear, font size 11–22 with fit/resize, and Hide Keyboard retain ≥44px
+  targets; clearing the display must not secretly send a shell command.
+- Side chat reuses `ComposerCapsule`, including voice insertion and real uploads. First-send
+  uploads belong to the parent; native images use the additive `imagePaths` create field.
+  Later uploads/prompts belong to the child, with native image blocks and follow-up mode
+  while working. Generic files keep real uploaded-path tokens. Only successful delivery
+  clears the draft/attachments; failures retain retry/remove controls and cancel/revoke
+  owned upload resources on teardown. No send modifies the main chat's draft/store.
+  The summary/hand-back entry lives in the header's right slot, not a duplicate bottom CTA.
+
+### 4.9 Inbox, search and new-session picker
+- Inbox read actions use right swipe or compact overflow rather than a wide inline button.
+  Todo details preview at most three lines with 「展开全部」; actions have clear primary
+  and secondary slots instead of competing equal-weight controls.
+- Search keeps the last successful result while a new query loads in the same space/archive
+  scope. Results are flat session rows with keyword highlighting, not hidden in collapsed
+  folders. Clear hides results immediately; query changes and unmount cancel obsolete work.
+- New-session selection searches directory names/paths, uses boundary-aware `~/...`
+  abbreviation from the backend home directory, and keeps full paths accessible.
+  「直接创建」 is primary; 「选择模型」 is the secondary path.
+
+### 4.10 Media, code and sketch controls
+- Image viewer: double tap toggles 1×/2.5× zoom; a delayed single tap toggles close-button
+  chrome, not dismissal. Pinch/pan/cancel suppress tap actions. Downward dismissal requires
+  a single pointer remaining at 1× throughout the gesture.
+- Code/diff line numbers are opt-in; word wrap defaults off (an explicit code `wrap` prop
+  remains respected). Beyond 24 logical lines, the initial preview shows 24 with expand/
+  collapse controls and full raw Copy. Expanded content over 400 lines retains grouped
+  offscreen-rendering protection and continuous numbering to limit offscreen rendering work.
+- Mermaid source has one code header, not nested duplicate controls. Wide diagrams scroll
+  horizontally at legible native scale and can open in the image viewer.
+- Both sketch entry points preserve logical strokes across viewport/orientation resize,
+  replay ink/eraser compositing, support undo and expose an eraser toggle. Tool pills scroll
+  horizontally without wrapping short labels. Resize or cancelled interaction must not
+  silently discard existing strokes or emit a cancelled export.
+
+### 4.11 Desktop phone-pairing panel
+The desktop `MobilePanel` promotes manual QR pairing to the first hero section, before
+device/revocation and advanced network controls. Opening the panel does not generate or
+consume a pairing code automatically; device revocation retains its confirmation.
+Advanced controls fold below the hero, with independently collapsible native sections for
+IPv6 / DDNS and public tunnel / Zero Trust. Contents and drafts stay mounted; folding a
+section never starts/stops a connection. Summaries expose current transport/draft status,
+and a paused DDNS state is distinct from an error.
+LAN/IPv6 port edits require an explicit Save (stopped) or Save & Restart (running). Await
+successful persistence before stop→start; a rejected save must not restart the service.
+URLs, certificate fingerprints and errors wrap in full. Short action labels and ≥44px
+source bounds are not proof that the native hero needs no scrolling or passes touch/layout
+acceptance; those remain rendered checks.
 
 ## 5. Acceptance rules (verify on every screen)
 - No vertical/stacked-character text: short action labels, chips and statuses stay
@@ -220,7 +337,7 @@ keeps its accessory key bar (Tab, Esc, Ctrl, arrows) as 36px-high tonal capsules
 - Verify light and dark at 390×844 with no horizontal overflow; this is an acceptance
   requirement, not a claim that final-code checks have already passed.
 
-## 6. Behavioral acceptance and open scope
+## 6. Behavioral and verification boundaries
 
 These invariants require final-code verification; documenting them does not certify a pass:
 
@@ -234,9 +351,15 @@ These invariants require final-code verification; documenting them does not cert
   summary text arrives, release the in-progress state and restore retry/recovery controls;
   do not leave the user permanently busy or report a successful handback without text.
 
-Settings actions that only report a save without persistence, and placeholder/static metrics,
-are not evidence of completed functionality. Their scope is awaiting the user's explicit
-decision. The settings and quota requirements in `MOBILE_PRD.md` remain in force; this visual
-reconciliation neither removes them nor accepts reduced scope on the user's behalf.
-Record actual limitations and final verification results separately; no fixed acceptance
-totals or unexercised checks are claimed here.
+The approved settings boundary is real reads/persistence where supported and explicitly
+desktop-managed read-only views otherwise. Static current-configuration examples, fake save
+notices and placeholder metrics are not substitutes for working APIs. The settings and quota
+requirements in `MOBILE_PRD.md` remain in force; unsupported capabilities must be explained,
+not silently presented as completed functionality.
+
+Keep runtime regression evidence separate from visual acceptance. Browser coverage reported
+for this reconciliation is limited to the phase-1 dark-scheme smoke; later HTTP/ReactDOM
+lifecycle checks do not establish mobile geometry, native keyboard/selection, canvas raster
+pixels, rendering performance or a full light/dark screen pass. The 390×844 checks in §5
+remain acceptance requirements. Record actual exercised checks and limitations separately;
+overlapping phase test suites must not be summed into an invented total.

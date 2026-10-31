@@ -57,6 +57,15 @@
 	--m-kb: 0px;
 
 	--m-assistant-bg: transparent;
+	/* Desktop session-tree parity, resolved against the current scheme. */
+	--m-tree-line: color-mix(in oklab, var(--m-accent) 42%, transparent);
+	--m-tree-sky: light-dark(#0284c7, #38bdf8);
+	--m-tree-emerald: light-dark(#059669, #34d399);
+	--m-tree-amber: light-dark(#d97706, #fbbf24);
+	--m-tree-purple: light-dark(#9333ea, #c084fc);
+	--m-tree-rose: light-dark(#e11d48, #fb7185);
+	--m-tree-teal: light-dark(#0d9488, #2dd4bf);
+	--m-tree-indigo: light-dark(#4f46e5, #818cf8);
 }
 
 html[data-scheme="dark"] {

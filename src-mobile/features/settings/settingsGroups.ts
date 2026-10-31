@@ -32,8 +32,6 @@ export type SheetId =
 	| "appearance"
 	| "notifications"
 	| "privacy"
-	| "thinking"
-	| "helper-models"
 	| "sessions"
 	| "inbox"
 	| "doctor"
@@ -42,17 +40,16 @@ export type SheetId =
 	| "tools"
 	| "subagents"
 	| "memory"
-	| "skills"
 	| "connection"
 	| "mcp"
 	| "web"
 	| "guide"
 	| "about";
 
-export type SettingsRoute = "settingsProviders" | "settingsRoles" | "settingsFallbacks" | "settingsContext" | "quota";
+export type SettingsRoute = "settingsProviders" | "settingsRoles" | "settingsFallbacks" | "settingsContext" | "quota" | "skills";
 
 export interface SettingsItemDef {
-	id: SheetId | "providers" | "roles" | "fallbacks" | "context" | "quota";
+	id: SheetId | "providers" | "roles" | "fallbacks" | "context" | "quota" | "skills" | "helper-models" | "thinking";
 	label: string;
 	icon: LucideIcon;
 	/** Navigates to this route instead of opening a sheet. */
@@ -87,7 +84,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
 			{ id: "providers", label: "模型与供应商", icon: KeyRound, navigateTo: "settingsProviders" },
 			{ id: "roles", label: "模型角色", icon: Users, navigateTo: "settingsRoles" },
 			{ id: "thinking", label: "思考与采样", icon: Brain },
-			{ id: "helper-models", label: "辅助模型", icon: Cpu },
+			{ id: "helper-models", label: "辅助模型", icon: Cpu, navigateTo: "settingsRoles" },
 			{ id: "fallbacks", label: "备用模型与重试", icon: Route, navigateTo: "settingsFallbacks" },
 			{ id: "context", label: "上下文窗口", icon: Ruler, navigateTo: "settingsContext" },
 		],
@@ -110,7 +107,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
 			{ id: "tools", label: "工具", icon: Wrench },
 			{ id: "subagents", label: "子代理", icon: Network },
 			{ id: "memory", label: "记忆", icon: Library },
-			{ id: "skills", label: "技能与命令", icon: Sparkles },
+			{ id: "skills", label: "技能与命令", icon: Sparkles, navigateTo: "skills" },
 		],
 	},
 	{

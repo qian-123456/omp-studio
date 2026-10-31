@@ -31,4 +31,22 @@ describe("SubagentTree", () => {
 		expect(screen.getByText(name).className).toContain("[overflow-wrap:anywhere]");
 		expect(screen.getByText(model).className).toContain("[overflow-wrap:anywhere]");
 	});
+
+	it("collapses descendants independently of opening the parent detail", () => {
+		const parent = { id: "0-parent", status: "running" };
+		const child = { id: "0-parent.0-child", status: "running" };
+		const sibling = { id: "1-sibling", status: "completed" };
+		const open = vi.fn();
+		render(<SubagentTree rows={flattenTree(buildTree([parent, child, sibling]))} now={0} onOpen={open} />);
+		const collapse = screen.getByRole("button", { name: "收起parent的子代理" });
+		expect(collapse.getAttribute("aria-expanded")).toBe("true");
+		fireEvent.click(collapse);
+		expect(screen.queryByRole("button", { name: /^child，/ })).toBeNull();
+		expect(screen.getByRole("button", { name: /^sibling，/ })).toBeTruthy();
+		expect(open).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: /^parent，/ }));
+		expect(open).toHaveBeenCalledWith(parent.id);
+		fireEvent.click(screen.getByRole("button", { name: "展开parent的子代理" }));
+		expect(screen.getByRole("button", { name: /^child，/ })).toBeTruthy();
+	});
 });

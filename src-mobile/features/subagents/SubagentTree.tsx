@@ -1,4 +1,5 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { Chip } from "../../ui";
 import type { ChipTone } from "../../ui";
 import { elapsedMs, formatElapsed, rowLabel, statusText } from "./model";
@@ -20,7 +21,7 @@ export const BUCKET_DOT: Record<Bucket, string> = {
 };
 
 /** Width of one tree level. Equals the dot column so a child's connector sits under its parent's dot. */
-const COL = 24;
+const COL = 14;
 /** Keep deeply nested dispatches readable on a phone; the full level remains in the row label. */
 const MAX_VISIBLE_DEPTH = 3;
 /** Vertical centre of the first text line (row padding 14px + half of the 22px line). */
@@ -56,7 +57,14 @@ function Connectors({ flat }: { flat: FlatRow }) {
 	);
 }
 
-function TreeRow({ flat, hasChildren, now, onOpen }: { flat: FlatRow; hasChildren: boolean; now: number; onOpen: (id: string) => void }) {
+function TreeRow({ flat, hasChildren, collapsed, now, onOpen, onToggle }: {
+	flat: FlatRow;
+	hasChildren: boolean;
+	collapsed: boolean;
+	now: number;
+	onOpen: (id: string) => void;
+	onToggle: (id: string) => void;
+}) {
 	const { row, bucket } = flat.node;
 	const label = rowLabel(row);
 	const elapsed = formatElapsed(elapsedMs(row, now));
@@ -72,9 +80,9 @@ function TreeRow({ flat, hasChildren, now, onOpen }: { flat: FlatRow; hasChildre
 			>
 				<span className="relative flex shrink-0 justify-center self-stretch" style={{ width: COL }} aria-hidden>
 					<span className={`absolute size-2 rounded-m-pill ${BUCKET_DOT[bucket]}`} style={{ top: DOT_Y - 4 }} />
-					{hasChildren && <span className={`${line} bottom-0 left-1/2`} style={{ top: DOT_Y + 8 }} />}
+					{hasChildren && !collapsed && <span className={`${line} bottom-0 left-1/2`} style={{ top: DOT_Y + 8 }} />}
 				</span>
-				<span className="m-list-sep ml-2 flex min-h-14 min-w-0 flex-1 items-start gap-2 py-3.5 pr-3">
+				<span className="m-list-sep ml-2 flex min-h-14 min-w-0 flex-1 items-start gap-2 py-3.5 pr-1">
 					<span className="min-w-0 flex-1">
 						<span className="block text-m-md font-medium [overflow-wrap:anywhere] text-m-text">{label.primary}</span>
 						{label.description && (
@@ -89,9 +97,20 @@ function TreeRow({ flat, hasChildren, now, onOpen }: { flat: FlatRow; hasChildre
 							)}
 						</span>
 					</span>
-					<ChevronRight size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-m-text-3" aria-hidden />
+					{!hasChildren && <ChevronRight size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-m-text-3" aria-hidden />}
 				</span>
 			</button>
+			{hasChildren && (
+				<button
+					type="button"
+					aria-label={`${collapsed ? "展开" : "收起"}${label.primary}的子代理`}
+					aria-expanded={!collapsed}
+					onClick={() => onToggle(row.id)}
+					className="flex min-h-11 min-w-11 shrink-0 self-start items-center justify-center rounded-m-pill text-m-text-3 active:bg-m-surface-hover"
+				>
+					{collapsed ? <ChevronRight size={18} strokeWidth={1.75} aria-hidden /> : <ChevronDown size={18} strokeWidth={1.75} aria-hidden />}
+				</button>
+			)}
 		</li>
 	);
 }
@@ -112,10 +131,23 @@ export function SubagentTree({
 	/** Card fill; `bg-m-card` on elevated canvases, `bg-m-surface` on the page canvas. */
 	className?: string;
 }) {
+	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+	const toggle = (id: string) => setCollapsed((previous) => {
+		const next = new Set(previous);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		return next;
+	});
+	let hiddenBelow: number | null = null;
+	const visibleRows = rows.filter((flat) => {
+		if (hiddenBelow !== null && flat.depth > hiddenBelow) return false;
+		hiddenBelow = collapsed.has(flat.node.id) ? flat.depth : null;
+		return true;
+	});
 	return (
 		<ul className={`m-list m-0 list-none overflow-hidden rounded-m-lg p-0 ${className}`}>
-			{rows.map((f, i) => (
-				<TreeRow key={f.node.id} flat={f} hasChildren={rows[i + 1]?.depth === f.depth + 1} now={now} onOpen={onOpen} />
+			{visibleRows.map((f) => (
+				<TreeRow key={f.node.id} flat={f} hasChildren={f.node.children.length > 0} collapsed={collapsed.has(f.node.id)} now={now} onOpen={onOpen} onToggle={toggle} />
 			))}
 		</ul>
 	);

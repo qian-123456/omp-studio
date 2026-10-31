@@ -146,9 +146,12 @@ async fn sidechats<B: Backend>(
 
 #[derive(Deserialize)]
 struct SideChatBody {
+    #[serde(default)]
     question: String,
     selection: Option<String>,
     model: Option<String>,
+    #[serde(default, rename = "imagePaths")]
+    image_paths: Vec<String>,
 }
 
 async fn sidechat_create<B: Backend>(
@@ -158,7 +161,7 @@ async fn sidechat_create<B: Backend>(
 ) -> ApiResult<Value> {
     valid_id(&id)?;
     let state = app(&ctx)?;
-    if body.question.trim().is_empty() {
+    if body.question.trim().is_empty() && body.image_paths.is_empty() {
         return Err(bad("问题不能为空"));
     }
     if super::draft::is_draft(&id) {
@@ -170,16 +173,22 @@ async fn sidechat_create<B: Backend>(
     if ctx.backend.session(&id).await.is_none() {
         return Err(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()));
     }
+    let image_paths = super::chat::uploaded_image_paths(state, &id, body.image_paths).await?;
+    let question = if body.question.trim().is_empty() {
+        "（图片）".to_string()
+    } else {
+        body.question
+    };
     let info = crate::rpc::sidechat::create(state, &id, body.model)
         .await
         .map_err(gateway)?;
     crate::rpc::sidechat::ask(
         state,
         &info.session_id,
-        body.question,
+        question,
         body.selection,
         None,
-        None,
+        Some(image_paths),
     )
     .await
     .map_err(gateway)?;
@@ -200,7 +209,7 @@ async fn todos_counts<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<V
 
 // ---- plan ----
 
-/// Latest non-blank assistant text (the plan while plan mode is on).
+/// Legacy fallback only when the session has never published a plan state.
 fn latest_assistant_text(items: &[crate::contracts::TranscriptItem]) -> Option<String> {
     items
         .iter()
@@ -212,22 +221,40 @@ fn latest_assistant_text(items: &[crate::contracts::TranscriptItem]) -> Option<S
         .and_then(|it| it.text.clone())
 }
 
+fn plan_text(status: Option<&Value>, fallback: Option<String>) -> Option<String> {
+    match status {
+        Some(status) => status
+            .pointer("/approved/content")
+            .and_then(Value::as_str)
+            .or_else(|| status.get("content").and_then(Value::as_str))
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        None => fallback,
+    }
+}
+
 async fn plan<B: Backend>(
     State(_ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     valid_id(&id)?;
     if super::draft::is_draft(&id) {
-        return Ok(Json(json!({ "text": null, "streaming": false })));
+        return Ok(Json(
+            json!({ "text": null, "streaming": false, "planStatus": null }),
+        ));
     }
     let Some(file) = crate::catalog::file_of(&id) else {
         return Err(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()));
     };
     let streaming = crate::rpc::get_handle(&id)
         .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
-    let text = if file.exists() {
+    let status = super::chat::plan_status(&id, &file.to_string_lossy()).await?;
+    let fallback = if status.is_none() {
         let id2 = id.clone();
         tokio::task::spawn_blocking(move || {
+            if !file.exists() {
+                return Ok(None);
+            }
             crate::catalog::transcript::read_page(&file, &id2, 0, None)
                 .map(|p| latest_assistant_text(&p.items))
         })
@@ -237,7 +264,10 @@ async fn plan<B: Backend>(
     } else {
         None
     };
-    Ok(Json(json!({ "text": text, "streaming": streaming })))
+    let text = plan_text(status.as_ref(), fallback);
+    Ok(Json(
+        json!({ "text": text, "streaming": streaming, "planStatus": status }),
+    ))
 }
 
 // ---- subagents ----
@@ -562,6 +592,42 @@ async fn term_close(Path(id): Path<String>) -> ApiResult<Value> {
 mod tests {
     use super::*;
     use futures_util::StreamExt as _;
+
+    #[test]
+    fn plan_text_prefers_snapshot_and_only_uses_legacy_without_state() {
+        let approved = json!({"enabled": false, "content": "Draft", "approved": {"content": "Approved", "status": "executing"}});
+        assert_eq!(
+            plan_text(Some(&approved), Some("Latest reply".into())).as_deref(),
+            Some("Approved")
+        );
+        let planning = json!({"enabled": true, "content": "Actual plan", "approved": null});
+        assert_eq!(
+            plan_text(Some(&planning), None).as_deref(),
+            Some("Actual plan")
+        );
+        assert_eq!(
+            plan_text(
+                Some(&json!({"enabled": false, "content": null})),
+                Some("Stale".into())
+            ),
+            None
+        );
+        assert_eq!(
+            plan_text(None, Some("Legacy".into())).as_deref(),
+            Some("Legacy")
+        );
+    }
+
+    #[test]
+    fn sidechat_image_paths_are_additive_and_question_can_be_image_only() {
+        let legacy: SideChatBody = serde_json::from_value(json!({"question": "Hello"})).unwrap();
+        assert_eq!(legacy.question, "Hello");
+        assert!(legacy.image_paths.is_empty());
+        let images: SideChatBody =
+            serde_json::from_value(json!({"imagePaths": ["/uploaded/image.png"]})).unwrap();
+        assert!(images.question.is_empty());
+        assert_eq!(images.image_paths, vec!["/uploaded/image.png"]);
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn terminal_open_write_read_close() {

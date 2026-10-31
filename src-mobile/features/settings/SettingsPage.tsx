@@ -1,9 +1,10 @@
 import { Check, FolderCog, Globe2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths } from "../../core/nav";
 import { usePrefs } from "../../core/stores/prefs";
 import { BottomSheet, Button, EmptyState, IconButton, ListGroup, ListRow, MenuRow, PullToRefresh, Spinner, TopBar } from "../../ui";
+import { OmpError, OmpSettingsGroup } from "./OmpSettings";
 import { QUOTA_ITEM, SETTINGS_GROUPS, type SettingsItemDef, type SheetId } from "./settingsGroups";
 import {
 	AboutSheet,
@@ -12,7 +13,6 @@ import {
 	DoctorSheet,
 	GeneralSheet,
 	GuideSheet,
-	HelperModelsSheet,
 	InboxSheet,
 	McpSheet,
 	MemorySheet,
@@ -21,9 +21,7 @@ import {
 	PromptCompositionSheet,
 	RulesFilesSheet,
 	SessionsSheet,
-	SkillsSheet,
 	SubagentsSheet,
-	ThinkingSheet,
 	ToolsSheet,
 	WebSheet,
 } from "./sheets";
@@ -61,6 +59,7 @@ export function SettingsPage() {
 	const [cwd, setCwd] = useState<string | null>(scopeCwd);
 	const [scopeOpen, setScopeOpen] = useState(false);
 	const [activeSheet, setActiveSheet] = useState<SheetId | null>(null);
+	const [sheetOpen, setSheetOpen] = useState(false);
 	const scheme = usePrefs((s) => s.scheme);
 
 	const load = useCallback(async () => {
@@ -83,7 +82,8 @@ export function SettingsPage() {
 
 	const mode: ApprovalMode | null = isApprovalMode(data?.defaultApprovalMode) ? data.defaultApprovalMode : null;
 	const setOmp = useCallback((key: string, value: OmpValue) => setData((d) => (d ? { ...d, omp: { ...d.omp, [key]: value } } : d)), []);
-	const close = () => setActiveSheet(null);
+	// Retain the selected instance on close for its exit animation and local draft.
+	const close = () => setSheetOpen(false);
 	const chooseScope = (next: string | null) => {
 		scopeCwd = next;
 		setCwd(next);
@@ -103,8 +103,11 @@ export function SettingsPage() {
 				return nav.push(paths.settingsContext());
 			case "quota":
 				return nav.push(paths.quota());
+			case "skills":
+				return nav.push(paths.skills());
 			case undefined:
 				setActiveSheet(item.id as SheetId);
+				setSheetOpen(true);
 		}
 	};
 
@@ -123,10 +126,11 @@ export function SettingsPage() {
 			<ListRow
 				key={item.id}
 				icon={<Icon {...ICON} />}
-				title={item.label}
+				title={<span className="whitespace-nowrap">{item.label}</span>}
+				subtitle={item.id === "thinking" ? "在对话顶部点模型名称，可切换当前会话的思考深度；采样参数由电脑端管理。" : undefined}
 				right={value}
-				chevron
-				onClick={() => open(item)}
+				chevron={item.id !== "thinking"}
+				onClick={item.id === "thinking" ? undefined : () => open(item)}
 			/>
 		);
 	};
@@ -159,19 +163,27 @@ export function SettingsPage() {
 					)}
 
 					{SETTINGS_GROUPS.map((group) => (
-						<ListGroup key={group.id} title={group.title}>
-							{group.id === "models" && dirs.length > 0 && (
-								<ListRow
-									icon={<FolderCog {...ICON} />}
-									title="配置范围"
-									subtitle="模型角色和备用模型保存到这里"
-									right={scopeDir ? dirName(scopeDir) : "全局"}
-									chevron
-									onClick={() => setScopeOpen(true)}
-								/>
+						<Fragment key={group.id}>
+							<ListGroup title={group.title}>
+								{group.id === "models" && dirs.length > 0 && (
+									<ListRow
+										icon={<FolderCog {...ICON} />}
+										title="配置范围"
+										subtitle="模型角色和备用模型保存到这里"
+										right={scopeDir ? dirName(scopeDir) : "全局"}
+										chevron
+										onClick={() => setScopeOpen(true)}
+									/>
+								)}
+								{group.items.map(row)}
+							</ListGroup>
+							{group.id === "models" && (
+								<>
+									{data?.ompError && <OmpError omp={data.omp} ompError={data.ompError} />}
+									<OmpSettingsGroup keys={["hideThinkingBlock"]} omp={data?.omp} onValue={setOmp} />
+								</>
 							)}
-							{group.items.map(row)}
-						</ListGroup>
+						</Fragment>
 					))}
 				</div>
 			</PullToRefresh>
@@ -200,33 +212,30 @@ export function SettingsPage() {
 				</div>
 			</BottomSheet>
 
-			<GeneralSheet
-				open={activeSheet === "general"}
+			{activeSheet === "general" && <GeneralSheet
+				open={sheetOpen}
 				onClose={close}
 				mode={mode}
 				defaultModel={data?.defaultModel}
 				defaultModelSource={data?.defaultModelSource}
 				onModeChange={(m) => setData((d) => (d ? { ...d, defaultApprovalMode: m } : d))}
-			/>
-			<AppearanceSheet open={activeSheet === "appearance"} onClose={close} />
-			<NotifySheet open={activeSheet === "notifications"} onClose={close} />
-			<PrivacySheet open={activeSheet === "privacy"} onClose={close} />
-			<ThinkingSheet open={activeSheet === "thinking"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
-			<HelperModelsSheet open={activeSheet === "helper-models"} onClose={close} onOpenRoles={() => nav.push(withCwd(paths.settingsRoles(), cwd))} />
-			<SessionsSheet open={activeSheet === "sessions"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
-			<InboxSheet open={activeSheet === "inbox"} onClose={close} />
-			<DoctorSheet open={activeSheet === "doctor"} onClose={close} />
-			<RulesFilesSheet open={activeSheet === "agents-md"} onClose={close} />
-			<PromptCompositionSheet open={activeSheet === "prompt-composition"} onClose={close} />
-			<ToolsSheet open={activeSheet === "tools"} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />
-			<SubagentsSheet open={activeSheet === "subagents"} onClose={close} />
-			<MemorySheet open={activeSheet === "memory"} onClose={close} />
-			<SkillsSheet open={activeSheet === "skills"} onClose={close} />
-			<ConnectionSheet open={activeSheet === "connection"} onClose={close} mobile={data?.mobile} appVersion={data?.appVersion} />
-			<McpSheet open={activeSheet === "mcp"} onClose={close} />
-			<WebSheet open={activeSheet === "web"} onClose={close} />
-			<GuideSheet open={activeSheet === "guide"} onClose={close} />
-			<AboutSheet open={activeSheet === "about"} onClose={close} appVersion={data?.appVersion} />
+			/>}
+			{activeSheet === "appearance" && <AppearanceSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "notifications" && <NotifySheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "privacy" && <PrivacySheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "sessions" && <SessionsSheet open={sheetOpen} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />}
+			{activeSheet === "inbox" && <InboxSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "doctor" && <DoctorSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "agents-md" && <RulesFilesSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "prompt-composition" && <PromptCompositionSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "tools" && <ToolsSheet open={sheetOpen} onClose={close} omp={data?.omp} ompError={data?.ompError} onOmp={setOmp} />}
+			{activeSheet === "subagents" && <SubagentsSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "memory" && <MemorySheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "connection" && <ConnectionSheet open={sheetOpen} onClose={close} mobile={data?.mobile} appVersion={data?.appVersion} />}
+			{activeSheet === "mcp" && <McpSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "web" && <WebSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "guide" && <GuideSheet open={sheetOpen} onClose={close} />}
+			{activeSheet === "about" && <AboutSheet open={sheetOpen} onClose={close} appVersion={data?.appVersion} />}
 		</div>
 	);
 }

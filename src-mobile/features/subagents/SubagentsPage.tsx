@@ -46,6 +46,7 @@ export function SubagentsPage({ route }: PageProps) {
 					<div className="px-4 pt-2 pb-8">
 						{error && <p className="mb-3 px-1 text-m-xs break-words text-m-danger">刷新失败：{error}</p>}
 						<SubagentTree
+							key={sessionId}
 							rows={flat}
 							now={now}
 							className="bg-m-surface"

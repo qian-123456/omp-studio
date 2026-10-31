@@ -1,4 +1,4 @@
-import { Copy, GitBranch, Pencil, RotateCcw } from "lucide-react";
+import { Copy, GitBranch, Pencil, Quote, RotateCcw } from "lucide-react";
 import { copyText } from "../../../core/lib/format";
 import { BottomSheet, MenuRow, toast } from "../../../ui";
 import type { MessageTarget } from "../ChatContext";
@@ -24,6 +24,7 @@ export function MessageActionsSheet({ target, onClose, controller }: { target: M
 							void copyText(t.text).then((ok) => toast(ok ? "已复制" : "复制失败", { kind: ok ? "success" : "error" }));
 						})}
 					/>
+					<MenuRow icon={<Quote {...ICON} />} label="引用回复" hint="保留草稿，插入引用" onClick={done(() => controller.stageAnnotation(t.text))} />
 					{t.role === "user" && (
 						<MenuRow icon={<Pencil {...ICON} />} label="编辑并重发" hint="填入输入框，作为新消息发送" onClick={done(() => controller.editResend(t.text))} />
 					)}

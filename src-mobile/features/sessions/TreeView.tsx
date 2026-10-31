@@ -2,17 +2,19 @@ import {
 	Archive,
 	ChevronRight,
 	Folder,
+	FolderGit2,
 	FolderPlus,
 	FolderSearch,
 	GitBranch,
 	GitFork,
+	ChevronUp,
 	Pin,
 	Plus,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api, errorMessage } from "../../core/api";
-import { Button, Chip, IconButton, Spinner, toast } from "../../ui";
+import { Button, IconButton, Spinner, toast } from "../../ui";
 import { ActionSheet } from "./ActionSheets";
 import { addWorkspace, assignToWorkspace, batchArchive, newSessionIn } from "./actions";
 import { SessionRow } from "./SessionRow";
@@ -35,26 +37,43 @@ const ICONS: Record<HeaderIcon, ReactNode> = {
 	pin: <Pin {...I} />,
 	folder: <Folder {...I} />,
 	branch: <GitBranch {...I} />,
-	worktree: <GitFork {...I} />,
+	worktree: <FolderGit2 {...I} />,
 	archive: <Archive {...I} />,
 	unassigned: <FolderSearch {...I} />,
-	deleted: <GitFork {...I} />,
+	deleted: <FolderGit2 {...I} />,
 };
 
-/** Status chips shown on COLLAPSED headers only (desktop `StatusBubbles`). */
+const WORKSPACE_COLOURS = ["sky", "emerald", "amber", "purple", "rose", "teal"] as const;
+/** Same identity hash and palette order as desktop getWorkspacePalette. */
+function workspaceColour(id: string) {
+	if (id === "global" || id.startsWith("global:")) return "var(--m-tree-indigo)";
+	let hash = 0;
+	for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+	return `var(--m-tree-${WORKSPACE_COLOURS[Math.abs(hash) % WORKSPACE_COLOURS.length]})`;
+}
+
+/** Compact, single-line status counts on collapsed group headers. */
 function Bubbles({ c }: { c: StatusCounts }) {
+	const entries = [
+		{ key: "working", value: c.working, label: "运行中", tone: "bg-m-accent-soft text-m-accent-soft-text" },
+		{ key: "awaiting", value: c.awaiting, label: "待回复", tone: "bg-m-warn-bg text-m-warn" },
+		{ key: "error", value: c.error, label: "出错", tone: "bg-m-danger-bg text-m-danger" },
+		{ key: "unread", value: c.unread, label: "未读", tone: "bg-m-success-bg text-m-success" },
+	];
 	return (
-		<>
-			{c.working > 0 && (
-				<Chip tone="accent" icon={<span className="m-pulse size-1.5 rounded-m-pill bg-current" />}>
-					{c.working} 运行中
-				</Chip>
-			)}
-			{c.awaiting > 0 && <Chip tone="warn">{c.awaiting} 待回复</Chip>}
-			{c.error > 0 && <Chip tone="danger">{c.error} 出错</Chip>}
-			{c.unread > 0 && <Chip tone="success">{c.unread} 未读</Chip>}
-		</>
+		<span aria-hidden="true" className="flex shrink-0 flex-nowrap items-center gap-1">
+			{entries.filter((entry) => entry.value > 0).map((entry) => (
+				<span key={entry.key} title={`${entry.value} ${entry.label}`} className={`inline-flex min-w-5 items-center justify-center rounded-m-pill px-1.5 text-m-xs font-medium leading-5 tabular-nums ${entry.tone}`}>
+					{entry.value}
+				</span>
+			))}
+		</span>
 	);
+}
+
+function bubbleDescription(c: StatusCounts): string {
+	return [[c.working, "运行中"], [c.awaiting, "待回复"], [c.error, "出错"], [c.unread, "未读"]]
+		.filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`).join("，");
 }
 
 function runActionDefault(a: HeaderAction): void {
@@ -66,66 +85,47 @@ function runActionDefault(a: HeaderAction): void {
 const HeaderView = memo(
 	function HeaderView({ row, onAction }: { row: HeaderRow; onAction?: (a: HeaderAction) => void }) {
 		const sec = row.level === "sec";
-		const chips = row.tags.length > 0 || row.bubbles != null;
+		const branch = row.icon === "worktree" || row.icon === "branch";
+		const [details, setDetails] = useState(false);
+		const press = useRef<{ timer: number; x: number; y: number } | null>(null);
+		const held = useRef(false);
+		const cancel = () => { window.clearTimeout(press.current?.timer); press.current = null; };
+		useEffect(() => cancel, []);
+		const colour = row.workspaceId ? workspaceColour(row.workspaceId) : branch ? `var(--m-tree-${row.icon === "worktree" ? "indigo" : "purple"})` : undefined;
 		return (
-			<div
-				className={`flex items-start gap-1 pr-2 ${sec ? "pt-1" : ""} ${row.dim ? "opacity-70" : ""}`}
-				style={{ paddingLeft: 8 + row.depth * 16 }}
-			>
-				<button
-					type="button"
-					aria-expanded={row.open}
-					onClick={() => useTree.getState().toggle(row.key, row.open)}
-					className="flex min-h-12 min-w-0 flex-1 items-start gap-3 rounded-m-md px-3 py-2.5 text-left transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
+			<>
+			<div className={`flex items-center gap-1 pr-2 ${sec ? "border-t border-m-border" : ""} ${row.dim ? "opacity-70" : ""}`} style={{ marginLeft: 8 + row.depth * 12 }}>
+				<button type="button" aria-expanded={row.open} title={[row.title, row.hint].filter(Boolean).join("\n")}
+					aria-label={[row.title, row.hint].filter(Boolean).join("，")}
+					aria-description={[!row.open && row.bubbles ? bubbleDescription(row.bubbles) : "", "长按查看完整名称和路径"].filter(Boolean).join("；")}
+					onPointerDown={(e) => {
+						held.current = false; cancel();
+						if (e.pointerType === "mouse" || !e.isPrimary) return;
+						press.current = { x: e.clientX, y: e.clientY, timer: window.setTimeout(() => { held.current = true; press.current = null; setDetails(true); }, 480) };
+					}}
+					onPointerMove={(e) => { if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) { held.current = true; cancel(); } }}
+					onPointerUp={cancel} onPointerCancel={() => { held.current = true; cancel(); }}
+					onContextMenu={(e) => { e.preventDefault(); cancel(); held.current = true; setDetails(true); }}
+					onKeyDown={(e) => { if (e.key === "ContextMenu" || e.shiftKey && e.key === "F10") { e.preventDefault(); setDetails(true); } }}
+					onClick={(e) => { if (e.detail === 0 || !held.current) useTree.getState().toggle(row.key, row.open); }}
+					className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-m-sm px-2 py-2 text-left active:bg-m-surface-hover"
 				>
-					<span className="flex h-[22px] w-5 shrink-0 items-center justify-center text-m-text-2">{ICONS[row.icon]}</span>
-					<span className="min-w-0 flex-1">
-						<span className="flex items-start gap-1.5">
-							<span className={`min-w-0 break-words text-m-text ${sec ? "text-m-sm font-semibold" : "text-m-sm font-medium"}`}>{row.title}</span>
-							{row.count != null && (
-								<Chip>{row.count}</Chip>
-							)}
-							<ChevronRight
-								size={16}
-								strokeWidth={1.75}
-								aria-hidden
-								className={`mt-[3px] shrink-0 text-m-text-3 transition-transform duration-(--m-dur-fast) ${row.open ? "rotate-90" : ""}`}
-							/>
-						</span>
-						{row.hint && <span className="mt-0.5 block text-m-xs break-all text-m-text-3">{row.hint}</span>}
-						{chips && (
-							<span className="mt-1.5 flex flex-wrap gap-1.5">
-								{row.tags.map((t) => (
-									<Chip key={t}>{t}</Chip>
-								))}
-								{row.bubbles && <Bubbles c={row.bubbles} />}
-							</span>
-						)}
-					</span>
+					<span aria-hidden className="flex w-5 shrink-0 items-center text-m-text-2" style={{ color: colour }}>{ICONS[row.icon]}</span>
+					<span className={`min-w-0 flex-1 truncate text-m-sm text-m-text ${sec ? "font-semibold" : "font-medium"} ${branch ? "font-mono" : ""}`}>{row.title}</span>
+					{!row.open && row.bubbles && <Bubbles c={row.bubbles} />}
+					{row.tags.map((tag) => <span key={tag} className="shrink-0 rounded-md bg-m-surface px-1.5 text-m-xs whitespace-nowrap text-m-text-3">{tag}</span>)}
+					{row.count != null && !row.open && <span className="shrink-0 text-m-xs text-m-text-3 tabular-nums">{row.count}</span>}
+					<ChevronRight size={14} aria-hidden className={`shrink-0 text-m-text-3 ${row.open ? "rotate-90" : ""}`} />
 				</button>
-				{row.actions.length > 0 && (
-					<span className="flex shrink-0 items-center pt-0.5">
-						{row.actions.map((a) => (
-							<IconButton
-								key={a.kind}
-								size="sm"
-								variant={a.kind === "plus" ? "filled" : "plain"}
-								label={a.kind === "plus" ? `在 ${a.label} 新建会话` : a.kind === "addws" ? `将 ${a.cwd} 添加为工作区` : a.label}
-								onClick={() => (onAction ? onAction(a) : runActionDefault(a))}
-								icon={
-									a.kind === "plus" ? (
-										<Plus size={20} strokeWidth={1.75} />
-									) : a.kind === "archive" ? (
-										<Archive size={18} strokeWidth={1.75} className="text-m-text-2" />
-									) : (
-										<FolderPlus size={18} strokeWidth={1.75} className="text-m-text-2" />
-									)
-								}
-							/>
-						))}
-					</span>
-				)}
+				{row.actions.map((a) => <IconButton key={a.kind} size="sm" variant="plain"
+					label={a.kind === "plus" ? `在 ${a.label} 新建会话` : a.kind === "addws" ? `将 ${a.cwd} 添加为工作区` : a.label}
+					onClick={() => (onAction ? onAction(a) : runActionDefault(a))}
+					icon={a.kind === "plus" ? <Plus size={20} /> : a.kind === "archive" ? <Archive size={18} /> : <FolderPlus size={18} />}
+				/>)}
 			</div>
+			<ActionSheet open={details} onClose={() => setDetails(false)} title={<span className="break-words">{row.title}</span>} subtitle={row.hint ? <span className="m-selectable break-all">{row.hint}</span> : undefined}
+				items={row.actions.map((a) => ({ key: a.kind, label: a.kind === "plus" ? "新建会话" : a.label, run: () => onAction ? onAction(a) : runActionDefault(a) }))} />
+			</>
 		);
 	},
 	(a, b) => rowEqual(a.row, b.row) && a.onAction === b.onAction,
@@ -134,17 +134,11 @@ const HeaderView = memo(
 const MoreView = memo(
 	function MoreView({ row }: { row: Extract<FlatRow, { t: "more" }> }) {
 		return (
-			<div className="flex flex-wrap items-center gap-2 pr-4" style={{ paddingLeft: 20 + row.depth * 16 }}>
-				{row.expandText && (
-					<Button size="sm" className="min-h-11" variant="tonal" onClick={() => useTree.getState().expand(row.moreKey, row.expandTo)}>
-						{row.expandText}
-					</Button>
-				)}
-				{row.collapse && (
-					<Button size="sm" className="min-h-11" variant="ghost" onClick={() => useTree.getState().collapseMore(row.moreKey)}>
-						收起
-					</Button>
-				)}
+			<div className="flex items-center gap-1 pr-4" style={{ paddingLeft: 20 + row.depth * 12 }}>
+				<span aria-hidden className="h-px min-w-2 flex-1 bg-m-border" />
+				{row.expandText && <button type="button" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-m-sm px-2 text-m-xs whitespace-nowrap text-m-text-3 active:bg-m-surface-hover" onClick={() => useTree.getState().expand(row.moreKey, row.expandTo)}><Plus size={14} />{row.expandText}</button>}
+				{row.collapse && <button type="button" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-m-sm px-2 text-m-xs whitespace-nowrap text-m-text-3 active:bg-m-surface-hover" onClick={() => useTree.getState().collapseMore(row.moreKey)}><ChevronUp size={14} />收起</button>}
+				<span aria-hidden className="h-px min-w-2 flex-1 bg-m-border" />
 			</div>
 		);
 	},
@@ -270,7 +264,7 @@ export function TreeView({
 					case "h":
 						return <HeaderView key={r.key} row={r} onAction={onAction} />;
 					case "s":
-						return <SessionRow key={r.key} s={r.s} depth={r.depth} current={r.current} onMore={onMore} onOpen={onOpen} />;
+						return <SessionRow key={r.key} s={r.s} depth={r.depth} current={r.current} withSpine={r.withSpine} spineFirst={r.spineFirst} spineLast={r.spineLast} onMore={onMore} onOpen={onOpen} />;
 					case "more":
 						return <MoreView key={r.key} row={r} />;
 					case "gap":

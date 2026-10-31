@@ -35,7 +35,7 @@ function ToggleRow({
 		<div className="m-list-row flex w-full items-stretch pl-5" data-testid={testId}>
 			<div className="m-list-sep flex min-h-14 min-w-0 flex-1 items-center gap-2 pr-3">
 				{onOpen ? (
-					<button type="button" onClick={onOpen} className="min-w-0 flex-1 py-3 text-left active:opacity-60">
+					<button type="button" onClick={onOpen} className="min-h-11 min-w-11 flex-1 py-3 text-left active:opacity-60">
 						{body}
 					</button>
 				) : (
@@ -142,8 +142,8 @@ export function SkillsPage() {
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-m-bg-elev text-m-text">
 			<PageHeader
-				title="Skills"
-				subtitle={data ? `${data.skills.length} 个 Skill · ${data.extensions.length} 个扩展` : undefined}
+				title="技能与命令"
+				subtitle={data ? `${data.skills.length} 个技能 · ${data.extensions.length} 个扩展` : undefined}
 				className="bg-m-bg-elev!"
 			/>
 			<PullToRefresh onRefresh={reload}>

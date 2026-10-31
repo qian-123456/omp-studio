@@ -1,6 +1,6 @@
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, MessageSquare } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button, PullToRefresh } from "../../../ui";
+import { Button, EmptyState, PullToRefresh } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
 import type { Block, Turn } from "../lib/turns";
 import { SubagentCapsule } from "../../subagents";
@@ -52,12 +52,16 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 	const lastCH = useRef(0);
 	const raf = useRef(0);
 	const [showJump, setShowJump] = useState(false);
+	const [hasUnread, setHasUnread] = useState(false);
+	const prepend = useRef<{ height: number; top: number } | null>(null);
+	const previousBlockCount = useRef(blocks.length);
 
-	const scrollToEnd = useCallback((smooth = false) => {
+	const scrollToEnd = useCallback(() => {
 		const sc = scrollRef.current;
 		if (!sc) return;
-		if (smooth) sc.scrollTo({ top: sc.scrollHeight, behavior: "smooth" });
-		else sc.scrollTop = sc.scrollHeight;
+		sc.scrollTop = sc.scrollHeight;
+		setShowJump(false);
+		setHasUnread(false);
 	}, []);
 
 	const onScroll = useCallback(() => {
@@ -68,6 +72,7 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 		if (sc.clientHeight === lastCH.current) stick.current = dist < NEAR_BOTTOM_PX;
 		lastCH.current = sc.clientHeight;
 		setShowJump(dist >= NEAR_BOTTOM_PX);
+		if (dist < NEAR_BOTTOM_PX) setHasUnread(false);
 	}, []);
 
 	// Following the tail: any content or viewport (keyboard) size change re-pins to the bottom, once per frame.
@@ -81,6 +86,11 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 		};
 		const ro = new ResizeObserver(() => {
 			if (stick.current && !raf.current) raf.current = requestAnimationFrame(pin);
+			else if (!stick.current) {
+				const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+				setShowJump(dist >= NEAR_BOTTOM_PX);
+				if (dist < NEAR_BOTTOM_PX) setHasUnread(false);
+			}
 		});
 		ro.observe(content);
 		ro.observe(sc);
@@ -97,17 +107,40 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 		if (loaded) scrollToEnd();
 	}, [loaded, scrollToEnd]);
 
+	useLayoutEffect(() => {
+		const added = blocks.length - previousBlockCount.current;
+		previousBlockCount.current = blocks.length;
+		// Keep the oldest visible turn mounted when new turns arrive offscreen.
+		if (added > 0 && !stick.current) setLimit((n) => n + added);
+	}, [blocks.length]);
+
+	useLayoutEffect(() => {
+		const before = prepend.current;
+		const sc = scrollRef.current;
+		if (!before || !sc) return;
+		prepend.current = null;
+		sc.scrollTop = before.top + sc.scrollHeight - before.height;
+		// Restoring an anchor is not a user scroll back to the live tail.
+		// Only a real scroll event may re-enable following.
+		lastCH.current = sc.clientHeight;
+		setShowJump(sc.scrollHeight - sc.scrollTop - sc.clientHeight >= NEAR_BOTTOM_PX);
+	}, [limit]);
+
 	const jump = () => {
 		stick.current = true;
-		scrollToEnd(true);
-		setShowJump(false);
+		scrollToEnd();
 	};
 
 	const lastBlock = blocks[blocks.length - 1];
 	const syntheticLive = (working || live !== null) && (optimistic.length > 0 || !lastBlock || lastBlock.type !== "turn");
-	const shown = blocks.length > limit ? blocks.slice(-limit) : blocks;
+	const addedWhileReading = stick.current ? 0 : Math.max(0, blocks.length - previousBlockCount.current);
+	const visibleLimit = limit + addedWhileReading;
+	const shown = blocks.length > visibleLimit ? blocks.slice(-visibleLimit) : blocks;
 	const hidden = blocks.length - shown.length;
 	const empty = loaded && blocks.length === 0 && optimistic.length === 0 && localOut.length === 0;
+	useEffect(() => {
+		if (loaded && !stick.current) setHasUnread(true);
+	}, [loaded, lastBlock, live, optimistic, localOut]);
 
 	return (
 		<div className="relative flex min-h-0 flex-1 flex-col">
@@ -129,13 +162,16 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 					</div>
 				</section>
 			)}
-			<PullToRefresh ref={scrollRef} onRefresh={() => controller.refresh()}>
+			<PullToRefresh ref={scrollRef} onRefresh={() => controller.refresh()} className="[overflow-anchor:none]">
 				<div ref={contentRef} className="pt-1 pb-4">
 					{hidden > 0 && (
-						<div className="flex justify-center py-3">
+						<div data-pull-refresh-ignore className="flex justify-center py-3">
 							<Button
 								size="sm"
 								onClick={() => {
+									const sc = scrollRef.current;
+									if (!sc || prepend.current) return;
+									prepend.current = { height: sc.scrollHeight, top: sc.scrollTop };
 									stick.current = false;
 									setLimit((n) => n + WINDOW_STEP);
 								}}
@@ -163,21 +199,23 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 							</div>
 						</div>
 					))}
-					{empty && <div className="py-20 text-center text-m-sm text-m-text-3">还没有消息，发一条开始吧</div>}
+					{empty && !syntheticLive && <EmptyState icon={<MessageSquare size={24} strokeWidth={1.75} />} title="还没有消息" hint="在下方发送消息，开始这段对话" />}
 				</div>
 			</PullToRefresh>
-			{showJump && (
-				<button
-					type="button"
-					onClick={jump}
-					aria-label="回到底部"
-					className="absolute bottom-2 left-1/2 z-(--z-banner) flex h-11 w-11 -translate-x-1/2 items-center justify-center"
-				>
-					<span className="flex h-10 w-10 items-center justify-center rounded-m-pill bg-m-surface text-m-text shadow-m-pop active:bg-m-surface-2">
-						<ArrowDown size={20} strokeWidth={1.75} />
-					</span>
-				</button>
-			)}
+			<button
+				type="button"
+				onClick={jump}
+				aria-label={hasUnread ? "有新消息，回到底部" : working ? "正在生成，回到底部" : "回到底部"}
+				aria-hidden={!showJump}
+				tabIndex={showJump ? 0 : -1}
+				disabled={!showJump}
+				className={`absolute bottom-2 left-1/2 z-(--z-banner) flex h-11 w-11 -translate-x-1/2 items-center justify-center transition-[opacity,scale] duration-(--m-dur-fast) ease-m motion-reduce:transition-none ${showJump ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"}`}
+			>
+				<span className={`relative flex h-10 w-10 items-center justify-center rounded-m-pill shadow-m-pop active:bg-m-surface-2 ${hasUnread || working ? "bg-m-accent-soft text-m-accent-soft-text" : "bg-m-surface text-m-text"}`}>
+					<ArrowDown size={20} strokeWidth={1.75} />
+					{(hasUnread || working) && <span aria-hidden className={`absolute right-0 top-0 size-2.5 rounded-full bg-m-accent ${working ? "animate-pulse motion-reduce:animate-none" : ""}`} />}
+				</span>
+			</button>
 		</div>
 	);
 }

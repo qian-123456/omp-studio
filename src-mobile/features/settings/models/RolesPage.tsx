@@ -1,6 +1,6 @@
 import { Compass, GitCommitHorizontal, ListChecks, PenLine, ScanSearch, Sparkles, SquareTerminal, Bot } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "../../../core/api";
 import type { PageProps } from "../../../core/nav";
 import { BottomSheet, Button, Chip, ListGroup, ListRow, toast } from "../../../ui";
@@ -16,7 +16,7 @@ import {
 	type DiffRow,
 	type RolesResponse,
 } from "./logic";
-import { ConfirmDiffSheet, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
+import { ConfirmDiffSheet, ErrorBox, SettingsPageFrame, SheetFooter, useLoader } from "./shared";
 import { BatchReplaceSheet } from "./BatchReplaceSheet";
 
 const ICON = { size: 22, strokeWidth: 1.75 } as const;
@@ -43,6 +43,8 @@ type Edit =
 	| { kind: "inherit"; roleId: string; label: string };
 
 const baseName = (p: string): string => p.split("/").filter(Boolean).pop() ?? p;
+const roleVersions = new Map<string, number>();
+const roleWrites = new Set<string>();
 
 export function SettingsRolesPage({ route }: PageProps) {
 	const cwd = route.query.cwd || null;
@@ -56,17 +58,26 @@ export function SettingsRolesPage({ route }: PageProps) {
 	const [busy, setBusy] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [batchReplaceOpen, setBatchReplaceOpen] = useState(false);
+	const saving = useRef(false);
+	const versionKey = (roleId: string) => `${cwd ?? ""}:${roleId}`;
+	const invalidate = (roleId: string) => {
+		const key = versionKey(roleId);
+		roleVersions.set(key, (roleVersions.get(key) ?? 0) + 1);
+	};
 	const current = (roleId: string): { raw: string | undefined; isProject: boolean } => {
 		if (cwd && roleId in pRoles) return { raw: pRoles[roleId], isProject: true };
 		return { raw: gRoles[roleId], isProject: false };
 	};
 
 	const closeEdit = () => {
+		if (saving.current) return;
 		setEdit(null);
 		setSaveError(null);
 	};
 
 	const startEdit = (roleId: string, label: string) => {
+		if (saving.current || roleWrites.has(versionKey(roleId))) return;
+		invalidate(roleId);
 		const v = parseRoleValue(current(roleId).raw, models);
 		const first = models[0];
 		const draft: Draft =
@@ -101,33 +112,68 @@ export function SettingsRolesPage({ route }: PageProps) {
 		return [{ label: e.draft.label, before, after }];
 	};
 
-	const save = async () => {
-		if (!edit || edit.kind === "pick") return;
+	const save = async (change: Edit | null = edit) => {
+		if (!change || saving.current) return;
+		const body = change.kind === "inherit"
+			? roleSetBody(cwd, change.roleId, null)
+			: roleSetBody(cwd, change.draft.roleId, change.draft);
+		const key = versionKey(body.name);
+		if (roleWrites.has(key)) return;
+		roleWrites.add(key);
+		saving.current = true;
+		const version = (roleVersions.get(key) ?? 0) + 1;
+		roleVersions.set(key, version);
 		setBusy(true);
 		setSaveError(null);
 		try {
-			const body =
-				edit.kind === "inherit"
-					? roleSetBody(cwd, edit.roleId, null)
-					: roleSetBody(cwd, edit.draft.roleId, {
-							provider: edit.draft.provider,
-							modelId: edit.draft.modelId,
-							thinking: edit.draft.thinking,
-						});
+			const previous = await api<RolesResponse>("GET", `/left/roles${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`);
+			const before = (cwd ? previous.snapshot?.project : previous.snapshot?.global)?.modelRoles?.[body.name] ?? null;
 			await api("POST", "/left/roles/set", body);
-			toast("角色已更新", { kind: "success" });
-			closeEdit();
+			toast("角色已更新", {
+				kind: "success",
+				action: { label: "撤销", onClick: async () => {
+					if (roleVersions.get(key) !== version || roleWrites.has(key)) throw new Error("已有更新的修改，无法撤销旧修改");
+					roleWrites.add(key);
+					setBusy(true);
+					try {
+						const latest = await api<RolesResponse>("GET", `/left/roles${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`);
+						const current = (cwd ? latest.snapshot?.project : latest.snapshot?.global)?.modelRoles?.[body.name] ?? null;
+						if (roleVersions.get(key) !== version || current !== body.value) throw new Error("角色已被修改，未覆盖较新的配置");
+						roleVersions.set(key, version + 1);
+						await api("POST", "/left/roles/set", { ...body, value: before });
+						reload();
+						toast("已撤销角色修改", { kind: "success" });
+					} finally {
+						roleWrites.delete(key);
+						setBusy(false);
+					}
+				} },
+			});
+			setEdit(null);
 			reload();
 		} catch (e) {
 			setSaveError(errorMessage(e, "保存失败"));
 		} finally {
+			roleWrites.delete(key);
+			saving.current = false;
 			setBusy(false);
 		}
+	};
+	const submitPick = () => {
+		if (!edit || edit.kind !== "pick") return;
+		const old = parseRoleValue(current(edit.draft.roleId).raw, models);
+		const modelChanged = old.kind !== "model" || old.provider !== edit.draft.provider || old.modelId !== edit.draft.modelId;
+		const thinkingChanged = (old.kind === "model" ? old.thinking : null) !== edit.draft.thinking;
+		if (!modelChanged && !thinkingChanged) { closeEdit(); return; }
+		if (modelChanged && thinkingChanged) setEdit({ kind: "confirm", draft: edit.draft });
+		else void save(edit);
 	};
 
 	const pickDraft = edit?.kind === "pick" ? edit.draft : null;
 	const setModel = (m: PickerModel) => {
 		if (!pickDraft) return;
+		if (busy) return;
+		invalidate(pickDraft.roleId);
 		const full = models.find((x) => x.provider === m.provider && x.id === m.id);
 		setEdit({
 			kind: "pick",
@@ -144,7 +190,7 @@ export function SettingsRolesPage({ route }: PageProps) {
 		<SettingsPageFrame
 			title={cwd ? `项目角色 · ${baseName(cwd)}` : "模型角色与思考深度"}
 			right={
-				<Button size="sm" variant="tonal" onClick={() => setBatchReplaceOpen(true)} disabled={!data}>
+				<Button size="sm" variant="tonal" onClick={() => { ROLE_KEYS.forEach((role) => invalidate(role.id)); setBatchReplaceOpen(true); }} disabled={!data || busy || loading}>
 					批量替换
 				</Button>
 			}
@@ -182,6 +228,7 @@ export function SettingsRolesPage({ route }: PageProps) {
 								</span>
 							}
 							chevron
+							disabled={busy || loading}
 							onClick={() => startEdit(rk.id, rk.label)}
 						/>
 					);
@@ -198,7 +245,8 @@ export function SettingsRolesPage({ route }: PageProps) {
 						<Button
 							size="sm"
 							variant="danger"
-							onClick={() => setEdit({ kind: "inherit", roleId: pickDraft.roleId, label: pickDraft.label })}
+							disabled={busy}
+							onClick={() => { invalidate(pickDraft.roleId); setEdit({ kind: "inherit", roleId: pickDraft.roleId, label: pickDraft.label }); }}
 						>
 							恢复继承
 						</Button>
@@ -207,8 +255,9 @@ export function SettingsRolesPage({ route }: PageProps) {
 				footer={
 					<SheetFooter
 						onCancel={closeEdit}
-						onSave={() => pickDraft && setEdit({ kind: "confirm", draft: pickDraft })}
-						saveText="下一步"
+						onSave={submitPick}
+						saveText="保存"
+						busy={busy}
 						saveDisabled={!pickDraft?.modelId}
 					/>
 				}
@@ -222,9 +271,10 @@ export function SettingsRolesPage({ route }: PageProps) {
 							onChange={setModel}
 							thinking={{
 								value: pickDraft.thinking,
-								onChange: (thinking) => setEdit({ kind: "pick", draft: { ...pickDraft, thinking } }),
+							onChange: (thinking) => { if (!busy) { invalidate(pickDraft.roleId); setEdit({ kind: "pick", draft: { ...pickDraft, thinking } }); } },
 							}}
 						/>
+						{saveError && <ErrorBox title="保存失败" message={saveError} />}
 					</div>
 				)}
 			</BottomSheet>
@@ -237,7 +287,7 @@ export function SettingsRolesPage({ route }: PageProps) {
 				error={saveError}
 				onCancel={closeEdit}
 				onBack={edit?.kind === "confirm" ? () => setEdit({ kind: "pick", draft: edit.draft }) : undefined}
-				onConfirm={save}
+				onConfirm={() => void save()}
 			/>
 			<BatchReplaceSheet
 				open={batchReplaceOpen}

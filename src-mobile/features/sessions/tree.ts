@@ -8,7 +8,7 @@ import type { MobileSession, SpaceMode } from "../../core/types";
 /* ---------------------------------------------------------------- wire types (`GET /left/sessions`) */
 
 /** Full `SessionMeta` rows of the tree carry `unread`; the flat `/sessions` rows do not. */
-export type TreeSession = MobileSession & { unread?: boolean };
+export type TreeSession = MobileSession & { unread?: boolean; kind?: "side" | "fork" | null; parentId?: string | null; git?: { branch?: string | null } | null };
 
 export interface Workspace {
 	id: string;
@@ -175,6 +175,8 @@ const SESSION_FIELDS = [
 	"unread",
 	"mode",
 	"workspaceId",
+	"kind",
+	"parentId",
 ] as const;
 
 const sameSession = (a: TreeSession, b: TreeSession): boolean => {
@@ -347,6 +349,8 @@ export interface HeaderRow {
 	bubbles: StatusCounts | null;
 	actions: HeaderAction[];
 	dim: boolean;
+	/** Stable workspace identity for desktop-compatible folder colours. */
+	workspaceId?: string;
 }
 export interface SessionRowDesc {
 	t: "s";
@@ -354,6 +358,9 @@ export interface SessionRowDesc {
 	s: TreeSession;
 	depth: number;
 	current: boolean;
+	withSpine?: boolean;
+	spineFirst?: boolean;
+	spineLast?: boolean;
 }
 export interface MoreRow {
 	t: "more";
@@ -412,7 +419,7 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 		key: string,
 		def: boolean,
 		h: Pick<HeaderRow, "level" | "depth" | "icon" | "title"> &
-			Partial<Pick<HeaderRow, "hint" | "tags" | "count" | "actions" | "dim">> & { status?: readonly TreeSession[] },
+			Partial<Pick<HeaderRow, "hint" | "tags" | "count" | "actions" | "dim" | "workspaceId">> & { status?: readonly TreeSession[] },
 	): boolean => {
 		const open = isOpen(key, def);
 		const counts = !open && h.status ? statusCounts(h.status) : null;
@@ -431,6 +438,7 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 			bubbles: counts && hasCounts(counts) ? counts : null,
 			actions: h.actions ?? [],
 			dim: h.dim ?? false,
+			...(h.workspaceId ? { workspaceId: h.workspaceId } : {}),
 		});
 		return open;
 	};
@@ -443,10 +451,10 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 		const moreKey = `${scopeKey}|more`;
 		const cap = capSessions(sessions, baseLimit, o.expanded[moreKey], { searching: o.searching, curId: o.curId });
 		let prev = -1;
-		for (const i of cap.shown) {
+		for (const [position, i] of cap.shown.entries()) {
 			if (i - prev > 1) rows.push({ t: "gap", key: `${scopeKey}|gap|${i}`, depth, skipped: i - prev - 1 });
 			const s = sessions[i];
-			rows.push({ t: "s", key: `${scopeKey}|${s.id}`, s, depth, current: s.id === o.curId });
+			rows.push({ t: "s", key: `${scopeKey}|${s.id}`, s, depth, current: s.id === o.curId, withSpine: true, spineFirst: position === 0, spineLast: position === cap.shown.length - 1 });
 			prev = i;
 		}
 		moreBar(
@@ -486,6 +494,7 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 			depth,
 			icon: sub.kind === "worktree" ? "worktree" : "branch",
 			title: sub.label,
+			hint: sub.path ?? sub.createCwd ?? "",
 			tags,
 			count: empty ? null : sub.sessions.length,
 			status: sub.sessions,
@@ -535,23 +544,22 @@ export function flattenTree(d: SessionTree, o: FlattenOptions): FlattenResult {
 		const gkey = `${prefix}:${ws.id}`;
 		const live = g.subgroups.filter((x) => !x.deleted && x.sessions.length > 0);
 		const empty = g.subgroups.filter((x) => !x.deleted && x.sessions.length === 0);
+		const trulyEmpty =
+			g.totalCount === 0 && (g.pinnedCount ?? 0) === 0 && !live.length && !empty.length && !g.deletedSubgroups.length;
 		const open = header(gkey, true, {
+			tags: trulyEmpty ? ["暂无会话"] : [],
 			level: "sec",
 			depth: 0,
 			icon: "folder",
 			title,
+			workspaceId: ws.id,
 			hint: g.isGlobal ? "" : ws.path,
 			count: g.totalCount,
 			status: g.subgroups.filter((x) => !x.deleted).flatMap((x) => x.sessions),
 			actions: ws.path ? [{ kind: "plus", cwd: ws.path, label: title }] : [],
 		});
 		if (!open) return;
-		const trulyEmpty =
-			g.totalCount === 0 && (g.pinnedCount ?? 0) === 0 && !live.length && !empty.length && !g.deletedSubgroups.length;
-		if (trulyEmpty) {
-			rows.push({ t: "none", key: `${gkey}|none`, depth: 1, text: "暂无会话" });
-			return;
-		}
+		if (trulyEmpty) return;
 		const multi = live.length > 1 || (live[0] !== undefined && live[0].kind !== "default" && !live[0].isMain);
 		if (multi) for (const sb of live) subgroup(sb, `${gkey}|${sb.key}`, 1, false);
 		else cappedList(`${gkey}|default`, live[0] ? live[0].sessions : [], NO_WT_LIMIT, 1);
@@ -661,7 +669,8 @@ export const rowEqual = (a: FlatRow, b: FlatRow): boolean => {
 	if (a.t !== b.t) return false;
 	if (a.t === "s") {
 		const o = b as SessionRowDesc;
-		return a.s === o.s && a.depth === o.depth && a.current === o.current && a.key === o.key;
+		return a.s === o.s && a.depth === o.depth && a.current === o.current && a.key === o.key &&
+			a.withSpine === o.withSpine && a.spineFirst === o.spineFirst && a.spineLast === o.spineLast;
 	}
 	return shallowEq(a, b);
 };

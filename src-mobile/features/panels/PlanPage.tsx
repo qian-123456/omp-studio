@@ -1,58 +1,60 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useRef } from "react";
+import type { PlanStatus } from "../../../src/features/chat/plan/planStatus";
 import { api } from "../../core/api";
 import type { PageProps } from "../../core/nav";
-import { events } from "../../core/sse";
 import { EmptyState, IconButton, Markdown, PageHeader, PullToRefresh } from "../../ui";
 import { LoadGate } from "./PanelState";
 import { useLoad, useResync } from "./hooks";
+import { WorkspacePanelBar } from "./WorkspacePanelBar";
+import { usePlanExecution } from "./usePlanExecution";
 
 interface Plan {
-	text?: string;
+	text?: string | null;
 	streaming?: boolean;
+	planStatus?: PlanStatus | null;
 }
 
-const RELOAD_MS = 800;
+function planLabel(status: PlanStatus | null, streaming: boolean): string {
+	if (status?.approved) {
+		const labels = { executing: "执行中", completed: "已完成", failed: "执行失败", handoff: "已移交新会话" };
+		return labels[status.approved.status];
+	}
+	if (status?.enabled) return status.phase === "review" ? "等待审批" : "规划中";
+	if (status) return "规划未开启";
+	return streaming ? "助手回复生成中（无已保存计划）" : "助手回复（无已保存计划）";
+}
 
 export function PlanPage({ route }: PageProps) {
 	const id = route.params.id;
 	const state = useLoad((signal) => api<Plan>("GET", `/sessions/${encodeURIComponent(id)}/plan`, undefined, { signal }), [id]);
-	const reloadRef = useRef(state.reload);
-	reloadRef.current = state.reload;
-	useResync(() => void reloadRef.current(true));
-
-	// Debounced refresh while the session streams (the plan is its latest assistant reply).
-	useEffect(() => {
-		let timer = 0;
-		const off = events.on("rpc", (d) => {
-			if (d.sessionId !== id) return;
-			window.clearTimeout(timer);
-			timer = window.setTimeout(() => void reloadRef.current(true), RELOAD_MS);
-		});
-		return () => {
-			off();
-			window.clearTimeout(timer);
-		};
-	}, [id]);
+	const execution = usePlanExecution(id);
+	const status = execution.planStatus ?? state.data?.planStatus ?? null;
+	const text = status ? status.approved?.content ?? status.content : state.data?.text;
+	const refresh = () => Promise.all([state.reload(true), execution.reload()]).then(() => {});
+	useResync(() => void state.reload(true));
 
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader
 				title="计划"
-				subtitle={state.data?.streaming ? "生成中" : "最新一条助手回复"}
-				right={<IconButton icon={<RefreshCw size={20} />} label="刷新" onClick={() => void state.reload(true)} />}
+				subtitle={planLabel(status, !!state.data?.streaming)}
+				right={<IconButton icon={<RefreshCw size={20} />} label="刷新" onClick={() => void refresh()} />}
 			/>
-			<PullToRefresh onRefresh={() => state.reload(true)}>
+			<WorkspacePanelBar sessionId={id} current="plan" />
+			<PullToRefresh onRefresh={refresh}>
 				<LoadGate state={state}>
-					{(p) =>
-						p.text ? (
-							<div className="m-selectable px-5 pt-2 pb-8">
-								<Markdown text={p.text} streaming={!!p.streaming} />
-							</div>
-						) : (
-							<EmptyState title="暂无计划内容" />
-						)
-					}
+					{() => text ? (
+						<div className="m-selectable px-5 pt-2 pb-8">
+							{status?.approved?.error && (
+								<p role="status" className="mb-3 rounded-m-md bg-m-warn-bg px-4 py-3 text-m-sm break-words text-m-warn">
+									{status.approved.error === "aborted" ? "本次执行已停止" : status.approved.error}
+								</p>
+							)}
+							<Markdown text={text} streaming={!status?.approved && !!state.data?.streaming} />
+						</div>
+					) : (
+						<EmptyState title="暂无计划内容" hint={status?.enabled ? "计划准备好后会显示在这里" : "已批准的计划会保留在这里"} />
+					)}
 				</LoadGate>
 			</PullToRefresh>
 		</div>

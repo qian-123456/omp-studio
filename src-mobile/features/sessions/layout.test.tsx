@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../core/api", () => ({
 	api: vi.fn().mockResolvedValue({ dirs: [] }),
@@ -30,38 +30,27 @@ vi.mock("../../core/stores/sessions", () => ({
 import { HomePage } from "./HomePage";
 import { MenuSheet } from "./MenuSheet";
 
+beforeEach(() => {
+ vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+});
 afterEach(() => {
 	cleanup();
+ vi.unstubAllGlobals();
 });
 
-describe("Responsive layout (390x844)", () => {
-	it("renders HomePage without horizontal overflow at 390px width", () => {
-		// Mock viewport dimensions for 390x844 (iPhone 12/13/14)
-		window.innerWidth = 390;
-		window.innerHeight = 844;
+describe("Session surface DOM accessibility (not layout measurement)", () => {
+ it("exposes the Home composer and its primary actions", () => {
+  render(<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />);
+  expect(screen.getByRole("textbox", { name: "消息输入框" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "语音输入" })).toBeTruthy();
+ });
 
-		const { container } = render(
-			<div style={{ width: 390, height: 844, overflowX: "hidden" }}>
-				<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />
-			</div>,
-		);
-
-		const root = container.firstElementChild as HTMLElement;
-		expect(root).not.toBeNull();
-		// In jsdom offsetWidth defaults to 0 unless set, but scrollWidth must not exceed 390
-		expect(root.scrollWidth).toBeLessThanOrEqual(390);
-	});
-
-	it("renders MenuSheet as a full-screen drawer", () => {
-		window.innerWidth = 390;
-		window.innerHeight = 844;
-
-		render(<MenuSheet open onClose={() => {}} />);
-
-		const dialog = document.querySelector('[role="dialog"]');
-		expect(dialog).not.toBeNull();
-		// Full-screen panel: pinned to every edge, never wider than the viewport.
-		expect(dialog?.className).toContain("inset-0");
-		expect(dialog?.className).toContain("w-full");
-	});
+ it("exposes a modal navigation dialog with an explicit close action", () => {
+  const onClose = vi.fn();
+  render(<MenuSheet open onClose={onClose} />);
+  expect(screen.getByRole("dialog", { name: "导航" }).getAttribute("aria-modal")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "关闭导航" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+ });
 });

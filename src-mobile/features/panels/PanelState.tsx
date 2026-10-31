@@ -33,5 +33,16 @@ export function LoadGate<T>({
 	if (state.loading && state.data === null) return <Loading />;
 	if (state.error !== null && state.data === null) return <ErrorState message={state.error} onRetry={() => void state.reload()} />;
 	if (state.data === null) return null;
-	return <>{children(state.data)}</>;
+	return (
+		<>
+			{state.error !== null && (
+				<div role="alert" className="mx-4 mt-2 flex items-start gap-3 rounded-m-md bg-m-warn-bg px-4 py-2 text-m-sm text-m-warn">
+					<AlertCircle size={18} className="mt-3 shrink-0" />
+					<p className="m-selectable min-w-0 flex-1 self-center break-words">刷新失败，仍显示上次内容。{state.error}</p>
+					<Button size="sm" onClick={() => void state.reload()}>重试</Button>
+				</div>
+			)}
+			{children(state.data)}
+		</>
+	);
 }

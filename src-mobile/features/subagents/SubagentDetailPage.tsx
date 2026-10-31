@@ -1,13 +1,15 @@
 import { AlertCircle, Check, ChevronDown, ChevronRight, Copy, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { api, errorMessage } from "../../core/api";
 import { compactNumber, copyText } from "../../core/lib/format";
 import type { PageProps } from "../../core/nav";
 import { normalizeTranscript } from "../../core/normalize";
 import type { Item, ToolItem } from "../../core/types";
-import { Button, Chip, DiffView, EmptyState, IconButton, looksLikeDiff, Markdown, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
+import { Button, Chip, confirm, DiffView, EmptyState, IconButton, looksLikeDiff, Markdown, PageHeader, PullToRefresh, Spinner, toast } from "../../ui";
 import { elapsedMs, formatElapsed, rowLabel, statusBucket, statusText } from "./model";
 import { BUCKET_TONE } from "./SubagentTree";
+import { refreshSubagents } from "./store";
 import { useSubagentTranscript } from "./transcript";
 import { useNow } from "./useNow";
 
@@ -206,6 +208,55 @@ export function SubagentDetailPage({ route }: PageProps) {
 	const summary = info?.summary;
 	const bucket = statusBucket(summary?.status);
 	const running = !!summary && (bucket === "running" || bucket === "queued");
+	const [stopBusy, setStopBusy] = useState(false);
+	const [stopError, setStopError] = useState<string | null>(null);
+	const stopContext = useRef<{ active: boolean; busy: boolean; controller: AbortController | null }>({ active: false, busy: false, controller: null });
+	useEffect(() => {
+		const context = { active: true, busy: false, controller: null as AbortController | null };
+		stopContext.current = context;
+		setStopBusy(false);
+		setStopError(null);
+		const onVisibility = () => {
+			if (document.visibilityState === "hidden") context.controller?.abort();
+		};
+		document.addEventListener("visibilitychange", onVisibility);
+		return () => {
+			context.active = false;
+			document.removeEventListener("visibilitychange", onVisibility);
+			context.controller?.abort();
+		};
+	}, [sessionId, agentId]);
+	const stopTurn = async () => {
+		const context = stopContext.current;
+		if (!running || !context.active || context.busy) return;
+		context.busy = true;
+		setStopBusy(true);
+		setStopError(null);
+		try {
+			const accepted = await confirm({
+				title: "停止当前回合？",
+				message: "这会停止父会话的当前回合，以及该回合中所有受影响的子代理工作，不是仅停止当前子代理。",
+				confirmText: "停止当前回合",
+				cancelText: "继续运行",
+				danger: true,
+			});
+			if (!accepted || !context.active || document.visibilityState === "hidden") return;
+			const controller = new AbortController();
+			context.controller = controller;
+			const result = await api<{ ok: boolean }>("POST", `/sessions/${encodeURIComponent(sessionId)}/abort`, undefined, { signal: controller.signal });
+			if (!context.active || controller.signal.aborted) return;
+			if (!result?.ok) throw new Error("停止请求未被确认，请重试");
+			toast("已发送停止请求");
+			void refreshSubagents(sessionId);
+			await refresh();
+		} catch (error) {
+			if (context.active && !context.controller?.signal.aborted) setStopError(errorMessage(error, "停止失败，请重试"));
+		} finally {
+			context.busy = false;
+			context.controller = null;
+			if (context.active) setStopBusy(false);
+		}
+	};
 	const now = useNow(running);
 	const label = rowLabel(summary ?? { id: agentId, status: "running" });
 	const messages = useMemo(() => {
@@ -248,6 +299,13 @@ export function SubagentDetailPage({ route }: PageProps) {
 				) : (
 					<div className="px-4 pb-10">
 						{error && <p className="px-1 pt-3 text-m-xs break-words text-m-danger">刷新失败：{error}</p>}
+						{running && (
+							<div className="pt-4">
+								<Button variant="danger" block busy={stopBusy} onClick={() => void stopTurn()}>停止当前回合</Button>
+								<p className="mt-2 px-1 text-m-xs text-m-text-3">此操作作用于父会话当前回合及所有受影响的子代理。</p>
+							</div>
+						)}
+						{stopError && <p role="alert" className="px-1 pt-3 text-m-sm [overflow-wrap:anywhere] text-m-danger">停止失败：{stopError}</p>}
 
 						{bucket === "failed" && (
 							<div role="alert" className="mt-3 rounded-m-lg bg-m-danger-bg px-4 py-3.5 text-m-danger">

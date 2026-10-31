@@ -3,15 +3,16 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as apiModule from "../../core/api";
 import { nav } from "../../core/nav";
+import type * as NavModule from "../../core/nav";
 import { events } from "../../core/sse";
 import { useSessions } from "../../core/stores/sessions";
 import type { MobileSession, RpcFrame, TranscriptItem, TranscriptPage } from "../../core/types";
 import { loadUnsent, saveUnsent } from "../chat/lib/unsent";
 import { HANDBACK_PROMPT, SidechatPage } from "./SidechatPage";
 
-vi.mock("../../core/nav", () => ({
+vi.mock("../../core/nav", async (original) => ({
+	...(await original<typeof NavModule>()),
 	nav: { push: vi.fn(), pushLayer: () => () => {} },
-	paths: { chat: (id: string) => `/s/${id}` },
 }));
 
 const thread: MobileSession = {
@@ -59,6 +60,7 @@ async function openSummary() {
 
 beforeEach(() => {
 	vi.useFakeTimers();
+	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
 	vi.clearAllMocks();
 	localStorage.clear();
 	requests = 0;
@@ -92,6 +94,7 @@ afterEach(() => {
 	vi.clearAllTimers();
 	vi.useRealTimers();
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	localStorage.clear();
 });
 

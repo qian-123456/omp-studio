@@ -3,10 +3,17 @@ import { resolveScheme, usePrefs, type Scheme } from "../core/stores/prefs";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 
-/** Write `data-scheme` on <html> and sync the browser chrome colour. */
+/** Write `data-scheme` on <html> and sync browser and iOS status-bar chrome. */
 export function applyTheme(scheme: Scheme): void {
 	const root = document.documentElement;
 	root.dataset.scheme = scheme;
+	let statusBarMeta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
+	if (!statusBarMeta) {
+		statusBarMeta = document.createElement("meta");
+		statusBarMeta.name = "apple-mobile-web-app-status-bar-style";
+		document.head.appendChild(statusBarMeta);
+	}
+	statusBarMeta.content = scheme === "dark" ? "black-translucent" : "default";
 	// Theme colour comes from the freshly applied token, so tokens.css stays the single source of truth.
 	const bg = getComputedStyle(root).getPropertyValue("--m-bg").trim();
 	if (!bg) return;

@@ -1,5 +1,5 @@
 import { ArrowUp, Mic, Plus, Square } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Spinner } from "../../../ui";
 import { useVoiceInput } from "./useVoiceInput";
 
@@ -13,9 +13,8 @@ export interface ComposerApi {
 	insert(text: string): void;
 }
 
-const SUPPORTS_FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
-/** Height of one text line: 28px line box + 12px vertical padding (`min-h-10 py-1.5 leading-7`). */
-const LINE_PX = 40;
+/** One 28px line plus 12px padding, inside the 44px touch row. */
+const LINE_PX = 44;
 const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 
 const roundBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
@@ -44,7 +43,7 @@ export function ComposerCapsule({
 	apiRef?: RefObject<ComposerApi | null>;
 	initialText?: string;
 	placeholder: string;
-	/** A run is in progress: the send button becomes stop while the text is empty. */
+	/** A run is in progress: stop remains available alongside the independent send action. */
 	working?: boolean;
 	/** Something other than text can be sent (attachments). */
 	hasExtra?: boolean;
@@ -62,38 +61,45 @@ export function ComposerCapsule({
 	/** Final text when the capsule unmounts (save the unsent draft). */
 	onUnmount?: (value: string) => void;
 }) {
+	const capsule = useRef<HTMLDivElement>(null);
+	const actions = useRef<HTMLDivElement>(null);
 	const ta = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
 	const raf = useRef(0);
-	const multiAt = useRef(0);
 	const [hasText, setHasText] = useState(() => initialText.trim() !== "");
 	const [multi, setMulti] = useState(false);
 	// Latest callbacks without re-creating the imperative api on every render.
 	const cb = useRef({ onSync, onInput, onUnmount });
 	cb.current = { onSync, onInput, onUnmount };
 
-	/** One frame-coalesced pass: hasText, wrap layout, JS autosize fallback. Never mid-composition. */
+	/** Measure the real textarea at its inline width, then size it at its displayed width. */
+	const measure = useCallback(() => {
+		const el = ta.current;
+		const box = capsule.current;
+		const buttons = actions.current;
+		if (!el || !box || !buttons || composing.current) return;
+		const style = getComputedStyle(box);
+		const inlineWidth = Math.max(1, box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 44 - buttons.offsetWidth - 2 * (parseFloat(style.columnGap) || 0));
+		const scrollTop = el.scrollTop;
+		el.style.width = `${inlineWidth}px`;
+		el.style.height = "0px";
+		const wraps = el.value !== "" && el.scrollHeight > LINE_PX;
+		setMulti(wraps);
+		el.style.width = "100%";
+		el.style.height = "0px";
+		el.style.height = `${Math.max(LINE_PX, el.scrollHeight)}px`;
+		el.scrollTop = scrollTop;
+	}, []);
+
+	/** One frame-coalesced pass; never change layout or sync drafts during IME composition. */
 	const flush = useCallback(() => {
 		raf.current = 0;
 		const el = ta.current;
 		if (!el || composing.current) return;
-		const v = el.value;
-		setHasText(v.trim() !== "");
-		cb.current.onSync?.(v);
-		if (!SUPPORTS_FIELD_SIZING) {
-			el.style.height = "auto";
-			el.style.height = `${el.scrollHeight}px`;
-		}
-		// Stack once the text wraps; unstack only when it is shorter than where it wrapped (no flip-flop).
-		const wraps = v.includes("\n") || el.scrollHeight > LINE_PX + 4;
-		if (wraps && multiAt.current === 0) {
-			multiAt.current = Math.max(1, v.length);
-			setMulti(true);
-		} else if (multiAt.current > 0 && !v.includes("\n") && v.length < multiAt.current) {
-			multiAt.current = 0;
-			setMulti(false);
-		}
-	}, []);
+		setHasText(el.value.trim() !== "");
+		cb.current.onSync?.(el.value);
+		measure();
+	}, [measure]);
 
 	const schedule = useCallback(() => {
 		if (!raf.current) raf.current = requestAnimationFrame(flush);
@@ -111,6 +117,20 @@ export function ComposerCapsule({
 		// initialText is the mount-time value only; later changes go through the api.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [flush]);
+
+	useLayoutEffect(() => {
+		measure();
+		const box = capsule.current;
+		if (!box) return;
+		let width = box.clientWidth;
+		const observer = new ResizeObserver(() => {
+			if (box.clientWidth === width) return;
+			width = box.clientWidth;
+			measure();
+		});
+		observer.observe(box);
+		return () => observer.disconnect();
+	}, [measure, multi, working, top]);
 
 	const insert = useCallback(
 		(text: string) => {
@@ -167,16 +187,21 @@ export function ComposerCapsule({
 	const { recording, transcribing, toggleRecording } = useVoiceInput({ onTranscribed: insert });
 
 	const canSend = (hasText || hasExtra) && !busy;
-	const showStop = working && !hasText && !hasExtra && onStop != null;
-	const submit = () => onSend(ta.current?.value ?? "");
+	const showStop = working && onStop != null;
+	const submit = () => {
+		const text = ta.current?.value ?? "";
+		// A stale second click on Send must never become an implicit Stop request.
+		if (!busy && (text.trim() !== "" || hasExtra)) onSend(text);
+	};
 	const stacked = multi || top != null;
 
 	return (
 		<div
+			ref={capsule}
 			className="grid items-end gap-x-1 rounded-(--m-composer-radius) bg-m-composer-bg p-2 shadow-m-composer"
 			style={{
-				gridTemplateColumns: "auto 1fr auto auto",
-				gridTemplateAreas: stacked ? '"top top top top" "text text text text" "plus . mic send"' : '"plus text mic send"',
+				gridTemplateColumns: "44px minmax(0, 1fr) auto",
+				gridTemplateAreas: stacked ? '"top top top" "text text text" "plus . actions"' : '"plus text actions"',
 			}}
 		>
 			{top != null && <div style={{ gridArea: "top" }}>{top}</div>}
@@ -210,44 +235,44 @@ export function ComposerCapsule({
 					schedule();
 				}}
 				onKeyDown={(e) => {
-					// Hardware keyboards: Enter sends, Shift+Enter newline. Soft keyboards keep newline behaviour.
-					if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229 && matchMedia("(hover: hover)").matches) {
-						e.preventDefault();
-						if (canSend) submit();
-					}
+					const native = e.nativeEvent as KeyboardEvent & { inputType?: string };
+					// Native mobile line breaks and IME commits are never message submissions.
+					if (e.key !== "Enter" || e.shiftKey || composing.current || native.isComposing || e.keyCode === 229 || native.inputType === "insertLineBreak") return;
+					const hardware = e.metaKey || e.ctrlKey || (typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches);
+					if (!hardware || e.altKey) return;
+					e.preventDefault();
+					if (!e.repeat) submit();
 				}}
-				style={{ gridArea: "text", maxHeight: MAX_INPUT, fieldSizing: "content" } as CSSProperties}
-				className={`m-selectable min-h-11 w-full min-w-0 resize-none self-center overflow-y-auto bg-transparent py-1.5 text-m-md leading-7 text-m-text outline-none placeholder:text-m-text-3 ${
-					stacked ? "px-2 pb-2" : "px-1"
-				}`}
+				style={{ gridArea: "text", maxHeight: MAX_INPUT }}
+				className="m-selectable min-h-11 w-full min-w-0 resize-none self-center overflow-y-auto bg-transparent px-1 py-1.5 text-m-md leading-7 text-m-text outline-none placeholder:text-m-text-3"
 			/>
-			<button
-				type="button"
-				aria-label={recording ? "停止录音" : "语音输入"}
-				aria-pressed={recording}
-				disabled={transcribing}
-				onClick={() => void toggleRecording()}
-				style={{ gridArea: "mic" }}
-				className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text-2 active:bg-m-surface-hover"}`}
-			>
-				{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
-			</button>
-			{showStop ? (
-				<button type="button" aria-label="停止" onClick={onStop} style={{ gridArea: "send" }} className={`${roundBtn} bg-m-text text-m-bg active:opacity-80`}>
-					<Square size={14} fill="currentColor" />
-				</button>
-			) : (
+			<div ref={actions} className="grid grid-flow-col auto-cols-[44px] items-end gap-1" style={{ gridArea: "actions" }}>
 				<button
+					type="button"
+					aria-label={recording ? "停止录音" : "语音输入"}
+					aria-pressed={recording}
+					disabled={transcribing}
+					onClick={() => void toggleRecording()}
+					className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text-2 active:bg-m-surface-hover"}`}
+				>
+					{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
+				</button>
+				{showStop && (
+					<button key="stop" type="button" aria-label="停止" onClick={onStop} className={`${roundBtn} bg-m-text text-m-bg active:opacity-80`}>
+						<Square size={14} fill="currentColor" />
+					</button>
+				)}
+				<button
+					key="send"
 					type="button"
 					aria-label="发送"
 					disabled={!canSend}
 					onClick={submit}
-					style={{ gridArea: "send" }}
 					className={`${roundBtn} ${canSend ? "bg-m-accent-soft text-m-accent-soft-text active:opacity-80" : "bg-m-surface-2 text-m-text-3"}`}
 				>
 					{busy ? <Spinner size={18} /> : <ArrowUp size={22} strokeWidth={2} />}
 				</button>
-			)}
+			</div>
 		</div>
 	);
 }

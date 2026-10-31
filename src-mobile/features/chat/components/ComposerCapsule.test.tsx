@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerCapsule } from "./ComposerCapsule";
 
 vi.mock("./useVoiceInput", () => ({
 	useVoiceInput: ({ onTranscribed }: { onTranscribed: (text: string) => void }) => ({ recording: false, transcribing: false, toggleRecording: async () => onTranscribed("转写") }),
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+ vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 // The phone runtime includes iOS 15, which does not expose Promise.withResolvers.
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -53,4 +56,34 @@ describe("ComposerCapsule", () => {
 		fireEvent.click(screen.getByRole("button", { name: "停止" }));
 		expect(onStop).toHaveBeenCalledTimes(1);
 	});
+ it("keeps mobile Enter and IME commits as text while explicit hardware submission sends once", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  const onSend = vi.fn();
+  render(<ComposerCapsule initialText="保留这段输入" placeholder="消息" onPlus={() => {}} onSend={onSend} />);
+  const field = screen.getByRole("textbox") as HTMLTextAreaElement;
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.compositionStart(field);
+  fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+  fireEvent.compositionEnd(field);
+  fireEvent.keyDown(field, { key: "Enter", keyCode: 229, ctrlKey: true });
+  expect(onSend).not.toHaveBeenCalled();
+  expect(field.value).toBe("保留这段输入");
+  fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+  fireEvent.keyDown(field, { key: "Enter", ctrlKey: true, repeat: true });
+  expect(onSend).toHaveBeenCalledExactlyOnceWith("保留这段输入");
+ });
+
+ it("does not reinterpret a retained Send control as Stop when a run begins", () => {
+  const onSend = vi.fn();
+  const onStop = vi.fn();
+  const props = { placeholder: "消息", onPlus: () => {}, onSend, onStop };
+  const view = render(<ComposerCapsule {...props} />);
+  const send = screen.getByRole("button", { name: "发送" });
+  view.rerender(<ComposerCapsule {...props} working />);
+  fireEvent.click(send);
+  expect(onStop).not.toHaveBeenCalled();
+  expect(onSend).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "停止" }));
+  expect(onStop).toHaveBeenCalledTimes(1);
+ });
 });

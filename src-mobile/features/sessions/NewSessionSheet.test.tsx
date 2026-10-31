@@ -51,7 +51,7 @@ describe("NewSessionSheet", () => {
 		const beta = await screen.findByRole("radio", { name: /beta/ });
 		await waitFor(() => expect(beta.getAttribute("aria-checked")).toBe("true"));
 
-		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		fireEvent.click(screen.getByRole("button", { name: "选择模型" }));
 		const opus = await screen.findByRole("option", { name: /Opus/ });
 		expect(screen.queryByRole("button", { name: "上一步" })).not.toBeNull();
 		expect(apiMock).toHaveBeenCalledWith("GET", "/left/roles?cwd=%2Fp%2Fb");
@@ -62,7 +62,7 @@ describe("NewSessionSheet", () => {
 		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
 		expect((await screen.findByRole("radio", { name: /beta/ })).getAttribute("aria-checked")).toBe("true");
 
-		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		fireEvent.click(screen.getByRole("button", { name: "选择模型" }));
 		expect((await screen.findByRole("radio", { name: "高" })).getAttribute("aria-checked")).toBe("true");
 		// catalog is cached per directory: one fetch only
 		expect(apiMock.mock.calls.filter((c) => String(c[1]).startsWith("/left/roles"))).toHaveLength(1);
@@ -117,10 +117,10 @@ describe("NewSessionSheet", () => {
 		});
 		render(<NewSessionSheet open onClose={() => {}} defaultCwd="/p/a" />);
 		await waitFor(() => expect(screen.getByRole("radio", { name: /alpha/ }).getAttribute("aria-checked")).toBe("true"));
-		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		fireEvent.click(screen.getByRole("button", { name: "选择模型" }));
 		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
 		fireEvent.click(screen.getByRole("radio", { name: /beta/ }));
-		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		fireEvent.click(screen.getByRole("button", { name: "选择模型" }));
 		await screen.findByRole("option", { name: /Haiku/ });
 		await act(async () => finishAlpha({ models: MODELS }));
 		expect(screen.queryByRole("option", { name: /Opus/ })).toBeNull();

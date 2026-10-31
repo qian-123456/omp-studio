@@ -28,7 +28,7 @@ export function Chip({
 }) {
 	const cls = `relative inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-m-pill px-2.5 text-m-xs font-medium ${
 		active ? "bg-m-text text-m-bg" : TONES[tone]
-	} ${className}`;
+	}`;
 	const inner = (
 		<>
 			{icon}
@@ -41,11 +41,11 @@ export function Chip({
 				type="button"
 				onClick={onClick}
 				aria-pressed={active}
-				className={`${cls} min-h-11 min-w-11 justify-center active:opacity-70`}
+				className={`group/chip inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill ${className}`}
 			>
-				{inner}
+				<span className={`${cls} group-active/chip:opacity-70`}>{inner}</span>
 			</button>
 		);
 	}
-	return <span className={cls}>{inner}</span>;
+	return <span className={`${cls} ${className}`}>{inner}</span>;
 }

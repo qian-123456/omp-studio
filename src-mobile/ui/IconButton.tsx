@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 export type IconButtonVariant = "filled" | "plain" | "tinted";
 
 const VARIANTS: Record<IconButtonVariant, string> = {
-	filled: "bg-m-surface text-m-text active:bg-m-surface-2",
-	plain: "text-m-text active:bg-m-surface-hover",
-	tinted: "bg-m-accent-soft text-m-accent-soft-text active:opacity-80",
+	filled: "bg-m-surface text-m-text group-active/icon-button:bg-m-surface-2",
+	plain: "text-m-text group-active/icon-button:bg-m-surface-hover",
+	tinted: "bg-m-accent-soft text-m-accent-soft-text group-active/icon-button:opacity-80",
 };
 
 /**
@@ -42,7 +42,7 @@ export function IconButton({
 			aria-pressed={pressed}
 			disabled={disabled}
 			onClick={onClick}
-			className={`relative flex h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill disabled:opacity-35 ${className}`}
+			className={`group/icon-button relative flex h-11 min-w-11 shrink-0 items-center justify-center rounded-m-pill disabled:opacity-35 ${className}`}
 		>
 			<span
 				className={`flex ${disc} items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast) ${VARIANTS[variant]}`}
@@ -52,7 +52,7 @@ export function IconButton({
 			{(badge === true || (typeof badge === "number" && badge > 0)) && (
 				<span
 					aria-hidden
-					className={`absolute top-0.5 right-0.5 flex items-center justify-center rounded-m-pill bg-m-danger font-medium whitespace-nowrap text-m-bg ${
+					className={`absolute top-0.5 right-0.5 flex items-center justify-center rounded-m-pill bg-m-danger font-medium whitespace-nowrap text-white ${
 						badge === true ? "h-2.5 w-2.5" : "h-[18px] min-w-[18px] px-1 text-[11px] leading-none"
 					}`}
 				>

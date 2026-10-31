@@ -1,112 +1,116 @@
-import { Eraser, Undo2, X } from "lucide-react";
+import { Eraser, Trash2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button, IconButton, toast } from "../../ui";
 import { useOverlay } from "../../ui/overlay";
-import { COLOR_NAMES, SKETCH_COLORS, SKETCH_WIDTHS, cappedDpr, extendStroke, startStroke, undoStroke } from "../chat/lib/sketchModel";
-import type { Point, Stroke } from "../chat/lib/sketchModel";
+import {
+	COLOR_NAMES,
+	SKETCH_COLORS,
+	SKETCH_WIDTHS,
+	cappedDpr,
+	extendStroke,
+	replaySketch,
+	resizeSketchCanvas,
+	sketchPoint,
+	startStroke,
+	undoStroke,
+} from "../chat/lib/sketchModel";
+import type { SketchSize, SketchTool, Stroke } from "../chat/lib/sketchModel";
 
 /** Inks shown in the toolbar: the palette without white (the paper is white). */
 const INKS = SKETCH_COLORS.slice(0, 5);
 const WIDTH_NAMES = ["细", "中", "粗"];
 const PAPER = "white";
 
-function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, dpr: number): void {
-	ctx.strokeStyle = s.color;
-	ctx.fillStyle = s.color;
-	ctx.lineWidth = s.width * dpr;
-	ctx.lineCap = "round";
-	ctx.lineJoin = "round";
-	const [first, ...rest] = s.pts;
-	if (!first) return;
-	ctx.beginPath();
-	if (!rest.length) {
-		ctx.arc(first[0] * dpr, first[1] * dpr, (s.width * dpr) / 2, 0, Math.PI * 2);
-		ctx.fill();
-		return;
-	}
-	ctx.moveTo(first[0] * dpr, first[1] * dpr);
-	for (const [x, y] of rest) ctx.lineTo(x * dpr, y * dpr);
-	ctx.stroke();
-}
 
 function SketchOverlay({ onClose, onDone }: { onClose: () => void; onDone: (png: Blob) => void }) {
 	const stageRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const strokes = useRef<Stroke[]>([]);
-	const drawing = useRef(false);
-	const dpr = useRef(1);
+	const drawing = useRef<number | null>(null);
+	const model = useRef<SketchSize | null>(null);
 	const exporting = useRef(false);
+	const mounted = useRef(true);
 	const [color, setColor] = useState<string>(INKS[0]);
 	const [width, setWidth] = useState<number>(SKETCH_WIDTHS[1]);
+	const [tool, setTool] = useState<SketchTool>("pen");
 	const [count, setCount] = useState(0);
+	const [busy, setBusy] = useState(false);
 
 	const redraw = useCallback(() => {
 		const cv = canvasRef.current;
-		const ctx = cv?.getContext("2d");
-		if (!cv || !ctx) return;
-		ctx.fillStyle = PAPER;
-		ctx.fillRect(0, 0, cv.width, cv.height);
-		for (const s of strokes.current) drawStroke(ctx, s, dpr.current);
+		if (cv && model.current) replaySketch(cv, strokes.current, model.current, PAPER);
 	}, []);
 
-	// Measure the stage once after mount; the bitmap is fixed afterwards.
 	useEffect(() => {
 		const stage = stageRef.current;
 		const cv = canvasRef.current;
 		if (!stage || !cv) return;
-		dpr.current = cappedDpr(window.devicePixelRatio);
-		const w = Math.max(1, Math.round(stage.clientWidth));
-		const h = Math.max(1, Math.round(stage.clientHeight));
-		cv.width = w * dpr.current;
-		cv.height = h * dpr.current;
-		cv.style.width = `${w}px`;
-		cv.style.height = `${h}px`;
-		redraw();
+		mounted.current = true;
+		const resize = () => {
+			const size = { width: stage.clientWidth, height: stage.clientHeight };
+			if (size.width <= 0 || size.height <= 0) return;
+			model.current ??= size;
+			drawing.current = null;
+			resizeSketchCanvas(cv, size, model.current, cappedDpr(window.devicePixelRatio));
+			redraw();
+		};
+		const observer = new ResizeObserver(resize);
+		observer.observe(stage);
+		window.addEventListener("resize", resize);
+		resize();
+		return () => {
+			mounted.current = false;
+			observer.disconnect();
+			window.removeEventListener("resize", resize);
+		};
 	}, [redraw]);
 
-	const pos = (e: ReactPointerEvent<HTMLCanvasElement>): Point => {
-		const r = e.currentTarget.getBoundingClientRect();
-		return [e.clientX - r.left, e.clientY - r.top];
-	};
 	const down = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+		if (!model.current || drawing.current !== null || exporting.current) return;
 		e.currentTarget.setPointerCapture(e.pointerId);
-		drawing.current = true;
-		strokes.current = startStroke(strokes.current, color, width, pos(e));
+		drawing.current = e.pointerId;
+		strokes.current = startStroke(strokes.current, color, width, sketchPoint(e.currentTarget, model.current, e.clientX, e.clientY), tool);
+		setCount(strokes.current.length);
 		redraw();
 	};
 	const move = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-		if (!drawing.current) return;
-		extendStroke(strokes.current, pos(e));
+		if (drawing.current !== e.pointerId || !model.current) return;
+		extendStroke(strokes.current, sketchPoint(e.currentTarget, model.current, e.clientX, e.clientY));
 		redraw();
 	};
-	const up = () => {
-		if (!drawing.current) return;
-		drawing.current = false;
-		setCount(strokes.current.length);
+	const up = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+		if (drawing.current === e.pointerId) drawing.current = null;
 	};
 	const undo = () => {
+		drawing.current = null;
 		strokes.current = undoStroke(strokes.current);
 		setCount(strokes.current.length);
 		redraw();
 	};
 	const clear = () => {
+		drawing.current = null;
 		strokes.current = [];
 		setCount(0);
 		redraw();
 	};
 	const done = () => {
 		const cv = canvasRef.current;
-		if (!cv || exporting.current) return;
+		if (!cv || strokes.current.length === 0 || exporting.current) return;
 		// toBlob is async: a second tap before it lands would attach the sketch twice.
+		drawing.current = null;
 		exporting.current = true;
+		setBusy(true);
+		redraw();
 		cv.toBlob((blob) => {
+			if (!mounted.current) return;
 			if (blob) {
 				onClose();
 				onDone(blob);
 			} else {
 				exporting.current = false;
+				setBusy(false);
 				toast("导出失败", { kind: "error" });
 			}
 		}, "image/png");
@@ -117,26 +121,37 @@ function SketchOverlay({ onClose, onDone }: { onClose: () => void; onDone: (png:
 			<div className="flex h-14 shrink-0 items-center gap-1 px-2" style={{ marginTop: "var(--m-safe-top)" }}>
 				<IconButton variant="filled" icon={<X size={22} strokeWidth={1.75} />} label="取消" onClick={onClose} />
 				<div className="min-w-0 flex-1 px-2 text-m-md font-semibold whitespace-nowrap">手绘草图</div>
-				<IconButton icon={<Undo2 size={22} strokeWidth={1.75} />} label="撤销" disabled={count === 0} onClick={undo} />
-				<IconButton icon={<Eraser size={22} strokeWidth={1.75} />} label="清空" disabled={count === 0} onClick={clear} />
-				<Button variant="primary" size="sm" className="ml-1" disabled={count === 0} onClick={done}>
+				<IconButton icon={<Undo2 size={22} strokeWidth={1.75} />} label="撤销" disabled={count === 0 || busy} onClick={undo} />
+				<IconButton icon={<Trash2 size={22} strokeWidth={1.75} />} label="清空" disabled={count === 0 || busy} onClick={clear} />
+				<Button variant="primary" size="sm" className="ml-1 shrink-0 whitespace-nowrap" disabled={count === 0 || busy} onClick={done}>
 					完成
 				</Button>
 			</div>
 			<div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden rounded-t-m-xl bg-white">
 				<canvas
 					ref={canvasRef}
-					className="block touch-none"
+					className="absolute left-0 top-0 block touch-none"
 					onPointerDown={down}
 					onPointerMove={move}
 					onPointerUp={up}
 					onPointerCancel={up}
+					onLostPointerCapture={up}
 				/>
 				<div
 					className="pointer-events-none absolute inset-x-3 flex justify-center"
 					style={{ bottom: "calc(var(--m-safe-bottom) + 16px)" }}
 				>
-					<div role="toolbar" aria-label="画笔" className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center rounded-m-pill bg-m-surface p-1 shadow-m-pop">
+					<div role="toolbar" aria-label="画笔" className="pointer-events-auto flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap rounded-m-pill bg-m-surface p-1 shadow-m-pop">
+						<button
+							type="button"
+							aria-label="橡皮擦"
+							aria-pressed={tool === "eraser"}
+							onClick={() => setTool(tool === "eraser" ? "pen" : "eraser")}
+							className={`flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-m-pill px-3 ${tool === "eraser" ? "bg-m-surface-2" : "active:bg-m-surface-hover"}`}
+						>
+							<Eraser size={20} strokeWidth={1.75} />
+							<span className="text-m-xs">橡皮</span>
+						</button>
 						{SKETCH_WIDTHS.map((w, i) => (
 							<button
 								key={w}
@@ -155,13 +170,16 @@ function SketchOverlay({ onClose, onDone }: { onClose: () => void; onDone: (png:
 								key={c}
 								type="button"
 								aria-label={COLOR_NAMES[c] ?? c}
-								aria-pressed={color === c}
-								onClick={() => setColor(c)}
+								aria-pressed={tool === "pen" && color === c}
+								onClick={() => {
+									setColor(c);
+									setTool("pen");
+								}}
 								className="flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill"
 							>
 								<span
 									className={`h-7 w-7 rounded-m-pill transition-shadow duration-(--m-dur-fast) ${
-										color === c ? "ring-2 ring-m-accent ring-offset-2 ring-offset-m-surface" : ""
+										tool === "pen" && color === c ? "ring-2 ring-m-accent ring-offset-2 ring-offset-m-surface" : ""
 									}`}
 									style={{ backgroundColor: c }}
 								/>

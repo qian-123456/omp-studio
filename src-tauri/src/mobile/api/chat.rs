@@ -389,6 +389,221 @@ fn plan_enabled(id: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn plan_string(value: Option<&Value>) -> Option<&str> {
+    value.and_then(Value::as_str).filter(|s| !s.is_empty())
+}
+
+/// Mobile-only projection of the desktop parser; shared contracts stay frozen.
+fn normalize_plan_status(raw: &Value, persisted: bool) -> Option<Value> {
+    if !raw.is_object() || (!persisted && raw.get("v").and_then(Value::as_u64) != Some(1)) {
+        return None;
+    }
+    let mut out = json!({
+        "enabled": false, "phase": "planning", "planFile": null, "planUrl": null,
+        "title": null, "content": null, "prevContent": null, "version": 0,
+        "planModel": null, "tiers": [], "defaultRole": "default",
+        "contextPercent": null, "keepDisabled": false, "approved": null,
+    });
+    if raw.get("enabled").and_then(Value::as_bool) == Some(true) {
+        out["enabled"] = json!(true);
+        out["phase"] = json!(
+            if raw.get("phase").and_then(Value::as_str) == Some("review") {
+                "review"
+            } else {
+                "planning"
+            }
+        );
+        for key in ["planFile", "planUrl", "title", "prevContent", "planModel"] {
+            out[key] = json!(plan_string(raw.get(key)));
+        }
+        out["content"] = json!(plan_string(raw.get(if persisted {
+            "lastContent"
+        } else {
+            "content"
+        })));
+        out["version"] = raw
+            .get("version")
+            .filter(|v| v.is_number())
+            .cloned()
+            .unwrap_or(json!(0));
+        out["tiers"] = json!(raw
+            .get("tiers")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| Some(
+                json!({"role": t.get("role")?.as_str()?, "spec": t.get("spec")?.as_str()?})
+            ))
+            .collect::<Vec<_>>());
+        out["defaultRole"] = json!(plan_string(raw.get("defaultRole")).unwrap_or("default"));
+        out["contextPercent"] = raw
+            .get("contextPercent")
+            .filter(|v| v.is_number())
+            .cloned()
+            .unwrap_or(Value::Null);
+        out["keepDisabled"] = json!(raw.get("keepDisabled").and_then(Value::as_bool) == Some(true));
+    } else if let Some(a) = raw.get("approved").filter(|a| a.is_object()) {
+        if plan_string(a.get("content")).is_some()
+            && matches!(
+                a.get("status").and_then(Value::as_str),
+                Some("executing" | "completed" | "failed" | "handoff")
+            )
+        {
+            out["approved"] = json!({
+                "planFile": plan_string(a.get("planFile")), "planUrl": plan_string(a.get("planUrl")),
+                "title": plan_string(a.get("title")), "content": plan_string(a.get("content")),
+                "prevContent": plan_string(a.get("prevContent")),
+                "version": a.get("version").filter(|v| v.is_number()).cloned().unwrap_or(json!(1)),
+                "status": a.get("status"), "error": plan_string(a.get("error")),
+            });
+        }
+    }
+    Some(out)
+}
+
+/// Parse only complete matching custom records, never transcript message objects.
+fn read_saved_plan(file: &FsPath) -> std::io::Result<Option<Value>> {
+    use std::io::{BufRead, BufReader};
+    let file = match std::fs::File::open(file) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    let mut latest = None;
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line)? == 0 || line.last() != Some(&b'\n') {
+            break;
+        }
+        if !line
+            .windows(b"ompws-plan-state".len())
+            .any(|w| w == b"ompws-plan-state")
+        {
+            continue;
+        }
+        let Ok(mut entry) = serde_json::from_slice::<Value>(&line) else {
+            continue;
+        };
+        if entry.get("type").and_then(Value::as_str) == Some("custom")
+            && entry.get("customType").and_then(Value::as_str) == Some("ompws-plan-state")
+            && entry.get("data").is_some_and(Value::is_object)
+        {
+            latest = Some(entry["data"].take());
+        }
+    }
+    Ok(latest)
+}
+
+fn plan_local_roots(file: &FsPath, id: &str) -> [PathBuf; 2] {
+    [
+        file.with_extension("").join("local"),
+        std::env::temp_dir().join("omp-local").join(id),
+    ]
+}
+
+/// Restore missing bodies only from regular files inside this session's local roots.
+fn read_local_plan(path: &str, file: &FsPath, id: &str) -> Option<String> {
+    use std::io::Read;
+    const MAX_PLAN_BYTES: u64 = 512 * 1024;
+    let requested = FsPath::new(path);
+    if !requested.is_absolute()
+        || requested
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    let canon = std::fs::canonicalize(requested).ok()?;
+    if !plan_local_roots(file, id)
+        .iter()
+        .filter_map(|p| std::fs::canonicalize(p).ok())
+        .any(|root| canon.starts_with(root))
+    {
+        return None;
+    }
+    let opened = std::fs::File::open(canon).ok()?;
+    let metadata = opened.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_PLAN_BYTES {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    opened
+        .take(MAX_PLAN_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > MAX_PLAN_BYTES {
+        return None;
+    }
+    String::from_utf8(bytes)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
+fn restore_plan_body(raw: &mut Value, persisted: bool, file: &FsPath, id: &str) {
+    let target = if raw.get("enabled").and_then(Value::as_bool) == Some(true) {
+        Some((raw, if persisted { "lastContent" } else { "content" }))
+    } else {
+        raw.get_mut("approved")
+            .filter(|a| a.is_object())
+            .map(|a| (a, "content"))
+    };
+    let Some((target, key)) = target else { return };
+    if plan_string(target.get(key)).is_none() {
+        if let Some(content) =
+            plan_string(target.get("planFile")).and_then(|p| read_local_plan(p, file, id))
+        {
+            target[key] = json!(content);
+        }
+    }
+    if !persisted {
+        return;
+    }
+    let path = plan_string(target.get("planFile"));
+    let title = plan_string(target.get(key))
+        .and_then(|body| body.lines().find_map(|line| line.strip_prefix("# ")))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| path.and_then(|p| FsPath::new(p).file_stem()?.to_str()))
+        .map(str::to_string);
+    let url = path.and_then(|p| {
+        let p = FsPath::new(p);
+        let roots = plan_local_roots(file, id);
+        roots
+            .iter()
+            .find_map(|root| p.strip_prefix(root).ok())
+            .or_else(|| p.file_name().map(FsPath::new))
+            .map(|p| format!("local://{}", p.to_string_lossy().replace('\\', "/")))
+    });
+    if plan_string(target.get("title")).is_none() {
+        target["title"] = json!(title)
+    }
+    target["planUrl"] = json!(url);
+}
+
+pub(super) async fn plan_status(id: &str, file: &str) -> Result<Option<Value>, ApiError> {
+    let live = crate::rpc::get_handle(id)
+        .and_then(|h| h.plan_status.lock().clone())
+        .filter(|v| v.get("v").and_then(Value::as_u64) == Some(1));
+    let id = id.to_string();
+    let file = PathBuf::from(file);
+    tokio::task::spawn_blocking(move || {
+        let persisted = live.is_none();
+        let Some(mut raw) = (match live {
+            Some(raw) => Some(raw),
+            None => read_saved_plan(&file)?,
+        }) else {
+            return Ok(None);
+        };
+        restore_plan_body(&mut raw, persisted, &file, &id);
+        Ok(normalize_plan_status(&raw, persisted))
+    })
+    .await
+    .map_err(|e| bad_gateway(e.to_string()))?
+    .map_err(|e: std::io::Error| bad_gateway(e.to_string()))
+}
+
 fn valid_behavior(b: &str) -> bool {
     matches!(b, "steer" | "followUp")
 }
@@ -407,6 +622,59 @@ fn uploads_dir(state: &AppState, session_id: &str) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| crate::paths::data_dir());
     base.join("mobile-uploads").join(session_id)
+}
+
+/// Client image paths must remain inside this parent session's upload directory.
+pub(super) async fn uploaded_image_paths(
+    state: &AppState,
+    id: &str,
+    paths: Vec<String>,
+) -> Result<Vec<String>, ApiError> {
+    if paths.is_empty() {
+        return Ok(paths);
+    }
+    let root = uploads_dir(state, id);
+    tokio::task::spawn_blocking(move || validate_uploaded_image_paths(&root, paths))
+        .await
+        .map_err(|e| bad_gateway(e.to_string()))?
+}
+
+fn validate_uploaded_image_paths(
+    root: &FsPath,
+    mut paths: Vec<String>,
+) -> Result<Vec<String>, ApiError> {
+    use std::io::Read;
+    let root = std::fs::canonicalize(root).map_err(|_| bad_request("图片上传目录不存在"))?;
+    let mut total = 0u64;
+    for path in &mut paths {
+        let canon = std::fs::canonicalize(&*path).map_err(|_| bad_request("上传图片不存在"))?;
+        if !canon.starts_with(&root) {
+            return Err(err(StatusCode::FORBIDDEN, "图片不在当前会话上传目录内"));
+        }
+        let mut file = std::fs::File::open(&canon).map_err(|_| bad_request("上传图片无法读取"))?;
+        let metadata = file.metadata().map_err(|_| bad_request("上传图片不存在"))?;
+        total = total.saturating_add(metadata.len());
+        if !metadata.is_file()
+            || metadata.len() == 0
+            || metadata.len() > MAX_UPLOAD as u64
+            || total > MAX_PROMPT_BODY as u64
+        {
+            return Err(bad_request("图片为空、不是文件或超过上传上限"));
+        }
+        // Match the native pipeline's format guard without rereading/encoding its payload.
+        let mut header = [0u8; 13];
+        let size = metadata.len().min(header.len() as u64) as usize;
+        file.read_exact(&mut header[..size])
+            .map_err(|_| bad_request("上传图片无法读取"))?;
+        if super::media::sniff(&header[..size]).is_none() {
+            return Err(bad_request("不支持的图片格式（仅 png/jpeg/gif/webp）"));
+        }
+        *path = canon
+            .into_os_string()
+            .into_string()
+            .map_err(|_| bad_request("图片路径不是有效的 UTF-8"))?;
+    }
+    Ok(paths)
 }
 
 /// First free path for `name` in `dir`; adds a random prefix on collision.
@@ -1499,6 +1767,11 @@ async fn composer_state<B: Backend>(
     } else {
         context_usage(st.as_ref(), snapshot_tokens)
     };
+    let plan_status = if is_draft {
+        None
+    } else {
+        plan_status(&id, &meta.file).await?
+    };
     Ok(Json(json!({
         "live": st.is_some(),
         "streaming": streaming,
@@ -1507,7 +1780,8 @@ async fn composer_state<B: Backend>(
         "contextPercent": usage.percent,
         "model": model,
         "thinkingLevel": draft_thinking.or_else(|| st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned()),
-        "planMode": plan_enabled(&id),
+        "planMode": plan_status.as_ref().and_then(|s| s.get("enabled")).and_then(Value::as_bool).unwrap_or(false),
+        "planStatus": plan_status,
         "goal": st.as_ref().map_or(Value::Null, goal_json),
         "fastMode": st.as_ref().and_then(|s| s.get("fastModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
         "slowMode": st.as_ref().and_then(|s| s.get("slowModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
@@ -1774,6 +2048,165 @@ async fn plan_set<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_status_matches_desktop_defaults_and_approved_states() {
+        assert!(normalize_plan_status(&json!({"enabled": true}), false).is_none());
+        let planning = normalize_plan_status(&json!({
+            "enabled": true, "phase": "review", "lastContent": "# Plan\nBody", "prevContent": "Before", "version": 3,
+            "tiers": [{"role": "fast", "spec": "p/m"}, {"role": false, "spec": "bad"}],
+        }), true).unwrap();
+        assert_eq!(planning["content"], "# Plan\nBody");
+        assert_eq!(planning["prevContent"], "Before");
+        assert_eq!(planning["version"], 3);
+        assert_eq!(planning["defaultRole"], "default");
+        assert_eq!(planning["tiers"], json!([{"role": "fast", "spec": "p/m"}]));
+        for state in ["executing", "completed", "failed", "handoff"] {
+            let approved = normalize_plan_status(&json!({"v": 1, "enabled": false,
+                "approved": {"content": "Approved snapshot", "status": state, "error": "aborted"}
+            }), false).unwrap();
+            assert_eq!(approved["enabled"], false);
+            assert_eq!(approved["approved"]["content"], "Approved snapshot");
+            assert_eq!(approved["approved"]["status"], state);
+            assert_eq!(approved["approved"]["version"], 1);
+        }
+        let invalid = normalize_plan_status(
+            &json!({"v": 1, "enabled": false,
+            "approved": {"content": "Body", "status": "working"}}),
+            false,
+        )
+        .unwrap();
+        assert!(invalid["approved"].is_null());
+        assert!(invalid["content"].is_null());
+    }
+
+    #[test]
+    fn saved_plan_uses_latest_complete_custom_record_only() {
+        let dir = std::env::temp_dir().join(format!("mobile-plan-lines-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("s.jsonl");
+        let entries = [
+            json!({"type": "custom", "customType": "ompws-plan-state", "data": {"enabled": true, "lastContent": "Old"}}),
+            json!({"type": "message", "customType": "ompws-plan-state", "data": {"enabled": true}}),
+            json!({"type": "custom", "customType": "other", "data": {"enabled": true}}),
+            json!({"type": "custom", "customType": "ompws-plan-state", "data": {"enabled": false}}),
+        ];
+        let mut body = entries.iter().map(|v| format!("{v}\n")).collect::<String>();
+        body.push_str("{bad ompws-plan-state}\n");
+        body.push_str(
+            r#"{"type":"custom","customType":"ompws-plan-state","data":{"enabled":true}}"#,
+        );
+        std::fs::write(&file, body).unwrap();
+        assert_eq!(
+            read_saved_plan(&file).unwrap(),
+            Some(json!({"enabled": false}))
+        );
+        assert_eq!(read_saved_plan(&dir.join("missing.jsonl")).unwrap(), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cold_plan_snapshot_restores_without_waking_session() {
+        let id = format!("mobile-plan-cold-{}", uuid::Uuid::new_v4());
+        let dir = std::env::temp_dir().join(&id);
+        let file = dir.join("s.jsonl");
+        let local = file.with_extension("").join("local");
+        std::fs::create_dir_all(&local).unwrap();
+        let plan = local.join("task-plan.md");
+        std::fs::write(&plan, "# Actual plan\nReal body").unwrap();
+        let entry = json!({"type": "custom", "customType": "ompws-plan-state", "data": {
+            "enabled": false, "approved": {"planFile": plan, "content": "Approved before edits", "status": "executing", "version": 2}
+        }});
+        std::fs::write(&file, format!("{entry}\n")).unwrap();
+        let status = plan_status(&id, file.to_str().unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status["approved"]["content"], "Approved before edits");
+        assert_eq!(status["approved"]["status"], "executing");
+        assert_eq!(status["approved"]["planUrl"], "local://task-plan.md");
+        assert!(crate::rpc::get_handle(&id).is_none());
+        let entry = json!({"type": "custom", "customType": "ompws-plan-state", "data": {
+            "enabled": true, "planFile": plan, "phase": "review", "version": 1
+        }});
+        std::fs::write(&file, format!("{entry}\n")).unwrap();
+        let status = plan_status(&id, file.to_str().unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status["content"], "# Actual plan\nReal body");
+        assert_eq!(status["title"], "Actual plan");
+        assert!(crate::rpc::get_handle(&id).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_plan_body_is_bounded_and_session_local() {
+        let id = format!("mobile-plan-file-{}", uuid::Uuid::new_v4());
+        let dir = std::env::temp_dir().join(&id);
+        let file = dir.join("s.jsonl");
+        let local = file.with_extension("").join("local");
+        std::fs::create_dir_all(&local).unwrap();
+        let outside = dir.join("outside.md");
+        std::fs::write(&outside, "Outside").unwrap();
+        assert!(read_local_plan(outside.to_str().unwrap(), &file, &id).is_none());
+        assert!(read_local_plan(local.to_str().unwrap(), &file, &id).is_none());
+        let huge = local.join("huge-plan.md");
+        std::fs::write(&huge, vec![b'x'; 512 * 1024 + 1]).unwrap();
+        assert!(read_local_plan(huge.to_str().unwrap(), &file, &id).is_none());
+        #[cfg(unix)]
+        {
+            let link = local.join("linked-plan.md");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(read_local_plan(link.to_str().unwrap(), &file, &id).is_none());
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn sidechat_images_are_validated_inside_parent_uploads_before_creation() {
+        let dir = std::env::temp_dir().join(format!("mobile-side-images-{}", uuid::Uuid::new_v4()));
+        let uploads = dir.join("parent-uploads");
+        std::fs::create_dir_all(&uploads).unwrap();
+        let image = uploads.join("image.png");
+        let png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==").unwrap();
+        std::fs::write(&image, &png).unwrap();
+        let path = image.to_string_lossy().to_string();
+        assert_eq!(
+            validate_uploaded_image_paths(&uploads, vec![path.clone()])
+                .unwrap()
+                .len(),
+            1
+        );
+        let invalid = uploads.join("invalid.png");
+        std::fs::write(&invalid, "not an image").unwrap();
+        assert!(validate_uploaded_image_paths(
+            &uploads,
+            vec![invalid.to_string_lossy().into_owned()]
+        )
+        .is_err());
+        let outside = dir.join("outside.png");
+        std::fs::write(&outside, &png).unwrap();
+        let outside_path = outside.to_string_lossy().into_owned();
+        assert_eq!(
+            validate_uploaded_image_paths(&uploads, vec![outside_path])
+                .unwrap_err()
+                .0,
+            StatusCode::FORBIDDEN
+        );
+        #[cfg(unix)]
+        {
+            let link = uploads.join("link.png");
+            std::os::unix::fs::symlink(outside, &link).unwrap();
+            assert_eq!(
+                validate_uploaded_image_paths(&uploads, vec![link.to_string_lossy().into_owned()])
+                    .unwrap_err()
+                    .0,
+                StatusCode::FORBIDDEN
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn plan_command_is_explicit() {

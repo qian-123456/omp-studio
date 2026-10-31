@@ -1,6 +1,7 @@
-import { ArrowUp, CornerDownLeft, ExternalLink, MessagesSquare, Sparkles, Wrench } from "lucide-react";
+import { Camera, CornerDownLeft, ExternalLink, FileText, ImagePlus, MessagesSquare, Paperclip, RefreshCw, Sparkles, Wrench, X } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { api, errorMessage } from "../../core/api";
+import { api, errorMessage, upload } from "../../core/api";
+import { imageFromBlob } from "../../core/lib/images";
 import { relTime, sessionName } from "../../core/lib/format";
 import { appendUnique, normalizeTranscript } from "../../core/normalize";
 import { nav, paths } from "../../core/nav";
@@ -20,12 +21,21 @@ import {
 	Markdown,
 	PageHeader,
 	PullToRefresh,
-	Spinner,
 	toast,
 } from "../../ui";
 import { loadUnsent, saveUnsent } from "../chat/lib/unsent";
 import { LoadGate, Loading } from "./PanelState";
 import { useLayer, useLoad, useResync } from "./hooks";
+import type { Attachment } from "../chat/chatStore";
+import { ComposerCapsule } from "../chat/components/ComposerCapsule";
+import type { ComposerApi } from "../chat/components/ComposerCapsule";
+import { ActionTile } from "../chat/components/Composer";
+import { attachmentBlocker, buildPrompt } from "../chat/lib/prompt";
+import { WorkspacePanelBar } from "./WorkspacePanelBar";
+
+type SidechatImage = { mime: string; data: string };
+type SidechatMessage = { text: string; imagePaths: string[]; images: SidechatImage[] };
+type SidechatAttachment = Attachment & { file: File; image?: SidechatImage };
 
 export const HANDBACK_MARKER = "【回传整理】";
 export const HANDBACK_PROMPT = `${HANDBACK_MARKER}请把我们在这个辅助对话里讨论并确定下来的内容，整理成一份可以交给主会话的结论。
@@ -84,9 +94,9 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 		sessionStorage.removeItem(draftKey);
 	}, [draftKey]);
 
-	const create = async (question: string): Promise<boolean> => {
+	const create = async ({ text: question, imagePaths }: SidechatMessage): Promise<boolean> => {
 		try {
-			const info = await api<{ sessionId: string }>("POST", `/sessions/${q(sessionId)}/sidechats`, { question });
+			const info = await api<{ sessionId: string }>("POST", `/sessions/${q(sessionId)}/sidechats`, { question, imagePaths });
 			void useSessions.getState().refresh();
 			onOpen(info.sessionId);
 			return true;
@@ -99,6 +109,7 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader title="辅助对话" subtitle="不打断主对话的追问" />
+			<WorkspacePanelBar sessionId={sessionId} current="sidechat" />
 			<PullToRefresh onRefresh={() => state.reload(true)}>
 				<LoadGate state={state}>
 					{(rows) =>
@@ -133,7 +144,7 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 					}
 				</LoadGate>
 			</PullToRefresh>
-			<Composer placeholder="问一个问题，开始辅助对话" onSend={create} initialText={draft} />
+			<Composer sessionId={sessionId} placeholder="问一个问题，开始辅助对话" onSend={create} initialText={draft} />
 		</div>
 	);
 }
@@ -150,6 +161,7 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 	const inflight = useRef(false);
 	const again = useRef(false);
 	const alive = useRef(true);
+	const fetchTimer = useRef(0);
 	const scroller = useRef<HTMLDivElement>(null);
 	const stick = useRef(true);
 
@@ -194,6 +206,11 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 			}
 		}
 	}, [threadId]);
+	const scheduleFetch = useCallback(() => {
+		window.clearTimeout(fetchTimer.current);
+		if (!alive.current || document.visibilityState === "hidden") return;
+		fetchTimer.current = window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+	}, [fetchThread]);
 
 	const working = session?.status === "working";
 
@@ -203,7 +220,7 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		setSummarizing(true);
 		try {
 			await api("POST", `/sessions/${q(threadId)}/prompt`, { text: HANDBACK_PROMPT });
-			window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+			scheduleFetch();
 		} catch (e) {
 			summaryRun.current = "idle";
 			setSummarizing(false);
@@ -262,21 +279,25 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 	useEffect(() => {
 		alive.current = true;
 		void fetchThread();
-		let timer = 0;
 		const off = events.on("rpc", (d) => {
 			if (d.sessionId !== threadId) return;
 			if (summaryRun.current === "running" && d.frame.type === "agent_end" && d.frame.isTerminal !== false) {
 				summaryRun.current = "terminal";
 			}
-			window.clearTimeout(timer);
-			timer = window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+			scheduleFetch();
 		});
+		const onVisibility = () => {
+			window.clearTimeout(fetchTimer.current);
+			if (document.visibilityState === "visible") void fetchThread();
+		};
+		document.addEventListener("visibilitychange", onVisibility);
 		return () => {
 			alive.current = false;
 			off();
-			window.clearTimeout(timer);
+			window.clearTimeout(fetchTimer.current);
+			document.removeEventListener("visibilitychange", onVisibility);
 		};
-	}, [threadId, fetchThread]);
+	}, [threadId, fetchThread, scheduleFetch]);
 	useResync(() => void fetchThread());
 
 	// Keep pinned to the bottom unless the user scrolled up.
@@ -286,12 +307,12 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		if (el && stick.current) el.scrollTop = el.scrollHeight;
 	}, [items, pending]);
 
-	const send = async (text: string): Promise<boolean> => {
+	const send = async ({ text, images }: SidechatMessage): Promise<boolean> => {
 		try {
-			await api("POST", `/sessions/${q(threadId)}/prompt`, { text });
+			await api("POST", `/sessions/${q(threadId)}/prompt-ex`, { text, images, ...(working ? { streamingBehavior: "followUp" } : {}) });
 			setPending((p) => [...p, text]);
 			stick.current = true;
-			window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+			scheduleFetch();
 			return true;
 		} catch (e) {
 			toast(`发送失败：${errorMessage(e)}`, { kind: "error" });
@@ -308,14 +329,13 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 					subtitle={working ? <span className="m-shimmer whitespace-nowrap">正在回复</span> : "独立旁聊"}
 					onBack={onClose}
 					right={
-						<IconButton
-							variant="filled"
-							icon={<ExternalLink size={20} strokeWidth={1.75} />}
-							label="打开完整会话"
-							onClick={() => nav.push(paths.chat(threadId))}
-						/>
+						<div className="flex items-center gap-1">
+							{items.length > 0 && <IconButton variant="tinted" icon={<CornerDownLeft size={20} strokeWidth={1.75} />} label="整理结论发回主对话" onClick={openHandback} />}
+							<IconButton variant="filled" icon={<ExternalLink size={20} strokeWidth={1.75} />} label="打开完整会话" onClick={() => nav.push(paths.chat(threadId))} />
+						</div>
 					}
 				/>
+				<WorkspacePanelBar sessionId={parentId} current="sidechat" />
 				<div
 					ref={scroller}
 					onScroll={(e) => {
@@ -340,18 +360,10 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 					))}
 					{working && <div className="m-shimmer text-m-sm text-m-text-3">思考中</div>}
 				</div>
-				{items.length > 0 && (
-					<div className="flex shrink-0 justify-center px-4 pb-1">
-						<Button
-							variant="accent"
-							icon={<CornerDownLeft size={16} strokeWidth={1.75} />}
-							onClick={openHandback}
-						>
-							整理结论发回主对话
-						</Button>
-					</div>
-				)}
-				<Composer placeholder="继续追问" onSend={send} />
+				<Composer sessionId={threadId} placeholder="继续追问" onSend={send} working={working} onStop={async () => {
+					try { await api("POST", `/sessions/${q(threadId)}/abort`); }
+					catch (e) { toast(`停止失败：${errorMessage(e)}`, { kind: "error" }); }
+				}} />
 			</div>
 			<BottomSheet
 				open={handbackOpen}
@@ -451,93 +463,115 @@ function argSummary(args: unknown): string {
 	return "";
 }
 
-/** Floating capsule composer, uncontrolled: only the empty↔non-empty flag is React state; IME-safe autosize. */
-function Composer({
-	placeholder,
-	onSend,
-	initialText = "",
-}: {
+/** Child-session adapter: shared IME/voice capsule, real uploads, and no main-chat store mutations. */
+function Composer({ sessionId, placeholder, onSend, initialText = "", working = false, onStop }: {
+	sessionId: string;
 	placeholder: string;
-	onSend: (text: string) => Promise<boolean>;
-	/** Prefilled once on mount (focused, caret at the end). */
+	onSend: (message: SidechatMessage) => Promise<boolean>;
 	initialText?: string;
+	working?: boolean;
+	onStop?: () => Promise<void>;
 }) {
-	const ref = useRef<HTMLTextAreaElement>(null);
-	const composing = useRef(false);
-	const raf = useRef(0);
-	const [hasText, setHasText] = useState(false);
-	const hasRef = useRef(false);
+	const apiRef = useRef<ComposerApi | null>(null);
 	const [sending, setSending] = useState(false);
-
-	useEffect(() => () => cancelAnimationFrame(raf.current), []);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only prefill
+	const sendingRef = useRef(false);
+	const [plusOpen, setPlusOpen] = useState(false);
+	const [atts, setAtts] = useState<SidechatAttachment[]>([]);
+	const attsRef = useRef(atts);
+	attsRef.current = atts;
+	const nextId = useRef(0);
+	const alive = useRef(true);
+	const uploads = useRef(new Map<number, AbortController>());
+	const fileAny = useRef<HTMLInputElement>(null);
+	const fileCamera = useRef<HTMLInputElement>(null);
+	const fileGallery = useRef<HTMLInputElement>(null);
 	useEffect(() => {
-		const el = ref.current;
-		if (!el || !initialText) return;
-		el.value = initialText;
-		onInput();
-		el.focus();
-		el.setSelectionRange(el.value.length, el.value.length);
-	}, []);
-
-	const resize = () => {
-		raf.current = 0;
-		const el = ref.current;
-		if (!el) return;
-		el.style.height = "auto";
-		el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+		alive.current = true;
+		if (initialText) apiRef.current?.focus();
+		return () => {
+			alive.current = false;
+			for (const ctl of uploads.current.values()) ctl.abort();
+			uploads.current.clear();
+			for (const att of attsRef.current) if (att.url) URL.revokeObjectURL(att.url);
+		};
+	}, [initialText]);
+	const patchAtt = (id: number, patch: Partial<SidechatAttachment>) => {
+		if (alive.current) setAtts((prev) => prev.map((att) => att.id === id ? { ...att, ...patch } : att));
 	};
-	const onInput = () => {
-		const el = ref.current;
-		if (!el) return;
-		const has = el.value.trim().length > 0;
-		if (has !== hasRef.current) {
-			hasRef.current = has;
-			setHasText(has);
+	const uploadAtt = async (att: SidechatAttachment) => {
+		const ctl = new AbortController();
+		uploads.current.set(att.id, ctl);
+		patchAtt(att.id, { status: "up", err: undefined });
+		try {
+			let image: SidechatImage | undefined;
+			if (att.isImage) image = await imageFromBlob(att.file);
+			if (ctl.signal.aborted) return;
+			const result = await upload<{ path: string }>(`/sessions/${q(sessionId)}/upload`, att.file, { name: att.name, signal: ctl.signal });
+			patchAtt(att.id, { status: "ok", path: result.path, image });
+		} catch (e) {
+			if (!ctl.signal.aborted) { patchAtt(att.id, { status: "err", err: errorMessage(e) }); toast(`上传失败：${errorMessage(e)}`, { kind: "error" }); }
+		} finally { if (uploads.current.get(att.id) === ctl) uploads.current.delete(att.id); }
+	};
+	const addFiles = (files: readonly File[]) => {
+		for (const file of files) {
+			if (file.size > 20 * 1024 * 1024) { toast(`「${file.name}」超过 20MB 上限，无法上传`, { kind: "error" }); continue; }
+			const isImage = file.type.startsWith("image/");
+			const att: SidechatAttachment = { id: ++nextId.current, name: file.name || "附件", isImage, url: isImage ? URL.createObjectURL(file) : "", status: "up", file };
+			setAtts((prev) => [...prev, att]);
+			void uploadAtt(att);
 		}
-		if (!composing.current && !raf.current) raf.current = requestAnimationFrame(resize);
 	};
-	const submit = async () => {
-		const el = ref.current;
-		const text = el?.value.trim() ?? "";
-		if (!el || !text || sending) return;
+	const pickFiles = (input: HTMLInputElement) => {
+		const files = Array.from(input.files ?? []);
+		input.value = "";
+		addFiles(files);
+	};
+	const removeAtt = (att: SidechatAttachment) => {
+		uploads.current.get(att.id)?.abort();
+		uploads.current.delete(att.id);
+		if (att.url) URL.revokeObjectURL(att.url);
+		setAtts((prev) => prev.filter((item) => item.id !== att.id));
+	};
+	const submit = async (text: string) => {
+		if (sendingRef.current) return;
+		const blocker = attachmentBlocker(atts);
+		if (blocker) { toast(blocker, { kind: "error" }); return; }
+		const prompt = buildPrompt(text.trim(), atts);
+		if (!prompt) return;
+		sendingRef.current = true;
 		setSending(true);
-		const ok = await onSend(text);
-		setSending(false);
-		if (ok) {
-			el.value = "";
-			hasRef.current = false;
-			setHasText(false);
-			el.style.height = "auto";
-		}
+		try {
+			const ok = await onSend({ text: prompt, imagePaths: atts.flatMap((att) => att.isImage && att.path ? [att.path] : []), images: atts.flatMap((att) => att.image ? [att.image] : []) });
+			if (ok && alive.current) {
+				if (apiRef.current?.get() === text) apiRef.current.clear();
+				for (const att of atts) if (att.url) URL.revokeObjectURL(att.url);
+				setAtts((prev) => prev.filter((att) => !atts.some((sent) => sent.id === att.id)));
+			}
+		} finally { sendingRef.current = false; if (alive.current) setSending(false); }
 	};
+	const attachments = atts.length > 0 ? (
+		<div className="m-noscrollbar flex gap-2 overflow-x-auto pb-2">
+			{atts.map((att) => <div key={att.id} className="flex w-52 shrink-0 items-center gap-2 rounded-m-md bg-m-surface p-2">
+				{att.isImage ? <img src={att.url} alt={att.name} className="h-12 w-12 rounded-m-sm object-cover" /> : <FileText size={24} className="shrink-0 text-m-text-2" />}
+				<div className="min-w-0 flex-1"><span className="block break-all text-m-xs text-m-text">{att.name}</span><span role="status" className={`block text-m-xs ${att.status === "err" ? "text-m-danger" : "text-m-text-3"}`}>{att.status === "up" ? "上传中" : att.status === "err" ? att.err : "已上传"}</span></div>
+				{att.status === "err" && <IconButton label={`重试上传 ${att.name}`} icon={<RefreshCw size={18} />} disabled={sending} onClick={() => void uploadAtt(att)} />}
+				<IconButton label={`移除 ${att.name}`} icon={<X size={18} />} disabled={sending} onClick={() => removeAtt(att)} />
+			</div>)}
+		</div>
+	) : undefined;
 	return (
-		<div className="shrink-0 px-4 pt-1" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 10px)" }}>
-			<div className="flex min-h-14 items-end gap-2 rounded-(--m-composer-radius) bg-m-composer-bg py-2 pr-2 pl-5 shadow-m-composer">
-				<textarea
-					ref={ref}
-					rows={1}
-					placeholder={placeholder}
-					aria-label={placeholder}
-					enterKeyHint="send"
-					onInput={onInput}
-					onCompositionStart={() => {
-						composing.current = true;
-					}}
-					onCompositionEnd={() => {
-						composing.current = false;
-						onInput();
-					}}
-					className="max-h-40 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2 text-m-md text-m-text outline-none placeholder:text-m-text-3"
-				/>
-				<IconButton
-					variant="tinted"
-					label="发送"
-					disabled={!hasText || sending}
-					onClick={() => void submit()}
-					icon={sending ? <Spinner size={18} /> : <ArrowUp size={20} strokeWidth={2} />}
-				/>
-			</div>
+		<div className="shrink-0 px-4 pt-1" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}>
+			<ComposerCapsule apiRef={apiRef} placeholder={placeholder} initialText={initialText} busy={sending} working={working} hasExtra={atts.length > 0} top={attachments} onPlus={() => setPlusOpen(true)} onSend={(text) => void submit(text)} onStop={onStop ? () => void onStop() : undefined} />
+			<input ref={fileAny} type="file" multiple hidden onChange={(e) => pickFiles(e.currentTarget)} />
+			<input ref={fileCamera} type="file" accept="image/png,image/jpeg,image/gif,image/webp" capture="environment" hidden onChange={(e) => pickFiles(e.currentTarget)} />
+			<input ref={fileGallery} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => pickFiles(e.currentTarget)} />
+			<BottomSheet open={plusOpen} onClose={() => setPlusOpen(false)} title="添加附件">
+				<div className="grid grid-cols-3 gap-3 px-4 pb-4">
+					<ActionTile icon={<Paperclip size={24} />} label="文件" disabled={sending} onClick={() => { setPlusOpen(false); fileAny.current?.click(); }} />
+					<ActionTile icon={<Camera size={24} />} label="拍照" disabled={sending} onClick={() => { setPlusOpen(false); fileCamera.current?.click(); }} />
+					<ActionTile icon={<ImagePlus size={24} />} label="相册" disabled={sending} onClick={() => { setPlusOpen(false); fileGallery.current?.click(); }} />
+				</div>
+			</BottomSheet>
 		</div>
 	);
 }

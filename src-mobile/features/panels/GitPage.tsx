@@ -21,6 +21,7 @@ import { ErrorState, LoadGate, Loading } from "./PanelState";
 import { useLayer, useLoad } from "./hooks";
 import { splitPath, stageState, statusTone } from "./pure";
 import type { GitFile } from "./pure";
+import { WorkspacePanelBar } from "./WorkspacePanelBar";
 
 interface GitStatus {
 	isRepo: boolean;
@@ -58,7 +59,7 @@ export function GitPage({ route }: PageProps) {
 	const closeDiff = () => setDiff(null);
 	useLayer(diff !== null, closeDiff);
 
-	if (diff) return <DiffPage base={base} target={diff} onClose={closeDiff} />;
+	if (diff) return <DiffPage sessionId={id} base={base} target={diff} onClose={closeDiff} />;
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader title="Git">
@@ -66,12 +67,13 @@ export function GitPage({ route }: PageProps) {
 					<Segmented label="Git 视图" value={tab} options={TABS} onChange={setTab} />
 				</div>
 			</PageHeader>
+			<WorkspacePanelBar sessionId={id} current="git" />
 			{tab === "status" ? <StatusTab base={base} onDiff={setDiff} /> : <LogTab base={base} onDiff={setDiff} />}
 		</div>
 	);
 }
 
-function DiffPage({ base, target, onClose }: { base: string; target: DiffTarget; onClose: () => void }) {
+function DiffPage({ sessionId, base, target, onClose }: { sessionId: string; base: string; target: DiffTarget; onClose: () => void }) {
 	const state = useLoad(
 		(signal) => api<{ diff: string }>("GET", `${base}/diff?${target.query}`, undefined, { signal }),
 		[base, target.query],
@@ -79,6 +81,7 @@ function DiffPage({ base, target, onClose }: { base: string; target: DiffTarget;
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader title="改动差异" onBack={onClose} />
+			<WorkspacePanelBar sessionId={sessionId} current="git" />
 			<div
 				className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2"
 				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}
@@ -102,18 +105,22 @@ function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => 
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState("");
 	const [suggesting, setSuggesting] = useState(false);
+	const [actionError, setActionError] = useState<string | null>(null);
 	const files = state.data?.files ?? [];
 	const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files]);
 	const pendingPaths = useMemo(() => files.filter((f) => f.unstaged || f.status === "??").map((f) => f.path), [files]);
+	const stagedPaths = useMemo(() => files.filter((f) => f.staged).map((f) => f.path), [files]);
 
 	const act = async (fn: () => Promise<unknown>): Promise<boolean> => {
 		if (busy) return false;
 		setBusy(true);
+		setActionError(null);
 		try {
 			await fn();
 			await state.reload(true);
 			return true;
 		} catch (e) {
+			setActionError(errorMessage(e));
 			toast(errorMessage(e), { kind: "error" });
 			return false;
 		} finally {
@@ -148,82 +155,55 @@ function StatusTab({ base, onDiff }: { base: string; onDiff: (t: DiffTarget) => 
 	};
 
 	return (
-		<PullToRefresh onRefresh={() => state.reload(true)}>
-			<LoadGate state={state}>
-				{(st) => {
-					if (!st.isRepo) return <EmptyState icon={<GitBranch size={22} strokeWidth={1.75} />} title="当前目录不是 Git 仓库" />;
-					return (
-						<div style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}>
-							<div className="flex flex-wrap items-center gap-2 px-5 pt-1 pb-1 text-m-sm text-m-text-2">
-								<GitBranch size={18} strokeWidth={1.75} className="shrink-0" />
-								<span className="m-selectable min-w-0 font-medium break-all text-m-text">{st.branch ?? "未在分支上"}</span>
-							</div>
-							{st.files.length === 0 ? (
-								<EmptyState icon={<GitCommitHorizontal size={22} strokeWidth={1.75} />} title="没有改动" hint="工作区是干净的" />
-							) : (
-								<>
-									<div className="flex items-center justify-between gap-3 px-8 pt-4 pb-2">
-										<span className="text-m-xs font-medium whitespace-nowrap text-m-text-3">
-											改动 {st.files.length} · 已暂存 {stagedCount}
-										</span>
-										{pendingPaths.length > 0 ? (
-											<Button variant="ghost" disabled={busy} onClick={() => void stage("stage", pendingPaths)} className="-mr-4">
-												全部暂存
+		<div className="flex min-h-0 flex-1 flex-col">
+			<PullToRefresh onRefresh={() => state.reload(true)}>
+				<LoadGate state={state}>
+					{(st) => {
+						if (!st.isRepo) return <EmptyState icon={<GitBranch size={22} strokeWidth={1.75} />} title="当前目录不是 Git 仓库" />;
+						return (
+							<div className="pb-6">
+								<div className="flex flex-wrap items-center gap-2 px-5 pt-1 pb-1 text-m-sm text-m-text-2">
+									<GitBranch size={18} strokeWidth={1.75} className="shrink-0" />
+									<span className="m-selectable min-w-0 font-medium break-all text-m-text">{st.branch ?? "未在分支上"}</span>
+								</div>
+								{st.files.length === 0 ? (
+									<EmptyState icon={<GitCommitHorizontal size={22} strokeWidth={1.75} />} title="没有改动" hint="工作区是干净的" />
+								) : (
+									<>
+										<div className="px-5 pt-3 text-m-xs text-m-text-3">改动 {st.files.length} · 已暂存 {stagedCount} · 单个文件用右侧开关</div>
+										<div className="flex flex-wrap items-center gap-2 px-4 pt-1 pb-2">
+											<Button variant="tonal" disabled={busy || pendingPaths.length === 0} onClick={() => void stage("stage", pendingPaths)}>
+												暂存全部 {pendingPaths.length} 项
 											</Button>
-										) : (
-											<Button
-												variant="ghost"
-												disabled={busy}
-												onClick={() => void stage("unstage", st.files.map((f) => f.path))}
-												className="-mr-4"
-											>
-												全部取消暂存
-											</Button>
-										)}
-									</div>
-									<ListGroup>
-										{st.files.map((f) => (
-											<FileRow key={f.path} file={f} busy={busy} onStage={stage} onDiff={onDiff} />
-										))}
-									</ListGroup>
-									<section className="mt-6 px-4">
-										<h3 className="px-4 pb-2 text-m-xs font-medium whitespace-nowrap text-m-text-3">提交</h3>
-										<textarea
-											value={message}
-											onChange={(e) => setMessage(e.target.value)}
-											rows={3}
-											aria-label="提交说明"
-											placeholder="写一句提交说明"
-											autoCapitalize="off"
-											className={`${inputCls} block resize-none rounded-m-lg`}
-										/>
-										<div className="mt-3 flex items-center justify-end gap-2">
-											<Button
-												variant="tonal"
-												icon={<Sparkles size={18} strokeWidth={1.75} />}
-												busy={suggesting}
-												disabled={busy}
-												onClick={() => void suggest()}
-											>
-												AI 生成
-											</Button>
-											<Button
-												variant="primary"
-												disabled={busy || suggesting || stagedCount === 0 || !message.trim()}
-												onClick={() => void commit()}
-											>
-												提交
+											<Button variant="ghost" disabled={busy || stagedPaths.length === 0} onClick={() => void stage("unstage", stagedPaths)}>
+												取消全部暂存 {stagedPaths.length} 项
 											</Button>
 										</div>
-										{stagedCount === 0 && <p className="px-4 pt-2 text-right text-m-xs text-m-text-3">先暂存要提交的文件</p>}
-									</section>
-								</>
-							)}
+										<ListGroup>
+											{st.files.map((f) => <FileRow key={f.path} file={f} busy={busy} onStage={stage} onDiff={onDiff} />)}
+										</ListGroup>
+									</>
+								)}
+							</div>
+						);
+					}}
+				</LoadGate>
+			</PullToRefresh>
+			{state.data?.isRepo && (
+				<section className="shrink-0 border-t border-m-border bg-m-bg px-4 pt-3" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}>
+					{actionError && <p role="alert" className="m-selectable mb-2 text-m-sm break-words text-m-danger">{actionError}</p>}
+					<textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} aria-label="提交说明" placeholder="写一句提交说明" autoCapitalize="off" className={`${inputCls} block max-h-28 resize-none rounded-m-lg`} />
+					<div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+						<span className="text-m-xs text-m-text-3">只提交已暂存的 {stagedCount} 项</span>
+						<div className="flex shrink-0 gap-2">
+							<Button variant="tonal" icon={<Sparkles size={18} strokeWidth={1.75} />} busy={suggesting} disabled={busy} onClick={() => void suggest()}>AI 生成</Button>
+							<Button variant="primary" busy={busy} disabled={suggesting || stagedCount === 0 || !message.trim()} onClick={() => void commit()}>提交暂存项</Button>
 						</div>
-					);
-				}}
-			</LoadGate>
-		</PullToRefresh>
+					</div>
+					{stagedCount === 0 && <p className="pt-1 text-m-xs text-m-text-3">先暂存要提交的文件</p>}
+				</section>
+			)}
+		</div>
 	);
 }
 
@@ -264,6 +244,7 @@ function FileRow({
 				</span>
 			</button>
 			<span className="m-list-sep flex min-h-14 shrink-0 items-center self-stretch pr-3">
+				<span className="pr-2 text-m-xs whitespace-nowrap text-m-text-3">{fullyStaged ? "已暂存" : partial ? "暂存整项" : "暂存此项"}</span>
 				<Switch
 					label={`暂存 ${file.path}`}
 					checked={fullyStaged}

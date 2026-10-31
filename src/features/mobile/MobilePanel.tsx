@@ -2,8 +2,8 @@
  * [E] Pairing / tunnel panel (rendered inside Settings ▸ 手机访问, §11 E).
  * LAN server controls, QR pairing, cloudflared tunnel, device revocation.
  */
-import { Copy, Globe, Power, QrCode, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, Copy, Globe, Power, QrCode, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Segmented } from "../../components/Segmented";
 import type { MobileStatus, PairingInfo, PairingTarget } from "../../lib/contracts";
@@ -92,10 +92,10 @@ function formatSyncTime(iso: string | null | undefined, locale?: string): string
 
 function CopyLine({ label, value, toastText, copyLabel, mono = true }: { label: string; value: string; toastText: string; copyLabel: string; mono?: boolean }) {
 	return (
-		<div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-			<span className="shrink-0">{label}</span>
+		<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_44px] items-start gap-x-2 text-xs text-[var(--text-muted)]">
+			<span className="col-span-2 whitespace-nowrap">{label}</span>
 			<code
-				className={`min-w-0 flex-1 truncate rounded bg-[var(--well-bg)] px-1.5 py-0.5 text-[var(--text)] ${mono ? "font-mono" : ""}`}
+				className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded bg-[var(--well-bg)] px-1.5 py-2 text-[var(--text)] ${mono ? "font-mono" : ""}`}
 				title={value}
 			>
 				{value}
@@ -117,6 +117,45 @@ function UrlLine({ label, url }: { label: string; url: string }) {
 	return <CopyLine label={label} value={url} toastText={tNow("mobile.toastAddressCopied")} copyLabel={tNow("mobile.copyLabel", { label })} />;
 }
 
+/** Ports are applied only by an explicit action, never by blur or unmount. */
+function PortEditor({ value, activePort, running, disabled, busy, label, onSave }: {
+	value: number;
+	activePort?: number;
+	running: boolean;
+	disabled: boolean;
+	busy: boolean;
+	label: string;
+	onSave: (port: number) => Promise<void>;
+}) {
+	const { t } = useT();
+	const [draft, setDraft] = useState(String(value));
+	const [invalid, setInvalid] = useState<string | null>(null);
+	useEffect(() => { setDraft(String(value)); setInvalid(null); }, [value]);
+	const dirty = draft.trim() !== String(value) || (running && Number(draft) !== activePort);
+	return (
+		<form className="flex w-full flex-col gap-2" onSubmit={(event) => {
+			event.preventDefault();
+			if (disabled || busy || !dirty) return;
+			const next = draft.trim();
+			const error = validatePort(next);
+			setInvalid(error);
+			if (!error) void onSave(Number(next));
+		}}>
+			<label className="space-y-1">
+				<span className="text-xs whitespace-nowrap text-[var(--text-muted)]">{label}</span>
+				<input type="text" inputMode="numeric" className={`${INPUT_CLASS} w-full font-mono tabular-nums`}
+					value={draft} aria-invalid={invalid ? true : undefined} disabled={disabled || busy}
+					onChange={(event) => { setDraft(event.target.value); setInvalid(null); }}
+					onBlur={() => setInvalid(validatePort(draft.trim()))} />
+			</label>
+			{invalid && <p role="alert" className="text-xs text-[var(--status-error)] [overflow-wrap:anywhere]">{invalid}</p>}
+			<Button type="submit" icon={RotateCcw} loading={busy} disabled={disabled || !dirty}>
+				{running ? t("mobile.btnSaveRestart") : t("common.save")}
+			</Button>
+		</form>
+	);
+}
+
 export function MobilePanel() {
 	const { t, locale } = useT();
 	const { settings, save } = useAppSettings();
@@ -125,8 +164,6 @@ export function MobilePanel() {
 	const [pairTarget, setPairTarget] = useState<PairingTarget>("lan");
 	const [busy, setBusy] = useState<Busy | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [portChangedWhileRunning, setPortChangedWhileRunning] = useState(false);
-	const [ipv6PortChangedWhileRunning, setIpv6PortChangedWhileRunning] = useState(false);
 	const [ddnsTokenDraft, setDdnsTokenDraft] = useState("");
 	const savedMode = asMode(settings?.tunnelMode);
 	const [tunnelMode, setTunnelMode] = useState<TunnelMode>(savedMode);
@@ -134,7 +171,6 @@ export function MobilePanel() {
 	const [tunnelHost, setTunnelHost] = useState(settings?.tunnelHostname ?? "");
 	const [expiresIn, setExpiresIn] = useState(0);
 	const tunnelSave = useSaveStatus();
-	const qrRef = useRef<HTMLDivElement>(null);
 
 	const targetLabels: Record<PairingTarget, string> = {
 		lan: t("mobile.targetLan"),
@@ -213,18 +249,20 @@ export function MobilePanel() {
 				await mobileStart();
 				toast.success(t("mobile.toastStarted"));
 			}
-			setPortChangedWhileRunning(false);
 			await refresh();
 		});
 
-	const restartServer = () =>
+	const savePort = (port: number) =>
 		run("restart", async () => {
-			await mobileStop();
-			await mobileStart();
-			setPairing(null);
-			setPortChangedWhileRunning(false);
-			toast.success(t("mobile.toastRestartedPort"));
-			await refresh();
+			await save({ mobilePort: port });
+			if (running) {
+				try {
+					await mobileStop();
+					if (pairTarget !== "ipv6") setPairing(null);
+					await mobileStart();
+					toast.success(t("mobile.toastRestartedPort"));
+				} finally { await refresh(); }
+			} else { toast.success(t("mobile.toastPortSaved")); }
 		});
 
 	const ipv6Running = status?.ipv6Running ?? false;
@@ -239,18 +277,20 @@ export function MobilePanel() {
 				await mobileIpv6Start();
 				toast.success(t("mobile.toastIpv6Started"));
 			}
-			setIpv6PortChangedWhileRunning(false);
 			await refresh();
 		});
 
-	const restartIpv6 = () =>
+	const saveIpv6Port = (port: number) =>
 		run("ipv6Restart", async () => {
-			await mobileIpv6Stop();
-			await mobileIpv6Start();
-			if (pairTarget === "ipv6") setPairing(null);
-			setIpv6PortChangedWhileRunning(false);
-			toast.success(t("mobile.toastIpv6RestartedPort"));
-			await refresh();
+			await save({ mobileIpv6Port: port });
+			if (ipv6Running) {
+				try {
+					await mobileIpv6Stop();
+					if (pairTarget === "ipv6") setPairing(null);
+					await mobileIpv6Start();
+					toast.success(t("mobile.toastIpv6RestartedPort"));
+				} finally { await refresh(); }
+			} else { toast.success(t("mobile.toastPortSaved")); }
 		});
 
 	const saveDdnsToken = () =>
@@ -286,7 +326,6 @@ export function MobilePanel() {
 			const info = await mobileCreatePairing(target);
 			setPairing(info);
 			setPairTarget(target);
-			requestAnimationFrame(() => qrRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 		});
 
 	const tunnelDirty =
@@ -339,95 +378,146 @@ export function MobilePanel() {
 	const tunnelButtonLabel =
 		tunnelMode === "off" ? (status?.tunnelUrl ? t("mobile.btnCloseTunnel") : t("common.save")) : status?.tunnelUrl ? t("mobile.btnSaveAndReconnect") : t("mobile.btnSaveAndStartTunnel");
 	return (
-		<div className="space-y-6">
+		<div className="min-w-0 space-y-4 [overflow-wrap:anywhere] [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:whitespace-nowrap [&_input]:min-h-11 [&_input]:min-w-0 [&_input]:max-w-full [&_input]:text-base">
 			{error && (
 				<Notice
 					tone="danger"
 					action={<IconButton size="sm" icon={X} label={t("mobile.dismissErrorAria")} onClick={() => setError(null)} />}
 				>
-					{error}
+					<span role="alert" className="whitespace-pre-wrap [overflow-wrap:anywhere]">{error}</span>
 				</Notice>
 			)}
 
-			{/* LAN server */}
-			<SettingsCard title={t("mobile.cardLanTitle")} fieldId="mobileLan">
-				<SettingRow
-					label={
-						<span className="flex items-center gap-2">
-							{t("mobile.rowMobileLanLabel")}
-							<RunChip status={status == null ? "unknown" : running ? "running" : "stopped"} />
-						</span>
-					}
-					description={
-						running
-							? t("mobile.rowMobileLanDescRunning")
-							: t("mobile.rowMobileLanDescStopped")
-					}
-					control={
-						<Button
-							variant={running ? "danger" : "primary"}
-							icon={Power}
-							loading={busy === "server"}
-							disabled={busy !== null || status == null}
-							onClick={toggleServer}
-						>
+			{/* Primary pairing flow stays before all network configuration. */}
+			<SettingsCard title={t("mobile.pairHeroTitle")} fieldId="mobilePairing">
+				<div className="space-y-3 p-4">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="whitespace-nowrap"><RunChip status={status == null ? "unknown" : running ? "running" : "stopped"} /></div>
+						<Button variant={running ? "danger" : "secondary"} icon={Power}
+							loading={busy === "server"} disabled={busy !== null || status == null} onClick={toggleServer}>
 							{busy === "server" ? (running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : running ? t("mobile.btnStop") : t("mobile.btnStart")}
 						</Button>
-					}
-				>
-					{running && status?.lanUrl && <UrlLine label={t("mobile.lanUrlLabel")} url={status.lanUrl} />}
-				</SettingRow>
-				<SettingRow
-					label={t("mobile.portLabel")}
-					description={t("mobile.portDesc")}
-					hint={t("mobile.portHint")}
-					control={
-						<CommitInput
-							type="number"
-							min={1}
-							max={65535}
-							className="w-28"
-							aria-label={t("mobile.portAria")}
-							value={String(settings?.mobilePort ?? 7788)}
-							validate={validatePort}
-							onCommit={async (v) => {
-								await save({ mobilePort: Number(v) });
-								if (running) setPortChangedWhileRunning(true);
-							}}
-						/>
-					}
-				>
-					{portChangedWhileRunning && (
-						<Notice
-							tone="warning"
-							action={
-								<Button icon={RotateCcw} loading={busy === "restart"} disabled={busy !== null} onClick={restartServer}>
-									{t("mobile.btnRestartNow")}
-								</Button>
-							}
-						>
-							{t("mobile.noticePortRestart")}
-						</Notice>
-					)}
-				</SettingRow>
-				<SettingRow
-					label={t("mobile.pairLanLabel")}
-					description={running ? t("mobile.pairLanDescRunning") : t("mobile.pairLanDescStopped")}
-					control={
-						<Button
-							icon={QrCode}
-							loading={busy === "pair" && pairTarget === "lan"}
-							disabled={busy !== null || !running}
-							title={running ? undefined : t("mobile.pairLanTitleStopped")}
-							onClick={() => makePairing("lan")}
-						>
+					</div>
+					{!pairing && <p className="text-sm text-[var(--text-muted)]">{running ? t("mobile.pairHeroHelp") : t("mobile.rowMobileLanDescStopped")}</p>}
+					<div className="flex flex-wrap gap-2">
+						<Button className="flex-1" variant="primary" icon={QrCode} loading={busy === "pair"}
+							disabled={busy !== null || !running} title={running ? undefined : t("mobile.pairLanTitleStopped")}
+							onClick={() => makePairing("lan")}>
 							{t("mobile.btnGenerateQr")}
+						</Button>
+						<IconButton icon={RefreshCw} label={t("mobile.btnRefreshStatus")} disabled={busy !== null} onClick={() => run("refresh", refresh)} />
+					</div>
+				</div>
+			{/* Pairing QR */}
+			{pairing && (
+				<div
+					className="flex flex-col items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card"
+				>
+					<div className="flex w-full items-start justify-between gap-2 border-b border-[var(--border-divider)] pb-2">
+						<span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs font-medium text-[var(--text)]">
+							{t("mobile.qrTitle", { target: targetLabels[pairTarget] })}
+							{expired ? (
+								<span className="whitespace-nowrap text-[var(--status-error)]">{t("mobile.qrExpired")}</span>
+							) : (
+								<span className={`whitespace-nowrap font-mono tabular-nums ${expiresIn <= 30 ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}>
+									{t("mobile.qrExpiresIn", { mm, ss })}
+								</span>
+							)}
+						</span>
+						<IconButton icon={X} label={t("mobile.closeQrAria")} onClick={() => setPairing(null)} />
+					</div>
+					<div className="relative">
+						<div
+							className={`rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44 ${expired ? "opacity-20 blur-[2px]" : ""}`}
+							// Backend-generated SVG QR (qrcode crate), not user content.
+							dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
+						/>
+						{expired && (
+							<div className="absolute inset-0 flex items-center justify-center">
+								<Button
+									variant="primary"
+									icon={RefreshCw}
+									disabled={busy !== null}
+									onClick={() => makePairing(pairTarget)}
+								>
+									{t("mobile.btnRegenerate")}
+								</Button>
+							</div>
+						)}
+					</div>
+					<p className="text-center text-xs text-[var(--text-muted)]">
+						{expired
+							? t("mobile.qrExpiredHelp")
+							: t("mobile.qrScanHelp")}
+					</p>
+					{!expired && (
+						<div className="flex w-full min-w-0 flex-col gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2 sm:flex-row sm:items-center">
+							<code className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] text-[var(--text)]">{pairing.url}</code>
+							<Button
+								icon={Copy}
+								title={t("mobile.copyPairUrlTitle")}
+								onClick={async () => {
+									await copyText(pairing.url);
+									toast.success(t("mobile.toastPairUrlCopied"));
+								}}
+							>
+								{t("mobile.btnCopyLink")}
+							</Button>
+						</div>
+					)}
+				</div>
+			)}
+			</SettingsCard>
+			{/* Paired devices */}
+			<SettingsCard title={t("mobile.cardDevicesTitle")} fieldId="mobileDevices">
+				<SettingRow
+					stacked
+					danger
+					label={t("mobile.rowRevokeLabel")}
+					description={t("mobile.rowRevokeDesc")}
+					control={
+						<Button variant="danger" icon={ShieldAlert} loading={busy === "revoke"} disabled={busy !== null} onClick={revokeAll}>
+							{t("mobile.btnRevokeAll")}
 						</Button>
 					}
 				/>
 			</SettingsCard>
 
+			{/* Native disclosure keeps drafts mounted and never changes connectivity. */}
+			<details className="group/advanced min-w-0 rounded-xl border border-[var(--border-divider)] p-4">
+				<summary className="flex min-h-11 cursor-pointer list-none flex-col justify-center gap-2 [&::-webkit-details-marker]:hidden">
+					<span className="flex items-center justify-between gap-3 font-medium whitespace-nowrap text-[var(--text)]">
+						{t("mobile.advancedTitle")}
+						<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/advanced:rotate-180" />
+					</span>
+					<span className="text-xs text-[var(--text-muted)]">{t("mobile.advancedHelp")}</span>
+					{(ipv6Running || status?.tunnelUrl || status?.ddns?.lastError || status?.ddns?.halted) && (
+						<span className="flex flex-wrap gap-2 whitespace-nowrap">
+							{ipv6Running && <Chip tone="success">IPv6 · {t("mobile.statusRunning")}</Chip>}
+							{status?.tunnelUrl && <Chip tone="success">{t("mobile.tunnelConnectedChip")}</Chip>}
+							{(status?.ddns?.lastError || status?.ddns?.halted) && <Chip tone="warning">DDNS · {t(status?.ddns?.halted ? "mobile.ddnsStatusHalted" : "mobile.ddnsStatusError")}</Chip>}
+						</span>
+					)}
+				</summary>
+				<div className="mt-4 min-w-0 space-y-6">
+					<SettingsCard title={t("mobile.cardLanTitle")} fieldId="mobileLan">
+						<div className="space-y-3 p-4">
+							<PortEditor value={settings?.mobilePort ?? 7788} activePort={status?.port} running={running}
+								disabled={busy !== null || !settings || !status} busy={busy === "restart"}
+								label={t("mobile.portLabel")} onSave={savePort} />
+							<p className="text-xs text-[var(--text-muted)]">{t("mobile.portHint")}</p>
+							{running && status?.lanUrl && <UrlLine label={t("mobile.lanUrlLabel")} url={status.lanUrl} />}
+						</div>
+					</SettingsCard>
+
 			{/* IPv6 direct */}
+			<details className="group/ipv6 min-w-0 rounded-xl border border-[var(--border-divider)]">
+				<summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 p-4 text-sm font-medium text-[var(--text)] [&::-webkit-details-marker]:hidden">
+					<span className="min-w-0 flex-1">{t("mobile.cardIpv6Title")} / DDNS</span>
+					<RunChip status={status == null ? "unknown" : ipv6Running ? "running" : !status.ipv6Address ? "noIpv6" : "stopped"} />
+					{settings?.ddnsEnabled && <Chip tone={status?.ddns?.lastError || status?.ddns?.halted ? "warning" : status?.ddns?.lastIp ? "success" : "neutral"}>DDNS · {t(status?.ddns?.halted ? "mobile.ddnsStatusHalted" : status?.ddns?.lastError ? "mobile.ddnsStatusError" : status?.ddns?.lastIp ? "mobile.ddnsStatusSynced" : "mobile.ddnsStatusUnsynced")}</Chip>}
+					<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/ipv6:rotate-180" />
+				</summary>
 			<SettingsCard
 				title={t("mobile.cardIpv6Title")}
 				fieldId="mobileIpv6"
@@ -489,44 +579,12 @@ export function MobilePanel() {
 						)}
 					</div>
 				</SettingRow>
-				<SettingRow
-					label={t("mobile.ipv6PortLabel")}
-					description={t("mobile.ipv6PortDesc")}
-					hint={t("mobile.ipv6PortHint")}
-					control={
-						<CommitInput
-							type="number"
-							min={1}
-							max={65535}
-							className="w-28"
-							aria-label={t("mobile.ipv6PortAria")}
-							value={String(settings?.mobileIpv6Port ?? 7789)}
-							validate={validatePort}
-							onCommit={async (v) => {
-								await save({ mobileIpv6Port: Number(v) });
-								if (ipv6Running) setIpv6PortChangedWhileRunning(true);
-							}}
-						/>
-					}
-				>
-					{ipv6PortChangedWhileRunning && (
-						<Notice
-							tone="warning"
-							action={
-								<Button
-									icon={RotateCcw}
-									loading={busy === "ipv6Restart"}
-									disabled={busy !== null}
-									onClick={restartIpv6}
-								>
-									{t("mobile.btnRestartNow")}
-								</Button>
-							}
-						>
-							{t("mobile.noticeIpv6PortRestart")}
-						</Notice>
-					)}
-				</SettingRow>
+				<div className="p-4">
+					<PortEditor value={settings?.mobileIpv6Port ?? 7789} activePort={status?.ipv6Port} running={ipv6Running}
+						disabled={busy !== null || !settings || !status} busy={busy === "ipv6Restart"}
+						label={t("mobile.ipv6PortLabel")} onSave={saveIpv6Port} />
+					<p className="mt-2 text-xs text-[var(--text-muted)]">{t("mobile.ipv6PortHint")}</p>
+				</div>
 				<SettingRow
 					label={t("mobile.pairIpv6Label")}
 					description={
@@ -636,16 +694,17 @@ export function MobilePanel() {
 									<span>{t("mobile.cfTokenLabel")}</span>
 									{status?.ddns?.tokenSet && <Chip tone="success">{t("mobile.tokenSetChip")}</Chip>}
 								</div>
-								<div className="flex gap-2">
+								<div className="flex min-w-0 flex-wrap gap-2">
 									<input
 										type="password"
-										className={INPUT_CLASS}
+										className={`${INPUT_CLASS} w-full min-w-0 basis-full`}
 										placeholder={
 											status?.ddns?.tokenSet
 												? t("mobile.tokenSetPlaceholder")
 												: t("mobile.tokenEmptyPlaceholder")
 										}
 										value={ddnsTokenDraft}
+										aria-label={t("mobile.cfTokenLabel")}
 										onChange={(e) => setDdnsTokenDraft(e.target.value)}
 									/>
 									<Button
@@ -712,8 +771,16 @@ export function MobilePanel() {
 					)}
 				</SettingRow>
 			</SettingsCard>
+			</details>
 
 			{/* Tunnel */}
+			<details className="group/tunnel min-w-0 rounded-xl border border-[var(--border-divider)]">
+				<summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 p-4 text-sm font-medium text-[var(--text)] [&::-webkit-details-marker]:hidden">
+					<span className="min-w-0 flex-1">{t("mobile.cardTunnelTitle")} / Zero Trust</span>
+					<Chip tone={status?.tunnelUrl ? "success" : "neutral"}>{t(status?.tunnelUrl ? "mobile.tunnelConnectedChip" : "mobile.tunnelDisconnectedChip")}</Chip>
+					{tunnelDirty && <Chip tone="warning">{t("mobile.unsavedChangesChip")}</Chip>}
+					<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/tunnel:rotate-180" />
+				</summary>
 			<SettingsCard
 				title={t("mobile.cardTunnelTitle")}
 				fieldId="mobileTunnel"
@@ -779,7 +846,7 @@ export function MobilePanel() {
 									</Notice>
 								)}
 								<Notice tone="info">{t("mobile.domainPrefixTip")}</Notice>
-								<div className="grid grid-cols-2 gap-2">
+								<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 									<label className="space-y-1 text-xs text-[var(--text-muted)]">
 										<span>{t("mobile.tunnelNameLabel")}</span>
 										<input
@@ -800,14 +867,14 @@ export function MobilePanel() {
 									</label>
 								</div>
 								<div className="space-y-2 rounded-lg border border-[var(--border-divider)] p-3 text-xs text-[var(--text-muted)]">
-									<div className="flex items-center gap-2 text-[var(--text-primary)]">
+									<div className="flex flex-wrap items-center gap-2 text-[var(--text-primary)]">
 										<ShieldAlert className="h-4 w-4" />
-										<span className="font-medium">{t("mobile.zeroTrustTitle")}</span>
+										<span className="font-medium whitespace-nowrap">{t("mobile.zeroTrustTitle")}</span>
 										<Chip tone="success">{t("mobile.zeroTrustBadge")}</Chip>
 									</div>
 									<p>{t("mobile.zeroTrustDesc")}</p>
 									<p>{t("mobile.zeroTrustGuide")}</p>
-									<Button onClick={() => void openUrl("https://one.dash.cloudflare.com/")}>
+									<Button onClick={() => void openUrl("https://one.dash.cloudflare.com/").catch((error) => { setError(errMsg(error)); })}>
 										{t("mobile.zeroTrustOpenDash")}
 									</Button>
 								</div>
@@ -855,81 +922,11 @@ export function MobilePanel() {
 					</div>
 				</SettingRow>
 			</SettingsCard>
-
-			{/* Pairing QR */}
-			{pairing && (
-				<div
-					ref={qrRef}
-					className="flex flex-col items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card"
-				>
-					<div className="flex w-full items-center justify-between border-b border-[var(--border-divider)] pb-2">
-						<span className="text-xs font-medium text-[var(--text)]">
-							{t("mobile.qrTitle", { target: targetLabels[pairTarget] })}
-							{expired ? (
-								<span className="text-[var(--status-error)]">{t("mobile.qrExpired")}</span>
-							) : (
-								<span className={`font-mono tabular-nums ${expiresIn <= 30 ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}>
-									{t("mobile.qrExpiresIn", { mm, ss })}
-								</span>
-							)}
-						</span>
-						<IconButton icon={X} label={t("mobile.closeQrAria")} onClick={() => setPairing(null)} />
-					</div>
-					<div className="relative">
-						<div
-							className={`rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44 ${expired ? "opacity-20 blur-[2px]" : ""}`}
-							// Backend-generated SVG QR (qrcode crate), not user content.
-							dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
-						/>
-						{expired && (
-							<div className="absolute inset-0 flex items-center justify-center">
-								<Button
-									variant="primary"
-									icon={RefreshCw}
-									disabled={busy !== null}
-									onClick={() => makePairing(pairTarget)}
-								>
-									{t("mobile.btnRegenerate")}
-								</Button>
-							</div>
-						)}
-					</div>
-					<p className="text-center text-xs text-[var(--text-muted)]">
-						{expired
-							? t("mobile.qrExpiredHelp")
-							: t("mobile.qrScanHelp")}
-					</p>
-					{!expired && (
-						<div className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2">
-							<code className="flex-1 break-all font-mono text-[11px] text-[var(--text)]">{pairing.url}</code>
-							<Button
-								icon={Copy}
-								title={t("mobile.copyPairUrlTitle")}
-								onClick={async () => {
-									await copyText(pairing.url);
-									toast.success(t("mobile.toastPairUrlCopied"));
-								}}
-							>
-								{t("mobile.btnCopyLink")}
-							</Button>
-						</div>
-					)}
+			</details>
 				</div>
-			)}
+			</details>
 
-			{/* Paired devices */}
-			<SettingsCard title={t("mobile.cardDevicesTitle")} fieldId="mobileDevices">
-				<SettingRow
-					danger
-					label={t("mobile.rowRevokeLabel")}
-					description={t("mobile.rowRevokeDesc")}
-					control={
-						<Button variant="danger" icon={ShieldAlert} loading={busy === "revoke"} disabled={busy !== null} onClick={revokeAll}>
-							{t("mobile.btnRevokeAll")}
-						</Button>
-					}
-				/>
-			</SettingsCard>
+
 		</div>
 	);
 }

@@ -8,7 +8,7 @@ export interface LoadState<T> {
 	data: T | null;
 	error: string | null;
 	loading: boolean;
-	/** Refetch; `silent` keeps current data on screen (no spinner). */
+	/** Refetch without discarding data; `silent` also suppresses the refresh indicator. */
 	reload: (silent?: boolean) => Promise<void>;
 }
 
@@ -29,18 +29,19 @@ export function useLoad<T>(fn: (signal: AbortSignal) => Promise<T>, deps: Depend
 		ctl.current?.abort();
 		const c = new AbortController();
 		ctl.current = c;
-		if (!silent) setState({ data: null, error: null, loading: true });
+		setState((s) => ({ ...s, error: null, loading: !silent || s.data === null }));
 		try {
 			const data = await fnRef.current(c.signal);
 			if (mine === seq.current) setState({ data, error: null, loading: false });
 		} catch (e) {
 			if (mine !== seq.current || (e instanceof DOMException && e.name === "AbortError")) return;
-			setState((s) => ({ data: silent ? s.data : null, error: errorMessage(e, "加载失败"), loading: false }));
+			setState((s) => ({ ...s, error: errorMessage(e, "加载失败"), loading: false }));
 		}
 	}, []);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: caller-controlled deps
 	useEffect(() => {
+		setState({ data: null, error: null, loading: true });
 		void run(false);
 		return () => {
 			seq.current++;

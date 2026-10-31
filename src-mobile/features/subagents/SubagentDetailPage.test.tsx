@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Item } from "../../core/types";
 import { SubagentDetailPage } from "./SubagentDetailPage";
 import type { TranscriptView } from "./transcript";
+import * as apiModule from "../../core/api";
+import { DialogHost } from "../../ui/Dialog";
 
 const state = vi.hoisted(() => ({ view: {} as TranscriptView, messages: [] as Item[] }));
 vi.mock("./transcript", () => ({ useSubagentTranscript: () => state.view }));
@@ -119,5 +121,21 @@ describe("SubagentDetailPage", () => {
 		expect(result.className).toContain("text-m-danger");
 		expect(result.className).toContain("[overflow-wrap:anywhere]");
 		expect(screen.getByRole("button", { name: "复制错误" })).toBeTruthy();
+	});
+
+	it("requires parent-turn confirmation and displays a stop conflict without claiming success", async () => {
+		state.view.info!.summary.status = "running";
+		const apiSpy = vi.spyOn(apiModule, "api").mockRejectedValue(new apiModule.ApiError(409, "当前回合已结束"));
+		render(<><SubagentDetailPage route={route} /><DialogHost /></>);
+		const stopButton = screen.getByRole("button", { name: "停止当前回合" });
+		fireEvent.click(stopButton);
+		expect(await screen.findByText(/这会停止父会话的当前回合/)).toBeTruthy();
+		expect(apiSpy).not.toHaveBeenCalled();
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "停止当前回合" }));
+		await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("当前回合已结束"));
+		expect(apiSpy).toHaveBeenCalledWith("POST", "/sessions/session/abort", undefined, { signal: expect.any(AbortSignal) });
+		expect(state.view.refresh).not.toHaveBeenCalled();
+		expect(stopButton.hasAttribute("disabled")).toBe(false);
+		apiSpy.mockRestore();
 	});
 });

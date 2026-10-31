@@ -1,22 +1,36 @@
-/** One shared 1 s ticker for every live elapsed label; it runs only while some consumer is `active`. */
+/** One shared 1 s ticker for live elapsed labels, paused whenever the document is hidden. */
 import { useSyncExternalStore } from "react";
 
 let now = Date.now();
 let timer: number | undefined;
 const listeners = new Set<() => void>();
 
+function tick(): void {
+	now = Date.now();
+	for (const listener of listeners) listener();
+}
+
+function updateVisibility(): void {
+	window.clearInterval(timer);
+	timer = undefined;
+	if (document.visibilityState === "hidden" || listeners.size === 0) return;
+	tick();
+	timer = window.setInterval(tick, 1000);
+}
+
 function subscribe(fn: () => void): () => void {
 	listeners.add(fn);
 	if (listeners.size === 1) {
-		now = Date.now();
-		timer = window.setInterval(() => {
-			now = Date.now();
-			for (const l of listeners) l();
-		}, 1000);
+		document.addEventListener("visibilitychange", updateVisibility);
+		updateVisibility();
 	}
 	return () => {
 		listeners.delete(fn);
-		if (listeners.size === 0) clearInterval(timer);
+		if (listeners.size === 0) {
+			window.clearInterval(timer);
+			timer = undefined;
+			document.removeEventListener("visibilitychange", updateVisibility);
+		}
 	};
 }
 

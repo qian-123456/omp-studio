@@ -131,7 +131,7 @@ export function SettingsFallbacksPage({ route }: PageProps) {
 									title={<span className="m-selectable break-all font-m-mono text-m-sm">{entry}</span>}
 									subtitle={`第 ${idx + 1} 顺位`}
 									right={
-										<span className="-mr-2 flex items-center">
+										<span className="flex shrink-0 items-center gap-1">
 											<IconButton
 												size="sm"
 												variant="filled"
@@ -180,11 +180,11 @@ export function SettingsFallbacksPage({ route }: PageProps) {
 
 			{draft && (
 				<div
-					className="sticky bottom-3 mx-4 mt-4 flex items-center gap-2 rounded-m-pill bg-m-card py-2 pr-2 pl-5 shadow-m-pop"
+					className="sticky bottom-[calc(var(--m-safe-bottom)+12px)] mx-4 mt-4 flex items-center gap-2 rounded-m-pill bg-m-card py-2 pr-2 pl-5 shadow-m-pop"
 					role="region"
 					aria-label="未保存的更改"
 				>
-					<span className="min-w-0 flex-1 text-m-sm text-m-text-2">有未保存的更改</span>
+					<span className="min-w-0 flex-1 text-m-sm whitespace-nowrap text-m-text-2">未保存</span>
 					<Button size="sm" variant="tonal" onClick={() => setDraft(null)}>
 						还原
 					</Button>

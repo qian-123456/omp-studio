@@ -1,14 +1,14 @@
 import { ChevronLeft, GitBranch, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths, type PageProps } from "../../core/nav";
+import type { SpaceMode } from "../../core/types";
 import { sessionName } from "../../core/lib/format";
 import { Button, Chip, EmptyState, IconButton, PullToRefresh, Spinner } from "../../ui";
 import { ActionSheet, useSessionActions, type SheetItem } from "./ActionSheets";
 import { ModeSwitch } from "./ModeSwitch";
 import { branchChoice, searchPath, type BranchHit, type SearchResult } from "./search";
-import { searchIds } from "./tree";
-import { TreeView } from "./TreeView";
+import { SessionRow } from "./SessionRow";
 import { startTreeSync, useTree } from "./treeStore";
 
 const DEBOUNCE_MS = 300;
@@ -16,12 +16,13 @@ const DEBOUNCE_MS = 300;
 export function SearchPage(_props: PageProps) {
 	const [query, setQuery] = useState("");
 	const [archived, setArchived] = useState(false);
-	const [result, setResult] = useState<SearchResult | null>(null);
+	const [result, setResult] = useState<(SearchResult & { query: string; mode: SpaceMode; archived: boolean }) | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [chooser, setChooser] = useState<{ title: string; items: SheetItem[] } | null>(null);
 	const mode = useTree((s) => s.mode);
 	const seq = useRef(0);
+	const request = useRef<AbortController | null>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const { openActions, node } = useSessionActions();
 
@@ -33,32 +34,37 @@ export function SearchPage(_props: PageProps) {
 	const search = useCallback(async () => {
 		const q = query.trim();
 		const my = ++seq.current;
-		if (!q) return;
+		request.current?.abort();
+		if (!q) { setResult(null); setLoading(false); return; }
+		const controller = new AbortController();
+		request.current = controller;
 		setLoading(true);
 		setError(null);
 		try {
-			const r = await api<SearchResult>("GET", searchPath(q, mode, archived));
-			if (my === seq.current) setResult({ sessions: r.sessions ?? [], branches: r.branches ?? [] });
+			const r = await api<SearchResult>("GET", searchPath(q, mode, archived), undefined, { signal: controller.signal });
+			if (my === seq.current && !controller.signal.aborted) setResult({ sessions: r.sessions ?? [], branches: r.branches ?? [], query: q, mode, archived });
 		} catch (e) {
-			if (my === seq.current) setError(errorMessage(e));
+			if (my === seq.current && !controller.signal.aborted) setError(errorMessage(e));
 		} finally {
-			if (my === seq.current) setLoading(false);
+			if (my === seq.current && !controller.signal.aborted) setLoading(false);
 		}
 	}, [query, mode, archived]);
 
 	useEffect(() => {
 		++seq.current;
-		setResult(null);
+		request.current?.abort();
 		setError(null);
-		setLoading(query.trim().length > 0);
-		const t = setTimeout(() => void search(), DEBOUNCE_MS);
+		setChooser(null);
+		const hasQuery = query.trim().length > 0;
+		if (!hasQuery) setResult(null);
+		setLoading(hasQuery);
+		const timer = hasQuery ? setTimeout(() => void search(), DEBOUNCE_MS) : undefined;
 		return () => {
-			clearTimeout(t);
+			clearTimeout(timer);
 			++seq.current;
+			request.current?.abort();
 		};
 	}, [query, search]);
-
-	const filterIds = useMemo(() => (result ? searchIds(result.sessions) : null), [result]);
 
 	const openBranch = (b: BranchHit) => {
 		const c = branchChoice(b);
@@ -74,6 +80,7 @@ export function SearchPage(_props: PageProps) {
 	};
 
 	const hasQuery = query.trim().length > 0;
+	const visibleResult = hasQuery && result?.mode === mode && result.archived === archived ? result : null;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-m-bg">
@@ -88,7 +95,7 @@ export function SearchPage(_props: PageProps) {
 							type="search"
 							enterKeyHint="search"
 							value={query}
-							onChange={(e) => setQuery(e.target.value)}
+							onChange={(e) => { ++seq.current; request.current?.abort(); setQuery(e.target.value); }}
 							placeholder="搜索会话、分支、目录"
 							autoComplete="off"
 							aria-label="搜索会话、分支、目录"
@@ -100,6 +107,7 @@ export function SearchPage(_props: PageProps) {
 								icon={<X size={18} strokeWidth={1.75} className="text-m-text-2" />}
 								label="清空"
 								onClick={() => {
+									++seq.current; request.current?.abort();
 									setQuery("");
 									inputRef.current?.focus();
 								}}
@@ -122,12 +130,12 @@ export function SearchPage(_props: PageProps) {
 						hint="按标题、分支、目录或最后的回复查找当前空间里的会话"
 					/>
 				)}
-				{loading && <div role="status" className="flex items-center justify-center gap-2 px-6 py-10 text-m-sm text-m-text-3"><Spinner size={18} />正在搜索</div>}
-				{error && <div role="alert" className="flex flex-col items-center gap-4 px-6 py-10 text-center"><p className="m-selectable text-m-sm break-words text-m-danger">搜索失败：{error}</p><Button onClick={() => void search()}>重试</Button></div>}
-				{hasQuery && result && !loading && !error && result.branches.length > 0 && (
+				{hasQuery && loading && <div role="status" className="flex items-center justify-center gap-2 px-6 py-4 text-m-sm text-m-text-3"><Spinner size={18} />{visibleResult ? `正在搜索，保留“${visibleResult.query}”的结果` : "正在搜索"}</div>}
+				{hasQuery && error && <div role="alert" className="flex flex-col items-center gap-4 px-6 py-6 text-center"><p className="m-selectable text-m-sm break-words text-m-danger">搜索失败：{error}</p><Button onClick={() => void search()}>重试</Button></div>}
+				{visibleResult && visibleResult.branches.length > 0 && (
 					<section className="pb-2">
-						<h3 className="px-5 pt-4 pb-1.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">分支 · {result.branches.length}</h3>
-						{result.branches.map((b) => (
+						<h3 className="px-5 pt-4 pb-1.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">分支 · {visibleResult.branches.length}</h3>
+						{visibleResult.branches.map((b) => (
 							<div key={`${b.workspaceId ?? ""}|${b.branch}`} className="px-2">
 								<button
 									type="button"
@@ -142,10 +150,11 @@ export function SearchPage(_props: PageProps) {
 						))}
 					</section>
 				)}
-				{hasQuery && result && !loading && !error && (
+				{visibleResult && (
 					<>
-						<h3 className="px-5 pt-4 pb-0.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">会话 · {result.sessions.length}</h3>
-						<TreeView searching filterIds={filterIds} onMore={openActions} />
+						<h3 className="px-5 pt-4 pb-0.5 text-m-xs font-medium whitespace-nowrap text-m-text-3">会话 · {visibleResult.sessions.length}</h3>
+						{visibleResult.sessions.map((session) => <SessionRow key={session.id} s={session} onMore={openActions} highlightQuery={visibleResult.query} />)}
+						{!loading && !error && !visibleResult.sessions.length && !visibleResult.branches.length && <EmptyState icon={<Search size={26} />} title="没有匹配的会话" hint="尝试其他关键词，或切换空间与归档范围" />}
 					</>
 				)}
 			</PullToRefresh>

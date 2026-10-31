@@ -150,11 +150,12 @@ body {
 	display: none;
 }
 
-/* App frame: height follows the visual viewport (keyboard aware) without per-keystroke work. */
+/* Only the app frame follows the visual viewport; body portals keep their fixed containing block. */
 .m-app {
 	display: flex;
 	flex-direction: column;
 	height: var(--m-vh, 100dvh);
+	transform: translateY(var(--m-vv-top, 0px));
 	min-height: 0;
 	overflow: hidden;
 	background: var(--m-bg);

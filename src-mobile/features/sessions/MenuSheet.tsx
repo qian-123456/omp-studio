@@ -1,6 +1,6 @@
-import { Bell, Clock, Gauge, Search, Settings, SquarePen, X } from "lucide-react";
+import { Bell, Clock, Gauge, Lightbulb, Search, Settings, SquarePen, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode, TouchEvent as ReactTouchEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, TouchEvent as ReactTouchEvent } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../core/api";
 import { events } from "../../core/sse";
@@ -30,32 +30,8 @@ const SWIPE_CLOSE_V = 0.5;
 
 const I = { size: 22, strokeWidth: 1.75 } as const;
 
-function BottomCell({ icon, label, onClick, badge, ariaLabel }: { icon: ReactNode; label: string; onClick: () => void; badge?: number; ariaLabel?: string }) {
-	return (
-		<button
-			type="button"
-			aria-label={ariaLabel ?? label}
-			onClick={onClick}
-			className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-m-md py-1.5 text-m-text-2 transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
-		>
-			<span className="relative flex">
-				{icon}
-				{badge != null && badge > 0 && (
-					<span
-						aria-hidden
-						className="absolute -top-1.5 left-3.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-m-pill bg-m-danger px-1 text-[11px] leading-none font-medium whitespace-nowrap text-m-bg"
-					>
-						{badge > 99 ? "99+" : badge}
-					</span>
-				)}
-			</span>
-			<span className="text-m-xs whitespace-nowrap">{label}</span>
-		</button>
-	);
-}
-
 /**
- * Full-screen navigation drawer (docs/MOBILE_DESIGN.md §4.3): slides in from the left; ✕, back or a
+ * Navigation drawer (docs/MOBILE_DESIGN.md §4.3): slides in from the left; scrim, ✕, back or a
  * leftward swipe closes it. While open it keeps the session tree and the inbox badge fresh.
  */
 export function MenuSheet({
@@ -79,6 +55,24 @@ export function MenuSheet({
 	const { openActions, node } = useSessionActions(openSession);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const swipe = useRef<{ x: number; y: number; t: number; dx: number; axis: "x" | "y" | null } | null>(null);
+	const resetSwipe = useCallback(() => {
+		swipe.current = null;
+		const el = panelRef.current;
+		if (!el) return;
+		// Removing only the inline overrides restores the CSS spring-back transition.
+		el.style.removeProperty("transition");
+		el.style.removeProperty("transform");
+	}, []);
+
+	useEffect(() => {
+		if (!open) {
+			resetSwipe();
+			return;
+		}
+		if (!mounted) return;
+		const frame = requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
+		return () => cancelAnimationFrame(frame);
+	}, [open, mounted, resetSwipe]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -111,11 +105,10 @@ export function MenuSheet({
 	const badge = inboxCount(inbox, todos);
 
 	const onTouchStart = (e: ReactTouchEvent) => {
+		resetSwipe();
+		if (e.target instanceof Element && e.target.closest("[data-session-row]")) return;
 		const p = e.touches[0];
-		if (!p || e.touches.length !== 1) {
-			swipe.current = null;
-			return;
-		}
+		if (!p || e.touches.length !== 1) return;
 		swipe.current = { x: p.clientX, y: p.clientY, t: e.timeStamp, dx: 0, axis: null };
 	};
 	const onTouchMove = (e: ReactTouchEvent) => {
@@ -123,16 +116,15 @@ export function MenuSheet({
 		const p = e.touches[0];
 		const el = panelRef.current;
 		if (e.touches.length !== 1) {
-			swipe.current = null;
-			if (el) { el.style.transition = ""; el.style.transform = ""; }
+			resetSwipe();
 			return;
 		}
 		if (!s || !p || !el) return;
 		const dx = p.clientX - s.x;
 		const dy = p.clientY - s.y;
 		if (s.axis === null) {
-			if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-			s.axis = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0 ? "x" : "y";
+			if (Math.abs(dx) <= 10 && Math.abs(dy) <= 10) return;
+			s.axis = Math.abs(dx) > Math.abs(dy) * 1.6 && dx < -10 ? "x" : "y";
 			if (s.axis === "x") el.style.transition = "none";
 		}
 		if (s.axis !== "x") return;
@@ -141,41 +133,63 @@ export function MenuSheet({
 	};
 	const onTouchEnd = (e: ReactTouchEvent) => {
 		const s = swipe.current;
-		swipe.current = null;
-		const el = panelRef.current;
-		if (!s || s.axis !== "x" || !el) return;
-		// Hand the offset back to the class transform; the transition finishes the slide either way.
-		el.style.transition = "";
-		el.style.transform = "";
+		resetSwipe();
+		if (!s || s.axis !== "x") return;
 		const v = -s.dx / Math.max(1, e.timeStamp - s.t);
 		if (-s.dx > SWIPE_CLOSE_PX || v > SWIPE_CLOSE_V) onClose();
 	};
-	const onTouchCancel = () => {
-		swipe.current = null;
-		const el = panelRef.current;
-		if (el) { el.style.transition = ""; el.style.transform = ""; }
+	const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (e.key !== "Tab") return;
+		const panel = panelRef.current;
+		if (!panel) return;
+		const targets = Array.from(panel.querySelectorAll<HTMLElement>(
+			"button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])",
+		)).filter((target) => target.tabIndex >= 0 && !target.closest("[inert],[hidden],[aria-hidden='true']"));
+		const first = targets[0];
+		const last = targets[targets.length - 1];
+		if (!first || !last) {
+			e.preventDefault();
+			panel.focus({ preventScroll: true });
+		} else if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+			e.preventDefault();
+			last.focus({ preventScroll: true });
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus({ preventScroll: true });
+		}
 	};
 
 	return createPortal(
 		<div className="fixed inset-0 z-(--z-sheet)">
 			<div
+				aria-hidden="true"
+				onClick={onClose}
+				className={`absolute inset-0 bg-m-scrim transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
+			/>
+			<div
 				ref={panelRef}
 				role="dialog"
 				aria-modal="true"
 				aria-label="导航"
+				tabIndex={-1}
+				onKeyDown={onKeyDown}
 				onTouchStart={onTouchStart}
 				onTouchMove={onTouchMove}
 				onTouchEnd={onTouchEnd}
-				onTouchCancel={onTouchCancel}
-				className={`absolute inset-0 flex w-full flex-col bg-m-bg text-m-text outline-none transition-transform duration-300 ease-m-sheet ${
+				onTouchCancel={resetSwipe}
+				className={`absolute inset-y-0 left-0 flex w-full touch-pan-y flex-col bg-m-bg text-m-text outline-none transition-transform duration-300 ease-m-sheet ${
 					visible ? "translate-x-0" : "-translate-x-full"
 				}`}
-				style={{ paddingTop: "var(--m-safe-top)", paddingBottom: "var(--m-safe-bottom)" }}
+				style={{ paddingTop: "var(--m-safe-top)", paddingBottom: "calc(var(--m-safe-bottom) + 6px)" }}
 			>
 				<header className="flex h-12 shrink-0 items-center gap-2 px-3">
 					<AppMark size={24} />
 					<span className="min-w-0 flex-1 text-m-md font-medium whitespace-nowrap">OMP</span>
 					<IconButton variant="plain" size="sm" icon={<Search {...I} />} label="搜索会话" onClick={() => go(paths.search())} />
+					<div className="relative">
+						<IconButton variant="plain" size="sm" icon={<Bell {...I} />} label={badge > 0 ? `收件箱，${badge} 项待处理` : "收件箱"} onClick={() => go(paths.inbox())} />
+						{badge > 0 && <span aria-hidden="true" className="pointer-events-none absolute right-0 top-0 rounded-m-pill bg-m-danger px-1 text-[10px] leading-4 text-m-bg">{badge > 99 ? "99+" : badge}</span>}
+					</div>
 					<IconButton variant="plain" size="sm" icon={<X {...I} />} label="关闭导航" onClick={onClose} />
 				</header>
 
@@ -189,7 +203,7 @@ export function MenuSheet({
 							}}
 							className="flex min-h-11 w-full items-center gap-2.5 rounded-m-md bg-m-surface px-3 text-left text-m-md text-m-text transition-colors duration-(--m-dur-fast) active:bg-m-surface-2"
 						>
-							<SquarePen {...I} size={20} className="text-m-text-2" />
+							<SquarePen {...I} size={20} className="shrink-0 text-m-text-2" />
 							<span className="whitespace-nowrap">发起新对话</span>
 						</button>
 						<button
@@ -197,14 +211,23 @@ export function MenuSheet({
 							onClick={() => go(paths.schedules())}
 							className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-m-md px-2 text-left text-m-sm text-m-text-2 transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
 						>
-							<Clock {...I} size={18} className="text-m-text-2" />
+							<Clock {...I} size={18} className="shrink-0 text-m-text-2" />
 							<span className="whitespace-nowrap">定时任务</span>
+						</button>
+						<span aria-hidden="true" className="my-auto h-5 w-px shrink-0 bg-m-border" />
+						<button
+							type="button"
+							onClick={() => go(paths.ideas())}
+							className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-m-md px-2 text-left text-m-sm text-m-text-2 transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover"
+						>
+							<Lightbulb {...I} size={18} className="shrink-0 text-m-text-2" />
+							<span className="whitespace-nowrap">灵感收件箱</span>
 						</button>
 					</div>
 
 					<div className="flex flex-wrap items-center gap-x-2 px-3 py-1">
 						<ModeSwitch />
-						<Segmented label="视图" className="min-w-fit flex-1 whitespace-nowrap [&]:p-0.5 [&>button]:px-2 [&>button]:shadow-none" value={viewMode} options={VIEW_OPTIONS} onChange={setViewMode} />
+						<Segmented label="视图" className="min-w-fit ml-auto whitespace-nowrap [&]:p-0.5 [&>button]:px-2 [&>button]:shadow-none" value={viewMode} options={VIEW_OPTIONS} onChange={setViewMode} />
 					</div>
 				</div>
 				<div className="m-noscrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
@@ -216,16 +239,10 @@ export function MenuSheet({
 					)}
 				</div>
 
-				<nav aria-label="更多入口" className="grid shrink-0 grid-cols-3 gap-1 border-t border-m-border px-3 pt-1.5 pb-1">
-					<BottomCell
-						icon={<Bell {...I} />}
-						label="收件箱"
-						ariaLabel={badge > 0 ? `收件箱，${badge} 项待处理` : "收件箱"}
-						badge={badge}
-						onClick={() => go(paths.inbox())}
-					/>
-					<BottomCell icon={<Gauge {...I} />} label="订阅与配额" onClick={() => go(paths.quota())} />
-					<BottomCell icon={<Settings {...I} />} label="设置" onClick={() => go(paths.settings())} />
+				<nav aria-label="更多入口" className="flex shrink-0 items-center border-t border-m-border px-3">
+					<button type="button" onClick={() => go(paths.settings())} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-m-md px-2 text-m-sm text-m-text-2 active:bg-m-surface-hover"><Settings size={18} strokeWidth={1.75} />设置</button>
+					<span aria-hidden="true" className="h-5 w-px shrink-0 bg-m-border" />
+					<button type="button" onClick={() => go(paths.quota())} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-m-md px-2 text-m-sm text-m-text-2 active:bg-m-surface-hover"><Gauge size={18} strokeWidth={1.75} />订阅与配额</button>
 				</nav>
 			</div>
 			{node}

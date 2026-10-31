@@ -1,6 +1,7 @@
 import {
 	Bot,
 	CircleAlert,
+	ChevronRight,
 	Check,
 	FilePen,
 	FileText,
@@ -12,8 +13,9 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import { memo, useState } from "react";
+import { copyText } from "../../../core/lib/format";
 import type { ToolItem } from "../../../core/types";
-import { DiffView, looksLikeDiff, Spinner } from "../../../ui";
+import { Button, DiffView, looksLikeDiff, Markdown, Spinner, toast } from "../../../ui";
 import { prettyArgs, toolLine, type ToolKind } from "../lib/turns";
 
 /** Open state survives remounts of the row. */
@@ -78,6 +80,23 @@ function Pre({ text, err }: { text: string; err?: boolean }) {
 	);
 }
 
+/** Only structured or explicitly identified code uses syntax highlighting; prose stays intact. */
+function Result({ text, tool }: { text: string; tool: ToolItem }) {
+	let lang = "";
+	try {
+		const value: unknown = JSON.parse(text);
+		if (value !== null && typeof value === "object") lang = "json";
+	} catch { /* Non-JSON output remains plain unless the source identifies code. */ }
+	const args = tool.args && typeof tool.args === "object" ? tool.args as Record<string, unknown> : {};
+	const path = String(args.path ?? args.file_path ?? "");
+	const ext = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase();
+	const languages: Record<string, string> = { ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx", py: "python", rs: "rust", json: "json", sh: "bash", css: "css", html: "html", yaml: "yaml", yml: "yaml", sql: "sql" };
+	if (!lang && /^(read|read_file)$/.test(tool.name) && ext) lang = languages[ext] ?? "";
+	if (!lang) return <Pre text={text} err={tool.status === "error"} />;
+	const fence = "`".repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length + 1)));
+	return <Markdown text={`${fence}${lang}\n${text}\n${fence}`} className="m-md-quiet" visualizeEnabled={false} />;
+}
+
 /**
  * One tool call inside an expanded 「已运行 N 个步骤」 group: icon, verb + target in a readable line and a quiet
  * status. Tap reveals arguments and result in an 18-radius surface block.
@@ -111,6 +130,7 @@ export const ToolCard = memo(function ToolCard({ id, tool, state }: { id: string
 				<span className="mt-0.5 flex shrink-0 items-center">
 					<StateMark state={state} />
 				</span>
+				<ChevronRight size={16} strokeWidth={1.75} aria-hidden className={`mt-0.5 shrink-0 text-m-text-3 transition-transform ${open ? "rotate-90" : ""}`} />
 			</button>
 			{open && (
 				<div className="mt-1 mb-2 space-y-3 rounded-m-md bg-m-surface p-4">
@@ -123,11 +143,14 @@ export const ToolCard = memo(function ToolCard({ id, tool, state }: { id: string
 					)}
 					{hasResult && (
 						<div>
-							<div className="mb-1 text-m-xs text-m-text-3">{tool.status === "error" ? "错误" : "结果"}</div>
+							<div className="mb-1 flex items-center justify-between gap-2 text-m-xs text-m-text-3">
+								<span>{tool.status === "error" ? "错误" : "结果"}</span>
+								<Button size="sm" variant="ghost" onClick={() => void copyText(tool.result).then((ok) => toast(ok ? "已复制" : "复制失败", { kind: ok ? "success" : "error" }))}>复制完整输出</Button>
+							</div>
 							{tool.result && looksLikeDiff(tool.result) ? (
 								<DiffView diff={tool.result} />
 							) : (
-								<Pre text={tool.result || "（无输出）"} err={tool.status === "error"} />
+								<Result text={tool.result || "（无输出）"} tool={tool} />
 							)}
 						</div>
 					)}

@@ -8,6 +8,7 @@ vi.mock("../../core/nav", () => ({
 	paths: {
 		search: () => "/search",
 		schedules: () => "/schedules",
+		ideas: () => "/ideas",
 		inbox: () => "/inbox",
 		quota: () => "/quota",
 		settings: () => "/settings",
@@ -68,6 +69,9 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		fireEvent.click(schedulesBtn);
 		expect(pushMock).toHaveBeenCalledWith("/schedules");
 
+		fireEvent.click(screen.getByRole("button", { name: "灵感收件箱" }));
+		expect(pushMock).toHaveBeenCalledWith("/ideas");
+
 		// 2. Middle section: Space selector & "按项目 / 按时间" view toggle
 		const projectTab = screen.getByRole("radio", { name: "按项目" });
 		const timeTab = screen.getByRole("radio", { name: "按时间" });
@@ -78,7 +82,7 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		expect(timeTab.getAttribute("aria-checked")).toBe("true");
 
 		// 3. Bottom section
-		const inboxBtn = screen.getByRole("button", { name: /收件箱/i });
+		const inboxBtn = screen.getByRole("button", { name: "收件箱" });
 		expect(inboxBtn).not.toBeNull();
 		fireEvent.click(inboxBtn);
 		expect(pushMock).toHaveBeenCalledWith("/inbox");
@@ -99,6 +103,23 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		expect(screen.queryByText(/自定义/)).toBeNull();
 		expect(screen.queryByText(/视频/)).toBeNull();
 		expect(screen.queryByText(/笔记本/)).toBeNull();
+	});
+
+	it("uses a full-width drawer and a compact desktop-style space menu", () => {
+		const onClose = vi.fn();
+		render(<MenuSheet open onClose={onClose} />);
+		const drawer = screen.getByRole("dialog", { name: "导航" });
+		expect(drawer.className).toContain("w-full");
+		const trigger = screen.getByRole("button", { name: /代码空间/ });
+		fireEvent.click(trigger);
+		expect(screen.getByRole("menu", { name: "切换空间" })).toBeTruthy();
+		expect(screen.getByRole("menuitemradio", { name: "代码" }).getAttribute("aria-checked")).toBe("true");
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(screen.queryByRole("menu", { name: "切换空间" })).toBeNull();
+		expect(onClose).not.toHaveBeenCalled();
+		const bottom = screen.getByRole("navigation", { name: "更多入口" });
+		expect(bottom.textContent).toBe("设置订阅与配额");
+		expect(bottom.contains(screen.getByRole("button", { name: "收件箱" }))).toBe(false);
 	});
 
 	it("cancels interrupted and multi-touch swipes without closing navigation", () => {

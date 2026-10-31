@@ -3,9 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../core/api";
 import type { PageProps } from "../../core/nav";
 import { CodeBlock, EmptyState, IconButton, ListGroup, ListRow, Markdown, PageHeader, PullToRefresh } from "../../ui";
-import { ErrorState, LoadGate, Loading } from "./PanelState";
+import { LoadGate } from "./PanelState";
 import { useLayer, useLoad } from "./hooks";
-import { breadcrumbs, fenced, fmtSize, langFromPath } from "./pure";
+import { breadcrumbs, fmtSize, langFromPath } from "./pure";
+import { WorkspacePanelBar } from "./WorkspacePanelBar";
 
 interface DirEntry {
 	name: string;
@@ -27,8 +28,6 @@ interface FileData {
 	text: string;
 }
 
-/** Above this size syntax highlighting is skipped (hljs on 512 KB blocks the main thread). */
-const HIGHLIGHT_LIMIT = 150_000;
 const q = encodeURIComponent;
 const ICON = { size: 22, strokeWidth: 1.75 } as const;
 
@@ -62,6 +61,7 @@ export function FilesPage({ route }: PageProps) {
 	return (
 		<div className="flex h-full flex-col bg-m-bg">
 			<PageHeader title="文件" subtitle="只读浏览" />
+			<WorkspacePanelBar sessionId={id} current="files" />
 			{data && <Crumbs data={data} onOpen={openDir} />}
 			<div className="shrink-0 px-4 pt-1 pb-2">
 				<label className="flex min-h-11 items-center gap-2 rounded-m-pill bg-m-surface px-4">
@@ -197,15 +197,16 @@ function FileViewer({ sessionId, entry, onClose }: { sessionId: string; entry: D
 					</>
 				}
 			/>
+			<WorkspacePanelBar sessionId={sessionId} current="files" />
 			<div
 				className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2"
 				style={{ paddingBottom: "calc(var(--m-safe-bottom) + 24px)" }}
 			>
 				<h1 className="m-selectable mb-2 px-1 text-m-lg font-medium break-all text-m-text">{entry.name}</h1>
 				<div className="m-selectable mb-3 px-1 font-m-mono text-m-xs break-all text-m-text-3">{entry.path}</div>
-				{state.loading && <Loading />}
-				{state.error !== null && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
-				{state.data && <FileBody file={state.data} lang={lang} wrap={wrap} preview={preview} />}
+				<LoadGate state={state}>
+					{(data) => <FileBody file={data} lang={lang} wrap={wrap} preview={preview} />}
+				</LoadGate>
 			</div>
 		</div>
 	);
@@ -214,7 +215,6 @@ function FileViewer({ sessionId, entry, onClose }: { sessionId: string; entry: D
 function FileBody({ file, lang, wrap, preview }: { file: FileData; lang?: string; wrap: boolean; preview: boolean }) {
 	if (file.binary) return <EmptyState icon={<FileIcon {...ICON} />} title="无法预览" hint={`二进制文件（${fmtSize(file.size)}）`} />;
 	if (!file.text) return <EmptyState icon={<FileIcon {...ICON} />} title="空文件" />;
-	const wrapCls = wrap ? "[&_pre]:whitespace-pre-wrap [&_pre]:break-words" : "";
 	return (
 		<>
 			{file.truncated && (
@@ -226,12 +226,8 @@ function FileBody({ file, lang, wrap, preview }: { file: FileData; lang?: string
 				<div className="m-selectable">
 					<Markdown text={file.text} />
 				</div>
-			) : file.text.length > HIGHLIGHT_LIMIT ? (
-				<CodeBlock code={file.text} lang={lang} wrap={wrap} className="m-selectable" />
 			) : (
-				<div className={`m-selectable ${wrapCls}`}>
-					<Markdown text={fenced(file.text, lang)} />
-				</div>
+				<CodeBlock code={file.text} lang={lang} wrap={wrap} className="m-selectable" />
 			)}
 		</>
 	);

@@ -164,27 +164,16 @@ describe("SettingsPage navigation and groups", () => {
 		expect(screen.getByText("健康指标监控")).toBeDefined();
 	});
 
-	it("opens the Rules Files bottom sheet on tapping 规则文件", async () => {
+	it.each([
+		{ row: "规则文件", title: "规则文件" },
+		{ row: "子代理", title: "子代理管理" },
+	])("opens desktop-managed $row without fabricated editable records", async ({ row, title }) => {
 		render(<SettingsPage />);
-
-		const rulesBtn = await screen.findByText("规则文件");
-		fireEvent.click(rulesBtn);
-
-		expect(await screen.findByText("规则文件 (查看并编辑)")).toBeDefined();
-		expect(screen.getByText("AGENTS.md")).toBeDefined();
-		expect(screen.getByText("RULES.md")).toBeDefined();
-	});
-
-	it("opens the Subagents bottom sheet on tapping 子代理", async () => {
-		render(<SettingsPage />);
-
-		const subagentsBtn = await screen.findByText("子代理");
-		fireEvent.click(subagentsBtn);
-
-		expect(await screen.findByText("子代理管理")).toBeDefined();
-		expect(screen.getByText("新建子代理")).toBeDefined();
-		expect(screen.getByText("scout")).toBeDefined();
-		expect(screen.getByText("task")).toBeDefined();
+		fireEvent.click(await screen.findByText(row));
+		expect(await screen.findByRole("heading", { name: title })).toBeTruthy();
+		expect(screen.getByText("由电脑管理")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "新建子代理" })).toBeNull();
+		expect(screen.queryByRole("textbox")).toBeNull();
 	});
 
 	it("navigates to named routes when tapping routing items", async () => {
@@ -203,6 +192,9 @@ describe("SettingsPage navigation and groups", () => {
 		const quotaBtn = screen.getByText("订阅与配额");
 		fireEvent.click(quotaBtn);
 		expect(pushSpy).toHaveBeenCalledWith("/quota");
+
+		fireEvent.click(screen.getByText("技能与命令"));
+		expect(pushSpy).toHaveBeenCalledWith("/skills");
 	});
 
 	it("scopes roles to the project picked in 配置范围", async () => {
@@ -216,6 +208,8 @@ describe("SettingsPage navigation and groups", () => {
 		fireEvent.click(await screen.findByText("app"));
 		fireEvent.click(screen.getByText("模型角色"));
 		expect(pushSpy).toHaveBeenCalledWith("/settings/roles?cwd=%2Fp%2Fapp");
+		fireEvent.click(screen.getByText("辅助模型"));
+		expect(pushSpy).toHaveBeenLastCalledWith("/settings/roles?cwd=%2Fp%2Fapp");
 	});
 
 	it("shows the desktop's current OMP values in the 工具 sheet", async () => {

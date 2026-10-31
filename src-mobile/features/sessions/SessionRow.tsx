@@ -1,10 +1,14 @@
-import { Pin } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { Archive, Check, GitFork, Mail, MessageSquare, Pin } from "lucide-react";
+import { memo, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { api, errorMessage } from "../../core/api";
 import { nav, paths } from "../../core/nav";
 import { relTime, sessionName } from "../../core/lib/format";
-import { STATUS_LABEL } from "../../core/types";
-import type { TreeSession } from "./tree";
+import { isDraftId, STATUS_LABEL } from "../../core/types";
+import { confirm, toast } from "../../ui";
+import { patchSession } from "./actions";
+import { needsAttn, type TreeSession } from "./tree";
+import { refreshAll } from "./treeStore";
 
 /** Status dot colours; quiet statuses (idle, suspended, external) draw no dot. */
 export const STATUS_DOT: Record<string, string> = {
@@ -24,124 +28,156 @@ export function statusLine(s: Pick<TreeSession, "status" | "unread">): string {
 	return [LOUD.has(st) ? STATUS_LABEL[st] || st : null, s.unread ? "未读" : null].filter(Boolean).join(" · ");
 }
 
-const LINE_TONE: Record<string, string> = {
-	awaiting_approval: "text-m-warn",
-	awaiting_answer: "text-m-warn",
-	error: "text-m-danger",
-	interrupted: "text-m-danger",
-	working: "text-m-accent",
-};
-
 const LONG_PRESS_MS = 480;
 const MOVE_CANCEL_PX = 8;
+const SWIPE_PX = 64;
 
-/** Long-press (touch) / right-click (mouse) → `onLong`; a long press swallows the following click. */
-function useLongPress(onLong: (() => void) | undefined) {
-	const st = useRef<{ t: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
-	const fired = useRef(false);
-	const cancel = () => {
-		if (st.current) clearTimeout(st.current.t);
-		st.current = null;
+/** A vertical gesture belongs to scrolling; only a committed horizontal axis owns the pointer. */
+function useRowGesture(onLong: (() => void) | undefined, onSwipe: ((right: boolean) => void) | undefined) {
+	const gesture = useRef<{ x: number; y: number; id: number; axis: "pending" | "horizontal" | "vertical" } | null>(null);
+	const timer = useRef<number | undefined>(undefined);
+	const consumed = useRef(false);
+	const [offset, setOffset] = useState(0);
+	const clearTimer = () => {
+		window.clearTimeout(timer.current);
+		timer.current = undefined;
 	};
-	useEffect(() => cancel, []);
-	if (!onLong) return { handlers: {}, consumed: () => false };
+	useEffect(() => clearTimer, []);
 	return {
+		offset,
+		consumed: () => consumed.current,
 		handlers: {
-			onPointerDown: (e: ReactPointerEvent) => {
-				fired.current = false;
+			onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => {
+				if (!e.isPrimary || e.button > 0) return;
+				clearTimer();
+				consumed.current = false;
 				if (e.pointerType === "mouse") return;
-				cancel();
-				st.current = {
-					x: e.clientX,
-					y: e.clientY,
-					t: setTimeout(() => {
-						st.current = null;
-						fired.current = true;
-						navigator.vibrate?.(10);
-						onLong();
-					}, LONG_PRESS_MS),
-				};
+				gesture.current = { x: e.clientX, y: e.clientY, id: e.pointerId, axis: "pending" };
+				if (onLong) timer.current = window.setTimeout(() => {
+					timer.current = undefined;
+					gesture.current = null;
+					consumed.current = true;
+					navigator.vibrate?.(10);
+					onLong();
+				}, LONG_PRESS_MS);
 			},
-			onPointerMove: (e: ReactPointerEvent) => {
-				const s = st.current;
-				if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MOVE_CANCEL_PX) cancel();
-			},
-			onPointerUp: cancel,
-			onPointerCancel: cancel,
-			onContextMenu: (e: { preventDefault: () => void }) => {
+			onPointerMove: (e: ReactPointerEvent<HTMLButtonElement>) => {
+				const g = gesture.current;
+				if (!g || g.id !== e.pointerId) return;
+				const dx = e.clientX - g.x, dy = e.clientY - g.y;
+				if (Math.hypot(dx, dy) <= MOVE_CANCEL_PX) return;
+				clearTimer();
+				consumed.current = true;
+				if (g.axis === "pending") {
+					if (Math.abs(dy) >= Math.abs(dx)) g.axis = "vertical";
+					else if (onSwipe && Math.abs(dx) > Math.abs(dy) * 1.3) {
+						g.axis = "horizontal";
+						e.currentTarget.setPointerCapture?.(e.pointerId);
+					}
+				}
+				if (g.axis !== "horizontal") return;
 				e.preventDefault();
-				if (fired.current) return;
-				cancel();
-				fired.current = true;
+				e.stopPropagation();
+				setOffset(Math.max(-96, Math.min(96, dx)));
+			},
+			onPointerUp: (e: ReactPointerEvent<HTMLButtonElement>) => {
+				clearTimer();
+				const g = gesture.current;
+				gesture.current = null;
+				setOffset(0);
+				if (!g || g.id !== e.pointerId || g.axis !== "horizontal") return;
+				e.preventDefault();
+				e.stopPropagation();
+				const dx = e.clientX - g.x;
+				if (Math.abs(dx) >= SWIPE_PX) onSwipe?.(dx > 0);
+			},
+			onPointerCancel: () => { clearTimer(); gesture.current = null; consumed.current = true; setOffset(0); },
+			onContextMenu: (e: { preventDefault: () => void }) => {
+				if (!onLong) return;
+				e.preventDefault();
+				clearTimer();
+				gesture.current = null;
+				if (consumed.current) return;
+				consumed.current = true;
 				onLong();
 			},
 		},
-		consumed: () => {
-			const f = fired.current;
-			fired.current = false;
-			return f;
-		},
 	};
+}
+
+function highlightedTitle(title: string, query: string | undefined): ReactNode {
+	const tokens = [...new Set(query?.trim().split(/\s+/).filter(Boolean) ?? [])];
+	if (!tokens.length) return title;
+	const pattern = tokens.sort((a, b) => b.length - a.length).map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+	return title.split(new RegExp(`(${pattern})`, "gi")).map((part, index) =>
+		index % 2 ? <mark key={index} className="rounded-sm bg-m-accent-soft text-m-accent-soft-text">{part}</mark> : part,
+	);
 }
 
 export interface SessionRowProps {
 	s: TreeSession;
 	depth?: number;
 	current?: boolean;
-	/** Long-press / right-click: the session's action sheet (its title shows the full name). */
+	withSpine?: boolean;
+	spineFirst?: boolean;
+	spineLast?: boolean;
+	highlightQuery?: string;
+	/** The action sheet discloses the complete title. */
 	onMore?: (s: TreeSession) => void;
-	/** Replaces the default tap action (open the chat). */
 	onOpen?: (s: TreeSession) => void;
 }
 
-/**
- * Drawer session row: status dot, title (max two lines; the long-press sheet shows it in full), relative time,
- * and a quiet status line only when something is going on. Memoized on the session object.
- */
-export const SessionRow = memo(function SessionRow({ s, depth = 0, current, onMore, onOpen }: SessionRowProps) {
+/** Shared flat/tree row; metadata and swipe mutations always use the real session. */
+export const SessionRow = memo(function SessionRow({ s, depth = 0, current, withSpine, spineFirst, spineLast, highlightQuery, onMore, onOpen }: SessionRowProps) {
 	const st = s.status || "idle";
 	const line = statusLine(s);
 	const name = sessionName(s);
-	const lp = useLongPress(onMore ? () => onMore(s) : undefined);
+	const busy = useRef(false);
+	const [pending, setPending] = useState(false);
+	const swipe = async (right: boolean) => {
+		if (busy.current || isDraftId(s.id)) return;
+		busy.current = true;
+		setPending(true);
+		try {
+			if (right) {
+				await api("POST", `/left/inbox/${encodeURIComponent(s.id)}/unread`, { unread: !Boolean(s.unread) });
+				await refreshAll();
+				toast(s.unread ? "已标为已读" : "已标为未读", { kind: "success" });
+			} else {
+				if (!s.archived && needsAttn(s) && !(await confirm({ message: "该会话正在运行或等待回复，确定要归档吗？", confirmText: "归档", danger: true }))) return;
+				await patchSession(s, { archived: !s.archived }, s.archived ? "已取消归档" : "已归档");
+			}
+		} catch (error) { toast(`操作失败：${errorMessage(error)}`, { kind: "error" }); }
+		finally { busy.current = false; setPending(false); }
+	};
+	const gesture = useRowGesture(onMore ? () => onMore(s) : undefined, isDraftId(s.id) ? undefined : (right) => void swipe(right));
 	return (
-		<div className="px-2 [contain-intrinsic-size:auto_52px] [content-visibility:auto]" style={{ paddingLeft: 8 + depth * 16 }}>
-			<button
-				type="button"
-				aria-current={current || undefined}
-				aria-label={line ? `${name}，${line}` : name}
-				aria-description={onMore ? "长按或按 Shift+F10 查看完整标题和会话操作" : undefined}
-				onKeyDown={(e) => {
-					if (onMore && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
-						e.preventDefault();
-						onMore(s);
-					}
-				}}
-				onClick={() => {
-					if (lp.consumed()) return;
-					if (onOpen) onOpen(s);
-					else nav.push(paths.chat(s.id));
-				}}
-				{...lp.handlers}
-				className={`flex min-h-11 w-full items-start gap-3 rounded-m-md px-3 py-2.5 text-left select-none transition-colors duration-(--m-dur-fast) active:bg-m-surface-hover ${
-					current ? "bg-m-surface" : ""
-				}`}
-			>
-				<span aria-hidden className="flex h-5 w-2.5 shrink-0 items-center justify-center">
-					{STATUS_DOT[st] && <span className={`size-2 rounded-m-pill ${STATUS_DOT[st]}`} />}
-				</span>
-				<span className="min-w-0 flex-1">
-					<span className="flex items-start gap-3">
-						<span
-							className={`${onMore ? "line-clamp-2" : ""} min-w-0 flex-1 text-m-sm break-words text-m-text ${s.unread ? "font-semibold" : ""}`}
-						>
-							{s.pinned && <Pin size={13} strokeWidth={1.75} className="mr-1 inline-block align-[-1px] text-m-text-3" aria-label="已置顶" />}
-							{name}
-						</span>
-						<span className="shrink-0 pt-px text-m-xs whitespace-nowrap text-m-text-3">{relTime(s.updatedAt)}</span>
-					</span>
-					{line && <span className={`mt-0.5 block text-m-xs whitespace-nowrap ${LINE_TONE[st] ?? "text-m-text-3"}`}>{line}</span>}
-				</span>
-			</button>
+		<div data-session-row className="relative pr-2" style={{ marginLeft: 8 + depth * 12 }}>
+			{withSpine && <span aria-hidden className="pointer-events-none absolute left-0 w-2" style={{ top: spineFirst ? -6 : 0, bottom: spineLast ? "50%" : 0 }}>
+				<span className={`absolute inset-0 border-l border-(--m-tree-line) ${spineLast ? "rounded-bl-[6px] border-b" : ""}`} />
+				{!spineLast && <span className="absolute left-0 w-2 border-t border-(--m-tree-line)" style={{ top: spineFirst ? "calc(50% + 3px)" : "50%" }} />}
+			</span>}
+			<div className={`relative ml-2 overflow-hidden rounded-m-pill ${gesture.offset ? "bg-m-surface" : ""}`}>
+				{gesture.offset !== 0 && <span aria-hidden className={`pointer-events-none absolute inset-y-0 flex items-center gap-1 px-3 text-m-xs whitespace-nowrap ${gesture.offset > 0 ? "left-0 text-m-accent" : "right-0 text-m-danger"}`}>
+					{gesture.offset > 0 ? <>{s.unread ? <Check size={16} /> : <Mail size={16} />}{s.unread ? "已读" : "未读"}</> : <><Archive size={16} />{s.archived ? "取消归档" : "归档"}</>}
+				</span>}
+				<button type="button" title={name} aria-current={current || undefined} aria-busy={pending || undefined}
+					aria-label={line ? `${name}，${line}` : name}
+					aria-description={[!isDraftId(s.id) ? "右滑切换已读，左滑归档" : null, onMore ? "长按或按 Shift+F10 查看完整标题和会话操作" : null].filter(Boolean).join("；") || undefined}
+					onKeyDown={(e) => { if (onMore && (e.key === "ContextMenu" || e.shiftKey && e.key === "F10")) { e.preventDefault(); onMore(s); } }}
+					onClick={(e) => { if (e.detail > 0 && gesture.consumed() || busy.current) return; if (onOpen) onOpen(s); else nav.push(paths.chat(s.id)); }}
+					{...gesture.handlers}
+					style={{ touchAction: "pan-y", transform: gesture.offset ? `translateX(${gesture.offset}px)` : undefined }}
+					className={`relative flex min-h-11 w-full items-center gap-2 rounded-m-pill px-3 py-2 text-left select-none active:bg-m-surface-hover ${current ? "bg-m-surface font-semibold" : gesture.offset ? "bg-m-bg" : ""}`}
+				>
+					{s.kind === "side" ? <MessageSquare size={14} className="shrink-0 text-m-text-3" aria-label="旁聊" /> : (s.kind === "fork" || s.parentId) ? <GitFork size={14} className="shrink-0 text-m-text-3" aria-label="分支会话" /> : null}
+					{s.pinned && <Pin size={13} className="shrink-0 text-m-text-3" aria-label="已置顶" />}
+					<span className={`min-w-0 flex-1 truncate text-m-sm text-m-text ${s.unread ? "font-semibold" : ""}`}>{highlightedTitle(name, highlightQuery)}</span>
+					{STATUS_DOT[st] && <span aria-hidden className={`size-1.5 shrink-0 rounded-m-pill ${STATUS_DOT[st]}`} />}
+					{s.unread && <span aria-label="未读" className="size-1.5 shrink-0 rounded-m-pill bg-m-accent" />}
+					<span className="shrink-0 text-m-xs whitespace-nowrap text-m-text-3 tabular-nums">{relTime(s.updatedAt)}</span>
+				</button>
+			</div>
 		</div>
 	);
 });

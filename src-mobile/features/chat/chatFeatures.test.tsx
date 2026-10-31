@@ -19,6 +19,7 @@ import { SelectionToolbar } from "./components/SelectionToolbar";
 import { TurnView } from "./components/TurnView";
 import type { Turn } from "./lib/turns";
 import { queueFirstSend } from "./lib/drafts";
+import { PLAN_OFF } from "../../../src/features/chat/plan/planStatus";
 
 class RO {
 	observe() {}
@@ -111,8 +112,8 @@ describe("Status bar above composer (Change 2)", () => {
 	});
 });
 
-describe("Plus (+) menu 6 desktop options (Change 3)", () => {
-	it("displays exact 6 desktop options: 文件, Finder 选中项, 在项目中工作, 目标, 规划模式, 草图", async () => {
+describe("Composer attachment actions", () => {
+ it("offers photo, file and desktop attachment actions alongside project controls", () => {
 		const c = new ChatController("s1");
 		render(wrap(c, <Composer sessionId="s1" />));
 
@@ -120,19 +121,18 @@ describe("Plus (+) menu 6 desktop options (Change 3)", () => {
 		fireEvent.click(plusBtn);
 
 		expect(screen.getByText("文件")).toBeTruthy();
-		expect(screen.getByText("Finder 选中项")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "电脑端选中项" })).toBeTruthy();
 		expect(screen.getByText("在项目中工作")).toBeTruthy();
 		expect(screen.getByText("目标")).toBeTruthy();
 		expect(screen.getByText(/规划模式/)).toBeTruthy();
 		expect(screen.getByText("草图")).toBeTruthy();
 
-		// No leftover camera or album options
-		expect(screen.queryByText("拍照")).toBeNull();
-		expect(screen.queryByText("相册")).toBeNull();
+  expect(screen.getByRole("button", { name: "拍照" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "相册" })).toBeTruthy();
 	});
 });
 
-describe("Composer right side 2 round buttons (Change 4 & 5)", () => {
+describe("Composer send and stop controls", () => {
 	it("has voice input mic button and send button", () => {
 		const c = new ChatController("s1");
 		render(wrap(c, <Composer sessionId="s1" />));
@@ -141,13 +141,13 @@ describe("Composer right side 2 round buttons (Change 4 & 5)", () => {
 		expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();
 	});
 
-	it("turns send button to stop button while streaming", async () => {
+ it("keeps independent send and stop controls during a run", async () => {
 		const c = new ChatController("s1");
 		render(wrap(c, <Composer sessionId="s1" />));
 
 		await act(async () => c.store.setState({ working: true }));
 		expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
-		expect(screen.queryByRole("button", { name: "发送" })).toBeNull();
+  expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(true);
 	});
 });
 
@@ -170,7 +170,7 @@ describe("Plan mode (Change 7)", () => {
 		expect(screen.getByText("规划模式")).toBeTruthy();
 	});
 
-	it("renders plan actions, preserves edit mode, and exits plan mode on execution", async () => {
+ it("stages a revision and preserves its draft while approval awaits authoritative execution", async () => {
 		const c = new ChatController("s1");
 		c.store.setState({
 			cstate: {
@@ -180,6 +180,7 @@ describe("Plan mode (Change 7)", () => {
 				contextWindow: 1000,
 				contextPercent: 10,
 				planMode: true,
+    planStatus: { ...PLAN_OFF, enabled: true, phase: "review", content: "## Step 1: Design\n## Step 2: Implement" },
 				goal: null,
 			},
 		});
@@ -197,8 +198,9 @@ describe("Plan mode (Change 7)", () => {
 			src: [],
 		};
 
-		const focus = vi.spyOn(c, "focusComposer");
-		const send = vi.spyOn(c, "send").mockResolvedValue(true);
+  let draft = "";
+  c.composer = { get: () => draft, set: (value) => { draft = value; }, focus: () => {} };
+  apiMock.mockImplementation(async (_method: string, path: string) => path.endsWith("/composer-state") ? { planMode: false } : {});
 		render(wrap(c, <TurnView turn={turn} isLast={true} sessionId="s1" />));
 
 		expect(screen.getByText("计划已生成")).toBeTruthy();
@@ -208,10 +210,15 @@ describe("Plan mode (Change 7)", () => {
 		expect(screen.getByRole("button", { name: "复制计划" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "下载 .md 文件" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "修改计划" }));
-		expect(focus).toHaveBeenCalledOnce();
+  expect(draft).toContain("请按以下要求修改计划");
+  expect(draft).toContain("Step 1: Design");
 		expect(c.store.getState().cstate?.planMode).toBe(true);
 		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "执行计划" })); });
-		expect(send).toHaveBeenCalledWith("/plan-action approve keep", "followUp");
+  expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/s1/slash", { name: "plan-action", args: "approve keep" });
+  expect(draft).toContain("请按以下要求修改计划");
+  expect(screen.getByText("等待执行确认")).toBeTruthy();
+  expect(screen.queryByText("计划执行中")).toBeNull();
+  c.dispose();
 		expect(c.store.getState().cstate?.planMode).toBe(false);
 	});
 });

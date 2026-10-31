@@ -19,7 +19,7 @@
 //!   `pinned`, not repeated inside groups. Zero-message side chats are hidden;
 //!   archive cascades to child side chats (unless live/pinned/pending/working).
 //! - `GET /left/dirs` → `{dirs: [{path, label, kind: "workspace"|"worktree"|"global",
-//!   workspaceId, mode}]}` — the only directories new sessions / schedules may use.
+//!   workspaceId, mode}], homeDir: string|null}` — allowed directories plus the actual server home.
 //! - `POST /left/sessions` `{cwd}` → `LiveSessionInfo` `{sessionId, sessionFile, pid, cwd}`.
 //!   `cwd` must be inside a registered workspace/worktree (or the global dir);
 //!   mode is derived (`chat` for the global dir, else the workspace's mode).
@@ -33,6 +33,9 @@
 //! - `GET /left/inbox` → `{windowHours, badge, order: ["awaiting","error","unread","running"],
 //!   awaiting, error, unread, running: SessionMeta[]}` (window rules of `groupInbox`).
 //! - `POST /left/inbox/{id}/seen` → `{ok: true}` (mark seen; 404 unknown id).
+//! - `POST /left/inbox/{id}/unread` `{unread: bool}` → `{ok: true, unread}`. Persists the
+//!   requested flag; false has the same review-acceptance semantics as `seen`. Unknown id is 404;
+//!   marking a process-free draft unread is 400 because it has no transcript.
 //! - `POST /left/inbox/read-all` → `{ok: true, count}` (marks every listed unread/error session seen).
 //!
 //! Search
@@ -121,6 +124,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/left/inbox", get(inbox::<B>))
         .route("/left/inbox/read-all", post(inbox_read_all::<B>))
         .route("/left/inbox/{id}/seen", post(inbox_seen::<B>))
+        .route("/left/inbox/{id}/unread", post(inbox_unread::<B>))
         .route("/left/search", get(search::<B>))
         .route(
             "/left/schedules",
@@ -858,7 +862,8 @@ async fn list_dirs<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Valu
     let st = app(&ctx)?;
     let metas = ctx.backend.sessions().await;
     let dirs = allowed_dirs(st, &metas).await?;
-    Ok(Json(json!({ "dirs": dirs })))
+    let home_dir = dirs::home_dir().map(|path| path.to_string_lossy().into_owned());
+    Ok(Json(json!({ "dirs": dirs, "homeDir": home_dir })))
 }
 
 // ---------- session actions ----------
@@ -1097,6 +1102,37 @@ async fn inbox_seen<B: Backend>(
     }
     mark_seen(st, &id).await?;
     Ok(ok_json())
+}
+
+#[derive(Deserialize)]
+struct UnreadBody {
+    unread: bool,
+}
+
+async fn inbox_unread<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<UnreadBody>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let session = super::draft::find_session(&ctx.backend, &id)
+        .await
+        .ok_or_else(|| not_found("会话不存在"))?;
+    if super::draft::is_draft(&session.id) {
+        if body.unread {
+            return Err(bad_request("草稿尚无可标记未读的内容"));
+        }
+    } else if body.unread {
+        {
+            let _mutation = crate::catalog::session_mutation_lock().lock().await;
+            let db = st.db.lock();
+            store::set_unread(&db, &id, true).map_err(internal)?;
+        }
+        crate::catalog::recompute_async(st, Some(vec![id])).await;
+    } else {
+        mark_seen(st, &id).await?;
+    }
+    Ok(Json(json!({ "ok": true, "unread": body.unread })))
 }
 
 async fn inbox_read_all<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {

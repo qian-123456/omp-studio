@@ -1,7 +1,8 @@
-import { Folder, GitBranch, MessagesSquare, Server, Terminal } from "lucide-react";
+import { ClipboardList, Folder, GitBranch, MessagesSquare, Server, Terminal } from "lucide-react";
 import type { ReactNode } from "react";
 import { nav, paths } from "../../../core/nav";
 import { BottomSheet, MenuRow } from "../../../ui";
+import { usePlanExecution } from "../../panels/usePlanExecution";
 
 interface Entry {
 	label: string;
@@ -22,10 +23,14 @@ const ENTRIES: Entry[] = [
 ];
 
 export function HeaderMenu({ open, onClose, sessionId }: { open: boolean; onClose: () => void; sessionId: string }) {
+	const { executing } = usePlanExecution(sessionId);
+	const entries = executing
+		? [...ENTRIES, { label: "执行计划", hint: "查看已批准的计划与执行状态", icon: icon(ClipboardList), to: paths.plan }]
+		: ENTRIES;
 	return (
 		<BottomSheet open={open} onClose={onClose} title="工具">
 			<div className="pb-3">
-				{ENTRIES.map((e) => (
+				{entries.map((e) => (
 					<MenuRow
 						key={e.label}
 						icon={e.icon}

@@ -1,5 +1,5 @@
 import { Check, MessageCircleQuestion, ShieldCheck } from "lucide-react";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { pendingForm } from "../../../core/pendingUi";
 import type { PendingEntry, PendingOption, ToolItem } from "../../../core/types";
 import { Button, inputCls, toast } from "../../../ui";
@@ -20,7 +20,7 @@ const askDrafts = new Map<string, (AskDraft | undefined)[]>();
 function Card({ icon, label, children }: { icon: ReactNode; label: ReactNode; children: ReactNode }) {
 	return (
 		<div className="rounded-m-lg bg-m-surface p-4" data-testid="pending-card">
-			<div className="mb-2 flex min-h-6 items-center gap-2 text-m-xs text-m-text-3">
+			<div className="mb-2 flex min-h-6 flex-wrap items-center gap-2 text-m-xs text-m-text-3">
 				<span className="flex shrink-0 text-m-text-2">{icon}</span>
 				{label}
 			</div>
@@ -146,6 +146,7 @@ const ApprovalCard = memo(function ApprovalCard({ entry }: { entry: PendingEntry
 	const detail = [rest.join("\n").trim(), form.message.trim()].filter(Boolean).join("\n\n");
 	const confirmLike = form.method === "confirm";
 	const b = approvalButtons(form.options);
+	const verticalActions = b.other.some(({ label }) => label.length > 14);
 	const send = (value: string) => run(() => controller.respond(entry, { value }));
 	return (
 		<Card icon={<ShieldCheck size={18} strokeWidth={1.75} />} label="需要你的批准">
@@ -156,7 +157,7 @@ const ApprovalCard = memo(function ApprovalCard({ entry }: { entry: PendingEntry
 				</pre>
 			)}
 			{failed && <ErrorLine busy={busy} onRetry={() => void run(failed)} />}
-			<div className="mt-4 flex flex-wrap justify-end gap-2">
+			<div className={`mt-4 flex gap-2 ${verticalActions ? "flex-col items-stretch [&>button]:w-full" : "flex-wrap justify-end"}`}>
 				{confirmLike ? (
 					<>
 						<Button disabled={busy} onClick={() => void run(() => controller.respond(entry, { confirmed: false }))}>
@@ -174,7 +175,12 @@ const ApprovalCard = memo(function ApprovalCard({ entry }: { entry: PendingEntry
 							</Button>
 						)}
 						{b.other.map(({ raw, label }) => (
-							<Button key={raw} disabled={busy} onClick={() => void send(raw)}>
+							<Button
+								key={raw}
+								disabled={busy}
+								onClick={() => void send(raw)}
+								className={verticalActions ? "h-auto justify-start py-3 text-left whitespace-normal! [overflow-wrap:anywhere]" : ""}
+							>
 								{label}
 							</Button>
 						))}
@@ -258,7 +264,8 @@ const AskCard = memo(function AskCard({ spec, match, entry }: { spec: AskSpec; m
 			label={
 				<>
 					{spec.questions.length > 1 ? <Progress index={idx + 1} total={spec.questions.length} /> : <span>需要你回答</span>}
-					{q.header && <span className="ml-auto whitespace-nowrap rounded-m-pill bg-m-surface-2 px-2.5 py-0.5 text-m-text-2">{q.header}</span>}
+					<span className="shrink-0 whitespace-nowrap rounded-m-pill bg-m-accent-soft px-2.5 py-0.5 text-m-accent-soft-text">{q.multi ? "多选" : "单选"}</span>
+					{q.header && <span className="ml-auto min-w-0 break-words rounded-m-pill bg-m-surface-2 px-2.5 py-0.5 text-m-text-2">{q.header}</span>}
 				</>
 			}
 		>
@@ -313,8 +320,14 @@ const QuestionCard = memo(function QuestionCard({ entry }: { entry: PendingEntry
 	const [radio, setRadio] = useState<string>(() => (options.find((o) => o.recommended) ?? options[0])?.raw ?? "");
 	const [picked, setPicked] = useState<string[]>([]);
 
-	const label =
-		form.index != null && form.total != null ? <Progress index={form.index} total={form.total} /> : <span>需要你回答</span>;
+	const label = (
+		<>
+			{form.index != null && form.total != null ? <Progress index={form.index} total={form.total} /> : <span>需要你回答</span>}
+			{!form.text && (
+				<span className="shrink-0 whitespace-nowrap rounded-m-pill bg-m-accent-soft px-2.5 py-0.5 text-m-accent-soft-text">{form.multiple ? "多选" : "单选"}</span>
+			)}
+		</>
+	);
 
 	let body: ReactNode;
 	let submit: () => Promise<void>;
@@ -423,10 +436,35 @@ export function PendingCards() {
 	const { controller } = useChatUi();
 	const pendings = useChat((s) => s.pendings);
 	const asks = useOpenAsks();
+	const containerRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const viewport = window.visualViewport;
+		if (!viewport) return;
+		let frame: number | null = null;
+		const revealFocused = () => {
+			if (frame !== null) cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(() => {
+				frame = null;
+				const field = document.activeElement;
+				if (field instanceof HTMLElement && field.isConnected && containerRef.current?.contains(field)) {
+					field.scrollIntoView({ block: "nearest", inline: "nearest" });
+				}
+			});
+		};
+		viewport.addEventListener("resize", revealFocused);
+		return () => {
+			viewport.removeEventListener("resize", revealFocused);
+			if (frame !== null) cancelAnimationFrame(frame);
+		};
+	}, []);
 	if (!pendings.length) return null;
 	const approvals = pendings.filter(isBatchApprovable).length;
 	return (
-		<div className="max-h-[50%] shrink-0 space-y-3 overflow-y-auto overscroll-contain px-4 pt-1 pb-2">
+		<div
+			ref={containerRef}
+			onFocusCapture={(event) => event.target.scrollIntoView({ block: "nearest", inline: "nearest" })}
+			className="max-h-[50%] shrink-0 space-y-3 overflow-y-auto overscroll-contain px-4 pt-1 pb-2 focus-within:max-h-[calc(var(--m-vh,100dvh)_-_120px)]"
+		>
 			{showApproveAll(pendings) && (
 				<div className="flex flex-wrap items-center gap-2 rounded-m-lg bg-m-surface py-2 pr-2 pl-4">
 					<span className="min-w-0 flex-1 text-m-sm text-m-text-2">{approvals} 个工具请求等待批准</span>

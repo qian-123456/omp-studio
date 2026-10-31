@@ -62,10 +62,12 @@ describe("Sidechat Handback", () => {
 });
 
 describe("panel presentation contracts", () => {
+	beforeEach(() => vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }));
 	afterEach(() => {
 		cleanup();
 		sessionStorage.clear();
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it("preserves the annotation sessionStorage handoff and consumes it once", async () => {

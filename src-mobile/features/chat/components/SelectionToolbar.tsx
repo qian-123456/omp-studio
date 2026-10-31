@@ -1,23 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { copyText } from "../../../core/lib/format";
 import { nav, paths } from "../../../core/nav";
 import { toast } from "../../../ui";
 import { useChatUi } from "../ChatContext";
 import { quoteMarkdown } from "../chatStore";
 
-const BAR_H = 44;
-const GAP = 12;
-const EDGE = 12;
-
 interface SelectionData {
 	text: string;
-	top: number;
 }
 
 /**
- * Floating capsule toolbar for a text selection inside the thread: 批注到主对话 / 批注到辅助对话 / 复制. It sits
- * below the selection (the system selection menu stays above it) and never steals the selection: buttons cancel
- * pointerdown so the native range survives until an action runs.
+ * Capsule actions for a thread text selection, fixed above the composer and keyboard rather than
+ * beside the native selection menu. A body portal keeps keyboard offsets in layout-viewport
+ * coordinates; pointerdown cancellation preserves the native range until an action runs.
  */
 export function SelectionToolbar({
 	containerRef,
@@ -48,10 +44,7 @@ export function SelectionToolbar({
 			setSel(null);
 			return;
 		}
-		const vh = window.visualViewport?.height ?? window.innerHeight;
-		const below = rect.bottom + GAP;
-		const top = below + BAR_H < vh - EDGE ? below : Math.max(EDGE, rect.top - GAP - BAR_H);
-		setSel({ text, top });
+		setSel({ text });
 	}, [containerRef]);
 
 	useEffect(() => {
@@ -96,28 +89,29 @@ export function SelectionToolbar({
 	};
 
 	const item =
-		"flex h-11 items-center whitespace-nowrap rounded-m-pill px-4 text-m-sm text-m-text active:bg-m-surface-hover";
-	return (
+		"flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-m-pill px-3 text-m-sm text-m-text active:bg-m-surface-hover";
+	return createPortal(
 		<div
 			role="toolbar"
 			aria-label="批注选中的文字"
-			style={{ top: sel.top }}
+			style={{ bottom: "calc(var(--m-safe-bottom) + var(--m-kb, 0px) + 72px)" }}
 			className="pointer-events-none fixed inset-x-0 z-(--z-banner) flex justify-center px-3"
 		>
 			<div
 				onPointerDown={(e) => e.preventDefault()}
-				className="pointer-events-auto flex max-w-full items-center rounded-m-pill bg-m-bg-elev p-0.5 shadow-m-pop"
+				className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center rounded-m-pill bg-m-bg-elev p-0.5 shadow-m-pop"
 			>
-				<button type="button" className={item} onClick={toMain}>
-					批注到主对话
+				<button type="button" className={item} onClick={toMain} aria-label="批注到主对话">
+					主对话
 				</button>
-				<button type="button" className={item} onClick={toSide}>
-					批注到辅助对话
+				<button type="button" className={item} onClick={toSide} aria-label="批注到辅助对话">
+					辅助对话
 				</button>
 				<button type="button" className={item} onClick={() => void copy()} aria-label="复制选中文字">
 					复制
 				</button>
 			</div>
-		</div>
+		</div>,
+		document.body,
 	);
 }

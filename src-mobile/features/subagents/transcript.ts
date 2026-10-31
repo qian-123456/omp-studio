@@ -1,10 +1,12 @@
-/** Subagent transcript fetching: incremental `fromByte` tailing, refreshed every 15 s while the agent runs. */
+/** Subagent transcripts: initial/reset full reads, then visible event-driven incremental tailing. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
+import { events } from "../../core/sse";
 import type { TranscriptItem } from "../../core/types";
 import { isActive } from "./model";
 import type { SubagentSummary } from "./model";
-import { POLL_MS } from "./poller";
+import { createTranscriptRefresh } from "./transcriptRefresh";
+import type { TranscriptRefresh } from "./transcriptRefresh";
 
 /** `SubagentTranscript` (contracts.rs). */
 export interface SubagentTranscript {
@@ -48,48 +50,68 @@ export function useSubagentTranscript(sessionId: string, agentId: string): Trans
 	const [items, setItems] = useState<TranscriptItem[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const tail = useRef<TailState>({ items: [], nextByte: 0 });
-	const inflight = useRef<Promise<void> | null>(null);
-
-	const refresh = useCallback((): Promise<void> => {
-		if (inflight.current) return inflight.current;
-		const p = (async () => {
-			try {
-				const t = await api<SubagentTranscript>(
-					"GET",
-					`/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(agentId)}?fromByte=${tail.current.nextByte}`,
-				);
-				tail.current = accumulateTail(tail.current, t);
-				setItems(tail.current.items);
-				setInfo(t);
-				setError(null);
-			} catch (e) {
-				setError(errorMessage(e, "加载失败"));
-			} finally {
-				setLoading(false);
-				inflight.current = null;
-			}
-		})();
-		inflight.current = p;
-		return p;
-	}, [sessionId, agentId]);
+	const controller = useRef<TranscriptRefresh | null>(null);
+	const refresh = useCallback(() => controller.current?.refresh() ?? Promise.resolve(), []);
 
 	useEffect(() => {
-		tail.current = { items: [], nextByte: 0 };
+		let active = true;
+		let tail: TailState = { items: [], nextByte: 0 };
+		let unsubscribers: (() => void)[] = [];
 		setInfo(null);
 		setItems([]);
 		setLoading(true);
-		void refresh();
-	}, [refresh]);
-
-	const running = info ? isActive(info.summary.status) : false;
-	useEffect(() => {
-		if (!running) return;
-		const t = window.setInterval(() => {
-			if (document.visibilityState !== "hidden") void refresh();
-		}, POLL_MS);
-		return () => clearInterval(t);
-	}, [running, refresh]);
+		setError(null);
+		const current = createTranscriptRefresh({
+			async fetch(signal) {
+				try {
+					const page = await api<SubagentTranscript>(
+						"GET",
+						`/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(agentId)}?fromByte=${tail.nextByte}`,
+						undefined,
+						{ signal },
+					);
+					if (!active || signal.aborted) return { running: false };
+					tail = accumulateTail(tail, page);
+					setItems(tail.items);
+					setInfo(page);
+					setError(null);
+					return { running: isActive(page.summary.status) };
+				} catch (e) {
+					if (active && !signal.aborted) setError(errorMessage(e, "加载失败"));
+					throw e;
+				} finally {
+					if (active && !signal.aborted) setLoading(false);
+				}
+			},
+		});
+		controller.current = current;
+		const updateVisibility = () => {
+			for (const unsubscribe of unsubscribers) unsubscribe();
+			unsubscribers = [];
+			const visible = document.visibilityState !== "hidden";
+			if (visible) {
+				unsubscribers = [
+					events.on("rpc", (event) => {
+						if (event.sessionId === sessionId) current.notify();
+					}),
+					events.on("touch", (event) => {
+						if (event.sessionId === sessionId) current.notify();
+					}),
+					events.on("resync", () => current.notify()),
+				];
+			}
+			current.setVisible(visible);
+		};
+		document.addEventListener("visibilitychange", updateVisibility);
+		updateVisibility();
+		return () => {
+			active = false;
+			document.removeEventListener("visibilitychange", updateVisibility);
+			for (const unsubscribe of unsubscribers) unsubscribe();
+			current.dispose();
+			if (controller.current === current) controller.current = null;
+		};
+	}, [sessionId, agentId]);
 
 	return { info, items, loading, error, refresh };
 }

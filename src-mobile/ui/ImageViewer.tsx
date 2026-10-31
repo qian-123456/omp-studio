@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useOverlay, usePresence } from "./overlay";
@@ -43,8 +43,10 @@ interface Gesture {
 	prevDist: number;
 	moved: number;
 	downAt: number;
-	lastTapAt: number;
-	downOnImage: boolean;
+	startX: number;
+	startY: number;
+	startScale: number;
+	multiTouch: boolean;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -52,7 +54,18 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 export function ImageViewerHost() {
 	const item = useSyncExternalStore(subscribe, getCurrent, getCurrent);
 	const open = item !== null;
-	const close = () => setCurrent(null);
+	const [chromeVisible, setChromeVisible] = useState(true);
+	const tapTimer = useRef<number | undefined>(undefined);
+	const lastTap = useRef<{ at: number; x: number; y: number } | null>(null);
+	const clearTap = () => {
+		window.clearTimeout(tapTimer.current);
+		tapTimer.current = undefined;
+		lastTap.current = null;
+	};
+	const close = () => {
+		clearTap();
+		setCurrent(null);
+	};
 	const { mounted, visible } = usePresence(open, 200);
 	useOverlay(open, close);
 	// Keep the last image mounted while the exit transition plays.
@@ -70,8 +83,10 @@ export function ImageViewerHost() {
 		prevDist: 0,
 		moved: 0,
 		downAt: 0,
-		lastTapAt: 0,
-		downOnImage: false,
+		startX: 0,
+		startY: 0,
+		startScale: 1,
+		multiTouch: false,
 	});
 
 	const apply = (animate: boolean) => {
@@ -84,15 +99,18 @@ export function ImageViewerHost() {
 
 	const src = item?.src;
 	useEffect(() => {
+		clearTap();
+		setChromeVisible(true);
 		const s = g.current;
 		s.scale = 1;
 		s.x = 0;
 		s.y = 0;
 		s.pointers.clear();
 		s.prevMid = null;
-		s.lastTapAt = 0;
+		s.multiTouch = false;
 		apply(false);
 	}, [src]);
+	useEffect(() => () => window.clearTimeout(tapTimer.current), []);
 
 	if (!mounted || !shown) return null;
 
@@ -116,25 +134,29 @@ export function ImageViewerHost() {
 	};
 
 	const midOf = (s: Gesture) => {
-		const pts = [...s.pointers.values()];
-		const a = pts[0];
-		const b = pts[1];
+		const points = s.pointers.values();
+		const a = points.next().value;
+		const b = points.next().value;
 		if (!a) return { mid: { x: 0, y: 0 }, dist: 0 };
 		if (!b) return { mid: { x: a.x, y: a.y }, dist: 0 };
 		return { mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, dist: Math.hypot(a.x - b.x, a.y - b.y) };
 	};
 
 	const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-		if ((e.target as HTMLElement).closest("button")) return;
+		if (!open || e.button !== 0 || (e.target as Element).closest("button")) return;
 		const s = g.current;
 		e.currentTarget.setPointerCapture(e.pointerId);
 		s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 		if (s.pointers.size === 1) {
 			s.moved = 0;
 			s.downAt = e.timeStamp;
-			// Pointer capture retargets later events to the container, so remember the original target now.
-			s.downOnImage = e.target === imgRef.current;
+			s.startX = e.clientX;
+			s.startY = e.clientY;
+			s.startScale = s.scale;
+			s.multiTouch = false;
 		} else {
+			s.multiTouch = true;
+			clearTap();
 			s.moved = TAP_MOVE_PX + 1;
 		}
 		const m = midOf(s);
@@ -147,12 +169,14 @@ export function ImageViewerHost() {
 		const p = s.pointers.get(e.pointerId);
 		if (!p || !s.prevMid) return;
 		s.moved += Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y);
+		if (s.moved > TAP_MOVE_PX) clearTap();
 		p.x = e.clientX;
 		p.y = e.clientY;
 		const m = midOf(s);
 		const ratio = s.pointers.size >= 2 && s.prevDist > 0 ? m.dist / s.prevDist : 1;
 		if (s.scale === 1 && ratio === 1) {
 			s.prevMid = m.mid;
+			s.prevDist = m.dist;
 			return;
 		}
 		transform(s.prevMid, m.mid, ratio);
@@ -164,25 +188,38 @@ export function ImageViewerHost() {
 	const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
 		const s = g.current;
 		if (!s.pointers.delete(e.pointerId)) return;
-		const wasTap = s.moved <= TAP_MOVE_PX && e.timeStamp - s.downAt < 400 && s.pointers.size === 0;
+		const cancelled = e.type === "pointercancel" || e.type === "lostpointercapture";
+		const dx = e.clientX - s.startX;
+		const dy = e.clientY - s.startY;
+		const wasTap = !cancelled && !s.multiTouch && s.moved <= TAP_MOVE_PX
+			&& Math.hypot(dx, dy) <= TAP_MOVE_PX && e.timeStamp - s.downAt < 400 && s.pointers.size === 0;
 		const m = midOf(s);
 		s.prevMid = s.pointers.size > 0 ? m.mid : null;
 		s.prevDist = m.dist;
-		if (!wasTap) return;
-		if (!s.downOnImage) {
-			close();
+		if (!wasTap) {
+			clearTap();
+			if (!cancelled && !s.multiTouch && s.pointers.size === 0 && s.startScale === 1 && s.scale === 1
+				&& dy > 100 && dy > Math.abs(dx) * 1.5) close();
 			return;
 		}
-		// The second tap of a double-tap must not undo the zoom the first one applied.
-		if (e.timeStamp - s.lastTapAt < DOUBLE_TAP_MS) {
-			s.lastTapAt = 0;
+		const previous = lastTap.current;
+		if (previous && e.timeStamp - previous.at <= DOUBLE_TAP_MS
+			&& Math.hypot(e.clientX - previous.x, e.clientY - previous.y) <= 32) {
+			clearTap();
+			const point = { x: e.clientX, y: e.clientY };
+			if (s.scale > 1) transform(center(), center(), MIN_SCALE / s.scale);
+			else transform(point, point, TAP_SCALE);
+			apply(true);
 			return;
 		}
-		s.lastTapAt = e.timeStamp;
-		const point = { x: e.clientX, y: e.clientY };
-		if (s.scale > 1) transform(center(), center(), MIN_SCALE / s.scale);
-		else transform(point, point, TAP_SCALE);
-		apply(true);
+		if (previous) setChromeVisible((value) => !value);
+		clearTap();
+		lastTap.current = { at: e.timeStamp, x: e.clientX, y: e.clientY };
+		tapTimer.current = window.setTimeout(() => {
+			lastTap.current = null;
+			tapTimer.current = undefined;
+			setChromeVisible((value) => !value);
+		}, DOUBLE_TAP_MS);
 	};
 
 	return createPortal(
@@ -195,6 +232,7 @@ export function ImageViewerHost() {
 			onPointerMove={onMove}
 			onPointerUp={onUp}
 			onPointerCancel={onUp}
+			onLostPointerCapture={onUp}
 		>
 			<img
 				ref={imgRef}
@@ -203,6 +241,7 @@ export function ImageViewerHost() {
 				draggable={false}
 				className="max-h-full max-w-full object-contain will-change-transform"
 			/>
+			{chromeVisible && (
 			<button
 				type="button"
 				aria-label="关闭"
@@ -212,6 +251,7 @@ export function ImageViewerHost() {
 			>
 				<X size={22} />
 			</button>
+			)}
 		</div>,
 		document.body,
 	);

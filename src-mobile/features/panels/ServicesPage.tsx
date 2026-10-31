@@ -7,6 +7,7 @@ import { useSessions } from "../../core/stores/sessions";
 import { Button, Chip, EmptyState, ListGroup, ListRow, PageHeader, PullToRefresh, Segmented, confirm, toast } from "../../ui";
 import { LoadGate } from "./PanelState";
 import { useLoad, useResync } from "./hooks";
+import { WorkspacePanelBar } from "./WorkspacePanelBar";
 
 interface Service {
 	pid: number;
@@ -26,7 +27,7 @@ const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
 	{ value: "all", label: "全部端口" },
 ];
 
-export function ServicesPage(_props: PageProps) {
+export function ServicesPage({ route }: PageProps) {
 	const [scope, setScope] = useState<Scope>("dev");
 	const [stopping, setStopping] = useState<number | null>(null);
 	const byId = useSessions((s) => s.byId);
@@ -60,6 +61,7 @@ export function ServicesPage(_props: PageProps) {
 					<Segmented label="服务范围" value={scope} options={SCOPES} onChange={setScope} />
 				</div>
 			</PageHeader>
+			<WorkspacePanelBar sessionId={route.params.id} current="services" />
 			<PullToRefresh onRefresh={() => state.reload(true)}>
 				<LoadGate state={state}>
 					{(rows) =>

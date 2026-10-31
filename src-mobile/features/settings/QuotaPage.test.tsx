@@ -125,7 +125,7 @@ describe("QuotaPage (/quota)", () => {
 		fireEvent.click(refreshBtn);
 
 		await waitFor(() => {
-			expect(apiModule.api).toHaveBeenCalledWith("GET", "/quota?refresh=true");
+			expect(apiModule.api).toHaveBeenCalledWith("GET", "/quota?refresh=true", undefined, { signal: expect.any(AbortSignal) });
 		});
 	});
 
@@ -155,17 +155,16 @@ describe("QuotaPage (/quota)", () => {
 		expect(await screen.findByText("Anthropic Claude")).toBeDefined();
 	});
 
-	it("renders cleanly within 390x844 viewport", async () => {
-		vi.mocked(apiModule.api).mockResolvedValueOnce(MOCK_QUOTA_RESPONSE);
-
-		const { container } = render(
-			<div style={{ width: "390px", height: "844px" }}>
-				<QuotaPage />
-			</div>,
-		);
-
+	it("keeps useful quota data visible after refresh failure and recovers on retry", async () => {
+		vi.mocked(apiModule.api).mockResolvedValueOnce(MOCK_QUOTA_RESPONSE).mockRejectedValueOnce(new Error("quota refresh offline"));
+		render(<QuotaPage />);
 		await screen.findByText("Anthropic Claude");
-		expect(container.querySelector("[data-testid='provider-card-anthropic']")).toBeDefined();
-		expect(container.querySelector("[data-testid='provider-card-openai-codex']")).toBeDefined();
+		fireEvent.click(screen.getByRole("button", { name: "刷新配额" }));
+		expect(await screen.findByText(/quota refresh offline/)).toBeTruthy();
+		expect(screen.getByText("已用 40% · 剩余 60%")).toBeTruthy();
+		vi.mocked(apiModule.api).mockResolvedValueOnce(MOCK_QUOTA_RESPONSE);
+		fireEvent.click(screen.getByRole("button", { name: "重试刷新" }));
+		await waitFor(() => expect(screen.queryByText(/quota refresh offline/)).toBeNull());
+		expect(screen.getByText("Anthropic Claude")).toBeTruthy();
 	});
 });

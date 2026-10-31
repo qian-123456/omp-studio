@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.fn();
@@ -9,6 +9,7 @@ vi.mock("../../../core/api", () => ({
 }));
 
 import { SettingsProvidersPage } from "./ProvidersPage";
+import { ToastHost } from "../../../ui/Toast";
 
 afterEach(() => {
 	cleanup();
@@ -47,5 +48,36 @@ describe("SettingsProvidersPage", () => {
 		});
 		expect(apiMock).toHaveBeenCalledWith("POST", "/left/providers/save", { id: "mine", api_key: "sk-secret-123" });
 		expect(screen.getByRole("alert").textContent).toContain("vault locked: details line 1\nline 2");
+	});
+
+	it.each([false, true])("persists URL-only changes and prevents stale undo after newer edit %s", async (newer) => {
+		let url = "https://old.example/v1";
+		const id = newer ? "provider-newer" : "provider-undo";
+		const row = () => ({ id, origin: "custom", baseUrl: url, api: "openai", models: [], key: { kind: "missing" } });
+		apiMock.mockImplementation(async (method: string, _path: string, body?: { base_url?: string }) => {
+			if (method === "GET") return { providers: [row()] };
+			if (body?.base_url) url = body.base_url;
+			return { provider: row() };
+		});
+		render(<><SettingsProvidersPage /><ToastHost /></>);
+		fireEvent.click(await screen.findByText(id));
+		fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), { target: { value: "https://new.example/v1" } });
+		await act(async () => fireEvent.click(screen.getByRole("button", { name: "保存更改" })));
+		expect(url).toBe("https://new.example/v1");
+		expect(screen.queryByRole("button", { name: "确认保存" })).toBeNull();
+		if (newer) {
+			fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${id}.*openai`) }));
+			fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), { target: { value: "https://latest.example/v1" } });
+		}
+		await act(async () => fireEvent.click(screen.getByRole("button", { name: "撤销" })));
+		if (newer) {
+			expect(url).toBe("https://new.example/v1");
+			expect(await screen.findByText(/已有更新的修改/)).toBeTruthy();
+			expect(apiMock.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
+		} else {
+			await waitFor(() => expect(url).toBe("https://old.example/v1"));
+			expect(apiMock).toHaveBeenLastCalledWith("GET", "/left/providers");
+			expect(apiMock).toHaveBeenCalledWith("POST", "/left/providers/save", { id, base_url: "https://old.example/v1" });
+		}
 	});
 });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths } from "../../core/nav";
 import { useSessions } from "../../core/stores/sessions";
-import { BottomSheet, Button, Chip, ListGroup, Spinner, toast } from "../../ui";
+import { BottomSheet, Button, Chip, ListGroup, Spinner, TextField, toast } from "../../ui";
 import { ModelPicker, type PickerModel } from "../../ui/ModelPicker";
 import { createInput, initialNewSession, newSessionReducer, preselectCwd } from "./newSession";
 import { modeLabel, type DirEntry } from "./tree";
@@ -17,6 +17,13 @@ const KIND_ICON: Record<string, ReactNode> = {
 	worktree: <FolderGit2 size={22} strokeWidth={1.75} />,
 	global: <MessageSquare size={22} strokeWidth={1.75} />,
 };
+
+/** Abbreviate only the exact home directory supplied by the server, never a guessed username. */
+export function abbreviateHomePath(path: string, homeDir?: string | null): string {
+	const home = homeDir?.replace(new RegExp("/+$"), "");
+	if (!home) return path;
+	return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
 
 /** Selectable row inside a grouped card (radio semantics, check mark on the right). */
 function ChoiceRow({
@@ -77,12 +84,15 @@ function DirStep({
 	cwd,
 	onPick,
 	onRetry,
+	homeDir,
 }: {
 	load: Load<DirEntry[]>;
 	cwd: string | null;
 	onPick: (cwd: string) => void;
 	onRetry: () => void;
+	homeDir?: string | null;
 }) {
+	const [query, setQuery] = useState("");
 	if (load.loading && !load.data)
 		return (
 			<div className="flex items-center justify-center gap-2 p-10 text-m-sm text-m-text-3">
@@ -97,10 +107,13 @@ function DirStep({
 				<Button onClick={onRetry}>重试</Button>
 			</div>
 		);
-	const groups = groupDirs(load.data ?? []);
-	if (!groups.length) return <div className="px-6 py-10 text-center text-m-sm text-m-text-3">没有可用目录</div>;
+	const needle = query.trim().toLocaleLowerCase();
+	const groups = groupDirs((load.data ?? []).filter((d) => !needle || `${d.label} ${d.path}`.toLocaleLowerCase().includes(needle)));
 	return (
 		<div className="flex flex-col pb-3" role="radiogroup" aria-label="选择目录">
+			<div className="px-4 pb-3"><TextField aria-label="搜索目录" placeholder="搜索目录名称或路径" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+			<p className="px-5 pb-3 text-m-xs text-m-text-3">选择现有目录或工作树。新工作树需在电脑端创建并登记。</p>
+			{!groups.length && <p className="px-6 py-8 text-center text-m-sm text-m-text-3">{needle ? "没有匹配目录，请尝试其他关键词" : "没有可用目录"}</p>}
 			{groups.map((g) => (
 				<ListGroup key={g.kind} title={g.title}>
 						{g.dirs.map((d) => (
@@ -109,8 +122,8 @@ function DirStep({
 								checked={d.path === cwd}
 								onPick={() => onPick(d.path)}
 								icon={KIND_ICON[d.kind] ?? KIND_ICON.workspace}
-								title={d.label || d.path}
-								subtitle={d.label ? d.path : undefined}
+								title={d.label || abbreviateHomePath(d.path, homeDir)}
+								subtitle={d.label ? <span title={d.path}>{abbreviateHomePath(d.path, homeDir)}</span> : undefined}
 								tag={d.kind !== "global" && d.mode ? <Chip>{modeLabel(d.mode)}</Chip> : undefined}
 							/>
 						))}
@@ -124,9 +137,10 @@ function DirStep({
  * New-session wizard: 1) directory, 2) model + thinking. 「上一步」 keeps every choice; the model step is optional
  * (「直接创建」 / 「使用默认模型」 use the workspace default).
  */
-export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; onClose: () => void; defaultCwd?: string }) {
+export function NewSessionSheet({ open, onClose, defaultCwd, onSelectDirectory }: { open: boolean; onClose: () => void; defaultCwd?: string; onSelectDirectory?: (dir: DirEntry) => void }) {
 	const [state, dispatch] = useReducer(newSessionReducer, defaultCwd, initialNewSession);
 	const [dirs, setDirs] = useState<Load<DirEntry[]>>({ data: null, error: null, loading: false });
+	const [homeDir, setHomeDir] = useState<string | null>(null);
 	const [models, setModels] = useState<Load<PickerModel[]> & { cwd: string | null }>({
 		data: null,
 		error: null,
@@ -144,11 +158,12 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 	const loadDirs = useCallback(() => {
 		const request = ++dirsRequest.current;
 		setDirs({ data: null, error: null, loading: true });
-		api<{ dirs: DirEntry[] }>("GET", "/left/dirs")
+		api<{ dirs: DirEntry[]; homeDir?: string | null }>("GET", "/left/dirs")
 			.then((r) => {
 				if (request !== dirsRequest.current) return;
 				const data = r.dirs ?? [];
 				setDirs({ data, error: null, loading: false });
+				setHomeDir(r.homeDir ?? null);
 				const cwd = preselectCwd(data, defaultCwdRef.current);
 				if (cwd) dispatch({ type: "pickDir", cwd });
 			})
@@ -206,7 +221,12 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 	};
 
 	const onModel = state.step === "model";
-	const footer = onModel ? (
+	const footer = onSelectDirectory ? (
+		<Button block variant="primary" disabled={!state.cwd} onClick={() => {
+			const dir = dirs.data?.find((d) => d.path === state.cwd);
+			if (dir) { onSelectDirectory(dir); onClose(); }
+		}}>使用此目录</Button>
+	) : onModel ? (
 		<div className="flex gap-3">
 			<Button
 				className="flex-1"
@@ -222,11 +242,11 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 		</div>
 	) : (
 		<div className="flex gap-3">
-			<Button className="flex-1" disabled={!state.cwd} busy={creating} onClick={() => void create()}>
+			<Button className="flex-1" variant="primary" disabled={!state.cwd} busy={creating} onClick={() => void create()}>
 				直接创建
 			</Button>
-			<Button className="flex-1" variant="primary" disabled={!state.cwd || creating} onClick={() => dispatch({ type: "next" })}>
-				下一步
+			<Button className="flex-1" disabled={!state.cwd || creating} onClick={() => dispatch({ type: "next" })}>
+				选择模型
 			</Button>
 		</div>
 	);
@@ -236,12 +256,12 @@ export function NewSessionSheet({ open, onClose, defaultCwd }: { open: boolean; 
 			open={open}
 			onClose={onClose}
 			fullHeight
-			title={onModel ? "选择模型" : "在哪个目录新建会话"}
-			subtitle={onModel ? `第 2 步，共 2 步 · ${state.cwd ?? ""}` : "第 1 步，共 2 步"}
+			title={onSelectDirectory ? "选择当前目录" : onModel ? "选择模型" : "在哪个目录新建会话"}
+			subtitle={onSelectDirectory ? "选择后用于首页新会话" : onModel ? abbreviateHomePath(state.cwd ?? "", homeDir) : "直接创建，或先选择模型与思考档"}
 			footer={footer}
 		>
 			{!onModel ? (
-				<DirStep load={dirs} cwd={state.cwd} onPick={(cwd) => dispatch({ type: "pickDir", cwd })} onRetry={loadDirs} />
+				<DirStep load={dirs} cwd={state.cwd} homeDir={homeDir} onPick={(cwd) => dispatch({ type: "pickDir", cwd })} onRetry={loadDirs} />
 			) : (
 				<div className="flex h-full min-h-0 flex-col gap-3 pb-3">
 					<div className="px-4">

@@ -76,6 +76,20 @@ describe("flattenTree: workspace groups", () => {
 		expect(more).toMatchObject({ t: "more", expandText: "展开 3 条", collapse: false });
 	});
 
+	it("marks the first and last visible sessions after capping and expansion", () => {
+		const sessions = many(10);
+		sessions[8] = { ...sessions[8], status: "working" };
+		const d = tree({ workspaceGroups: [group("a", [sub("default", sessions)])] });
+		const collapsed = flat(d, { curId: sessions[9].id }).rows.filter((row) => row.t === "s");
+		expect(collapsed.map((row) => row.s.id)).toEqual([...sessions.slice(0, 5), sessions[8], sessions[9]].map((s) => s.id));
+		expect(collapsed.filter((row) => row.spineFirst).map((row) => row.s.id)).toEqual([sessions[0].id]);
+		expect(collapsed.filter((row) => row.spineLast).map((row) => row.s.id)).toEqual([sessions[9].id]);
+		expect(collapsed.every((row) => row.withSpine)).toBe(true);
+		const expanded = flat(d, { expanded: { "w:a|default|more": 10 } }).rows.filter((row) => row.t === "s");
+		expect(expanded.map((row) => row.s.id)).toEqual(sessions.map((s) => s.id));
+		expect(expanded.filter((row) => row.spineLast).map((row) => row.s.id)).toEqual([sessions[9].id]);
+	});
+
 	it("worktree/branch subgroups get their own header with a create-here action and 3 recents", () => {
 		const wt = sub("wt1", many(4), { kind: "worktree", label: "feat-x", createCwd: "/p/a/.wt/feat-x" });
 		const main = sub("main", many(1), { kind: "branch", isMain: true, label: "main" });
@@ -114,7 +128,8 @@ describe("flattenTree: workspace groups", () => {
 
 	it("a group with nothing at all says 暂无会话", () => {
 		const d = tree({ workspaceGroups: [group("a", [])] });
-		expect(flat(d).rows.filter((r) => r.t === "none")).toMatchObject([{ text: "暂无会话" }]);
+		expect(headers(flat(d).rows).find((h) => h.title === "a")?.tags).toContain("暂无会话");
+		expect(flat(d).rows.filter((r) => r.t === "none")).toHaveLength(0);
 	});
 
 	it("global group is titled 无项目 and has no path hint", () => {

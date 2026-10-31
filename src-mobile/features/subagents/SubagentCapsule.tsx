@@ -85,7 +85,7 @@ export function SubagentCapsule({ sessionId }: { sessionId: string }) {
 							<span key={part.key} className="whitespace-nowrap">{c[part.key]} {part.label}</span>
 						))}
 					</p>
-					<SubagentTree rows={flat} now={now} onOpen={(id) => open(paths.subagent(sessionId, id))} />
+					<SubagentTree key={sessionId} rows={flat} now={now} onOpen={(id) => open(paths.subagent(sessionId, id))} />
 				</div>
 			</BottomSheet>
 		</>

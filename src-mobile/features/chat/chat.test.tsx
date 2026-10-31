@@ -107,14 +107,15 @@ describe("Composer", () => {
 		expect((screen.getByLabelText("消息输入框") as HTMLTextAreaElement).value).toBe("left over");
 	});
 
-	it("offers steer/queue only while streaming", async () => {
-		const c = new ChatController("s1");
-		render(wrap(c, <Composer sessionId="s1" />));
-		expect(screen.queryByText("插话")).toBeNull();
-		await act(async () => c.store.setState({ working: true }));
-		expect(screen.getByText("插话")).toBeTruthy();
-		expect(screen.getByText("排队")).toBeTruthy();
-		expect(screen.getByLabelText("停止")).toBeTruthy();
+ it("offers a working-only send mode switch without removing Stop", async () => {
+  const c = new ChatController("s1");
+  render(wrap(c, <Composer sessionId="s1" />));
+  expect(screen.queryByRole("button", { name: /发送方式/ })).toBeNull();
+  await act(async () => c.store.setState({ working: true }));
+  const before = screen.getByRole("button", { name: /发送方式/ }).getAttribute("aria-label");
+  fireEvent.click(screen.getByRole("button", { name: /发送方式/ }));
+  expect(screen.getByRole("button", { name: /发送方式/ }).getAttribute("aria-label")).not.toBe(before);
+  expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
 	});
 });
 
@@ -161,6 +162,20 @@ describe("controller send", () => {
 		expect(c.state.localOut[0]).toMatchObject({ name: "status", text: "状态正常" });
 		expect(c.state.optimistic).toEqual([]);
 	});
+ it("preserves draft and attachments without claiming approval when the host command fails", async () => {
+  const c = new ChatController("s1");
+  let draft = "未发送的补充要求";
+  c.composer = { get: () => draft, set: (value) => { draft = value; } };
+  const attachment = { id: 1, name: "notes.txt", path: "/uploads/notes.txt", isImage: false, status: "ok" as const, url: "" };
+  c.store.setState({ cstate: { planMode: true }, atts: [attachment] });
+  apiMock.mockRejectedValueOnce(new Error("host rejected approval"));
+  await expect(c.approvePlan("turn-plan", "approved plan text")).resolves.toBe(false);
+  expect(draft).toBe("未发送的补充要求");
+  expect(c.state.atts).toEqual([attachment]);
+  expect(c.state.cstate?.planMode).toBe(true);
+  expect(c.state.acceptedPlan).toBeNull();
+  expect(c.state.working).toBe(false);
+ });
 
 	it("fork-from-here sends the entry id with the typed first message", async () => {
 		const c = new ChatController("s1");
@@ -210,13 +225,31 @@ describe("MessageList", () => {
 	it("renders only a window of a 150-turn session and can load earlier turns", async () => {
 		const c = new ChatController("s1");
 		seed(c);
-		const { container } = render(wrap(c, <MessageList sessionId="s1" />));
-		expect(container.querySelectorAll(".m-turn,.m-turn-live").length).toBe(WINDOW_STEP);
+  render(wrap(c, <MessageList sessionId="s1" />));
+  expect(screen.getByText(`question ${150 - WINDOW_STEP}`)).toBeTruthy();
+  expect(screen.queryByText(`question ${149 - WINDOW_STEP}`)).toBeNull();
 		expect(screen.getByText("answer 149")).toBeTruthy();
 		expect(screen.queryByText("answer 0")).toBeNull();
 		await act(async () => fireEvent.click(screen.getByText(/加载更早的/)));
-		expect(container.querySelectorAll(".m-turn,.m-turn-live").length).toBe(WINDOW_STEP * 2);
+  expect(screen.getByText(`question ${150 - WINDOW_STEP * 2}`)).toBeTruthy();
+  expect(screen.queryByText(`question ${149 - WINDOW_STEP * 2}`)).toBeNull();
+  expect(screen.getByText("answer 149")).toBeTruthy();
 	});
+ it("keeps loaded history visible when a new turn arrives away from the tail", async () => {
+  const c = new ChatController("s1");
+  seed(c);
+  render(wrap(c, <MessageList sessionId="s1" />));
+  fireEvent.click(screen.getByRole("button", { name: /加载更早的/ }));
+  const anchorText = `question ${150 - WINDOW_STEP * 2}`;
+  expect(screen.getByText(anchorText)).toBeTruthy();
+  const next: TranscriptItem[] = [...raw,
+   { id: "u150", kind: "user", text: "new question", ts: "2026-10-26T10:01:00Z" },
+   { id: "a150", kind: "assistant", text: "new answer", ts: "2026-10-26T10:01:05Z" },
+  ];
+  await act(async () => c.store.setState({ blocks: buildBlocks(normalizeTranscript(next), {}) }));
+  expect(screen.getByText(anchorText)).toBeTruthy();
+  expect(screen.getByText("new answer")).toBeTruthy();
+ });
 
 	it("streaming updates leave earlier turn DOM nodes untouched", async () => {
 		const c = new ChatController("s1");

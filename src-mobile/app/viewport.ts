@@ -2,7 +2,7 @@
  * Visual-viewport tracking for the on-screen keyboard.
  *
  * iOS pans the layout viewport when the keyboard opens. We pin the app to the visual viewport by
- * writing CSS variables (`--m-vh`, `--m-kb`) and a body translate — ONLY from visualViewport
+ * writing CSS variables (`--m-vh`, `--m-kb`, `--m-vv-top`) — ONLY from visualViewport
  * resize/scroll events, rAF-throttled and skipped when nothing changed. Typing never reaches this
  * code, so keystrokes cause no style recalculation or layout reads.
  */
@@ -29,7 +29,7 @@ export function installViewportTracking(): () => void {
 			lastKb = kb;
 		}
 		if (top !== lastTop) {
-			document.body.style.transform = top > 0 ? `translateY(${top}px)` : "";
+			root.style.setProperty("--m-vv-top", `${top}px`);
 			lastTop = top;
 		}
 	};
@@ -43,5 +43,8 @@ export function installViewportTracking(): () => void {
 		vv.removeEventListener("resize", schedule);
 		vv.removeEventListener("scroll", schedule);
 		if (raf) cancelAnimationFrame(raf);
+		root.style.removeProperty("--m-vh");
+		root.style.removeProperty("--m-kb");
+		root.style.removeProperty("--m-vv-top");
 	};
 }

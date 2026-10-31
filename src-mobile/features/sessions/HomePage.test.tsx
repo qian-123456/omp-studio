@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.fn();
@@ -47,6 +47,7 @@ const typeMessage = async (text: string) => {
 };
 
 beforeEach(() => {
+ vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
 	apiMock.mockImplementation(async (_m: string, path: string) => {
 		if (path === "/left/dirs") {
 			return {
@@ -71,6 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+ vi.unstubAllGlobals();
 	vi.clearAllMocks();
 });
 
@@ -123,5 +125,34 @@ describe("HomePage", () => {
 		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送" })); });
 		expect(input.value).toBe("保留这条消息");
 		expect(replaceMock).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])("selects a directory without creating, then revalidates availability %s before send", async (unavailable) => {
+		const first = { path: "/project/workspace", label: "workspace", kind: "workspace", mode: "code" };
+		const selected = { path: "/external/feature", label: "feature worktree", kind: "worktree", mode: "code" };
+		let available = true;
+		apiMock.mockImplementation(async (_method: string, path: string) => {
+			if (path === "/left/dirs") return { dirs: available ? [first, selected] : [first], homeDir: "/project" };
+			if (path.startsWith("/left/sessions")) return { pinned: [], globalGroup: null, workspaceGroups: [], unassignedGroups: [], deletedSessions: [], archived: [] };
+			if (path === "/todos") return [];
+			return {};
+		});
+		render(<HomePage route={{ name: "home", path: "/", params: {}, query: {} }} />);
+		fireEvent.click(await screen.findByRole("button", { name: "当前目录：/project/workspace，点击切换" }));
+		fireEvent.click(await screen.findByRole("radio", { name: /feature worktree/ }));
+		fireEvent.click(screen.getByRole("button", { name: "使用此目录" }));
+		expect(createSessionMock).not.toHaveBeenCalled();
+		expect(screen.getByRole("button", { name: "当前目录：/external/feature，点击切换" })).toBeTruthy();
+		available = !unavailable;
+		await typeMessage("选定工作树的消息");
+		await act(async () => fireEvent.click(screen.getByRole("button", { name: "发送" })));
+		if (unavailable) {
+			expect(createSessionMock).not.toHaveBeenCalled();
+			expect(replaceMock).not.toHaveBeenCalled();
+			expect((screen.getByLabelText("消息输入框") as HTMLTextAreaElement).value).toBe("选定工作树的消息");
+		} else {
+			await waitFor(() => expect(createSessionMock).toHaveBeenCalledWith({ cwd: selected.path, mode: "code" }));
+			expect(takeFirstSend("mobile-draft-1")).toBe("选定工作树的消息");
+		}
 	});
 });

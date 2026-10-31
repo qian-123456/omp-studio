@@ -1,10 +1,10 @@
-import { FileText, Folder, FolderOpen, GitBranch, Lightbulb, Monitor, Paperclip, PenLine, Target, X } from "lucide-react";
+import { Camera, FileText, Folder, FolderOpen, GitBranch, ImagePlus, Lightbulb, Monitor, Paperclip, PenLine, Target, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../../../core/api";
 import { baseName } from "../../../core/lib/format";
 import { usePref } from "../../../core/stores/prefs";
 import { useSession } from "../../../core/stores/sessions";
-import { BottomSheet, Chip, IconButton, MenuRow, Segmented, Spinner, Switch, toast } from "../../../ui";
+import { BottomSheet, Chip, IconButton, MenuRow, Spinner, Switch, toast } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
 import { contextTone, formatContextPercent, resolveContextPercent } from "../lib/context";
 import { takeComposerAction } from "../lib/drafts";
@@ -54,6 +54,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	const apiRef = useRef<ComposerApi | null>(null);
 	const saveTimer = useRef<number | undefined>(undefined);
 	const fileAny = useRef<HTMLInputElement>(null);
+	const fileCamera = useRef<HTMLInputElement>(null);
+	const fileGallery = useRef<HTMLInputElement>(null);
 
 	const onInput = useCallback(() => {
 		clearTimeout(saveTimer.current);
@@ -142,7 +144,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 									上传中
 								</span>
 							)}
-							{a.status === "err" && <span className="text-m-xs whitespace-nowrap text-m-danger">上传失败</span>}
+							{a.status === "err" && <span className="text-m-xs break-words text-m-danger">{a.err ? `上传失败：${a.err}` : "上传失败"}</span>}
 						</span>
 						<span className="absolute top-0 right-0">
 							<IconButton size="sm" icon={<X size={16} />} label="移除附件" onClick={() => controller.removeAtt(a.id)} />
@@ -167,42 +169,41 @@ export function Composer({ sessionId }: { sessionId: string }) {
 				</div>
 			)}
 
-			{working && (
-				<div className="mb-2 flex items-center gap-3 px-1">
-					<Segmented<StreamBehavior>
-						label="发送方式"
-						value={behavior}
-						options={(["followUp", "steer"] as const).map((b) => ({ value: b, label: BEHAVIOR_LABEL[b] }))}
-						onChange={setBehavior}
-					/>
-					<span className="min-w-0 flex-1 text-m-xs text-m-text-3">{BEHAVIOR_HINT[behavior]}</span>
-				</div>
-			)}
-
-			{/* Status row: folder (or plan-mode capsule) left, context usage right. */}
-			<div className="flex min-h-11 flex-wrap items-center gap-x-2 text-m-xs">
-				{planOn ? (
-					<Chip tone="accent" icon={<Lightbulb size={14} />} onClick={() => void togglePlan()} className="h-8 shrink-0 pr-2">
-						规划模式
-						<X size={14} aria-hidden />
-					</Chip>
-				) : (
+			{/* One stable row: horizontally scrollable status controls, pinned context usage. */}
+			<div className="flex h-11 min-w-0 items-center gap-1 text-m-xs">
+				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap">
+					{working && (
+						<button
+							type="button"
+							aria-label={`发送方式：${BEHAVIOR_LABEL[behavior]}，点击切换`}
+							title={BEHAVIOR_HINT[behavior]}
+							onClick={() => setBehavior(behavior === "followUp" ? "steer" : "followUp")}
+							className="flex min-h-11 min-w-11 shrink-0 items-center rounded-m-pill px-2 text-m-accent active:bg-m-surface-hover"
+						>
+							<span className="rounded-m-pill bg-m-accent-soft px-2 py-1">{BEHAVIOR_LABEL[behavior]} ⇄</span>
+						</button>
+					)}
 					<button
 						type="button"
 						aria-label="当前工作目录"
 						onClick={() => setSheet("path")}
-						className="-ml-2 flex min-h-11 min-w-11 max-w-[65%] items-center gap-1.5 rounded-m-pill px-2 text-m-text-3 active:bg-m-surface-hover"
+						className="flex min-h-11 min-w-11 shrink-0 items-center gap-1.5 rounded-m-pill px-2 text-m-text-3 active:bg-m-surface-hover"
 					>
 						<Folder size={15} className="shrink-0" />
-						<span className="truncate">{cwd ? baseName(cwd) : "未设置目录"}</span>
+						<span>{cwd ? baseName(cwd) : "未设置目录"}</span>
 					</button>
-				)}
-				{goal && (
-					<Chip icon={<Target size={14} />} onClick={() => setSheet("goal")} className="h-8 min-w-0 max-w-[40%]">
-						<span className="truncate">{goal.objective}</span>
-					</Chip>
-				)}
-				<span className="flex-1" />
+					{planOn && (
+						<Chip tone="accent" icon={<Lightbulb size={14} />} onClick={() => void togglePlan()} className="shrink-0 pr-2">
+							规划模式
+							<X size={14} aria-hidden />
+						</Chip>
+					)}
+					{goal && (
+						<Chip icon={<Target size={14} />} onClick={() => setSheet("goal")} className="shrink-0">
+							目标
+						</Chip>
+					)}
+				</div>
 				<button
 					type="button"
 					aria-label="上下文用量"
@@ -229,8 +230,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
 			/>
 
 			<input ref={fileAny} type="file" multiple hidden onChange={(e) => pickFiles(e, controller)} />
+			<input ref={fileCamera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pickFiles(e, controller, true)} />
+			<input ref={fileGallery} type="file" accept="image/*" multiple hidden onChange={(e) => pickFiles(e, controller, true)} />
 
-			{/* ChatGPT-style actions sheet: three tiles, then rows. */}
+			{/* Native photo/gallery inputs share the existing attachment upload and error flow. */}
 			<BottomSheet open={sheet === "plus"} onClose={close}>
 				<div className="grid grid-cols-3 gap-3 px-4 pt-1">
 					<ActionTile
@@ -241,7 +244,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
 							fileAny.current?.click();
 						}}
 					/>
-					<ActionTile icon={<Monitor size={24} strokeWidth={1.75} />} label="Finder 选中项" onClick={() => setSheet("finder")} />
+					<ActionTile icon={<Camera size={24} strokeWidth={1.75} />} label="拍照" onClick={() => { close(); fileCamera.current?.click(); }} />
+					<ActionTile icon={<ImagePlus size={24} strokeWidth={1.75} />} label="相册" onClick={() => { close(); fileGallery.current?.click(); }} />
+					<ActionTile icon={<Monitor size={24} strokeWidth={1.75} />} label="电脑端选中项" onClick={() => setSheet("finder")} />
 					<ActionTile
 						icon={<PenLine size={24} strokeWidth={1.75} />}
 						label="草图"
@@ -299,7 +304,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	);
 }
 
-function pickFiles(e: React.ChangeEvent<HTMLInputElement>, controller: { addFiles(f: File[], img: boolean): void }) {
-	controller.addFiles(Array.from(e.target.files ?? []), false);
+function pickFiles(e: React.ChangeEvent<HTMLInputElement>, controller: { addFiles(f: File[], img: boolean): void }, image = false) {
+	const files = Array.from(e.target.files ?? []);
 	e.target.value = "";
+	if (files.length) controller.addFiles(files, image);
 }
