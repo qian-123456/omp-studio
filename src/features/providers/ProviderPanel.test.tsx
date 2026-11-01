@@ -486,16 +486,19 @@ describe("other model catalog", () => {
 			...["search", "judge", "image", "tts", "stt", "embedding", "rerank", "video", "future-kind"].map((kind) => entry(`runner-${kind}/plain-id`, kind, `Registered ${kind}`)),
 		];
 		render(<ProviderPanel category="other" />);
-		await screen.findByText("显示 9 / 9 个已注册的其他类型模型");
-		for (const model of kindData.slice(2)) expect(screen.getByText(model.name!)).toBeTruthy();
-		expect(screen.getByRole("heading", { name: "其他类型 · future-kind" })).toBeTruthy();
+		await screen.findByRole("button", { name: "全部类型 (9)" });
+		const labels: Record<string, string> = { search: "搜索", judge: "评估", image: "图像生成", tts: "语音合成", stt: "语音识别", embedding: "向量嵌入", rerank: "重排", video: "视频", "future-kind": "其他类型 · future-kind" };
+		for (const model of kindData.slice(2)) {
+			fireEvent.click(screen.getByRole("button", { name: `${labels[model.kind]} (1)` }));
+			expect(screen.getByText(model.name!)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: `模型详情：${model.name}` }));
+			expect(screen.getByText(model.selector)).toBeTruthy();
+			expect(screen.getByText("目录已注册 · 尚未验证调用可用性")).toBeTruthy();
+			expect(screen.getByText("由 OMP 管理；此处无对应的通用 API 连接配置")).toBeTruthy();
+		}
 		expect(screen.queryByText("Chat only")).toBeNull();
 		expect(screen.queryByText("Tiny LLM")).toBeNull();
 		expect(screen.queryByText("chat-connection")).toBeNull();
-		expect(screen.queryByText("按型号批量设置各模型的上下文窗口与自动压缩，到「上下文窗口」页。")).toBeNull();
-		expect(screen.queryByRole("button", { name: "批量管理密钥" })).toBeNull();
-		expect(screen.getAllByText("目录已注册 · 尚未验证调用可用性")).toHaveLength(9);
-		expect(screen.getAllByText("由 OMP 管理；此处无对应的通用 API 连接配置")).toHaveLength(9);
 		expect(ipc.providerTestModel).not.toHaveBeenCalled();
 	});
 
@@ -503,11 +506,12 @@ describe("other model catalog", () => {
 		data = [row("shared", "missing", { models: ["chat-a", "chat-b", "image-a"], sources: ["models.yml"] })];
 		kindData = [entry("shared/image-a", "image", "Picture runner"), entry("web/search-a", "search", "Search runner"), entry("shared/chat-a", "chat", "Chat runner")];
 		render(<ProviderPanel category="other" />);
-		await screen.findByText("显示 2 / 2 个已注册的其他类型模型");
+		await screen.findByRole("button", { name: "全部类型 (2)" });
 		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "models.yml" } });
 		expect(screen.getByText("Picture runner")).toBeTruthy();
 		expect(screen.queryByText("Search runner")).toBeNull();
-		expect(screen.getByText("显示 1 / 2 个已注册的其他类型模型")).toBeTruthy();
+		expect(within(screen.getByRole("region", { name: "模型列表" })).getAllByRole("listitem")).toHaveLength(1);
+		fireEvent.click(screen.getByRole("button", { name: "模型详情：Picture runner" }));
 		expect(screen.getByText("连接已启用 · 未配置密钥")).toBeTruthy();
 		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "search" } });
 		expect(screen.getByText("Search runner")).toBeTruthy();
@@ -515,7 +519,7 @@ describe("other model catalog", () => {
 		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "not-found" } });
 		expect(screen.getByText("未找到匹配的其他类型模型。")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
-		expect(screen.getByText("显示 2 / 2 个已注册的其他类型模型")).toBeTruthy();
+		expect(within(screen.getByRole("region", { name: "模型列表" })).getAllByRole("listitem")).toHaveLength(2);
 	});
 
 	it("edits a connection with no other models without duplicating credentials or clearing search", async () => {
@@ -537,7 +541,6 @@ describe("other model catalog", () => {
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null, "encrypted");
 		expect((screen.getByLabelText("搜索模型、类型或来源") as HTMLInputElement).value).toBe("search");
-		expect(screen.getByRole("heading", { name: "其他类型模型" })).toBeTruthy();
 		expect(await screen.findByText("Updated search")).toBeTruthy();
 	});
 
@@ -569,6 +572,7 @@ describe("other model catalog", () => {
 		render(<ProviderPanel category="other" />);
 		expect(await screen.findByText("Independent search")).toBeTruthy();
 		expect((await screen.findByRole("alert")).textContent).toContain("config unreadable");
+		fireEvent.click(screen.getByRole("button", { name: "模型详情：Independent search" }));
 		expect(screen.getByText("连接配置状态未知")).toBeTruthy();
 		expect(screen.queryByText("由 OMP 管理；此处无对应的通用 API 连接配置")).toBeNull();
 	});
@@ -594,7 +598,6 @@ describe("other model runner configuration", () => {
 		fireEvent.click(closeButtons[closeButtons.length - 1]);
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect((screen.getByLabelText("搜索模型、类型或来源") as HTMLInputElement).value).toBe("web");
-		expect(screen.getByRole("heading", { name: "其他类型模型" })).toBeTruthy();
 	});
 
 	it("shows catalog loading until registered entries arrive", async () => {
@@ -607,6 +610,6 @@ describe("other model runner configuration", () => {
 		expect(screen.queryByText(/OMP 目录中暂无/)).toBeNull();
 		complete([{ selector: "custom/runner", kind: "future-kind", provider: "custom", name: "Delayed runner", thinking: [] }]);
 		expect(await screen.findByText("Delayed runner")).toBeTruthy();
-		expect(screen.queryByRole("status")).toBeNull();
+		expect(screen.queryByText(/正在读取所有类型的模型目录/)).toBeNull();
 	});
 });
