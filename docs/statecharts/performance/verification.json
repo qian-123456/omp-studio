@@ -1,0 +1,71 @@
+{
+  "task": "read-only performance memory audit",
+  "baselineCommit": "f6de72f625d1936a4109739cbadcf6b1cba9c804",
+  "productChanges": false,
+  "models": [
+    {
+      "name": "RefreshOverlap",
+      "modelStates": 8,
+      "modelTransitions": 13,
+      "chartStates": 5,
+      "chartTransitions": 5,
+      "expectedBrokenRules": [
+        "NoOverlappingMemoryScans"
+      ]
+    },
+    {
+      "name": "SnapshotAgreement",
+      "modelStates": 13,
+      "modelTransitions": 16,
+      "chartStates": 7,
+      "chartTransitions": 9,
+      "expectedBrokenRules": [
+        "SameAppMemorySample"
+      ]
+    },
+    {
+      "name": "PartialFailure",
+      "modelStates": 12,
+      "modelTransitions": 20,
+      "chartStates": 10,
+      "chartTransitions": 18,
+      "expectedBrokenRules": [
+        "DistributionSurvivesServiceFailure",
+        "MemorySurvivesServiceFailure"
+      ]
+    },
+    {
+      "name": "MemoryPartition",
+      "modelStates": 6,
+      "modelTransitions": 5,
+      "chartStates": 6,
+      "chartTransitions": 5,
+      "expectedBrokenRules": [
+        "SegmentsAddToTotal"
+      ]
+    }
+  ],
+  "frontend": {
+    "boundary": "actual BottomBar and PerfPopover in jsdom, Tauri IPC replaced",
+    "tests": 4,
+    "passedWitnesses": 2,
+    "expectedFailedRegressionGates": 2,
+    "vitestExit": 1,
+    "baselineAcceptanceExit": 0,
+    "scope": "reproduced existing defects, not a shipped fix"
+  },
+  "backend": {
+    "testsPassed": 12,
+    "testsFailed": 0,
+    "exit": 0,
+    "realCollector": true,
+    "observedSegmentMinusTotalBytes": 0
+  },
+  "visualReview": "Each emitted PNG was opened; numbered paths and reader labels reviewed",
+  "limitations": [
+    "No native GUI acceptance or CSS overflow claim",
+    "No real OS inconsistent-partition occurrence reproduced",
+    "No backend cache-race stress test",
+    "Fixed variants are model-only"
+  ]
+}

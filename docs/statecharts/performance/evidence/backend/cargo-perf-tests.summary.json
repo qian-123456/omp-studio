@@ -1,0 +1,27 @@
+{
+  "command": "source ~/.cargo/env && RUSTC_WRAPPER=sccache cargo test --manifest-path src-tauri/Cargo.toml services::perf::tests -- --nocapture",
+  "cargo_target_dir": "<scratch>/backend-evidence/cargo-target",
+  "exit_code": 0,
+  "elapsed_seconds": 103.166,
+  "test_summaries": [
+    "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 859 filtered out; finished in 0.09s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  ],
+  "real_collector_printed": true,
+  "observed_snapshot": {
+    "app_bytes": 3588672,
+    "app_processes": 1,
+    "omp_spawned_bytes": 0,
+    "omp_spawned_processes": 0,
+    "omp_external_bytes": 1073525000,
+    "omp_external_processes": 10,
+    "total_bytes": 17179869184,
+    "used_bytes": 11395727360,
+    "other_bytes": 10318613688,
+    "free_bytes": 5784141824,
+    "bar_omp_bytes": 1073525000,
+    "observed_app_plus_omp_plus_other_bytes": 11395727360,
+    "observed_all_segments_bytes": 17179869184,
+    "all_segments_minus_total_bytes": 0
+  }
+}

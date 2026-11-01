@@ -1,0 +1,32 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+-8261644896651444567 [label="/\\ inFlight = {}\n/\\ cancelled = FALSE\n/\\ memPromise = {}\n/\\ perfOpen = FALSE",style = filled]
+-8261644896651444567 -> -974376173410562138 [label="pollClosed",color="black",fontcolor="black"];
+-974376173410562138 [label="/\\ inFlight = {1}\n/\\ cancelled = FALSE\n/\\ memPromise = {1}\n/\\ perfOpen = FALSE"];
+-8261644896651444567 -> 1022680557790913271 [label="setPerfOpen",color="black",fontcolor="black"];
+1022680557790913271 [label="/\\ inFlight = {}\n/\\ cancelled = FALSE\n/\\ memPromise = {}\n/\\ perfOpen = TRUE"];
+-974376173410562138 -> -8261644896651444567 [label="completeClosed",color="black",fontcolor="black"];
+-974376173410562138 -> 8148037819189351416 [label="setPerfOpen",color="black",fontcolor="black"];
+8148037819189351416 [label="/\\ inFlight = {1}\n/\\ cancelled = FALSE\n/\\ memPromise = {1}\n/\\ perfOpen = TRUE"];
+1022680557790913271 -> -5337855382744252269 [label="cleanup",color="black",fontcolor="black"];
+-5337855382744252269 [label="/\\ inFlight = {}\n/\\ cancelled = TRUE\n/\\ memPromise = {}\n/\\ perfOpen = TRUE"];
+8148037819189351416 -> 6094309875284254149 [label="cleanup",color="black",fontcolor="black"];
+6094309875284254149 [label="/\\ inFlight = {1}\n/\\ cancelled = TRUE\n/\\ memPromise = {1}\n/\\ perfOpen = TRUE"];
+8148037819189351416 -> 1022680557790913271 [label="completeClosed",color="black",fontcolor="black"];
+-5337855382744252269 -> 1394299256060420768 [label="pollOpen",color="black",fontcolor="black"];
+1394299256060420768 [label="/\\ inFlight = {2}\n/\\ cancelled = TRUE\n/\\ memPromise = {2}\n/\\ perfOpen = TRUE"];
+6094309875284254149 -> 3743283067067077710 [label="pollOpen",color="black",fontcolor="black"];
+3743283067067077710 [label="/\\ inFlight = {1, 2}\n/\\ cancelled = TRUE\n/\\ memPromise = {1, 2}\n/\\ perfOpen = TRUE"];
+6094309875284254149 -> -5337855382744252269 [label="completeClosed",color="black",fontcolor="black"];
+1394299256060420768 -> -5337855382744252269 [label="completeOpen",color="black",fontcolor="black"];
+3743283067067077710 -> 1394299256060420768 [label="completeClosed",color="black",fontcolor="black"];
+3743283067067077710 -> 6094309875284254149 [label="completeOpen",color="black",fontcolor="black"];
+{rank = same; -8261644896651444567;}
+{rank = same; -974376173410562138;1022680557790913271;}
+{rank = same; 8148037819189351416;-5337855382744252269;}
+{rank = same; 1394299256060420768;6094309875284254149;}
+{rank = same; 3743283067067077710;}
+}
+}

@@ -1,0 +1,15 @@
+{
+  "library": "/usr/lib/libproc.dylib",
+  "function": "proc_listallpids",
+  "null_buffer_return": 595,
+  "capacity_pid_slots": 1088,
+  "buffer_bytes": 4352,
+  "sizeof_int": 4,
+  "return_value": 576,
+  "errno_after_call": 0,
+  "changed_sentinel_slots": 576,
+  "nonnegative_pid_slots": 576,
+  "positive_pid_slots": 575,
+  "return_equals_filled_slots": true,
+  "tail_stays_sentinel": true
+}

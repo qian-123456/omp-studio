@@ -1,0 +1,38 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+7551168023029349397 [label="/\\ memPromise = \"pending\"\n/\\ perfPromise = \"pending\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\"",style = filled]
+7551168023029349397 -> 7634125939470184337 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+7634125939470184337 [label="/\\ memPromise = \"small\"\n/\\ perfPromise = \"pending\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+7551168023029349397 -> -2021730902667053722 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+-2021730902667053722 [label="/\\ memPromise = \"large\"\n/\\ perfPromise = \"pending\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+7551168023029349397 -> -7179411329842935932 [label="perfBreakdown",color="black",fontcolor="black"];
+-7179411329842935932 [label="/\\ memPromise = \"pending\"\n/\\ perfPromise = \"small\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+7551168023029349397 -> 1155033018492725507 [label="perfBreakdown",color="black",fontcolor="black"];
+1155033018492725507 [label="/\\ memPromise = \"pending\"\n/\\ perfPromise = \"large\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+7634125939470184337 -> -6684523518670287370 [label="perfBreakdown",color="black",fontcolor="black"];
+-6684523518670287370 [label="/\\ memPromise = \"small\"\n/\\ perfPromise = \"small\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+7634125939470184337 -> 3414245565167231857 [label="perfBreakdown",color="black",fontcolor="black"];
+3414245565167231857 [label="/\\ memPromise = \"small\"\n/\\ perfPromise = \"large\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+-2021730902667053722 -> -4616628198803076047 [label="perfBreakdown",color="black",fontcolor="black"];
+-4616628198803076047 [label="/\\ memPromise = \"large\"\n/\\ perfPromise = \"small\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+-2021730902667053722 -> 3725719455152317110 [label="perfBreakdown",color="black",fontcolor="black"];
+3725719455152317110 [label="/\\ memPromise = \"large\"\n/\\ perfPromise = \"large\"\n/\\ memoryInfo = \"none\"\n/\\ perfData = \"none\""];
+-7179411329842935932 -> -6684523518670287370 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+-7179411329842935932 -> -4616628198803076047 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+1155033018492725507 -> 3414245565167231857 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+1155033018492725507 -> 3725719455152317110 [label="getAppMemoryUsage",color="black",fontcolor="black"];
+-6684523518670287370 -> 8797915198215921992 [label="poll",color="black",fontcolor="black"];
+8797915198215921992 [label="/\\ memPromise = \"small\"\n/\\ perfPromise = \"small\"\n/\\ memoryInfo = \"small\"\n/\\ perfData = \"small\""];
+3414245565167231857 -> -7341563157007809217 [label="poll",color="black",fontcolor="black"];
+-7341563157007809217 [label="/\\ memPromise = \"small\"\n/\\ perfPromise = \"large\"\n/\\ memoryInfo = \"small\"\n/\\ perfData = \"large\""];
+-4616628198803076047 -> 141840119205619640 [label="poll",color="black",fontcolor="black"];
+141840119205619640 [label="/\\ memPromise = \"large\"\n/\\ perfPromise = \"small\"\n/\\ memoryInfo = \"large\"\n/\\ perfData = \"small\""];
+3725719455152317110 -> -2165645790901861425 [label="poll",color="black",fontcolor="black"];
+-2165645790901861425 [label="/\\ memPromise = \"large\"\n/\\ perfPromise = \"large\"\n/\\ memoryInfo = \"large\"\n/\\ perfData = \"large\""];
+{rank = same; 7551168023029349397;}
+{rank = same; 1155033018492725507;-2021730902667053722;-7179411329842935932;7634125939470184337;}
+{rank = same; -6684523518670287370;3725719455152317110;-4616628198803076047;3414245565167231857;}
+}
+}

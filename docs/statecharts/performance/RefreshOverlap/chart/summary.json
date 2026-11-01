@@ -1,0 +1,61 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "建议模型（产品未改）",
+    "lacks": []
+  },
+  "modelStates": 8,
+  "modelTransitions": 13,
+  "chartStates": 5,
+  "chartTransitions": 5,
+  "chartStatus": {
+    "works": 5,
+    "wrong": 0,
+    "fixed": 1,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": true,
+    "states": 6,
+    "transitions": 12,
+    "leftOutStates": [
+      "面板已开，没有采样在途"
+    ],
+    "leftOutTransitions": [
+      "面板已关，一轮采样中 --> 面板已关，没有采样在途: 旧内存采样完成",
+      "面板已关，没有采样在途 --> 面板已开，没有采样在途: 点击性能打开面板",
+      "面板已开，一轮采样中 --> 面板已开，没有采样在途: 旧内存采样完成 or 面板内存采样完成",
+      "面板已开，双轮内存扫描 --> 面板已开，一轮采样中: 旧内存采样完成",
+      "面板已开，双轮内存扫描 --> 面板已开，旧扫描未完成: 面板内存采样完成",
+      "面板已开，旧扫描未完成 --> 面板已开，没有采样在途: 旧内存采样完成",
+      "面板已开，没有采样在途 --> 面板已开，一轮采样中: 面板启动新一轮采样"
+    ]
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "面板已开，双轮内存扫描",
+      "invariant": "NoOverlappingMemoryScans",
+      "rule": "Opening the panel must not start a second memory scan before the first finishes. Starts: src/components/BottomBar.tsx:84,92-96,139,146.",
+      "cause": "旧请求未完成，面板切换重置了防重入状态",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "面板启动新一轮采样"
+      ],
+      "startsHere": false,
+      "fix": "面板已开，旧扫描未完成"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "bundle/RefreshOverlap/model/RefreshOverlap.tla": [],
+    "bundle/RefreshOverlap/model/RefreshOverlapFixed.tla": []
+  },
+  "brokenProperties": []
+}

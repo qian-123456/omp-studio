@@ -1,0 +1,14 @@
+{
+  "baselineCommit": "f6de72f625d1936a4109739cbadcf6b1cba9c804",
+  "productChangedByAudit": false,
+  "contractChangedByAudit": false,
+  "sources": {
+    "src/components/BottomBar.tsx": "73218be51897b773e5b8736f814c2f44cc70cd0bb961fceceaa679a032de21e4",
+    "src/features/chat/PerfPopover.tsx": "4353ce7590ba7e2342ea282718cf2b6c78289145adbf5f8e9bda81a40f352a87",
+    "src-tauri/src/services/perf.rs": "7e22aa9a4358195aa2fbcdf7a81866fb1c684fe6a5725c863cba9674854453f5",
+    "src-tauri/src/services/commands.rs": "ea4d680bd07068f02982fb0b8b138f8ef5e06b6c24410172948a08f9c5f08731",
+    "src/lib/contracts.ts": "ed1e58134f8b37083043bb34bbf733a821eacacda46db68c7989d769e6c6d501",
+    "src-tauri/src/contracts.rs": "f2cb2c80de4965cc41cc15ea9c54bb4f1e553d952f53ef6b9600ed7307f534bb"
+  },
+  "boundary": "Only docs/statecharts/performance is published. Existing shared-worktree changes are not part of this audit."
+}

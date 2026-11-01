@@ -1,0 +1,149 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 77 and seed 4280363411812109556 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 88162] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module PartialFailure
+Starting... (2026-11-01 22:09:27)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-01 22:09:27.
+Error: Invariant DistributionSurvivesServiceFailure is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = TRUE
+/\ memPromise = "pending"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 2: <getAppMemoryUsage line 11, col 5 to line 13, col 76 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 3: <perfBreakdown line 15, col 5 to line 17, col 75 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 4: <servicesList line 19, col 5 to line 21, col 76 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+State 5: <poll line 23, col 5 to line 26, col 78 of module PartialFailure>
+/\ inFlight = FALSE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+Error: Invariant DistributionSurvivesServiceFailure is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = TRUE
+/\ memPromise = "pending"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 2: <getAppMemoryUsage line 11, col 5 to line 13, col 76 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 3: <servicesList line 19, col 5 to line 21, col 76 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+State 4: <poll line 23, col 5 to line 26, col 78 of module PartialFailure>
+/\ inFlight = FALSE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+State 5: <perfBreakdown line 15, col 5 to line 17, col 75 of module PartialFailure>
+/\ inFlight = FALSE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+Error: Invariant DistributionSurvivesServiceFailure is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ inFlight = TRUE
+/\ memPromise = "pending"
+/\ perfPromise = "pending"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 2: <perfBreakdown line 15, col 5 to line 17, col 75 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "pending"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "pending"
+/\ perfData = "old"
+
+State 3: <servicesList line 19, col 5 to line 21, col 76 of module PartialFailure>
+/\ inFlight = TRUE
+/\ memPromise = "pending"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+State 4: <poll line 23, col 5 to line 26, col 78 of module PartialFailure>
+/\ inFlight = FALSE
+/\ memPromise = "pending"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+State 5: <getAppMemoryUsage line 11, col 5 to line 13, col 76 of module PartialFailure>
+/\ inFlight = FALSE
+/\ memPromise = "fulfilled"
+/\ perfPromise = "fulfilled"
+/\ memoryInfo = "old"
+/\ srvPromise = "rejected"
+/\ perfData = "old"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 6.0E-18
+21 states generated, 11 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-01 22:09:27)

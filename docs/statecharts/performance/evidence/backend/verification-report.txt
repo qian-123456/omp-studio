@@ -1,0 +1,50 @@
+BACKEND VERIFICATION RESULT
+
+Baseline observed before verification: f6de72f625d1936a4109739cbadcf6b1cba9c804.
+Repository source files were not edited, staged, committed, or pushed by this assignment. Pre-existing WIP was preserved. All harness/evidence/build-output paths explicitly created by this assignment are below <scratch>/backend-evidence.
+
+Executed entry point:
+python3 <scratch>/backend-evidence/run_backend_tests.py
+
+Executed shell command, from <repo>:
+source ~/.cargo/env && RUSTC_WRAPPER=sccache cargo test --manifest-path src-tauri/Cargo.toml services::perf::tests -- --nocapture
+Environment override: CARGO_TARGET_DIR=<scratch>/backend-evidence/cargo-target
+sccache was available at /opt/homebrew/bin/sccache.
+
+RESULT: exit code 0; 12 passed, 0 failed, 0 ignored, 859 filtered out. Main binary target: 0 tests, exit success. Cargo test wall time including fresh outside-repo compilation: 103.166s. Test execution summary: 0.09s. Exactly one suite execution; no failure reruns.
+
+collect_real_snapshot ran the actual current collector and passed. Observed values in BYTES:
+- app: 3,588,672 (1 readable process)
+- omp spawned: 0 (0 readable processes)
+- omp external: 1,073,525,000 (10 readable processes)
+- bar_omp: 1,073,525,000
+- total: 17,179,869,184
+- used: 11,395,727,360
+- other: 10,318,613,688
+- free: 5,784,141,824
+Observed app + omp + other = 11,395,727,360 = used.
+Observed app + omp + other + free = 17,179,869,184 = total.
+Observed all-segments minus total = 0.
+
+These are numeric sums of actual printed collector output, not arithmetic copied into a fake collector. The app bucket represents the test process, not an interactive native app window with WebKit helpers. This is one live snapshot; no Activity Monitor comparison, high-memory workload, race schedule, cache-hit instrumentation, or visible-UI acceptance was performed here. The collector test's existing assertions do not exhaustively assert the segment-sum invariant; the equality above is an independently calculated observation for this output.
+
+PROC_LISTALLPIDS DISPUTE: false bug; consumer is correct.
+Official Apple libproc.c source was successfully observed using its supplied raw GitHub URL. proc_listallpids returns numpids / sizeof(int) after proc_listpids; it therefore returns PID count, not bytes. The installed-library ctypes probe independently returned 576 for exactly 576 filled 4-byte integer slots in a 4,352-byte buffer; 575 positive PIDs and PID 0; errno 0; tail sentinel preserved. commands.rs:342 correctly uses n as a count. Null sizing return was 595, not asserted to equal the later live count.
+
+SOURCE CANDIDATES / LIMITATIONS:
+- Independent app_bucket and breakdown traversal paths: confirmed in source, not benchmarked or syscall-traced.
+- Breakdown TTL 3s versus UI open-refresh 4s after completion: confirmed source timing condition; misses inferred for the single-caller case, actual cache-hit rate unmeasured.
+- No backend single-flight / possible stale completion overwrite: source-only concurrent-scheduling hypotheses; not dynamically reproduced.
+- Saturated partition candidate: source arithmetic trace; actual PerfPopover crafted-input replay delegated to PerfFrontendFix, not claimed as this assignment's execution. OS occurrence unverified. No CSS overflow or confirmed kernel bug claim.
+- Parent's abstract (used=8,total=16,app=2,omp=8) trace produces other=0,free=8,sum=18 in the model. It is not a production measurement. This live run instead summed exactly to total.
+
+EVIDENCE PATHS:
+<scratch>/backend-evidence/cargo-perf-tests.scrubbed.log (lines 392-423 contain build completion, exact tests, live snapshot, counts, exit code)
+<scratch>/backend-evidence/cargo-perf-tests.summary.json
+<scratch>/backend-evidence/run_backend_tests.py
+<scratch>/backend-evidence/libproc-listallpids.official.txt
+<scratch>/backend-evidence/libproc-count-probe.json
+<scratch>/backend-evidence/source-candidate-classification.txt
+<scratch>/backend-evidence/repository-baseline.scrubbed.txt
+
+No backend fixes are proposed or applied by this verification. All requested backend execution and disputed-API verification are complete; conditional source findings remain explicitly unproven at runtime.

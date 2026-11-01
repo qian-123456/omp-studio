@@ -1,0 +1,27 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+2627592779191380020 [label="/\\ inFlight = {}\n/\\ cancelled = FALSE\n/\\ memPromise = {}\n/\\ perfOpen = FALSE",style = filled]
+2627592779191380020 -> 7474319872083551976 [label="pollClosed",color="black",fontcolor="black"];
+7474319872083551976 [label="/\\ inFlight = {1}\n/\\ cancelled = FALSE\n/\\ memPromise = {1}\n/\\ perfOpen = FALSE"];
+2627592779191380020 -> 2267051559887104683 [label="setPerfOpen",color="black",fontcolor="black"];
+2267051559887104683 [label="/\\ inFlight = {}\n/\\ cancelled = FALSE\n/\\ memPromise = {}\n/\\ perfOpen = TRUE"];
+7474319872083551976 -> 2627592779191380020 [label="completeClosed",color="black",fontcolor="black"];
+7474319872083551976 -> 6681974627287917687 [label="setPerfOpen",color="black",fontcolor="black"];
+6681974627287917687 [label="/\\ inFlight = {1}\n/\\ cancelled = FALSE\n/\\ memPromise = {1}\n/\\ perfOpen = TRUE"];
+2267051559887104683 -> 7135565388136887433 [label="cleanup",color="black",fontcolor="black"];
+7135565388136887433 [label="/\\ inFlight = {}\n/\\ cancelled = TRUE\n/\\ memPromise = {}\n/\\ perfOpen = TRUE"];
+6681974627287917687 -> 8554926584561189866 [label="cleanup",color="black",fontcolor="black"];
+8554926584561189866 [label="/\\ inFlight = {1}\n/\\ cancelled = TRUE\n/\\ memPromise = {1}\n/\\ perfOpen = TRUE"];
+6681974627287917687 -> 2267051559887104683 [label="completeClosed",color="black",fontcolor="black"];
+7135565388136887433 -> -7957802045368702164 [label="pollOpen",color="black",fontcolor="black"];
+-7957802045368702164 [label="/\\ inFlight = {2}\n/\\ cancelled = TRUE\n/\\ memPromise = {2}\n/\\ perfOpen = TRUE"];
+8554926584561189866 -> 7135565388136887433 [label="completeClosed",color="black",fontcolor="black"];
+-7957802045368702164 -> 7135565388136887433 [label="completeOpen",color="black",fontcolor="black"];
+{rank = same; 2627592779191380020;}
+{rank = same; 2267051559887104683;7474319872083551976;}
+{rank = same; 6681974627287917687;7135565388136887433;}
+{rank = same; 8554926584561189866;-7957802045368702164;}
+}
+}

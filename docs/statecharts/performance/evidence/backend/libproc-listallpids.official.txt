@@ -1,0 +1,21 @@
+Official source observed 2026-11-01:
+https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/libsyscall/wrappers/libproc/libproc.c
+Apple copyright; SPDX-License-Identifier: APSL-2.0
+
+Relevant function body (official source excerpt):
+int
+proc_listallpids(void * buffer, int buffersize)
+{
+	int numpids;
+
+	numpids = proc_listpids(PROC_ALL_PIDS, (uint32_t)0, buffer, buffersize);
+	if (numpids == -1) {
+		return -1;
+	} else {
+		return numpids / sizeof(int);
+	}
+}
+
+The proc_listpids implementation above calls __proc_info(PROC_INFO_CALL_LISTPIDS, ...) and returns retval without dividing it. proc_listallpids wraps that API and divides the byte return by sizeof(int), so its return is an integer PID-slot count. Do not divide the return by sizeof(int) again in commands.rs:342.
+
+Independent observed dynamic evidence: libproc-count-probe.json. No product code was changed.

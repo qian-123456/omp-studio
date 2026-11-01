@@ -1,0 +1,40 @@
+Scope: read-only backend performance verification at baseline f6de72f625d1936a4109739cbadcf6b1cba9c804. Existing providers/settings/docs WIP was observed, not modified. All artifacts and Cargo build outputs from this verification use <scratch>/backend-evidence. No staging, commits, pushes, dependency installation, product edits, or process termination.
+
+1. Independent collectors: SOURCE-CONFIRMED MECHANISM; runtime cost/hit rate unmeasured.
+   src-tauri/src/services/commands.rs:557-561 routes app_memory_usage to perf::app_bucket.
+   src-tauri/src/services/perf.rs:452-480 computes app bucket with app_memory_snapshot, collect_ps_rows, responsible_map, prune_instance_trees, footprints_for.
+   src-tauri/src/services/perf.rs:485-546 independently repeats those process traversal/probe stages for collect(), called by breakdown().
+   src/components/BottomBar.tsx:96-99 launches getAppMemoryUsage, servicesList, and perfBreakdown together when open.
+   These are independent source paths, not measured duplicate OS calls or a benchmark. app_memory_snapshot has its own 2500ms primary-process cache (commands.rs:355-374), which does not share the complete app-bucket traversal.
+
+2. 3s cache versus 4s UI refresh: SOURCE-CONFIRMED TIMING CONDITION; production cache misses not instrumented.
+   perf.rs:19 sets CACHE_TTL=3s; perf.rs:589-600 checks TTL and stamps it on completion.
+   BottomBar.tsx:88 selects 4000ms open / 30000ms closed; :113-118 starts the next timeout after completion of the current poll.
+   With this poller as the only breakdown caller, its next open refresh arrives after the 3s TTL; other callers could refresh the cache in between. No measured cache-hit rate or scan duration is claimed.
+
+3. Cache miss concurrency and stale overwrite: SOURCE-ONLY CONCURRENCY HYPOTHESES.
+   perf.rs:588-601 releases the cache lock before spawn_blocking(collect), then unconditionally replaces the cache after await with no in-flight coordination or generated_at freshness check.
+   Concurrent misses can independently collect. If an earlier generated snapshot finishes later, it can replace a newer generated snapshot and receive a fresh TTL.
+   No concurrent backend request trace, stress test, or deliberately reordered real collector execution was performed. The normal single-effect UI inFlight guard is not proof of backend-global single flight.
+
+4. Partition inconsistency: SOURCE ARITHMETIC TRACE; live OS occurrence unverified.
+   perf.rs:487-493 obtains primary-process memory and system memory before collect_ps_rows / further process probes at :506-545.
+   perf.rs:501-503 computes free=total.saturating_sub(used); :565-568 computes other=used.saturating_sub(app).saturating_sub(omp).
+   PerfPopover.tsx:106-117 divides the four supplied segments by totalBytes without an invariant check or normalization.
+   Parent model inputs used=8,total=16,app=2,OMP=8 imply other=0,free=8,segment sum=18. That is an abstract arithmetic trace, not a production measurement or copied-arithmetic reproduction.
+   Actual component crafted-input replay is owned by PerfFrontendFix. No bespoke Rust collector reimplementation was created.
+   These inputs can imply declared widths summing above 100%; do NOT infer visible CSS overflow. PerfPopover.tsx:168-175 uses a flex container with overflow-hidden and children whose flex shrink may conceal it.
+   Non-atomic sampling and differing accounting metrics are source-based reasons to investigate, not proof of a macOS/kernel bug.
+
+5. Disputed proc_listallpids bug: REJECTED, with independent static and dynamic evidence.
+   Apple official libproc.c proc_listallpids calls proc_listpids and returns numpids / sizeof(int). proc_listpids itself does not perform that division.
+   Independent ctypes call to installed /usr/lib/libproc.dylib returned 576 and changed exactly 576 int slots in a 4352-byte buffer (1088 slots; sizeof(int)=4); 575 slots held positive PIDs plus one PID 0; errno=0; untouched tail retained sentinel -1.
+   Therefore proc_listallpids returns PID-slot COUNT, not bytes. commands.rs:342 treating n as a count is correct. Do not divide n by 4 again or report this as a product bug.
+   Evidence files: libproc-listallpids.official.txt, libproc-count-probe.json.
+
+Execution evidence:
+   Reproduction entry point: python3 <scratch>/backend-evidence/run_backend_tests.py
+   Inner shell command: source ~/.cargo/env && RUSTC_WRAPPER=sccache cargo test --manifest-path src-tauri/Cargo.toml services::perf::tests -- --nocapture
+   CARGO_TARGET_DIR=<scratch>/backend-evidence/cargo-target
+   Console is scrubbed before file persistence; home/repo paths and printed instance PIDs are redacted.
+   Final exact counts, exit code, live collector numbers, and observed segment sums are in cargo-perf-tests.summary.json when execution completes. A matching all-segments sum is a one-snapshot observation, not proof of the partition invariant for all executions.

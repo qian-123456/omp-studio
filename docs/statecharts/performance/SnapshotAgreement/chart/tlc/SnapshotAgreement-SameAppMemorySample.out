@@ -1,0 +1,75 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 117 and seed -212450598757231286 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 87365] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module SnapshotAgreement
+Starting... (2026-11-01 22:05:44)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-01 22:05:44.
+Error: Invariant SameAppMemorySample is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ memPromise = "pending"
+/\ perfPromise = "pending"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 2: <getAppMemoryUsage line 10, col 5 to line 12, col 54 of module SnapshotAgreement>
+/\ memPromise = "small"
+/\ perfPromise = "pending"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 3: <perfBreakdown line 14, col 5 to line 16, col 53 of module SnapshotAgreement>
+/\ memPromise = "small"
+/\ perfPromise = "large"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 4: <poll line 18, col 5 to line 22, col 44 of module SnapshotAgreement>
+/\ memPromise = "small"
+/\ perfPromise = "large"
+/\ memoryInfo = "small"
+/\ perfData = "large"
+
+Error: Invariant SameAppMemorySample is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ memPromise = "pending"
+/\ perfPromise = "pending"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 2: <getAppMemoryUsage line 10, col 5 to line 12, col 54 of module SnapshotAgreement>
+/\ memPromise = "large"
+/\ perfPromise = "pending"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 3: <perfBreakdown line 14, col 5 to line 16, col 53 of module SnapshotAgreement>
+/\ memPromise = "large"
+/\ perfPromise = "small"
+/\ memoryInfo = "none"
+/\ perfData = "none"
+
+State 4: <poll line 18, col 5 to line 22, col 44 of module SnapshotAgreement>
+/\ memPromise = "large"
+/\ perfPromise = "small"
+/\ memoryInfo = "large"
+/\ perfData = "small"
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.6E-18
+17 states generated, 11 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-11-01 22:05:44)

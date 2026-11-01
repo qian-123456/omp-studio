@@ -1,0 +1,44 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "建议模型（产品未改）",
+    "lacks": []
+  },
+  "modelStates": 13,
+  "modelTransitions": 16,
+  "chartStates": 7,
+  "chartTransitions": 9,
+  "chartStatus": {
+    "works": 6,
+    "wrong": 0,
+    "fixed": 1,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "classes": [
+    {
+      "n": 1,
+      "end": "刷新完成，两处内存不一致",
+      "invariant": "SameAppMemorySample",
+      "rule": "The bottom bar and open panel must show the same app-memory sample after a refresh. Writes: src/components/BottomBar.tsx:101-109,147,232-240; reads: PerfPopover.tsx:219.",
+      "cause": "底栏和面板使用不同时间的独立采样",
+      "readerSteps": 3,
+      "modelSteps": 4,
+      "counterexamples": 2,
+      "lastSteps": [
+        "刷新底栏与面板"
+      ],
+      "startsHere": false,
+      "fix": "刷新完成，两处内存一致"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "bundle/SnapshotAgreement/model/SnapshotAgreement.tla": [],
+    "bundle/SnapshotAgreement/model/SnapshotAgreementFixed.tla": []
+  },
+  "brokenProperties": []
+}

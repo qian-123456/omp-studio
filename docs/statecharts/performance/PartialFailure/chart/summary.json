@@ -1,0 +1,67 @@
+{
+  "view": "customer",
+  "second": {
+    "role": "fix",
+    "label": "建议模型（产品未改）",
+    "lacks": []
+  },
+  "modelStates": 12,
+  "modelTransitions": 20,
+  "chartStates": 10,
+  "chartTransitions": 18,
+  "chartStatus": {
+    "works": 8,
+    "wrong": 0,
+    "fixed": 2,
+    "mixed": 0,
+    "after": 0,
+    "worse": 0
+  },
+  "mixedStatus": [],
+  "cover": {
+    "drawn": false,
+    "why": "no step in TLC's graph is a reader action"
+  },
+  "classes": [
+    {
+      "n": 1,
+      "end": "查询失败，仍显示旧内存",
+      "invariant": "DistributionSurvivesServiceFailure",
+      "rule": "A rejected service-query IPC must not discard a completed distribution sample. Writes: src/components/BottomBar.tsx:99-114.",
+      "cause": "查询通信失败连带丢弃内存分布结果",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "内存分布成功返回",
+        "内存采样成功返回",
+        "本轮请求结束"
+      ],
+      "startsHere": false,
+      "fix": "查询失败，内存仍更新"
+    },
+    {
+      "n": 2,
+      "end": "查询失败，仍显示旧内存",
+      "invariant": "MemorySurvivesServiceFailure",
+      "rule": "A rejected service-query IPC must not discard a completed memory sample. Writes: src/components/BottomBar.tsx:99-114.",
+      "cause": "查询通信失败连带丢弃底栏内存结果",
+      "readerSteps": 4,
+      "modelSteps": 5,
+      "counterexamples": 1,
+      "lastSteps": [
+        "内存分布成功返回",
+        "内存采样成功返回",
+        "本轮请求结束"
+      ],
+      "startsHere": false,
+      "fix": "查询失败，内存仍更新"
+    }
+  ],
+  "codeLike": [],
+  "uncited": {
+    "bundle/PartialFailure/model/PartialFailure.tla": [],
+    "bundle/PartialFailure/model/PartialFailureFixed.tla": []
+  },
+  "brokenProperties": []
+}

@@ -1,0 +1,53 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 40 and seed 8622957386280137852 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 87402] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Parsing file <tlc-scratch>
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module MemoryPartition
+Starting... (2026-11-01 22:05:50)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-01 22:05:50.
+Error: Invariant SegmentsAddToTotal is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ used_bytes = -1
+/\ bar_omp_bytes = -1
+/\ total_bytes = 16
+/\ other_bytes = -1
+/\ free_bytes = -1
+/\ app = 2
+
+State 2: <system_memory line 11, col 5 to line 13, col 77 of module MemoryPartition>
+/\ used_bytes = 8
+/\ bar_omp_bytes = -1
+/\ total_bytes = 16
+/\ other_bytes = -1
+/\ free_bytes = -1
+/\ app = 2
+
+State 3: <footprints_for line 15, col 5 to line 18, col 74 of module MemoryPartition>
+/\ used_bytes = 8
+/\ bar_omp_bytes = 8
+/\ total_bytes = 16
+/\ other_bytes = -1
+/\ free_bytes = -1
+/\ app = 2
+
+State 4: <collect line 20, col 5 to line 24, col 64 of module MemoryPartition>
+/\ used_bytes = 8
+/\ bar_omp_bytes = 8
+/\ total_bytes = 16
+/\ other_bytes = 0
+/\ free_bytes = 8
+/\ app = 2
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.7E-19
+6 states generated, 5 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-11-01 22:05:50)

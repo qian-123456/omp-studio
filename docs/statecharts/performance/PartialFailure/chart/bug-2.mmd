@@ -1,0 +1,45 @@
+---
+title: "性能刷新：独立采样失败, bug 2"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): 建议模型（产品未改）
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "当前路径正常" as legendWorks
+    state "建议有效，产品未改" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "查询失败，仍显示旧内存" as s0
+  state "查询失败，内存仍更新" as s1
+  state "查询失败，内存已返，分布已返" as s2
+  state "查询待返，内存已返，分布已返" as s3
+  state "查询待返，内存已返，分布待返" as s4
+  state "查询待返，内存待返，分布待返" as s5
+  [*] --> s5
+  s5 --> s4 : 1. 内存采样成功返回
+  s4 --> s3 : 2. 内存分布成功返回
+  s3 --> s2 : 3. 服务查询通信失败
+  s2 --> s0 : 4. 本轮请求结束
+  s2 --> s1 : with 建议模型（产品未改）, 本轮请求结束
+  class s0 fixedPath
+  class s1 fixedPath
+  class s2 worksPath
+  class s3 worksPath
+  class s4 worksPath
+  class s5 worksPath

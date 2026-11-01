@@ -1,0 +1,20 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+-4071358383089503324 [label="/\\ used_bytes = -1\n/\\ bar_omp_bytes = -1\n/\\ total_bytes = 16\n/\\ other_bytes = -1\n/\\ free_bytes = -1\n/\\ app = 2",style = filled]
+-4071358383089503324 -> 3474839669812605895 [label="system_memory",color="black",fontcolor="black"];
+3474839669812605895 [label="/\\ used_bytes = 8\n/\\ bar_omp_bytes = -1\n/\\ total_bytes = 16\n/\\ other_bytes = -1\n/\\ free_bytes = -1\n/\\ app = 2"];
+3474839669812605895 -> -6378108818895586896 [label="footprints_for",color="black",fontcolor="black"];
+-6378108818895586896 [label="/\\ used_bytes = 8\n/\\ bar_omp_bytes = 2\n/\\ total_bytes = 16\n/\\ other_bytes = -1\n/\\ free_bytes = -1\n/\\ app = 2"];
+3474839669812605895 -> -3244948497461194185 [label="footprints_for",color="black",fontcolor="black"];
+-3244948497461194185 [label="/\\ used_bytes = 8\n/\\ bar_omp_bytes = 8\n/\\ total_bytes = 16\n/\\ other_bytes = -1\n/\\ free_bytes = -1\n/\\ app = 2"];
+-6378108818895586896 -> 7268034681875383517 [label="collect",color="black",fontcolor="black"];
+7268034681875383517 [label="/\\ used_bytes = 8\n/\\ bar_omp_bytes = 2\n/\\ total_bytes = 16\n/\\ other_bytes = 4\n/\\ free_bytes = 8\n/\\ app = 2"];
+-3244948497461194185 -> 1157710065264906782 [label="collect",color="black",fontcolor="black"];
+1157710065264906782 [label="/\\ used_bytes = 8\n/\\ bar_omp_bytes = 8\n/\\ total_bytes = 16\n/\\ other_bytes = 0\n/\\ free_bytes = 8\n/\\ app = 2"];
+{rank = same; -4071358383089503324;}
+{rank = same; 3474839669812605895;}
+{rank = same; -3244948497461194185;-6378108818895586896;}
+}
+}

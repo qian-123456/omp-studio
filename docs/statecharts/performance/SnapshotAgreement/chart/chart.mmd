@@ -1,0 +1,51 @@
+---
+title: "性能刷新：同屏内存一致性"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% second model (fix): 建议模型（产品未改）
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "当前路径正常" as legendWorks
+    state "建议有效，产品未改" as legendFixed
+  }
+  class legendWorks works
+  class legendFixed fixed
+  state "两份采样返回，数值不同" as s0
+  state "两份采样返回，数值相同" as s1
+  state "刷新完成，两处内存一致" as s2
+  state "刷新完成，两处内存不一致" as s3
+  state "底栏和面板等待独立采样" as s4
+  state "底栏采样已返回，等待面板" as s5
+  state "面板采样已返回，等待底栏" as s6
+  [*] --> s4
+  s4 --> s5 : 底栏独立采样返回
+  s4 --> s6 : 面板独立采样返回
+  s5 --> s1 : 面板独立采样返回
+  s5 --> s0 : 面板独立采样返回
+  s6 --> s1 : 底栏独立采样返回
+  s6 --> s0 : 底栏独立采样返回
+  s1 --> s2 : 刷新底栏与面板
+  s0 --> s3 : 刷新底栏与面板
+  s0 --> s2 : with 建议模型（产品未改）, 刷新底栏与面板
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 fixed
+  class s4 works
+  class s5 works
+  class s6 works
