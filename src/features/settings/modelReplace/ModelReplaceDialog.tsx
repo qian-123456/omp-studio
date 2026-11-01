@@ -30,7 +30,8 @@ import {
 	modelReplaceUndo,
 	modelUsageScan,
 } from "../../../lib/ipc";
-import { groupTakesThinkingLevel, type KindGroup, kindGroup, useModelKindCatalog } from "./kinds";
+import { useModelKindCatalog } from "../../../stores/modelKinds";
+import { groupTakesThinkingLevel, type KindGroup, kindGroup } from "./kinds";
 import {
 	buildPlan,
 	levelsForSelector,

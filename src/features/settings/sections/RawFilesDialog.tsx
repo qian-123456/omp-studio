@@ -6,6 +6,7 @@ import { parseDocument } from "yaml";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { useEscapeKey } from "../../../lib/hooks";
 import { useT } from "../../../stores/language";
+import { useModelKindCatalog } from "../../../stores/modelKinds";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useProviders } from "../../providers/store";
 import { ompInfo, readTextFile, writeTextFile } from "../../../lib/ipc";
@@ -129,6 +130,7 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 			// The page stores cache these files; reload so they show the new values.
 			void useProviders.getState().load();
 			void useOmpConfigStore.getState().load(true);
+			void useModelKindCatalog.getState().load(true);
 			toast.success(t("memoryRules.rawFiles.savedFile", { file: active }));
 		} catch (e) {
 			setSaveError(errMsg(e));

@@ -26,6 +26,7 @@ import { SetKeyDialog } from "./SetKeyDialog";
 import { useProviders } from "./store";
 import { useModelCatalog } from "../../stores/modelCatalog";
 import { catalogKeys, classifyModel, type ModelCategory } from "./modelClass";
+import { OtherModelsPanel } from "./OtherModelsPanel";
 
 function matchesQuery(row: ProviderRow, q: string): boolean {
 	const haystack = [row.id, row.displayName, row.baseUrl, row.api, ...row.models.map(modelEntryId)]
@@ -36,6 +37,11 @@ function matchesQuery(row: ProviderRow, q: string): boolean {
 }
 
 export function ProviderPanel({ category = "chat" }: { category?: ModelCategory } = {}) {
+	return category === "other" ? <OtherModelsPanel /> : <ChatProviderPanel />;
+}
+
+function ChatProviderPanel() {
+	const category = "chat" as const;
 	const { t } = useT();
 	const rows = useProviders((s) => s.rows);
 	const loaded = useProviders((s) => s.loaded);
@@ -74,12 +80,6 @@ export function ProviderPanel({ category = "chat" }: { category?: ModelCategory 
 	const catalogSet = useMemo(() => catalogKeys(catalog), [catalog]);
 	const sorted = useMemo(() => {
 		const kindOf = (r: ProviderRow, id: string) => classifyModel({ id, inCatalog: catalogSet.has(`${r.id}::${id}`) });
-		const hasOther = (r: ProviderRow) => r.models.some((m) => kindOf(r, modelEntryId(m)) === "other");
-		if (category === "other") {
-			// Every provider stays reachable so non-chat models can be added through its edit dialog;
-			// providers that already host non-chat models come first.
-			return [...rows].sort((a, b) => Number(hasOther(b)) - Number(hasOther(a)) || a.id.localeCompare(b.id));
-		}
 		// Chat view hides providers that only host non-chat models.
 		return rows
 			.filter((r) => r.models.length === 0 || r.models.some((m) => kindOf(r, modelEntryId(m)) === "chat"))

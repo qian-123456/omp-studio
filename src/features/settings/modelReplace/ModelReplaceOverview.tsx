@@ -17,7 +17,8 @@ import { SearchInput } from "../../../components/SearchInput";
 import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
-import { KIND_GROUP_ORDER, KIND_GROUP_TITLES, probeKindOf, useModelKindCatalog } from "./kinds";
+import { useModelKindCatalog } from "../../../stores/modelKinds";
+import { KIND_GROUP_ORDER, KIND_GROUP_TITLES, probeKindOf } from "./kinds";
 import { useT } from "../../../stores/language";
 import {
 	buildOverview,

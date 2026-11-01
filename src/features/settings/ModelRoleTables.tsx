@@ -19,6 +19,7 @@ import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
 import type { ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
+import { isServiceModelRole, modelRoleCompatibility, useModelKindCatalog } from "../../stores/modelKinds";
 import {
 	agentFallbackRole,
 	type AssignmentRow,
@@ -31,6 +32,8 @@ import {
 } from "./agentModelAssignments";
 import { splitRoleValue } from "./modelRoles";
 import { Button, Chip, MODEL_PICKER_BUTTON_CLASS } from "./ui";
+import { ServiceRoleModelSelect } from "./ServiceRoleModelSelect";
+import { useSettingsNav } from "./settingsNav";
 
 /** Shared state and actions for the table (owned by AgentModelAssignmentsPanel). */
 export interface AssignmentContext {
@@ -45,6 +48,8 @@ export interface AssignmentContext {
 	/** Config file paths shown in the ⓘ panel. */
 	globalPath: string;
 	projectPath: string | null;
+	/** Selected project directory, retained even while the global scope is active. */
+	projectCwd: string | null;
 	/** A backend write is queued or running; every control is locked. */
 	busy: boolean;
 	write: (scope: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => Promise<void>;
@@ -279,6 +284,14 @@ function RowEditor({
 }) {
 	const { t } = useT();
 	const isAgent = row.kind === "agent";
+	const serviceRole = !isAgent && isServiceModelRole(row.name) ? row.name : null;
+	const catalogEntries = useModelKindCatalog((s) => s.entries);
+	const aliasCatalogUnavailable = serviceRole !== null && catalogEntries === null;
+	const incompatible = (value: string | null): boolean => {
+		if (serviceRole === null || value === null) return false;
+		const entry = catalogEntries?.find((candidate) => candidate.selector === parseSelection(value).selector);
+		return modelRoleCompatibility(entry, serviceRole) === "incompatible";
+	};
 	const table: AssignmentTable = isAgent ? "agentModelOverrides" : "modelRoles";
 	const project = ctx.scope === "project";
 	const committed = isAgent ? (project ? row.projectOverride : row.globalOverride) : project ? row.projectValue : row.globalValue;
@@ -305,6 +318,10 @@ function RowEditor({
 			return;
 		}
 		if (check.value === committed) return;
+		if (incompatible(check.value)) {
+			toast.error(t("settingsModels.servicePickerIncompatibleError"));
+			return;
+		}
 		void literal.run(check.value, t("settingsModels.savedWithScope", { scope: literal.scopeLabel }));
 	};
 
@@ -312,10 +329,17 @@ function RowEditor({
 		if (reuse.locked) return;
 		const next = v === fallback ? null : v;
 		if (next === committed) return;
+		// Missing catalog data cannot establish that a new alias is safe for a service runner.
+		// Keep the existing alias and the empty (clear/inherit) choice usable while loading or failed.
+		if (next !== null && aliasCatalogUnavailable) return;
+		if (next !== null && incompatible(choices.find((choice) => `@${choice.name}` === next)?.model ?? null)) {
+			toast.error(t("settingsModels.servicePickerIncompatibleError"));
+			return;
+		}
 		void reuse.run(next, next === null ? t("settingsModels.restoredDefault") : t("settingsModels.savedWithScope", { scope: reuse.scopeLabel }));
 	};
 
-	const roleChoices = choices.filter((c) => c.name !== row.name || isAgent);
+	const roleChoices = choices.filter((c) => (c.name !== row.name || isAgent) && !incompatible(c.model));
 	const reuseValue = pinned ? "" : shown !== null && shown.startsWith("@") ? shown : fallback;
 	const known = new Set(roleChoices.map((c) => `@${c.name}`));
 	const verbatim = !pinned && shown !== null && shown.startsWith("@") && !known.has(shown);
@@ -334,21 +358,33 @@ function RowEditor({
 			<Step win={mode === "pinned"} label={t("settingsModels.stepDedicated")}>
 				<div className="min-w-0">
 					<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-						<ModelSelect
-							roles={ctx.roles}
-							disabled={literal.locked}
-							closeOnSelect
-							direction="down"
-							align="start"
-							widthClass="w-[360px]"
-							label={pinned ? parseSelection(shown ?? "").selector : t("settingsModels.selectModelBtn")}
-							buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-[var(--text-muted)]"}`}
-							models={ctx.models}
-							currentValue={pinned ? (shown ?? "") : ""}
-							thinking
-							allowCustom
-							onSelect={pickModel}
-						/>
+						{serviceRole !== null ? (
+							<ServiceRoleModelSelect
+								role={serviceRole}
+								scope={ctx.scope}
+								projectCwd={ctx.projectCwd}
+								currentValue={pinned ? (shown ?? "") : ""}
+								effectiveValue={row.effective.model}
+								disabled={literal.locked}
+								onSelect={pickModel}
+							/>
+						) : (
+							<ModelSelect
+								roles={ctx.roles}
+								disabled={literal.locked}
+								closeOnSelect
+								direction="down"
+								align="start"
+								widthClass="w-[360px]"
+								label={pinned ? parseSelection(shown ?? "").selector : t("settingsModels.selectModelBtn")}
+								buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-[var(--text-muted)]"}`}
+								models={ctx.models}
+								currentValue={pinned ? (shown ?? "") : ""}
+								thinking
+								allowCustom
+								onSelect={pickModel}
+							/>
+						)}
 						{isLiteral(committed) && (
 							<Button
 								variant="ghost"
@@ -379,7 +415,7 @@ function RowEditor({
 							{roleChoices.map((c) => {
 								const v = `@${c.name}`;
 								return (
-									<option key={c.name} value={v}>
+									<option key={c.name} value={v} disabled={aliasCatalogUnavailable && v !== reuseValue}>
 										{v}
 										{tagOf(v)} → {c.model ?? t("settingsModels.notSet")}
 									</option>
@@ -473,8 +509,13 @@ function UsageChip({ users }: { users: readonly string[] }) {
 /** One 「角色分配」 table: roles and sub-agents in one list, filtered by `query`. */
 export function RoleAssignmentTable({ rows, query, ctx }: { rows: AssignmentRow[]; query: string; ctx: AssignmentContext }) {
 	const { t } = useT();
+	const { focusKey, focusRequest } = useSettingsNav();
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 	const [infoOpen, setInfoOpen] = useState<ReadonlySet<string>>(new Set());
+	useEffect(() => {
+		const role = focusKey?.startsWith("modelRole:") ? focusKey.slice("modelRole:".length) : null;
+		if (role && isServiceModelRole(role)) setOpen((previous) => new Set(previous).add(`role:${role}`));
+	}, [focusKey, focusRequest]);
 	const toggle = (set: ReadonlySet<string>, key: string): Set<string> => {
 		const next = new Set(set);
 		if (!next.delete(key)) next.add(key);
@@ -516,7 +557,7 @@ export function RoleAssignmentTable({ rows, query, ctx }: { rows: AssignmentRow[
 				const isOpen = open.has(key);
 				const gap = i > 0 && visible[i - 1].group !== r.group;
 				return (
-					<div key={key} data-row-kind={r.kind} data-row-name={r.name}>
+					<div key={key} data-row-kind={r.kind} data-row-name={r.name} data-field-id={r.kind === "role" ? `modelRole:${r.name}` : undefined}>
 						<div
 							role="button"
 							tabIndex={0}

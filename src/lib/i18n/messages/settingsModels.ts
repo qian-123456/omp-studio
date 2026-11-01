@@ -2,6 +2,12 @@ import { defineMessages } from "../define";
 
 export default defineMessages({
 	"zh-CN": {
+		servicePickerEmpty: "暂无适用于此角色的模型。",
+		servicePickerConfigure: "配置其他类型模型",
+		servicePickerUnverified: "兼容性尚未验证，已保留原值。",
+		servicePickerIncompatible: "此模型不适用于该角色，已保留原值；请选择兼容模型替换。",
+		servicePickerIncompatibleError: "请选择适用于此角色的模型。",
+		servicePickerLoadError: "无法加载模型：{error}",
 		fallbackOnAnyLabel: "任何错误",
 		fallbackOnAnyNote: "任何错误都回退",
 		fallbackOnUsageLabel: "仅用量耗尽",
@@ -329,6 +335,12 @@ export default defineMessages({
 		strategyDefault: "当前策略：使用系统默认（预留约 {tokens} Token 时压缩）",
 	},
 	"en-US": {
+		servicePickerEmpty: "No compatible models are available for this role.",
+		servicePickerConfigure: "Configure other model types",
+		servicePickerUnverified: "Compatibility is unverified. The stored value is preserved.",
+		servicePickerIncompatible: "This model does not support this role. The stored value is preserved; choose a compatible model to replace it.",
+		servicePickerIncompatibleError: "Choose a model compatible with this role.",
+		servicePickerLoadError: "Could not load models: {error}",
 		fallbackOnAnyLabel: "Any error",
 		fallbackOnAnyNote: "Fall back on any error",
 		fallbackOnUsageLabel: "Usage limit only",

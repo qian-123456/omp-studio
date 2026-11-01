@@ -1,5 +1,5 @@
 /** Settings ▸ 模型与供应商 (`providers`): API keys / provider catalog and subscription quota tabs. */
-import { FileText } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Segmented } from "../../../components/Segmented";
 import { ProviderPanel } from "../../providers/ProviderPanel";
@@ -11,6 +11,8 @@ import { Button, SectionHeader } from "../ui";
 import { useT } from "../../../stores/language";
 import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RawFilesDialog } from "./RawFilesDialog";
+import { useServiceModelConfiguration } from "../../../stores/modelKinds";
+import { useUi } from "../../../stores/ui";
 
 type Tab = "config" | "other-models" | "quota";
 
@@ -18,6 +20,7 @@ type Tab = "config" | "other-models" | "quota";
 function tabForFocus(focusKey: string | null): Tab | null {
 	if (!focusKey) return null;
 	if (focusKey === "quotaDashboard") return "quota";
+	if (focusKey === "otherModels") return "other-models";
 	if (focusKey.startsWith("provider:")) return "config";
 	if (focusKey === "providerList") return "config";
 	const slot = ompSectionFor(focusKey).slot;
@@ -31,6 +34,7 @@ export function ProvidersSection() {
 	const { focusKey, focusRequest } = useSettingsNav();
 	const [tab, setTab] = useState<Tab>(() => tabForFocus(focusKey) ?? "config");
 	const [rawOpen, setRawOpen] = useState(false);
+	const configurationOrigin = useServiceModelConfiguration((s) => s.origin);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focusRequest re-fires the jump for a repeated key
 	useEffect(() => {
@@ -40,7 +44,17 @@ export function ProvidersSection() {
 
 	return (
 		<div className="space-y-5">
-			<SectionHeader title={t("settingsSections.providers.title")} description={t("settingsSections.providers.description")} />
+			{tab === "other-models" && <div data-field-id="otherModels" className="h-0" />}
+			<SectionHeader
+				title={t("settingsSections.providers.title")}
+				description={t("settingsSections.providers.description")}
+				actions={tab === "other-models" && configurationOrigin ? (
+					<Button icon={ArrowLeft} onClick={() => {
+						useServiceModelConfiguration.getState().requestReturn();
+						useUi.getState().openSettings("omp-roles", { focusKey: `modelRole:${configurationOrigin.role}` });
+					}}>{t("providers.returnToModelRoles")}</Button>
+				) : undefined}
+			/>
 			<SectionJumpBar />
 			<div className="flex items-center justify-between gap-3">
 				<Segmented

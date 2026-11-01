@@ -15,6 +15,7 @@ import { ompModelRolesRead, ompModelRolesSet } from "../../lib/ipc";
 import type { ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
+import { useModelKindCatalog } from "../../stores/modelKinds";
 import { AddRoleForm } from "./AddRoleForm";
 import { type AssignmentScope, type AssignmentTable, buildAssignmentRows, roleUsers } from "./agentModelAssignments";
 import { ModelReplaceDialog } from "./modelReplace/ModelReplaceDialog";
@@ -193,6 +194,7 @@ export function AgentModelAssignmentsPanel({
 
 	useEffect(() => {
 		void useModelCatalog.getState().refresh();
+		void useModelKindCatalog.getState().load();
 		// `cycleOrder` (who the model switcher cycles through) counts as a caller of a role.
 		void useOmpConfigStore.getState().load();
 	}, []);
@@ -255,6 +257,7 @@ export function AgentModelAssignmentsPanel({
 		sessionSelected: scopeSessionId !== null,
 		globalPath: snapshot?.global.path ?? "",
 		projectPath: projectLayer?.path ?? null,
+		projectCwd: pick,
 		busy: writing,
 		write: guardedWrite,
 		roles: projectLayer ? { ...globalRoles, ...projectLayer.modelRoles } : globalRoles,

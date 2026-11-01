@@ -2479,6 +2479,24 @@ mod tests {
     }
 
     #[test]
+    fn kind_catalog_preserves_non_chat_and_unknown_runtime_kinds() {
+        let rows = r#"{"models":[
+            {"selector":"local/voice","kind":"tts"},
+            {"provider":"catalog","id":"vector","kind":"embedding"},
+            {"selector":"runner/future","kind":"future-runtime-kind"},
+            {"selector":"catalog/small","kind":"tiny"}
+        ]}"#;
+        let entries = parse_kind_catalog(rows).unwrap();
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[0].kind, "tts");
+        assert_eq!(entries[1].selector, "catalog/vector");
+        assert_eq!(entries[1].kind, "embedding");
+        assert_eq!(entries[2].selector, "runner/future");
+        assert_eq!(entries[2].kind, "future-runtime-kind");
+        assert_eq!(entries[3].kind, "tiny");
+    }
+
+    #[test]
     fn boxed_error_becomes_clean_full_text_with_error_first() {
         let framed = "\u{1b}[31m╭──────────────╮\u{1b}[0m\n│ Error: No web search model matches selector \"web/x\" │\n│ Try another selector, then run it again with a much longer explanation that must survive intact │\n╰──────────────╯\n";
         let detail = failure_detail(&run(false, "", &format!("Details follow\n{framed}")));

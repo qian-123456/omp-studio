@@ -39,7 +39,7 @@ import type { ModelReplaceEdit, ModelReplaceResult } from "../../../lib/contract
 import { useModelSelectPrefs } from "../../../components/modelSelectPrefs";
 import { resolveThinkingLevels } from "../../../lib/models";
 import { useModelCatalog } from "../../../stores/modelCatalog";
-import { useModelKindCatalog } from "./kinds";
+import { useModelKindCatalog } from "../../../stores/modelKinds";
 import { ModelReplaceDialog } from "./ModelReplaceDialog";
 
 const OPUS = "anthropic/claude-opus";

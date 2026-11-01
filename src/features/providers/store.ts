@@ -12,6 +12,7 @@ import type {
 import { invalidateWarmDrafts } from "../sessions/draftSession";
 import { markLiveSessionsStale } from "../sessions/modelRegistrySync";
 import { useModelCatalog } from "../../stores/modelCatalog";
+import { useModelKindCatalog } from "../../stores/modelKinds";
 import {
 	providerSaveBuiltin,
 	providerDecrypt,
@@ -70,7 +71,10 @@ const failedTest = (e: unknown): TestStatus => ({
  * restarted here.
  */
 async function syncModelConfig(): Promise<void> {
-	await useModelCatalog.getState().refresh().catch(() => {});
+	await Promise.all([
+		useModelCatalog.getState().refresh().catch(() => {}),
+		useModelKindCatalog.getState().load(true),
+	]);
 	await invalidateWarmDrafts().catch(() => {});
 	await markLiveSessionsStale().catch(() => {});
 }
@@ -108,23 +112,27 @@ export const useProviders = create<ProvidersState>((set, get) => {
 				set({ rows: prev });
 				throw e;
 			}
+			await syncModelConfig();
 		},
 
 		encrypt: async (id) => {
 			const row = await providerEncrypt(id);
 			applyRow(row);
+			await useModelKindCatalog.getState().load(true);
 			return row;
 		},
 
 		decrypt: async (id) => {
 			const row = await providerDecrypt(id);
 			applyRow(row);
+			await useModelKindCatalog.getState().load(true);
 			return row;
 		},
 
 		encryptAll: async () => {
 			const results = await providerEncryptAll();
 			await get().load();
+			await useModelKindCatalog.getState().load(true);
 			return results;
 		},
 
@@ -145,6 +153,7 @@ export const useProviders = create<ProvidersState>((set, get) => {
 		setKey: async (id, apiKey, keyMode) => {
 			const row = await providerSetKey(id, apiKey, keyMode);
 			applyRow(row);
+			await syncModelConfig();
 			return row;
 		},
 
