@@ -1,0 +1,68 @@
+
+ RUN  v3.2.7 <repo>
+
+stdout | ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > RefreshOverlap.tla: opening the panel while the closed-mode probe is pending must not start an overlapping second request
+[RefreshOverlap] app_memory_usage in flight on open = 2 ; services_list = 1 ; perf_breakdown = 1
+
+stdout | ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > PartialFailure.tla [IPC boundary fault injection]: fresh successful probes must survive a sibling rejection
+[PartialFailure] independent display consequences: fresh bar 202 MB = false ; fresh popover 222 MB = false ; stale 101 MB still shown = true ; distribution track rendered (false = bd null → collecting placeholder) = false
+
+stdout | ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > SnapshotAgreement.tla [witness, not a regression gate]: bar label and popover app value render two distinct same-tick samples
+[SnapshotAgreement] one cycle issued app_memory_usage x 2 + perf_breakdown x 1 ; same tick renders bar sample 101 MB = true and breakdown app sample 222 MB = true
+
+stdout | ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > MemoryPartition.tla [witness]: crafted inconsistent partition accepted, segment widths sum 112.5%
+[MemoryPartition] rendered segment widths = 12.5% + 50% + 50% = 112.5% ; guard/fallback branch taken = false
+
+ ❯ ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx (4 tests | 2 failed) 600ms
+   × perf poller replay (baseline f6de72f, jsdom IPC boundary) > RefreshOverlap.tla: opening the panel while the closed-mode probe is pending must not start an overlapping second request 132ms
+     → expected 2 to be 1 // Object.is equality
+   × perf poller replay (baseline f6de72f, jsdom IPC boundary) > PartialFailure.tla [IPC boundary fault injection]: fresh successful probes must survive a sibling rejection 197ms
+     → expected 'false|false' to be 'true|true' // Object.is equality
+   ✓ perf poller replay (baseline f6de72f, jsdom IPC boundary) > SnapshotAgreement.tla [witness, not a regression gate]: bar label and popover app value render two distinct same-tick samples 136ms
+   ✓ perf poller replay (baseline f6de72f, jsdom IPC boundary) > MemoryPartition.tla [witness]: crafted inconsistent partition accepted, segment widths sum 112.5% 134ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  22:21:34
+   Duration  1.89s (transform 323ms, setup 285ms, collect 314ms, tests 600ms, environment 464ms, prepare 52ms)
+
+JSON report written to <scratch>/bundle/evidence/replay/vitest-report.json
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > RefreshOverlap.tla: opening the panel while the closed-mode probe is pending must not start an overlapping second request
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx:137:20
+    135| 
+    136|   // Desired single-flight invariant: still exactly one pending probe.
+    137|   expect(appCalls).toBe(1); // FAILS at baseline (2): effect-local inF…
+       |                    ^
+    138| 
+    139|   releaseAll("app_memory_usage", mem("101 MB"));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx > perf poller replay (baseline f6de72f, jsdom IPC boundary) > PartialFailure.tla [IPC boundary fault injection]: fresh successful probes must survive a sibling rejection
+AssertionError: expected 'false|false' to be 'true|true' // Object.is equality
+
+Expected: "true|true"
+Received: "false|false"
+
+ ❯ ../../../..<scratch>/bundle/evidence/replay/bottombar-poll.replay.test.tsx:182:41
+    180|   // One combined signal so the baseline failure message carries BOTH
+    181|   // display consequences (bar label AND popover app value).
+    182|   expect(`${freshBar}|${freshPopover}`).toBe("true|true"); // FAILS at…
+       |                                         ^
+    183|   expect(trackRendered, "fresh breakdown should render the distributio…
+    184|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
