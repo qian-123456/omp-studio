@@ -15,6 +15,11 @@ export interface ProviderPreset {
 	noKey?: boolean;
 }
 
+/** Dedicated account protocols cannot be configured by substituting an ordinary API key. */
+export const OAUTH_ONLY_SUPPLIERS: Readonly<Record<string, true>> = {
+	"google-antigravity": true, "google-gemini-cli": true, "openai-codex": true,
+};
+
 export const PROVIDER_PRESETS: ProviderPreset[] = [
 	{
 		id: "openai",
@@ -175,3 +180,52 @@ export const KNOWN_APIS: { value: string; readonly label: string }[] = [
 		},
 	},
 ];
+
+/** Per-model protocols verified against the installed consumer; provider defaults use the narrower chat API schema. */
+export const SERVICE_PURPOSES: readonly { kind: string; key: "providers.purposeImage" | "providers.purposeStt" | "providers.purposeTts" | "providers.purposeEmbedding" | "providers.purposeRerank" | "providers.purposeVideo" | "providers.purposeJudge"; apis: readonly string[] }[] = [
+	{ kind: "image", key: "providers.purposeImage", apis: ["openai-images", "openrouter-images", "openai-responses", "google-generative-ai"] },
+	{ kind: "stt", key: "providers.purposeStt", apis: ["openai-transcriptions"] },
+	{ kind: "tts", key: "providers.purposeTts", apis: ["openai-speech", "xai-tts"] },
+	{ kind: "embedding", key: "providers.purposeEmbedding", apis: ["openai-embeddings"] },
+	{ kind: "rerank", key: "providers.purposeRerank", apis: ["openrouter-rerank"] },
+	{ kind: "video", key: "providers.purposeVideo", apis: ["openrouter-video"] },
+	{ kind: "judge", key: "providers.purposeJudge", apis: ["typesafe", "openrouter-decisions", "openai-decisions"] },
+];
+
+/** Internal runner protocols cannot be used as the provider-level API. */
+export const INVALID_PROVIDER_APIS: Record<string, true> = {
+	"openai-images": true, "openrouter-images": true, "openai-transcriptions": true,
+	"openai-speech": true, "xai-tts": true, "openai-embeddings": true,
+	"openrouter-rerank": true, "openrouter-video": true, "web-search": true,
+	"local-inference": true, "factory-droid-agent": true,
+};
+
+export const SERVICE_API_LABELS: Record<string, string> = {
+	"openai-images": "OpenAI Images", "openrouter-images": "OpenRouter Images",
+	"openai-responses": "OpenAI Responses", "openai-codex-responses": "OpenAI Codex Responses",
+	"google-generative-ai": "Google Gemini", "google-gemini-cli": "Google Gemini CLI",
+	"factory-droid-agent": "Factory Droid", "openai-transcriptions": "OpenAI Transcriptions",
+	"openai-speech": "OpenAI Speech", "xai-tts": "xAI Speech", "openai-embeddings": "OpenAI Embeddings",
+	"openrouter-rerank": "OpenRouter Rerank", "openrouter-video": "OpenRouter Video",
+	typesafe: "Typesafe", "openrouter-decisions": "OpenRouter Decisions",
+	"openai-decisions": "OpenAI Decisions", "workers-ai-systemone": "Cloudflare Workers AI System One",
+};
+
+export function isExplicitServiceModel(model: { kind?: string | null; api?: string | null }): boolean {
+	return Boolean((model.kind && model.kind !== "chat" && model.kind !== "tiny") ||
+		["openai-images", "openrouter-images", "openai-speech", "xai-tts", "openai-transcriptions",
+			"openai-embeddings", "openrouter-rerank", "openrouter-video", "typesafe",
+			"openrouter-decisions", "openai-decisions", "workers-ai-systemone"].includes(model.api ?? ""));
+}
+
+/** Unknown upstream extensions are retained, not guessed from model names. */
+export function serviceApiSupportsKind(kind: string, api: string): boolean | null {
+	if (["web-search", "local-inference", "factory-droid-agent"].includes(api)) return false;
+	const purpose = SERVICE_PURPOSES.find((p) => p.kind === kind);
+	// These upstream protocols support the kind but need dedicated authentication/configuration.
+	if (kind === "image" && ["openai-codex-responses", "google-gemini-cli"].includes(api)) return true;
+	if (kind === "judge" && api === "workers-ai-systemone") return true;
+	if ((kind === "chat" || kind === "tiny") && isExplicitServiceModel({ api })) return false;
+	if (!purpose || (!Object.prototype.hasOwnProperty.call(SERVICE_API_LABELS, api) && !KNOWN_APIS.some((entry) => entry.value === api))) return null;
+	return purpose.apis.some((value) => value === api);
+}

@@ -1316,6 +1316,10 @@ pub struct ModelSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
@@ -1792,12 +1796,14 @@ mod tests {
                     name: None,
                     context_window: Some(200000),
                     max_tokens: None,
+                    ..ModelSpec::default()
                 }),
                 ModelEntry::Spec(ModelSpec {
                     id: "m2".into(),
                     name: Some("M2".into()),
                     context_window: None,
                     max_tokens: Some(8192),
+                    ..ModelSpec::default()
                 }),
             ]
         );
@@ -1815,6 +1821,7 @@ mod tests {
                 name: None,
                 context_window: Some(128000),
                 max_tokens: None,
+                ..ModelSpec::default()
             })
         );
     }

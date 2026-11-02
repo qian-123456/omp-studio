@@ -19,7 +19,7 @@ import { KeyModeRadio } from "./KeyModeRadio";
 import { ModelPickerModal } from "./ModelPickerModal";
 import type { ModelCategory } from "./modelClass";
 import { type ModelRow, modelEntriesToRows, rowsToModelEntries } from "./modelEntry";
-import { KNOWN_APIS, PROVIDER_PRESETS } from "./presets";
+import { KNOWN_APIS, PROVIDER_PRESETS, SERVICE_PURPOSES, SERVICE_API_LABELS, serviceApiSupportsKind, INVALID_PROVIDER_APIS } from "./presets";
 import { useProviders } from "./store";
 
 export type ProviderDialogTarget =
@@ -62,6 +62,10 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const isOverride = editing?.origin === "override";
 	const defaultBaseUrl = editing?.defaultBaseUrl ?? null;
 	const initialModels = isBuiltin ? (editing?.extraModels ?? []) : (editing?.models ?? []);
+	const serviceMode = pickerCategory === "other";
+	const [purpose, setPurpose] = useState(initialModels.map((m) => typeof m === "string" ? undefined : m.kind).find(Boolean) ?? "image");
+	const purposeSpec = SERVICE_PURPOSES.find((p) => p.kind === purpose) ?? SERVICE_PURPOSES[0];
+	const availableApis = KNOWN_APIS;
 
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 	const [id, setId] = useState(editing?.id ?? "");
@@ -70,8 +74,8 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	);
 	const [authNone, setAuthNone] = useState(editing?.authNone ?? false);
 	const [removing, setRemoving] = useState(false);
-	const initialApi = editing?.api ?? "openai-completions";
-	const isKnownApi = KNOWN_APIS.some((a) => a.value === initialApi);
+	const initialApi = editing?.api ?? (serviceMode ? "" : "openai-completions");
+	const isKnownApi = (serviceMode && initialApi === "") || availableApis.some((a) => a.value === initialApi);
 	const [apiChoice, setApiChoice] = useState(isKnownApi ? initialApi : OTHER_API);
 	const [apiOther, setApiOther] = useState(isKnownApi ? "" : initialApi);
 	const [apiKey, setApiKey] = useState("");
@@ -80,7 +84,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const [keyMode, setKeyMode] = useState<KeyMode>(initialKeyMode);
 	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
 		const initial = modelEntriesToRows(initialModels);
-		return initial.length > 0 || isBuiltin ? initial : [blankModelRow()];
+		return initial.length > 0 || isBuiltin ? initial : [{ ...blankModelRow(), ...(serviceMode ? { kind: "image", api: "openai-images" } : {}) }];
 	});
 	const [showKey, setShowKey] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -167,11 +171,12 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		if (!p) return;
 		setId(p.id === "custom" ? "" : uniqueId(p.id));
 		setBaseUrl(p.baseUrl);
-		const known = KNOWN_APIS.some((a) => a.value === p.api);
-		setApiChoice(known ? p.api : OTHER_API);
-		setApiOther(known ? "" : p.api);
-		const preset = modelEntriesToRows(p.models);
-		setModelRows(preset.length > 0 ? preset : [blankModelRow()]);
+		const nextApi = serviceMode ? "" : p.api;
+		const known = serviceMode || availableApis.some((a) => a.value === nextApi);
+		setApiChoice(known ? nextApi : OTHER_API);
+		setApiOther(known ? "" : nextApi);
+		const preset = serviceMode ? [] : modelEntriesToRows(p.models);
+		setModelRows(preset.length > 0 ? preset : [{ ...blankModelRow(), ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }]);
 	};
 
 	const handleModelRowChange = (index: number, field: keyof ModelRow, value: string) => {
@@ -205,7 +210,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	};
 
 	const replaceModelRows = (selectedIds: string[], append: boolean) => {
-		const fresh = selectedIds.map((mid) => ({ ...blankModelRow(), id: mid }));
+		const fresh = selectedIds.map((mid) => ({ ...blankModelRow(), id: mid, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }));
 		setModelRows((prev) => {
 			if (!append) return fresh;
 			const existing = new Set(prev.map((r) => r.id.trim()).filter(Boolean));
@@ -240,6 +245,25 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 
 	const handleSave = async () => {
 		setFormError(null);
+		if (INVALID_PROVIDER_APIS[api] === true || modelRows.some((row) => row.id.trim() && ["web-search", "local-inference", "factory-droid-agent"].includes(row.api || api))) {
+			setFormError(t("providers.unsupportedServiceProtocol"));
+			return;
+		}
+		const enteredModels = rowsToModelEntries(modelRows);
+		if (!api && (enteredModels.length === 0 || enteredModels.some((model) => typeof model === "string" || !model.api?.trim()))) {
+			setFormError(t("providers.explicitModelApisRequired"));
+			return;
+		}
+		const incompatible = modelRows.find((row) => {
+			if (!row.id.trim() || !row.kind) return false;
+			const effectiveApi = row.api || api;
+			if (serviceApiSupportsKind(row.kind, effectiveApi) !== false) return false;
+			return !initialModels.some((m) => typeof m !== "string" && m.id === row.id && m.kind === row.kind && (m.api || editing?.api) === effectiveApi);
+		});
+		if (incompatible) {
+			setFormError(t("providers.incompatibleServiceApi", { id: incompatible.id }));
+			return;
+		}
 		const key = authNone ? "" : apiKey.trim();
 		const url = baseUrl.trim();
 		if (editing && isBuiltin) {
@@ -273,7 +297,6 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		const missing: string[] = [];
 		if (!newId) missing.push(t("providers.fieldName"));
 		if (!url) missing.push(t("providers.fieldUrl"));
-		if (!api) missing.push(t("providers.fieldApi"));
 		if (missing.length > 0) {
 			setFormError(t("providers.missingFieldsError", { fields: missing.join(t("providers.fieldListSeparator")) }));
 			return;
@@ -635,6 +658,20 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 							</div>
 						</div>
 
+						{serviceMode && (
+							<div>
+								<label htmlFor="provider-purpose" className={labelCls}>{t("providers.servicePurpose")}</label>
+								<NativeSelect id="provider-purpose" value={purpose} containerClassName="mt-1.5" onChange={(event) => {
+									const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value)!;
+									setPurpose(next.kind);
+									setModelRows((prev) => prev.map((row) => row.id.trim() ? row : { ...row, kind: next.kind, api: next.apis[0] }));
+								}}>
+									{SERVICE_PURPOSES.map((p) => <option key={p.kind} value={p.kind}>{t(p.key)}</option>)}
+								</NativeSelect>
+								<p className={hintCls}>{t("providers.servicePurposeHint")}</p>
+								<p className={hintCls}>{t("providers.serviceGlobalHint")}</p>
+							</div>
+						)}
 						<div>
 							<label htmlFor="provider-api" className={labelCls}>
 								{t("providers.apiLabel")}
@@ -651,10 +688,13 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 									<NativeSelect
 										id="provider-api"
 										value={apiChoice}
-										onChange={(e) => setApiChoice(e.target.value)}
+										onChange={(e) => {
+											setApiChoice(e.target.value);
+										}}
 										containerClassName="mt-1.5"
 									>
-										{KNOWN_APIS.map((a) => (
+										{serviceMode && <option value="">{t("providers.perModelApi")}</option>}
+										{availableApis.map((a) => (
 											<option key={a.value} value={a.value}>
 												{a.label}
 											</option>
@@ -744,7 +784,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 									</button>
 									<button
 										type="button"
-										onClick={() => setModelRows((prev) => [...prev, blankModelRow()])}
+										onClick={() => setModelRows((prev) => [...prev, { ...blankModelRow(), ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }])}
 										className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs text-[var(--accent)] transition-all hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95"
 									>
 										<Plus className="h-3 w-3" />
@@ -810,6 +850,27 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 										>
 											<X className="h-3.5 w-3.5" />
 										</button>
+										{(serviceMode || row.kind || row.api) && (
+											<div className="col-span-4 grid grid-cols-2 gap-2 pb-2">
+												<label className={hintCls}>{t("providers.servicePurpose")}
+													<NativeSelect value={row.kind ?? ""} onChange={(event) => {
+														const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value);
+														setModelRows((prev) => prev.map((r, i) => i === index ? { ...r, kind: event.target.value || undefined, api: next?.apis[0] } : r));
+													}}>
+														<option value="">{t("providers.inheritPurpose")}</option>
+														<option value="chat">{t("providers.purposeChat")}</option>
+														{row.kind && row.kind !== "chat" && !SERVICE_PURPOSES.some((p) => p.kind === row.kind) && <option value={row.kind}>{row.kind}</option>}
+														{SERVICE_PURPOSES.map((p) => <option key={p.kind} value={p.kind}>{t(p.key)}</option>)}
+													</NativeSelect>
+												</label>
+												<label className={hintCls}>{t("providers.apiLabel")}
+													<NativeSelect value={row.api ?? ""} onChange={(event) => handleModelRowChange(index, "api", event.target.value)}>
+														<option value="">{t("providers.inheritApi")}</option>
+														{[...new Set([...(SERVICE_PURPOSES.find((p) => p.kind === row.kind)?.apis ?? KNOWN_APIS.map((a) => a.value)), ...(row.api ? [row.api] : [])])].map((value) => <option key={value} value={value}>{SERVICE_API_LABELS[value] ?? KNOWN_APIS.find((a) => a.value === value)?.label ?? value}</option>)}
+													</NativeSelect>
+												</label>
+											</div>
+										)}
 									</div>
 								))}
 								{modelRows.length === 0 && (

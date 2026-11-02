@@ -119,7 +119,12 @@ fn models_of(r: &Legacy) -> Vec<ModelEntry> {
                 max_tokens: spec.max_tokens.or(r.default_max_tokens),
                 ..spec
             };
-            if spec.name.is_none() && spec.context_window.is_none() && spec.max_tokens.is_none() {
+            if spec.name.is_none()
+                && spec.context_window.is_none()
+                && spec.max_tokens.is_none()
+                && spec.kind.is_none()
+                && spec.api.is_none()
+            {
                 ModelEntry::Id(spec.id)
             } else {
                 ModelEntry::Spec(spec)

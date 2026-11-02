@@ -18,6 +18,7 @@ pub mod omp_config;
 pub mod ops;
 pub mod presets;
 pub mod rows;
+pub mod service_config;
 pub mod vault;
 
 use tokio::sync::Mutex;

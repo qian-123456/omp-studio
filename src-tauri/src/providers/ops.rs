@@ -320,8 +320,11 @@ pub fn upsert(
     if base_url.is_empty() {
         return Err("Base URL 不能为空".to_string());
     }
-    if api.is_empty() {
-        return Err("API 协议不能为空".to_string());
+    let every_model_has_api = !input.models.is_empty() && input.models.iter().all(|model| {
+        matches!(model, crate::contracts::ModelEntry::Spec(spec) if spec.api.as_deref().is_some_and(|api| !api.trim().is_empty()))
+    });
+    if api.is_empty() && !every_model_has_api {
+        return Err("API 协议不能为空，除非每个模型均明确设置协议".to_string());
     }
     // `auth: none` and a key contradict each other; "no key needed" wins.
     let new_key = api_key
@@ -711,6 +714,62 @@ pub(super) mod tests {
         assert!(apply_key(&env, "plain", "  ", KeyMode::Plaintext).is_err());
         assert!(apply_key(&env, "plain", "a\nb", KeyMode::Encrypted).is_err());
         assert_eq!(block_of(&fx.text(), "plain"), block_of(BASE, "plain"));
+    }
+
+    #[test]
+    fn mixed_services_allow_no_provider_api_only_with_explicit_model_apis() {
+        let fx = Fx::new("");
+        let mut input = ProviderUpsert {
+            original_id: None,
+            id: "services".into(),
+            display_name: None,
+            base_url: "https://example.com/v1".into(),
+            api: String::new(),
+            models: [
+                ("image", "openai-images"),
+                ("stt", "openai-transcriptions"),
+                ("tts", "openai-speech"),
+                ("embedding", "openai-embeddings"),
+                ("rerank", "openrouter-rerank"),
+                ("video", "openrouter-video"),
+            ]
+            .into_iter()
+            .map(|(kind, api)| {
+                ModelEntry::Spec(crate::contracts::ModelSpec {
+                    id: format!("{kind}-model"),
+                    kind: Some(kind.into()),
+                    api: Some(api.into()),
+                    ..crate::contracts::ModelSpec::default()
+                })
+            })
+            .collect(),
+            auth_none: false,
+        };
+        upsert(&fx.env(), &input, None, KeyMode::Plaintext).unwrap();
+        let provider = fx.env().provider("services").unwrap().unwrap();
+        assert_eq!(provider.api, None);
+        assert_eq!(provider.models, input.models);
+        input.original_id = Some("services".into());
+        input.api = "openai-completions".into();
+        upsert(&fx.env(), &input, None, KeyMode::Plaintext).unwrap();
+        assert_eq!(
+            fx.env()
+                .provider("services")
+                .unwrap()
+                .unwrap()
+                .api
+                .as_deref(),
+            Some("openai-completions")
+        );
+        input.api.clear();
+        upsert(&fx.env(), &input, None, KeyMode::Plaintext).unwrap();
+        assert_eq!(fx.env().provider("services").unwrap().unwrap().api, None);
+        input.models.push(ModelEntry::Id("missing-api".into()));
+        let before = fx.text();
+        assert!(upsert(&fx.env(), &input, None, KeyMode::Plaintext).is_err());
+        assert_eq!(fx.text(), before);
+        input.models.clear();
+        assert!(upsert(&fx.env(), &input, None, KeyMode::Plaintext).is_err());
     }
 
     #[test]

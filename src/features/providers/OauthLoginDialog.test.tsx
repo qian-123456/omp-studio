@@ -27,6 +27,7 @@ vi.mock("../settings/sections/ProviderBrandLogo", () => ({ ProviderBrandLogo: ()
 vi.mock("./store", () => ({ useProviders: (selector: (state: { load: typeof reloadProviders }) => unknown) => selector({ load: reloadProviders }) }));
 
 import { OauthLoginDialog } from "./OauthLoginDialog";
+import { tNow } from "../../stores/language";
 
 afterEach(cleanup);
 
@@ -47,6 +48,77 @@ function deferred<T>() {
 	const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
 	return { promise, resolve, reject };
 }
+
+describe("OauthLoginDialog supplier search", () => {
+	beforeEach(() => {
+		oauthLoginProviders.mockResolvedValue([
+			{ id: "stable-alpha", name: "Display Supplier", available: true, authenticated: true },
+			{ id: "second-id", name: "Second Supplier", available: false },
+		]);
+	});
+
+	it("opens the requested supplier account list without starting authorization", async () => {
+		render(<OauthLoginDialog initialProviderQuery="stable-alpha" onClose={() => {}} />);
+		await screen.findByText("Display Supplier");
+		expect(screen.queryByText("Second Supplier")).toBeNull();
+		expect(oauthLoginStart).not.toHaveBeenCalled();
+		expect(onProvidersOauth).not.toHaveBeenCalled();
+	});
+
+	it("matches trimmed display names and stable IDs case-insensitively without starting OAuth", async () => {
+		render(<OauthLoginDialog onClose={() => {}} />);
+		await screen.findByText("Display Supplier");
+		const search = screen.getByRole("textbox");
+
+		fireEvent.change(search, { target: { value: "  DISPLAY sUPPLIER  " } });
+		expect(screen.getByText("Display Supplier")).toBeTruthy();
+		expect(screen.queryByText("Second Supplier")).toBeNull();
+		expect(screen.getByText(tNow("providers.oauthLoggedIn"))).toBeTruthy();
+
+		fireEvent.change(search, { target: { value: "  SECOND-ID  " } });
+		expect(screen.queryByText("Display Supplier")).toBeNull();
+		expect(screen.getByRole("button", { name: /Second Supplier/ }).hasAttribute("disabled")).toBe(true);
+		expect(oauthLoginStart).not.toHaveBeenCalled();
+		expect(onProvidersOauth).not.toHaveBeenCalled();
+		expect(oauthLoginCancel).not.toHaveBeenCalled();
+	});
+
+	it("shows no results and restores all suppliers through clear and whitespace-only search", async () => {
+		render(<OauthLoginDialog onClose={() => {}} />);
+		await screen.findByText("Display Supplier");
+		const search = screen.getByRole("textbox");
+		fireEvent.change(search, { target: { value: "missing supplier" } });
+		expect(screen.getByText(tNow("providers.oauthSearchEmpty"))).toBeTruthy();
+		expect(screen.queryByText("Display Supplier")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: tNow("components.clearSearch") }));
+		expect((search as HTMLInputElement).value).toBe("");
+		expect(screen.getByText("Display Supplier")).toBeTruthy();
+		expect(screen.getByText("Second Supplier")).toBeTruthy();
+		fireEvent.change(search, { target: { value: "   " } });
+		expect(screen.getByText("Display Supplier")).toBeTruthy();
+		expect(screen.getByText("Second Supplier")).toBeTruthy();
+		expect(oauthLoginStart).not.toHaveBeenCalled();
+	});
+
+	it("retains the chosen flow across rerenders and the filter when returning to the list", async () => {
+		const onClose = vi.fn();
+		const { rerender } = render(<OauthLoginDialog onClose={onClose} />);
+		await screen.findByText("Display Supplier");
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "stable-alpha" } });
+		fireEvent.click(screen.getByRole("button", { name: /Display Supplier/ }));
+		await waitFor(() => expect(oauthLoginStart).toHaveBeenCalledWith("stable-alpha"));
+		rerender(<OauthLoginDialog onClose={onClose} />);
+		expect(screen.queryByPlaceholderText(tNow("providers.oauthSearchPlaceholder"))).toBeNull();
+		expect(oauthLoginCancel).not.toHaveBeenCalled();
+		expect(oauthLoginStart).toHaveBeenCalledTimes(1);
+		fireEvent.click(screen.getByText("上一步"));
+		await screen.findByText("Display Supplier");
+		expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("stable-alpha");
+		expect(screen.queryByText("Second Supplier")).toBeNull();
+		expect(oauthLoginCancel).toHaveBeenCalledTimes(1);
+		expect(oauthLoginStart).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe("OauthLoginDialog listener registration", () => {
 	it("unlistens when the dialog unmounts before onProvidersOauth resolves", async () => {

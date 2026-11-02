@@ -835,8 +835,11 @@ pub async fn provider_export_env_text(ids: Option<Vec<String>>) -> Result<String
 
 /// Query available login providers via probe RPC process.
 #[tauri::command]
-pub async fn oauth_login_providers() -> Result<Vec<serde_json::Value>, String> {
-    super::oauth::oauth_login_providers().await
+pub async fn oauth_login_providers(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let binary = state.settings.read().omp_binary.clone();
+    super::oauth::oauth_login_providers(&binary).await
 }
 
 /// Start an OAuth / account login flow for a provider.

@@ -129,12 +129,27 @@ fn entry_of(id: String, fields: &Mapping) -> ModelEntry {
         .map(str::to_string);
     let context_window = u32_field(fields, "contextWindow");
     let max_tokens = u32_field(fields, "maxTokens");
-    if name.is_none() && context_window.is_none() && max_tokens.is_none() {
+    let kind = fields
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let api = fields
+        .get("api")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if name.is_none()
+        && context_window.is_none()
+        && max_tokens.is_none()
+        && kind.is_none()
+        && api.is_none()
+    {
         ModelEntry::Id(id)
     } else {
         ModelEntry::Spec(ModelSpec {
             id,
             name,
+            kind,
+            api,
             context_window,
             max_tokens,
         })
@@ -171,6 +186,8 @@ fn build_items(existing: &[(String, Mapping)], models: &[ModelEntry]) -> Vec<Val
             }
         }
         if let ModelEntry::Spec(spec) = entry {
+            set_or_remove(&mut item, "kind", spec.kind.clone().map(Value::String));
+            set_or_remove(&mut item, "api", spec.api.clone().map(Value::String));
             set_or_remove(
                 &mut item,
                 "name",
@@ -292,6 +309,8 @@ fn same_models(got: &[ModelEntry], want: &[ModelEntry]) -> bool {
                 g.id == w.id.trim()
                     && g.context_window == w.context_window
                     && g.max_tokens == w.max_tokens
+                    && g.kind == w.kind
+                    && g.api == w.api
                     && g.name == w.name.clone().filter(|n| !n.trim().is_empty())
             }
             (ModelEntry::Id(g), ModelEntry::Spec(w)) => {
@@ -299,6 +318,8 @@ fn same_models(got: &[ModelEntry], want: &[ModelEntry]) -> bool {
                     && w.name.as_deref().map_or(true, |n| n.trim().is_empty())
                     && w.context_window.is_none()
                     && w.max_tokens.is_none()
+                    && w.kind.is_none()
+                    && w.api.is_none()
             }
         })
 }
@@ -546,7 +567,8 @@ pub fn upsert_block_text(text: &str, spec: &BlockSpec) -> Result<String, String>
         let items = build_items(&existing, &spec.models);
         t = replace_models_text(&t, &spec.id, &items)?;
     }
-    t = set_field(&t, &spec.id, "api", Some(&yaml_scalar(spec.api.trim())))?;
+    let api = (!spec.api.trim().is_empty()).then(|| yaml_scalar(spec.api.trim()));
+    t = set_field(&t, &spec.id, "api", api.as_deref())?;
     t = set_field(
         &t,
         &spec.id,
@@ -666,7 +688,7 @@ pub fn verify_block(text: &str, spec: &BlockSpec) -> Result<(), String> {
         .map(str::trim)
         .filter(|n| !n.is_empty());
     let ok = got.base_url.as_deref() == Some(spec.base_url.trim())
-        && got.api.as_deref() == Some(spec.api.trim())
+        && got.api.as_deref() == Some(spec.api.trim()).filter(|api| !api.is_empty())
         && got.name.as_deref() == name
         && (spec.models.is_empty() && got.models.is_empty()
             || same_models(&got.models, &spec.models));
@@ -726,6 +748,30 @@ mod tests {
         lines[prov.line..prov.end].concat()
     }
 
+    #[test]
+    fn mixed_model_metadata_and_unknown_fields_survive_edits() {
+        let input = "providers:\n  mixed:\n    baseUrl: https://example.com/v1\n    api: openai-completions\n    models:\n      - id: chat\n        reasoning: true\n      - id: picture\n        kind: image\n        api: openai-images\n        apiKey: MODEL_SECRET_SENTINEL\n        headers:\n          Authorization: HEADER_SECRET_SENTINEL\n        customExtension:\n          enabled: true\n";
+        let parsed = parse_providers(input).unwrap();
+        let mut models = parsed[0].models.clone();
+        let public_models = serde_json::to_string(&models).unwrap();
+        assert!(!public_models.contains("MODEL_SECRET_SENTINEL"));
+        assert!(!public_models.contains("HEADER_SECRET_SENTINEL"));
+        assert!(!public_models.contains("Authorization"));
+        assert!(
+            matches!(&models[1], ModelEntry::Spec(s) if s.kind.as_deref() == Some("image") && s.api.as_deref() == Some("openai-images"))
+        );
+        if let ModelEntry::Spec(model) = &mut models[1] {
+            model.name = Some("Picture".into());
+        }
+        let output = set_models_text(input, "mixed", &models).unwrap();
+        assert!(output.contains("customExtension:"));
+        assert!(output.contains("reasoning: true"));
+        assert!(output.contains("MODEL_SECRET_SENTINEL"));
+        assert!(output.contains("HEADER_SECRET_SENTINEL"));
+        let after = parse_providers(&output).unwrap();
+        assert_eq!(after[0].models, models);
+    }
+
     fn spec(id: &str) -> BlockSpec {
         BlockSpec {
             id: id.into(),
@@ -739,6 +785,7 @@ mod tests {
                     name: Some("M Two".into()),
                     context_window: Some(64000),
                     max_tokens: Some(4096),
+                    ..ModelSpec::default()
                 }),
             ],
             auth_none: false,
@@ -811,6 +858,7 @@ mod tests {
                 name: Some("G2".into()),
                 context_window: Some(2000),
                 max_tokens: None,
+                ..ModelSpec::default()
             }),
             ModelEntry::Id("fresh".into()),
         ];

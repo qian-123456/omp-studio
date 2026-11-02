@@ -13,6 +13,8 @@ export function modelEntrySpec(e: ModelEntry): ModelSpec {
 export interface ModelRow {
 	id: string;
 	name?: string | null;
+	kind?: string | null;
+	api?: string | null;
 	contextWindow: string;
 	maxTokens: string;
 }
@@ -26,6 +28,8 @@ export function modelEntriesToRows(entries: ModelEntry[]): ModelRow[] {
 		return {
 			id: e.id,
 			name: e.name ?? null,
+			...(e.kind ? { kind: e.kind } : {}),
+			...(e.api ? { api: e.api } : {}),
 			contextWindow: e.contextWindow != null ? String(e.contextWindow) : "",
 			maxTokens: e.maxTokens != null ? String(e.maxTokens) : "",
 		};
@@ -46,11 +50,13 @@ export function rowsToModelEntries(rows: ModelRow[]): ModelEntry[] {
 		const validCtx = ctx !== null && !Number.isNaN(ctx) && ctx > 0 ? ctx : null;
 		const validMax = max !== null && !Number.isNaN(max) && max > 0 ? max : null;
 
-		if (validCtx == null && validMax == null && !r.name) {
+		if (validCtx == null && validMax == null && !r.name && !r.kind && !r.api) {
 			result.push(id);
 		} else {
 			const spec: ModelSpec = { id };
 			if (r.name) spec.name = r.name;
+			if (r.kind) spec.kind = r.kind;
+			if (r.api) spec.api = r.api;
 			if (validCtx != null) spec.contextWindow = validCtx;
 			if (validMax != null) spec.maxTokens = validMax;
 			result.push(spec);

@@ -2,15 +2,12 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	AlertCircle,
-	AlertTriangle,
 	ArrowUpDown,
 	Check,
 	ChevronDown,
-	ChevronRight,
 	FolderOpen,
 	Info,
 	MessageSquarePlus,
-	Play,
 	Power,
 	Puzzle,
 	RefreshCw,
@@ -30,11 +27,9 @@ import type {
 	ExtensionItem,
 	SkillIssue,
 	SkillItem,
-	SkillLocation,
 	SkillProvider,
 } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { absoluteTime } from "../../lib/format";
 import { useEscapeKey } from "../../lib/hooks";
 import { skillsRead } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
@@ -49,7 +44,6 @@ import { resolveSkillEnablement, type SkillDisabledReason } from "../../lib/skil
 import {
 	USAGE_DAYS,
 	computeSkillStats,
-	groupSkillsByLocation,
 	selectVisibleSkills,
 	useSkillsStore,
 	type SkillSort,
@@ -143,7 +137,6 @@ function describeDisabledReason(reason: SkillDisabledReason): {
 	}
 }
 
-const GLOBAL_SCOPE_CHIP = () => tNow("skills.globalScopeChip");
 const PROJECT_OVERRIDE_TITLE = () =>
 	tNow("skills.projectOverrideTitle");
 
@@ -185,6 +178,7 @@ function SkillSwitch({
 		>
 			<Switch
 				checked={enabled}
+					ariaLabel={`${tNow("skills.thEnable")} ${skill.name}`}
 				disabled={pending || locked}
 				onChange={(next) => onToggle(skill, next)}
 			/>
@@ -291,8 +285,6 @@ function insertSkillIntoComposer(skill: SkillItem, enabled: boolean): boolean {
 const skillUsable = (skill: SkillItem) =>
 	!skill.issues.includes("missing_skill_md");
 
-const ROW_ACTION =
-	"flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-divider)] bg-neutral-800/60 text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30";
 
 const DISABLED_FILE_HINT = () => tNow("skills.disabledFileHint");
 
@@ -408,6 +400,7 @@ function DetailDrawer({
 	togglingSkill,
 	onTrashSkill,
 	trashingDirs,
+	inline = false,
 }: {
 	target: SkillsDrawerTarget;
 	onClose: () => void;
@@ -415,8 +408,9 @@ function DetailDrawer({
 	togglingPath: string | null;
 	onToggleSkill: (skill: SkillItem, next: boolean) => void;
 	togglingSkill: string | null;
-	onTrashSkill: (skill: SkillItem) => void;
+	onTrashSkill: (skill: SkillItem) => Promise<void>;
 	trashingDirs: string[];
+	inline?: boolean;
 }) {
 	const { t } = useT();
 	const catalog = useSkillsStore((s) => s.catalog);
@@ -426,7 +420,10 @@ function DetailDrawer({
 	const usageReport = useSkillsStore((s) => s.usageReport);
 	const usage = useSkillsStore((s) => s.usage);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [confirmDelete, setConfirmDelete] = useState<SkillItem | null>(null);
+	const [deleteBusy, setDeleteBusy] = useState(false);
+	const usageLoading = useSkillsStore((s) => s.usageLoading);
+	const usageLoaded = useSkillsStore((s) => s.usageLoaded);
 
 	const skill =
 		target.kind === "skill"
@@ -484,15 +481,6 @@ function DetailDrawer({
 		};
 	}, [target]);
 
-	// Slide-in on mount.
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => {
-		const id = requestAnimationFrame(() =>
-			requestAnimationFrame(() => setMounted(true)),
-		);
-		return () => cancelAnimationFrame(id);
-	}, []);
-
 	useEscapeKey(onClose);
 
 	if (!skill && !extension) return null;
@@ -508,29 +496,27 @@ function DetailDrawer({
 		enablement.reason.kind !== "disabled" &&
 		!(enablement.reason.kind === "ignored" && enablement.reason.exact);
 
-	return createPortal(
-		<div className="fixed inset-0" style={{ zIndex: Z_LAYER.drawer }}>
+	const content = (
+		<div className={inline ? "h-full min-h-0" : "fixed inset-0"} style={inline ? undefined : { zIndex: Z_LAYER.drawer }}>
 			{/* Backdrop */}
-			<div
+			{!inline && <div
 				onMouseDown={onClose}
-				className={clsx(
-					"absolute inset-0 bg-[var(--overlay)] transition-opacity duration-200",
-					mounted ? "opacity-100" : "opacity-0",
-				)}
-			/>
+				className="absolute inset-0 bg-[var(--overlay)]"
+			/>}
 			{/* Panel */}
 			<aside
 				className={clsx(
-					"absolute bottom-0 right-0 top-0 flex min-w-0 flex-col border-l border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal transition-transform duration-200 ease-out",
-					mounted ? "translate-x-0" : "translate-x-full",
+					inline
+						? "flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-panel)]"
+						: "absolute bottom-0 right-0 top-0 flex min-w-0 flex-col border-l border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal",
 				)}
-				style={{ width: "min(560px, 92vw)" }}
+				style={inline ? undefined : { width: "min(560px, 92vw)" }}
 			>
 				{/* Header */}
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] px-5 py-4">
 					<div className="min-w-0">
 						<div className="flex items-center gap-2">
-							<h2 className="truncate text-base font-semibold text-neutral-100">
+							<h2 className="break-words text-base font-semibold text-neutral-100">
 								{skill?.name ?? extension?.name}
 							</h2>
 							<span
@@ -594,18 +580,21 @@ function DetailDrawer({
 							</span>
 						)}
 					</div>
-					<button
+					{!inline && <button
 						type="button"
 						onClick={onClose}
 						title={t("skills.closeEsc")}
 						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 					>
 						<X size={14} />
-					</button>
+					</button>}
 				</div>
 
 				{/* Scrollable body */}
-				<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+				<div data-testid="skills-detail-scroll" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+					{displaySkill?.description && <p className="mb-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-300">{displaySkill.description}</p>}
+					<details className="rounded-xl border border-[var(--border-divider)] p-3">
+						<summary className="cursor-pointer text-xs font-medium text-neutral-400">{t("skills.storageAdvanced")}</summary>
 					{/* Copyable paths */}
 					{[
 						{
@@ -652,7 +641,9 @@ function DetailDrawer({
 							<div>
 								<dt className="text-neutral-500">{t("skills.triggerStats")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
-									{usageError ? (
+									{!usageLoaded && !usageError ? (
+										<span aria-busy={usageLoading}>{t("skills.statsLoading")}</span>
+									) : usageError && !usageReport ? (
 										<span title={usageError}>{t("skills.statsUnavailable")}</span>
 									) : (itemUsage?.count ?? 0) > 0 ? (
 										<>
@@ -694,11 +685,9 @@ function DetailDrawer({
 								</dd>
 							</div>
 						</dl>
-						{skill.locations && skill.locations.length > 1 && (
+						{skill.locations && skill.locations.length > 0 && (
 							<div className="mt-3 rounded-xl hairline bg-[var(--well-bg)]/30 p-3.5">
-								<p className="text-xs font-medium text-neutral-300">
-									{t("skills.allLocations")}
-								</p>
+								<p className="text-xs font-medium text-neutral-300">{t("skills.allLocations")}</p>
 								<p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
 									{t("skills.allLocationsHint")}
 								</p>
@@ -741,6 +730,8 @@ function DetailDrawer({
 												>
 													<FolderOpen size={11} />
 												</button>
+												<button type="button" onClick={() => useSkillsStore.getState().openDrawer({ kind: "skill", path: location.path })} className="rounded px-2 py-1 text-xs text-sky-300">{t("skills.viewDetails")}</button>
+												<button type="button" disabled={trashingDirs.includes(location.dir)} onClick={() => setConfirmDelete({ ...skill, ...location })} className="rounded px-2 py-1 text-xs text-red-400">{t("common.delete")}</button>
 											</div>
 											<p className="mt-1 select-text break-all font-mono text-[10px] text-neutral-500">
 												{location.dir}
@@ -807,6 +798,7 @@ function DetailDrawer({
 							</dl>
 						)
 					)}
+					</details>
 
 					{/* Issue explanations */}
 					{issues.length > 0 && (
@@ -823,7 +815,7 @@ function DetailDrawer({
 					)}
 
 					{/* Actions */}
-					<div className="mt-4 flex items-center gap-2">
+					<div className="mt-4 flex flex-wrap items-center gap-2">
 						{displaySkill && (
 							<button
 								type="button"
@@ -879,9 +871,6 @@ function DetailDrawer({
 								</button>
 							</span>
 						)}
-						{skill && (
-							<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP()}</span>
-						)}
 						{extension && (
 							<>
 								<button
@@ -899,7 +888,6 @@ function DetailDrawer({
 									<Power size={13} />
 									<span>{extension.enabled ? t("skills.disableExtension") : t("skills.enableExtension")}</span>
 								</button>
-								<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP()}</span>
 								{!extension.enabled && extension.path.endsWith(".disabled") && (
 									<span className="text-[11px] text-neutral-500">{DISABLED_FILE_HINT()}</span>
 								)}
@@ -923,7 +911,7 @@ function DetailDrawer({
 							<button
 								type="button"
 								disabled={trashingDirs.includes(displaySkill.dir)}
-								onClick={() => setConfirmDelete(true)}
+								onClick={() => setConfirmDelete(displaySkill)}
 								title={t("skills.trashSkillTitle")}
 								className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
 							>
@@ -933,14 +921,18 @@ function DetailDrawer({
 						)}
 					</div>
 					{/* Inline delete confirmation */}
-					{displaySkill && confirmDelete && (
+					{confirmDelete && (
 						<div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/5 p-3.5">
 							<DeleteConfirmBody
-								skill={displaySkill}
-								busy={trashingDirs.includes(displaySkill.dir)}
-								symlink={!!selectedLocation?.symlink}
-								onCancel={() => setConfirmDelete(false)}
-								onConfirm={() => onTrashSkill(displaySkill)}
+								skill={confirmDelete}
+								busy={deleteBusy || trashingDirs.includes(confirmDelete.dir)}
+								symlink={!!skill?.locations?.find((location) => location.dir === confirmDelete.dir)?.symlink}
+								onCancel={() => setConfirmDelete(null)}
+								onConfirm={() => {
+									if (deleteBusy) return;
+									setDeleteBusy(true);
+									void onTrashSkill(confirmDelete).then(() => setConfirmDelete(null)).finally(() => setDeleteBusy(false));
+								}}
 							/>
 						</div>
 					)}
@@ -961,7 +953,7 @@ function DetailDrawer({
 										<AlertCircle size={14} />
 										<span>{t("skills.readSkillDocFailed")}</span>
 									</div>
-									<p className="mt-1 text-neutral-400">{doc.error}</p>
+									<p className="mt-1 select-text whitespace-pre-wrap break-all text-neutral-400">{doc.error}</p>
 								</div>
 							) : doc.text ? (
 								<Markdown text={doc.text} />
@@ -987,13 +979,11 @@ function DetailDrawer({
 					)}
 				</div>
 			</aside>
-		</div>,
-		document.body,
+		</div>
 	);
+	return inline ? content : createPortal(content, document.body);
 }
 
-const SKILL_COLS =
-	"grid-cols-[minmax(0,2.4fr)_minmax(96px,1.5fr)_minmax(88px,0.5fr)_minmax(96px,0.6fr)_52px_132px]";
 const EXT_COLS =
 	"grid-cols-[minmax(0,1.8fr)_minmax(80px,0.4fr)_minmax(0,2fr)_minmax(110px,0.6fr)]";
 
@@ -1035,7 +1025,6 @@ export function SkillsPage() {
 	const revalidateCatalog = useSkillsStore((s) => s.revalidateCatalog);
 
 	// Project scope follows the selected (or last viewed) session's cwd.
-	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const scopeSessionId = useUi((s) => s.selectedSessionId ?? s.lastSessionId);
 	const projectCwd = useSessions((s) =>
 		scopeSessionId ? (s.sessions[scopeSessionId]?.cwd ?? null) : null,
@@ -1074,20 +1063,6 @@ export function SkillsPage() {
 		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage, skillConfig],
 	);
 
-	const [groupBy, setGroupBy] = useState<"skill" | "location">("skill");
-	const locationGroups = useMemo(
-		() =>
-			groupSkillsByLocation({
-				catalog,
-				searchQuery,
-				sourceFilter,
-				statusFilter,
-				sort,
-				usage,
-				skillConfig,
-			}),
-		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage, skillConfig],
-	);
 
 	const filteredExtensions = useMemo(() => {
 		const exts = catalog?.extensions ?? [];
@@ -1115,25 +1090,7 @@ export function SkillsPage() {
 		}
 	};
 
-	const [deleteBusy, setDeleteBusy] = useState(false);
-	const handleConfirmDelete = async (skill: SkillItem) => {
-		if (deleteBusy) return;
-		setDeleteBusy(true);
-		try {
-			await trashSkill(skill, projectCwd);
-		} finally {
-			setDeleteBusy(false);
-			setDeleteAnchor(null);
-		}
-	};
-
-	// Skill toggle in-flight tracker + per-row delete popover anchor
 	const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
-	const [deleteAnchor, setDeleteAnchor] = useState<{
-		skill: SkillItem;
-		el: HTMLElement;
-		symlink: boolean;
-	} | null>(null);
 
 	const handleToggleSkill = async (skill: SkillItem, next: boolean) => {
 		if (togglingSkill) return;
@@ -1145,262 +1102,52 @@ export function SkillsPage() {
 		}
 	};
 
-	const usagePending = usageLoading && !usageLoaded && !usageError;
-	// Count/lastUsed ordering depends on usage; hold the list back until it is known so rows never jump.
-	const sortPending = sort !== "name" && !usageLoaded && !usageError;
+	const usagePending = !usageLoaded && !usageError;
+	// Usage-dependent ordering and filtering must not present unknown usage as zero.
+	const sortPending = (sort !== "name" || statusFilter === "active" || statusFilter === "idle") && usagePending;
 	const usageUnavailable = !!usageError && !usageReport;
+	const usageFilterUnavailable = usageUnavailable && (statusFilter === "active" || statusFilter === "idle");
+	const skillSelectionBlocked = sortPending || usageFilterUnavailable;
 	const days = usageReport?.days ?? USAGE_DAYS;
 
-	const renderSkillRow = (
-		skill: SkillItem,
-		opts?: { key?: string; location?: SkillLocation; showCopies?: boolean },
-	) => {
-		const location = opts?.location;
-		const u = usage[skill.name];
+	const selectedSkill = visibleSkills.find((skill) => drawer?.kind === "skill" && (skill.path === drawer.path || skill.locations?.some((location) => location.path === drawer.path)));
+	const detailTarget: SkillsDrawerTarget | null = skillSelectionBlocked ? null
+		: selectedSkill && drawer?.kind === "skill" ? drawer
+		: visibleSkills[0] ? { kind: "skill", path: visibleSkills[0].path } : null;
+	const renderSkillRow = (skill: SkillItem) => {
 		const enablement = resolveSkillEnablement(skill, skillConfig);
-		const reason = enablement.reason;
-		const standby = location ? !location.active : false;
-		const locationCount = skill.locations?.length ?? skill.copies;
+		const selected = detailTarget?.path === skill.path || skill.locations?.some((location) => location.path === detailTarget?.path);
+		const itemUsage = usage[skill.name];
 		return (
-			<div
-				key={opts?.key ?? skill.path}
-				role="button"
-				tabIndex={0}
-				onClick={() => openDrawer({ kind: "skill", path: skill.path })}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" && e.target === e.currentTarget)
-						openDrawer({ kind: "skill", path: skill.path });
-				}}
-				style={{
-					contentVisibility: "auto",
-					containIntrinsicSize: "auto 52px",
-				}}
-				className={clsx(
-					"grid cursor-pointer items-center gap-3 border-b border-[var(--border-divider)]/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]/60",
-					SKILL_COLS,
-					!enablement.enabled && !location && "opacity-60",
-				)}
-			>
-				{/* Name + badges + description */}
-				<div className="min-w-0">
-					<div className="flex min-w-0 items-center gap-1.5">
-						<span className="truncate text-[13px] font-semibold text-neutral-100">
-							{skill.name}
-						</span>
-						<IssueBadges issues={skill.issues} />
-						{opts?.showCopies !== false && locationCount > 1 && (
-							<span
-								className="shrink-0 rounded bg-neutral-800 px-1 py-px text-[10px] text-neutral-500"
-								title={t("skills.copiesTooltip")}
-							>
-								{t("skills.copiesBadge", { count: locationCount })}
-							</span>
+			<div key={skill.path} className={clsx("flex items-center gap-3 border-b border-[var(--border-divider)] px-4 py-3", selected ? "bg-[var(--bg-active-fill)]" : "hover:bg-[var(--bg-hover)]")}>
+				<button type="button" aria-pressed={!!selected} onClick={() => openDrawer({ kind: "skill", path: skill.path })} className="min-w-0 flex-1 text-left">
+					<span className="block break-words text-[13px] font-semibold text-neutral-100">{skill.name}</span>
+					<span className="mt-1 block whitespace-normal break-words text-[11px] leading-relaxed text-neutral-500">
+						{usagePending ? t("skills.statsLoading") : usageUnavailable ? t("skills.statsUnavailable") : (
+							<>
+								{(itemUsage?.count ?? 0) > 0
+									? t("skills.rowUsageCount", { days, count: itemUsage?.count ?? 0 })
+									: t("skills.rowUsageIdle", { days })}
+								{itemUsage?.lastUsedAt && <>{" · "}{t("skills.rowUsageLast", { time: formatRelativeTime(itemUsage.lastUsedAt) })}</>}
+							</>
 						)}
-						{reason && !standby && (
-							<span
-								className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-1 py-px text-[10px] font-medium text-neutral-400"
-								title={describeDisabledReason(reason).detail}
-							>
-								{describeDisabledReason(reason).badge}
-							</span>
-						)}
-					</div>
-					<p
-						className={clsx(
-							"mt-0.5 truncate text-[11px]",
-							skill.description ? "text-neutral-500" : "italic text-neutral-600",
-						)}
-					>
-						{skill.description || t("skills.noDescription")}
-					</p>
-				</div>
-
-				{/* Install root, or the exact directory in location view */}
-				<div className="min-w-0">
-					<span
-						className={clsx(
-							"inline-block max-w-full rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400",
-							location ? "whitespace-normal break-all" : "truncate",
-						)}
-						title={(location?.linkTarget ?? (location ? skill.dir : skill.root)) || undefined}
-					>
-						{(location ? skill.dir : skill.root) || "—"}
 					</span>
-					{location?.symlink && (
-						<p className="mt-1 text-[10px] leading-relaxed text-amber-400/80">
-							{t("skills.entryHint")}
-						</p>
-					)}
-				</div>
-
-				{/* Trigger count */}
-				<div
-					className="text-right text-xs tabular-nums text-neutral-200"
-					title={usageUnavailable ? t("skills.statsUnavailable") : undefined}
-				>
-					{usagePending ? (
-						<span className="inline-block h-3 w-6 animate-pulse rounded bg-neutral-700/50" />
-					) : usageUnavailable ? (
-						<span className="text-neutral-600">—</span>
-					) : (u?.count ?? 0) > 0 ? (
-						u?.count
-					) : (
-						<span className="text-neutral-600">—</span>
-					)}
-				</div>
-
-				{/* Last used */}
-				<div
-					className="text-right text-xs text-neutral-400"
-					title={
-						u?.lastUsedAt
-							? absoluteTime(u.lastUsedAt)
-							: usageUnavailable
-								? t("skills.statsUnavailable")
-								: undefined
-					}
-				>
-					{usagePending ? (
-						<span className="inline-block h-3 w-10 animate-pulse rounded bg-neutral-700/50" />
-					) : u?.lastUsedAt ? (
-						formatRelativeTime(u.lastUsedAt)
-					) : (
-						<span className="text-neutral-600">—</span>
-					)}
-				</div>
-
-				{/* Enable switch, or this location's precedence */}
-				<div className="flex justify-end">
-					{location ? (
-						<span
-							className={clsx(
-								"whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium",
-								location.active
-									? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-									: "border-neutral-700 bg-neutral-800 text-neutral-400",
-							)}
-							title={
-								location.active
-									? t("skills.locationActiveHint")
-									: t("skills.locationStandbyHint")
-							}
-						>
-							{location.active
-								? t("skills.locationActive")
-								: t("skills.locationStandby")}
-						</span>
-					) : (
-						<SkillSwitch
-							overridden={listOverridden}
-							skill={skill}
-							enabled={enablement.enabled}
-							reason={reason}
-							pending={togglingSkill === skill.path}
-							onToggle={handleToggleSkill}
-						/>
-					)}
-				</div>
-
-				{/* Row actions */}
-				<div className="flex items-center justify-end gap-1">
-					{!location && (
-						<button
-							type="button"
-							disabled={!selectedSessionId || !skillUsable(skill)}
-							onClick={(e) => {
-								e.stopPropagation();
-								insertSkillIntoComposer(skill, enablement.enabled);
-							}}
-							title={skillUseTitle(skill, enablement.enabled, !!selectedSessionId)}
-							className={`${ROW_ACTION} hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300`}
-						>
-							<Play size={13} />
-						</button>
-					)}
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							revealInFinder(skill.dir || skill.path);
-						}}
-						title={t("skills.revealInFinder")}
-						className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
-					>
-						<FolderOpen size={13} />
-					</button>
-					<button
-						type="button"
-						disabled={trashingDirs.includes(skill.dir)}
-						onClick={(e) => {
-							e.stopPropagation();
-							setDeleteAnchor({
-								skill,
-								el: e.currentTarget,
-								symlink: !!location?.symlink,
-							});
-						}}
-						title={t("skills.moveToTrash")}
-						className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
-					>
-						<Trash2 size={13} />
-					</button>
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							openDrawer({ kind: "skill", path: skill.path });
-						}}
-						title={t("skills.viewDetails")}
-						className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
-					>
-						<ChevronRight size={14} />
-					</button>
-				</div>
+					<IssueBadges issues={skill.issues} />
+				</button>
+				<SkillSwitch skill={skill} enabled={enablement.enabled} reason={enablement.reason} overridden={listOverridden} pending={togglingSkill === skill.path} onToggle={handleToggleSkill} />
+				<EnableInfoButton />
 			</div>
 		);
 	};
-
-	const statCards: {
-		key: "all" | "active" | "idle" | "issues";
-		label: string;
-		value: string | number;
-		sub: string;
-		alert?: boolean;
-	}[] = [
-		{
-			key: "all",
-			label: t("skills.statCardAll"),
-			value: stats.total,
-			sub: t("skills.statCardAllSub", { user: stats.userCount, project: stats.projectCount }),
-		},
-		{
-			key: "active",
-			label: t("skills.statCardActive"),
-			value: usageUnavailable ? "—" : usagePending ? "…" : stats.active,
-			sub: usageUnavailable ? t("skills.statsUnavailable") : t("skills.statCardActiveSub", { count: stats.totalTriggers }),
-		},
-		{
-			key: "idle",
-			label: t("skills.statCardIdle"),
-			value: usageUnavailable ? "—" : usagePending ? "…" : stats.idle,
-			sub: t("skills.statCardIdleSub", { days }),
-		},
-		{
-			key: "issues",
-			label: t("skills.statCardIssues"),
-			value: stats.withIssues,
-			sub: t("skills.statCardIssuesSub"),
-			alert: stats.withIssues > 0,
-		},
-	];
 
 	const skillSearchEmpty = searchQuery.trim().length > 0;
 	const hasSkillFilters =
 		skillSearchEmpty || sourceFilter !== "all" || statusFilter !== "all";
 
 	return (
-		<div className="h-full w-full select-none overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
-			<div className="mx-auto max-w-[1200px] px-6 pb-10 pt-5">
+		<div data-testid="skills-page" className="h-full min-h-0 w-full select-none overflow-hidden bg-[var(--bg)] text-[var(--text)]">
+			<div className="mx-auto flex h-full min-h-0 w-full max-w-[1200px] flex-col px-6 py-4">
+				<div data-testid="skills-controls" tabIndex={0} className="max-h-[45%] min-h-0 shrink-0 overflow-auto pb-3">
 				{/* Header row: segmented tabs + search + refresh */}
 				<div className="flex flex-wrap items-center gap-3">
 					<Segmented
@@ -1439,31 +1186,16 @@ export function SkillsPage() {
 					</button>
 				</div>
 
-				{/* Project scope indicator */}
-				{activeTab === "skills" && (
-					<div className="mt-3 flex flex-wrap items-start gap-2 text-[11px]">
-						{projectCwd ? (
-							<>
-								<span className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
-									{t("skills.currentProjectLabel", { name: projectCwd.split("/").filter(Boolean).pop() ?? projectCwd })}
-								</span>
-								<span className="min-w-0 select-text break-all font-mono text-neutral-500">
-									{projectCwd}
-								</span>
-							</>
-						) : (
-							<span className="text-neutral-500">
-								{t("skills.projectSkillsNeedSession")}
+				{/* Scope stays visible; exceptional project overrides remain explicit below. */}
+				<div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+					{activeTab === "skills" && (
+						projectCwd ? (
+							<span className="min-w-0 select-text break-all">
+								<span className="mr-1.5 font-medium text-neutral-400">{t("skills.currentProjectLabel", { name: projectCwd.split("/").filter(Boolean).pop() ?? projectCwd })}</span>
+								<span className="font-mono">{projectCwd}</span>
 							</span>
-						)}
-					</div>
-				)}
-
-				{/* Switches write the global config; show scope + project overrides */}
-				<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-					<span className="shrink-0 rounded-md border border-[var(--border-divider)] bg-neutral-800/60 px-2 py-0.5 font-medium text-neutral-300">
-						{GLOBAL_SCOPE_CHIP()}
-					</span>
+						) : <span>{t("skills.projectSkillsNeedSession")}</span>
+					)}
 					<span>{t("skills.globalConfigNotice")}</span>
 				</div>
 				{listOverridden && (
@@ -1516,43 +1248,9 @@ export function SkillsPage() {
 				)}
 
 				{activeTab === "skills" && (
-					<>
-						{/* Stat cards + budget */}
-						<div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-							{statCards.map((card) => (
-								<button
-									key={card.key}
-									type="button"
-									onClick={() => setStatusFilter(card.key)}
-									className={clsx(
-										"rounded-xl hairline px-4 py-3 text-left transition-colors",
-										statusFilter === card.key
-											? "bg-[var(--bg-active-fill)] shadow-apple-card"
-											: "bg-[var(--bg-panel)]/50 hover:bg-[var(--bg-hover)]",
-									)}
-								>
-									<div className="flex items-baseline gap-2">
-										<span
-											className={clsx(
-												"text-2xl font-semibold tabular-nums",
-												card.alert ? "text-amber-400" : "text-neutral-100",
-											)}
-										>
-											{card.value}
-										</span>
-										<span className="text-xs font-medium text-neutral-300">
-											{card.label}
-										</span>
-									</div>
-									<div className="mt-1 truncate text-[11px] text-neutral-500">
-										{card.sub}
-									</div>
-								</button>
-							))}
-						</div>
-
+					<div className="mt-3">
 						{/* Filter row */}
-						<div className="mt-5 flex flex-wrap items-center gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							{stats.projectCount > 0 && (
 								<Segmented
 									value={sourceFilter}
@@ -1585,15 +1283,6 @@ export function SkillsPage() {
 								]}
 							/>
 							<div className="flex-1" />
-							<Segmented
-								value={groupBy}
-								onChange={setGroupBy}
-								size="sm"
-								options={[
-									{ value: "skill", label: t("skills.groupBySkill") },
-									{ value: "location", label: t("skills.groupByLocation") },
-								]}
-							/>
 							<button
 								ref={sortBtnRef}
 								type="button"
@@ -1638,42 +1327,19 @@ export function SkillsPage() {
 								))}
 							</FloatingLayer>
 						</div>
+					</div>
+				)}
+				{activeTab === "skills" && usageError && (
+					<div role="status" className="mt-2 select-text whitespace-pre-wrap break-all text-xs text-amber-400">
+						{t("skills.statsUnavailableNotice", { days })}{"\n"}{usageError}
+					</div>
+				)}
+				</div>
+				{activeTab === "skills" && (
+					<div data-testid="skills-workspace" className="min-h-0 flex-1 overflow-x-auto">
 
-						<p className="mt-2 px-1 text-[11px] text-neutral-600">
-							{groupBy === "location"
-								? t("skills.locationGroupHint")
-								: t("skills.skillsSyncHint")}
-						</p>
-						{groupBy === "location" && (
-							<p className="mt-1 px-1 text-[11px] text-neutral-500">
-								{t("skills.locationLegend")}
-							</p>
-						)}
-
-						{/* Skills table */}
-						<div className="mt-3 overflow-hidden rounded-xl hairline bg-[var(--bg-panel)]/30">
-							<div
-								className={clsx(
-									"grid items-center gap-3 border-b border-[var(--border-divider)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500",
-									SKILL_COLS,
-								)}
-							>
-								<span>{t("skills.thSkill")}</span>
-								<span>{t("skills.thLocation")}</span>
-								<span
-									className="flex items-center justify-end gap-1"
-									title={t("skills.triggersHint")}
-								>
-									{t("skills.thTriggers", { days })}
-									<Info size={11} className="text-neutral-600" />
-								</span>
-								<span className="text-right">{t("skills.thLastTriggered")}</span>
-								<span className="flex items-center justify-end gap-1">
-									{groupBy === "location" ? t("skills.thLocationState") : t("skills.thEnable")}
-									{groupBy === "skill" && <EnableInfoButton />}
-								</span>
-								<span className="text-right">{t("skills.thAction")}</span>
-							</div>
+						<div className="grid h-full min-h-0 min-w-[600px] grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)] overflow-hidden rounded-xl hairline bg-[var(--bg-panel)]/30">
+							<div data-testid="skills-list-scroll" tabIndex={0} className="min-h-0 overflow-y-auto border-r border-[var(--border-divider)]">
 
 							{!catalog ? (
 								error ? (
@@ -1700,9 +1366,9 @@ export function SkillsPage() {
 										/>
 									))}
 								</div>
-							) : (groupBy === "location"
-								? locationGroups.length === 0
-								: visibleSkills.length === 0) ? (
+							) : usageFilterUnavailable ? (
+								<p className="p-4 text-xs text-neutral-500">{t("skills.statsUnavailable")}</p>
+							) : visibleSkills.length === 0 ? (
 								<EmptyState
 									icon={Sparkles}
 									title={hasSkillFilters ? t("skills.noMatchingSkillsTitle") : t("skills.noSkillsFoundTitle")}
@@ -1712,63 +1378,22 @@ export function SkillsPage() {
 											: t("skills.noSkillsFoundDesc")
 									}
 								/>
-							) : (
-								groupBy === "location" ? (
-									locationGroups.map((group) => (
-										<div key={group.key} role="group" aria-label={group.root}>
-											<div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-divider)]/60 bg-[var(--well-bg)]/35 px-4 py-2">
-												<FolderOpen size={12} className="shrink-0 text-neutral-500" />
-												<span className="min-w-0 select-text break-all font-mono text-[11px] text-neutral-300">
-													{group.root || "—"}
-												</span>
-												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
-													{sourceLabel(group.source)}
-												</span>
-												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
-													{providerLabel(group.provider)}
-												</span>
-												<span className="text-[11px] text-neutral-500">
-													{t("skills.locationGroupCount", { count: group.items.length })}
-												</span>
-											</div>
-											{group.items.map(({ skill, location }) =>
-												renderSkillRow(
-													{
-														...skill,
-														dir: location.dir,
-														path: location.path,
-														source: location.source,
-														provider: location.provider,
-														root: location.root,
-														issues: location.issues,
-													},
-													{ key: location.dir, location, showCopies: false },
-												),
-											)}
-										</div>
-									))
-								) : (
-									visibleSkills.map((skill) => renderSkillRow(skill))
-								)
-							)}
+							) : visibleSkills.map(renderSkillRow)}
+							</div>
+							<div data-testid="skills-detail-pane" className="min-h-0 min-w-0 overflow-hidden">
+								{detailTarget && !sortPending && <DetailDrawer key={detailTarget.path} inline target={detailTarget} onClose={closeDrawer} onToggleExtension={handleToggleExtension} togglingPath={togglingPath} onToggleSkill={handleToggleSkill} togglingSkill={togglingSkill} onTrashSkill={(skill) => trashSkill(skill, projectCwd)} trashingDirs={trashingDirs} />}
+							</div>
 						</div>
 
-						{usageUnavailable && (
-							<div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-amber-500/80">
-								<AlertTriangle size={11} />
-								<span title={usageError ?? undefined}>
-									{t("skills.statsUnavailableNotice", { days })}
-								</span>
-							</div>
-						)}
-					</>
+					</div>
 				)}
 
 				{activeTab === "extensions" && (
-					<div className="mt-5 overflow-hidden rounded-xl hairline bg-[var(--bg-panel)]/30">
+					<div data-testid="extensions-scroll" tabIndex={0} className="min-h-0 flex-1 overflow-auto rounded-xl hairline bg-[var(--bg-panel)]/30">
+						<div className="min-w-[640px]">
 						<div
 							className={clsx(
-								"grid items-center gap-3 border-b border-[var(--border-divider)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500",
+								"sticky top-0 z-10 grid items-center gap-3 border-b border-[var(--border-divider)] bg-[var(--bg-panel)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500",
 								EXT_COLS,
 							)}
 						>
@@ -1870,11 +1495,12 @@ export function SkillsPage() {
 								</div>
 							))
 						)}
+						</div>
 					</div>
 				)}
 			</div>
 
-			{drawer && (
+			{drawer?.kind === "extension" && (
 				<DetailDrawer
 					target={drawer}
 					onClose={closeDrawer}
@@ -1882,32 +1508,11 @@ export function SkillsPage() {
 					togglingPath={togglingPath}
 					onToggleSkill={handleToggleSkill}
 					togglingSkill={togglingSkill}
-					onTrashSkill={(s) => void trashSkill(s, projectCwd)}
+					onTrashSkill={(s) => trashSkill(s, projectCwd)}
 					trashingDirs={trashingDirs}
 				/>
 			)}
 
-			{/* Row delete confirmation popover */}
-			<FloatingLayer
-				anchor={deleteAnchor?.el ?? null}
-				placement="bottom-end"
-				layer="popover"
-				offset={6}
-				onDismiss={() => {
-					if (!deleteBusy) setDeleteAnchor(null);
-				}}
-				className="p-3.5"
-			>
-				{deleteAnchor && (
-					<DeleteConfirmBody
-						skill={deleteAnchor.skill}
-						busy={deleteBusy || trashingDirs.includes(deleteAnchor.skill.dir)}
-						symlink={deleteAnchor.symlink}
-						onCancel={() => setDeleteAnchor(null)}
-						onConfirm={() => void handleConfirmDelete(deleteAnchor.skill)}
-					/>
-				)}
-			</FloatingLayer>
 		</div>
 	);
 }

@@ -15,6 +15,7 @@ import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { onProvidersOauth } from "../../lib/events";
 import { EmptyState } from "../../components/EmptyState";
 import { Modal } from "../../components/Modal";
+import { SearchInput } from "../../components/SearchInput";
 import {
 	oauthLoginCancel,
 	oauthLoginOpenUrl,
@@ -30,6 +31,8 @@ interface Props {
 	onClose: () => void;
 	/** When set, the login flow for this provider starts as soon as the list loads. */
 	initialProviderId?: string;
+	/** Preselects an account list without starting a login or writing credentials. */
+	initialProviderQuery?: string;
 }
 
 type Phase = "list" | "flow";
@@ -57,11 +60,17 @@ interface FlowState {
 	} | null;
 }
 
-export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
+export function OauthLoginDialog({ onClose, initialProviderId, initialProviderQuery }: Props) {
 	const { t } = useT();
 	const reloadProviders = useProviders((s) => s.load);
 	const [phase, setPhase] = useState<Phase>("list");
 	const [providers, setProviders] = useState<OauthLoginProvider[]>([]);
+	const [providerQuery, setProviderQuery] = useState(initialProviderQuery ?? "");
+	const normalizedProviderQuery = providerQuery.trim().toLowerCase();
+	const visibleProviders = providers.filter((provider) =>
+		provider.name.toLowerCase().includes(normalizedProviderQuery) ||
+		provider.id.toLowerCase().includes(normalizedProviderQuery),
+	);
 	const [listLoading, setListLoading] = useState(true);
 	const [listError, setListError] = useState<string | null>(null);
 
@@ -456,6 +465,11 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						<p className="text-xs text-neutral-400 leading-relaxed">
 							{t("providers.oauthBannerDesc")}
 						</p>
+						<SearchInput
+							value={providerQuery}
+							onChange={setProviderQuery}
+							placeholder={t("providers.oauthSearchPlaceholder")}
+						/>
 
 						{listLoading && (
 							<div className="flex items-center justify-center py-8 text-neutral-500">
@@ -487,9 +501,12 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						{!listLoading && !listError && providers.length === 0 && (
 							<EmptyState title={t("providers.oauthEmptyProviders")} />
 						)}
+						{!listLoading && !listError && providers.length > 0 && visibleProviders.length === 0 && (
+							<EmptyState title={t("providers.oauthSearchEmpty")} />
+						)}
 						{!listLoading && !listError && providers.length > 0 && (
 							<div className="space-y-1.5">
-								{providers.map((p) => (
+								{visibleProviders.map((p) => (
 									<button
 										key={p.id}
 										type="button"
@@ -509,10 +526,10 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 												/>
 											</div>
 											<div className="min-w-0 flex-1">
-												<div className="text-xs font-medium text-neutral-100 truncate">
+												<div className="text-xs font-medium text-neutral-100 break-words">
 													{p.name}
 												</div>
-												<div className="text-[11px] font-mono text-neutral-500">
+												<div className="text-[11px] font-mono text-neutral-500 break-all">
 													{p.id}
 												</div>
 											</div>

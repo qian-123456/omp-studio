@@ -1042,6 +1042,8 @@ export type ProviderApi = string;
 export interface ModelSpec {
 	id: string;
 	name?: string | null;
+	kind?: string | null;
+	api?: string | null;
 	contextWindow?: number | null;
 	maxTokens?: number | null;
 }

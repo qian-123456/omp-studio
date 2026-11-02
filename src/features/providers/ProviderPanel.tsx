@@ -27,6 +27,8 @@ import { useProviders } from "./store";
 import { useModelCatalog } from "../../stores/modelCatalog";
 import { catalogKeys, classifyModel, type ModelCategory } from "./modelClass";
 import { OtherModelsPanel } from "./OtherModelsPanel";
+import { SEARCH_CREDENTIAL_PROVIDERS } from "./serviceCapabilities";
+import { isExplicitServiceModel } from "./presets";
 
 function matchesQuery(row: ProviderRow, q: string): boolean {
 	const haystack = [row.id, row.displayName, row.baseUrl, row.api, ...row.models.map(modelEntryId)]
@@ -82,7 +84,14 @@ function ChatProviderPanel() {
 		const kindOf = (r: ProviderRow, id: string) => classifyModel({ id, inCatalog: catalogSet.has(`${r.id}::${id}`) });
 		// Chat view hides providers that only host non-chat models.
 		return rows
-			.filter((r) => r.models.length === 0 || r.models.some((m) => kindOf(r, modelEntryId(m)) === "chat"))
+			.filter((r) => !SEARCH_CREDENTIAL_PROVIDERS[r.id] || r.models.length > 0)
+			.filter((r) => r.models.length === 0 || r.models.some((model) => {
+				if (typeof model !== "string") {
+					if (model.kind != null) return model.kind === "chat" || model.kind === "tiny";
+					if (isExplicitServiceModel(model)) return false;
+				}
+				return kindOf(r, modelEntryId(model)) === "chat";
+			}))
 			.sort((a, b) => a.id.localeCompare(b.id));
 	}, [rows, category, catalogSet]);
 	const filtered = useMemo(() => {

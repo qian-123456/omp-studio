@@ -1,195 +1,138 @@
-import { FileText, Loader2, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { SearchInput } from "../../components/SearchInput";
+import type { ModelKindEntry, ProviderRow } from "../../lib/contracts";
 import { useT } from "../../stores/language";
 import { isNonLLMModelKind, useModelKindCatalog } from "../../stores/modelKinds";
 import { RawFilesDialog } from "../settings/sections/RawFilesDialog";
 import { Button } from "../settings/ui";
-import { describeKey } from "./keyState";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders } from "./store";
+import { serviceCapability } from "./serviceCapabilities";
+import { ServiceConfigDialog } from "./ServiceConfigDialog";
+import { OauthLoginDialog } from "./OauthLoginDialog";
+import { supplierStatus } from "./supplierStatus";
+import { isExplicitServiceModel } from "./presets";
 
-const KIND_LABELS: Record<string, string> = {
-	search: "providers.kindSearch",
-	judge: "providers.kindJudge",
-	image: "providers.kindImage",
-	tts: "providers.kindTts",
-	stt: "providers.kindStt",
-	embedding: "providers.kindEmbedding",
-	rerank: "providers.kindRerank",
-	video: "providers.kindVideo",
-};
+const KIND_LABELS: Record<string, string> = { search: "providers.kindSearch", judge: "providers.kindJudge", image: "providers.kindImage", tts: "providers.kindTts", stt: "providers.kindStt", embedding: "providers.kindEmbedding", rerank: "providers.kindRerank", video: "providers.kindVideo" };
 
-/** Only the all-kind OMP registry establishes a model's type; connection rows supply configuration, not capability. */
+/** Registry entries prove registration, never connectivity or credential validity. */
 export function OtherModelsPanel() {
 	const { t } = useT();
-	const entries = useModelKindCatalog((s) => s.entries);
-	const loading = useModelKindCatalog((s) => s.loading);
-	const error = useModelKindCatalog((s) => s.error);
-	const loadCatalog = useModelKindCatalog((s) => s.load);
-	const providers = useProviders((s) => s.rows);
-	const providersLoaded = useProviders((s) => s.loaded);
-	const providerError = useProviders((s) => s.error);
-	const loadProviders = useProviders((s) => s.load);
+	const { entries, loading, error, load: loadCatalog } = useModelKindCatalog();
+	const { rows: providers, loaded, error: providerError, load: loadProviders } = useProviders();
 	const [query, setQuery] = useState("");
-	const [selectedKind, setSelectedKind] = useState<string | null>(null);
-	const [page, setPage] = useState(1);
+	const [addQuery, setAddQuery] = useState("");
 	const [expanded, setExpanded] = useState<string | null>(null);
-	const [connectionQuery, setConnectionQuery] = useState("");
-	const [connectionsOpen, setConnectionsOpen] = useState(false);
+	const [addOpen, setAddOpen] = useState(false);
+	const [visited, setVisited] = useState<Set<string>>(() => new Set());
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [rawOpen, setRawOpen] = useState(false);
-
-	useEffect(() => {
-		void loadCatalog();
-		void loadProviders();
-	}, [loadCatalog, loadProviders]);
-
-	const providerById = useMemo(() => new Map(providers.map((row) => [row.id, row])), [providers]);
-	const otherModels = useMemo(() => (entries ?? []).filter((entry) => isNonLLMModelKind(entry.kind)), [entries]);
-	const kindTitle = (kind: string) => KIND_LABELS[kind] ? t(KIND_LABELS[kind]) : t("providers.kindUnknown", { kind });
-	const normalizedQuery = query.trim().toLowerCase();
-	const matching = otherModels.filter((entry) => {
-		const provider = providerById.get(entry.provider);
-		return [entry.selector, entry.name, entry.kind, kindTitle(entry.kind), entry.provider, provider?.displayName, ...(provider?.sources ?? [])]
-			.filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery);
-	});
-	const kinds = [...new Set(otherModels.map((entry) => entry.kind))].sort();
-	const activeKind = selectedKind !== null && kinds.includes(selectedKind) ? selectedKind : null;
-	useEffect(() => {
-		if (selectedKind !== null && !otherModels.some((entry) => entry.kind === selectedKind)) {
-			setSelectedKind(null);
-			setPage(1);
-			setExpanded(null);
+	const [service, setService] = useState<ModelKindEntry | null>(null);
+	const [login, setLogin] = useState<string | null>(null);
+	useEffect(() => { void loadCatalog(); void loadProviders(); }, [loadCatalog, loadProviders]);
+	const groups = useMemo(() => {
+		const result = new Map<string, ModelKindEntry[]>();
+		for (const entry of entries ?? []) {
+			if (!isNonLLMModelKind(entry.kind)) continue;
+			const id = serviceCapability(entry).supplier;
+			const group = result.get(id) ?? [];
+			if (!group.some((model) => model.selector === entry.selector && model.kind === entry.kind)) group.push(entry);
+			result.set(id, group);
 		}
-	}, [otherModels, selectedKind]);
-	const filtered = matching.filter((entry) => activeKind === null || entry.kind === activeKind)
-		.sort((a, b) => a.selector.localeCompare(b.selector));
-	const pageSize = 8;
-	const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-	const currentPage = Math.min(page, pageCount);
-	const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-	useEffect(() => {
-		setPage((previous) => Math.min(previous, pageCount));
-		setExpanded(null);
-	}, [pageCount, entries]);
-	const changePage = (next: number) => {
-		setPage(next);
-		setExpanded(null);
-	};
-	const changeQuery = (next: string) => {
-		setQuery(next);
-		setPage(1);
-		setExpanded(null);
-	};
-	const connectionRows = [...providers]
-		.filter((row) => [row.id, row.displayName, row.baseUrl, row.api].filter(Boolean).join(" ").toLowerCase().includes(connectionQuery.trim().toLowerCase()))
-		.sort((a, b) => a.id.localeCompare(b.id));
-	const refresh = () => {
-		void loadCatalog(true);
-		void loadProviders();
-	};
-	const waiting = entries === null && !error;
-
-	return (
-		<div className="space-y-4">
-			<p className="text-xs text-[var(--text-dim)]">{t("providers.otherModelsDesc")}</p>
-			<div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-2">
-				<SearchInput className="min-w-[180px] flex-1" value={query} onChange={changeQuery} placeholder={t("providers.otherModelsSearch")} ariaLabel={t("providers.otherModelsSearch")} />
-				<Button icon={Settings2} onClick={() => setConnectionsOpen(true)}>{t("providers.manageConnections")}</Button>
-				<Button icon={RefreshCw} onClick={refresh} disabled={loading}>{t("common.refresh")}</Button>
-			</div>
-			{error && (
-				<div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 p-3 text-xs text-rose-300">
-					<span className="min-w-0 flex-1 break-words">{t("providers.otherModelsLoadError", { error })}</span>
-					<Button onClick={() => void loadCatalog(true)} disabled={loading}>{t("common.retry")}</Button>
-				</div>
-			)}
-			{providerError && <p role="alert" className="break-words text-xs text-amber-400">{t("providers.connectionLoadError", { error: providerError })}</p>}
-			{(waiting || loading) && <div role="status" className="flex items-center gap-2 py-3 text-xs text-[var(--text-dim)]"><Loader2 size={14} className="animate-spin" />{t("providers.otherModelsLoading")}</div>}
-			{entries !== null && (
-				<>
-					<div role="group" aria-label={t("providers.otherModelsTypes")} className="flex flex-wrap gap-1.5">
-						{[null, ...kinds].map((kind) => (
-							<button key={kind === null ? "all" : `kind:${kind}`} type="button" aria-pressed={activeKind === kind} onClick={() => { setSelectedKind(kind); setPage(1); setExpanded(null); }} className={`whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${activeKind === kind ? "border-[var(--accent)] bg-[var(--bg-hover)] font-semibold text-[var(--text)]" : "border-[var(--border-divider)] text-[var(--text-dim)] hover:bg-[var(--bg-hover)]"}`}>
-								{kind === null ? t("providers.otherModelsAllTypes") : kindTitle(kind)} ({kind === null ? matching.length : matching.filter((entry) => entry.kind === kind).length})
-							</button>
-						))}
-					</div>
-					<p className="text-xs text-[var(--text-dim)]">{t("providers.otherModelsCount", { shown: filtered.length, total: otherModels.length })}</p>
-					{filtered.length === 0 && !loading && (
-						<div className="space-y-3 rounded-xl hairline bg-[var(--well-bg)]/40 px-4 py-8 text-center text-xs text-[var(--text-dim)]">
-							<p>{normalizedQuery ? t("providers.otherModelsNoMatch") : t("providers.otherModelsEmpty")}</p>
-							{normalizedQuery ? <Button onClick={() => changeQuery("")}>{t("providers.clearFilterBtn")}</Button> : <Button icon={Settings2} onClick={() => setConnectionsOpen(true)}>{t("providers.manageConnections")}</Button>}
-						</div>
-					)}
-					{filtered.length > 0 && (
-						<div className="overflow-hidden rounded-xl hairline bg-[var(--well-bg)]/40">
-							<nav aria-label={t("providers.otherModelsPagination")} className="flex flex-wrap items-center gap-2 border-b border-[var(--border-divider)] px-3 py-2">
-								<p role="status" className="flex-1 text-xs text-[var(--text-dim)]">{t("providers.otherModelsRange", { from: (currentPage - 1) * pageSize + 1, to: Math.min(currentPage * pageSize, filtered.length), total: filtered.length, page: currentPage, pages: pageCount })}</p>
-								<div className="flex flex-wrap items-center gap-2">
-									<Button onClick={() => changePage(currentPage - 1)} disabled={currentPage === 1}>{t("providers.otherModelsPrevious")}</Button>
-									<select aria-label={t("providers.otherModelsJumpPage")} value={currentPage} onChange={(event) => changePage(Number(event.target.value))} className="rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-2 py-1.5 text-xs text-[var(--text)]">
-										{Array.from({ length: pageCount }, (_, index) => <option key={index + 1} value={index + 1}>{t("providers.otherModelsPage", { page: index + 1 })}</option>)}
-									</select>
-									<Button onClick={() => changePage(currentPage + 1)} disabled={currentPage === pageCount}>{t("providers.otherModelsNext")}</Button>
-								</div>
-							</nav>
-							<section key={JSON.stringify([activeKind, normalizedQuery, currentPage])} aria-label={t("providers.otherModelsList")} className="max-h-[420px] overflow-y-auto">
-								<ul className="divide-y divide-[var(--border-divider)]">
-									{visible.map((entry) => {
-										const provider = providerById.get(entry.provider);
-										const name = entry.name || entry.selector;
-										const open = expanded === entry.selector;
-										return (
-											<li key={entry.selector} className="px-3 py-2.5">
-												<div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-													<div className="min-w-0 flex-1 basis-48">
-														<div className="break-words [overflow-wrap:anywhere] text-sm font-medium text-[var(--text)]">{name}</div>
-														<p className="break-words text-[11px] text-[var(--text-dim)]">{provider?.displayName ?? entry.provider} · {kindTitle(entry.kind)}</p>
-													</div>
-													<div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-														<button type="button" aria-label={t("providers.otherModelsDetailsLabel", { name })} aria-expanded={open} onClick={() => setExpanded(open ? null : entry.selector)} className="rounded border border-[var(--border-divider)] px-2 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--bg-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{t(open ? "providers.otherModelsHideDetails" : "providers.otherModelsDetails")}</button>
-														<Button icon={provider ? Pencil : FileText} onClick={() => provider ? setDialog({ mode: "edit", row: provider }) : setRawOpen(true)}>{provider ? t("providers.editConnection") : t("providers.configureRunner")}</Button>
-													</div>
-												</div>
-												{open && <div className="mt-2 space-y-1 rounded-lg bg-[var(--well-bg)] p-2 text-[11px] text-[var(--text-dim)]">
-													<div className="select-text break-all font-mono"><span>{entry.selector}</span> · {entry.kind}</div>
-													<p className="break-words">{t("providers.otherModelSource", { provider: provider?.displayName ?? entry.provider, source: provider?.sources.join(", ") || t("providers.ompCatalogSource") })}</p>
-													<p className="break-words">{provider ? `${provider.enabled ? t("providers.connectionEnabled") : t("providers.connectionDisabled")} · ${describeKey(provider).label}` : providerError ? t("providers.connectionStatusUnknown") : !providersLoaded ? t("providers.loadingProvidersAria") : t("providers.ompManagedRunner")}</p>
-													<p>{t("providers.registeredNotTested")}</p>
-												</div>}
-											</li>
-										);
-									})}
-								</ul>
-							</section>
-						</div>
-					)}
-				</>
-			)}
-			<p className="text-xs leading-5 text-[var(--text-dim)]">{t("providers.otherModelsRegistrationHint")}</p>
-			{connectionsOpen && (
-				<Modal title={t("providers.manageConnections")} size="lg" onClose={() => setConnectionsOpen(false)}>
-					<div className="space-y-3 overflow-y-auto p-4">
-						<p className="text-xs leading-5 text-[var(--text-dim)]">{t("providers.connectionsSharedHint")}</p>
-						<SearchInput value={connectionQuery} onChange={setConnectionQuery} placeholder={t("providers.searchPlaceholder")} ariaLabel={t("providers.searchAria")} />
-						{!providersLoaded && !providerError && <p role="status" className="text-xs">{t("providers.loadingProvidersAria")}</p>}
-						{providerError && <div role="alert" className="space-y-2 break-words text-xs text-rose-300"><p>{t("providers.connectionLoadError", { error: providerError })}</p><Button onClick={() => void loadProviders()}>{t("common.retry")}</Button></div>}
-						{providersLoaded && !providerError && connectionRows.length === 0 && <p className="text-xs text-[var(--text-dim)]">{connectionQuery.trim() ? t("providers.noMatchingProviders", { query: connectionQuery.trim() }) : t("providers.emptyProvidersTitle")}</p>}
-						{connectionRows.map((row) => (
-							<button key={row.id} type="button" onClick={() => { setConnectionsOpen(false); setDialog({ mode: "edit", row }); }} className="flex w-full items-center gap-3 rounded-lg hairline px-3 py-2 text-left hover:bg-[var(--bg-hover)]">
-								<div className="min-w-0 flex-1"><div className="break-words text-sm">{row.displayName ?? row.id}</div><div className="break-all text-[11px] text-[var(--text-dim)]">{row.id} · {row.api ?? t("providers.unknownApi")} · {describeKey(row).label}</div></div><Pencil size={14} className="shrink-0" />
-							</button>
-						))}
-						<Button icon={Plus} onClick={() => { setConnectionsOpen(false); setDialog({ mode: "add" }); }}>{t("providers.addProviderBtn")}</Button>
-						<Button icon={FileText} onClick={() => { setConnectionsOpen(false); setRawOpen(true); }}>{t("settingsSections.providers.editRawConfig")}</Button>
-					</div>
-				</Modal>
-			)}
-			{dialog && <ProviderDialog target={dialog} pickerCategory="other" onClose={() => setDialog(null)} />}
-			{rawOpen && <RawFilesDialog onClose={() => setRawOpen(false)} />}
-		</div>
+		return result;
+	}, [entries]);
+	const rowsById = new Map(providers.map((row) => [row.id, row]));
+	const relevantRows = providers.filter((row) =>
+		groups.has(row.id) ||
+		// Credentials, an empty connection, or an unavailable catalog do not prove non-chat capability.
+		// Explicit service models remain manageable even before runtime registration succeeds.
+		row.models.some((model) => typeof model !== "string" && isExplicitServiceModel(model)),
 	);
+	const ids = [...new Set([...relevantRows.map((row) => row.id), ...groups.keys()])].sort((a, b) => a.localeCompare(b));
+	const added = (id: string) => {
+		const row = rowsById.get(id);
+		return Boolean(row && (row.origin !== "builtin" || !row.enabled || !["missing"].includes(row.key.kind))) ||
+			(groups.get(id) ?? []).some((entry) => ["keyless", "local", "settings"].includes(serviceCapability(entry).method));
+	};
+	const kindTitle = (kind: string) => KIND_LABELS[kind] ? t(KIND_LABELS[kind]) : t("providers.kindUnknown", { kind });
+	const matches = (id: string, search: string) => [id, rowsById.get(id)?.displayName, rowsById.get(id)?.baseUrl, ...(groups.get(id) ?? []).flatMap((entry) => [entry.name, entry.selector, entry.kind, kindTitle(entry.kind)])].filter(Boolean).join(" ").toLowerCase().includes(search.trim().toLowerCase());
+	const edit = (id: string) => {
+		setAddOpen(false);
+		const row = rowsById.get(id);
+		const models = groups.get(id) ?? [];
+		const entry = models.find((model) => ["settings", "local"].includes(serviceCapability(model).method)) ?? models[0];
+		if (entry && ["settings", "local"].includes(serviceCapability(entry).method)) setService(entry);
+		else if (row?.key.kind === "oauth" || (entry && supplierStatus(serviceCapability(entry), row, loaded, providerError).action === "account")) setLogin(id);
+		else if (row) setDialog({ mode: "edit", row });
+		else if (entry) {
+			const status = supplierStatus(serviceCapability(entry), undefined, loaded, providerError);
+			if (status.action === "account") setLogin(id);
+			else if (status.action === "advanced") setRawOpen(true);
+			else if (status.action) setService(entry);
+		}
+	};
+	const renderSupplier = (id: string) => {
+		const row = rowsById.get(id);
+		const models = groups.get(id) ?? [];
+		const capability = models[0] ? serviceCapability(models[0]) : { supplier: id, method: "advanced" as const };
+		const status = supplierStatus(capability, row, loaded, providerError);
+		const open = expanded === id;
+		return <section key={id} className="min-w-0 border-b border-[var(--border-divider)] last:border-b-0">
+			<div className="flex items-center gap-3 px-4 py-3">
+				<button type="button" aria-label={t("providers.otherModelsSelectSupplier", { provider: id })} aria-expanded={open} onClick={() => { setVisited((previous) => new Set(previous).add(id)); setExpanded(open ? null : id); }} className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+					<ChevronDown size={14} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+					<div className="min-w-0 flex-1"><div className="break-words [overflow-wrap:anywhere] text-sm font-medium">{row?.displayName || id}</div>{row?.displayName && row.displayName !== id && <div className="break-all text-xs text-[var(--text-dim)]">{id}</div>}<div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--text-dim)]"><span>{t("providers.modelsListHeader", { count: models.length })}</span>{[...new Set(models.map((entry) => entry.kind))].map((kind) => <span key={kind} className="break-words [overflow-wrap:anywhere]">{kindTitle(kind)}</span>)}</div></div>
+				</button>
+				<span className={`shrink-0 text-xs ${status.warning ? "text-[var(--status-warning)]" : "text-[var(--text-dim)]"}`}>{t(`providers.${status.label}`)}</span>
+				{(row || status.action) && <Button icon={Pencil} aria-label={t("providers.supplierActionFor", { action: t("common.edit"), provider: id })} onClick={() => edit(id)}>{t("common.edit")}</Button>}
+			</div>
+			{visited.has(id) && <div hidden={!open}><SupplierModels key={id} models={models} kindTitle={kindTitle} row={row} onConfigure={setService} /></div>}
+		</section>;
+	};
+	const visibleIds = ids.filter((id) => added(id) && matches(id, query));
+	return <div className="space-y-4">
+		<p className="text-xs leading-5 text-[var(--text-dim)]">{t("providers.otherModelsDesc")}</p>
+		<div className="flex flex-wrap items-center gap-2"><SearchInput className="min-w-[180px] flex-1" value={query} onChange={setQuery} placeholder={t("providers.otherModelsSearch")} ariaLabel={t("providers.otherModelsSearch")} /><Button icon={Plus} onClick={() => setAddOpen(true)}>{t("providers.addService")}</Button><Button icon={RefreshCw} disabled={loading} onClick={() => { void loadCatalog(true); void loadProviders(); }}>{t("common.refresh")}</Button></div>
+		{error && <div role="alert" className="flex items-start gap-2 text-xs text-rose-400"><p className="min-w-0 flex-1 break-words">{t("providers.otherModelsLoadError", { error })}</p><Button disabled={loading} onClick={() => void loadCatalog(true)}>{t("common.retry")}</Button></div>}
+		{providerError && <div role="alert" className="flex items-start gap-2 text-xs text-rose-400"><p className="min-w-0 flex-1 break-words">{t("providers.connectionLoadError", { error: providerError })}</p><Button onClick={() => void loadProviders()}>{t("common.retry")}</Button></div>}
+		{loading && <p role="status" className="flex items-center gap-2 text-xs"><Loader2 size={14} className="animate-spin" />{t("providers.otherModelsLoading")}</p>}
+		<div aria-label={t("providers.otherModelsSuppliers")} className="min-w-0 overflow-hidden rounded-xl hairline bg-[var(--well-bg)]/40">{visibleIds.map((id) => renderSupplier(id))}{visibleIds.length === 0 && !loading && !error && entries !== null && <p className="p-6 text-center text-xs text-[var(--text-dim)]">{t(query.trim() ? "providers.otherModelsNoMatch" : "providers.otherModelsEmpty")}</p>}</div>
+		<p className="text-xs leading-5 text-[var(--text-dim)]">{t("providers.otherModelsRegistrationHint")}</p>
+		{addOpen && <Modal title={t("providers.addService")} size="lg" onClose={() => setAddOpen(false)}>
+			<div className="flex max-h-[70vh] flex-col gap-3 p-4">
+				<div className="flex flex-wrap gap-2">
+					<Button icon={Plus} onClick={() => { setAddOpen(false); setDialog({ mode: "add" }); }}>{t("providers.addProviderBtn")}</Button>
+					<Button icon={FileText} onClick={() => { setAddOpen(false); setRawOpen(true); }}>{t("settingsSections.providers.editRawConfig")}</Button>
+				</div>
+				<p className="text-xs text-[var(--text-dim)]">{t("providers.serviceGlobalHint")}</p>
+				<SearchInput value={addQuery} onChange={setAddQuery} placeholder={t("providers.otherModelsSearch")} ariaLabel={t("providers.otherModelsSearch")} />
+				<div className="min-h-0 overflow-y-auto rounded-xl hairline">{ids.filter((id) => !added(id) && matches(id, addQuery)).map(renderSupplier)}</div>
+			</div>
+		</Modal>}
+		{dialog && <ProviderDialog target={dialog} pickerCategory="other" onClose={() => setDialog(null)} />}
+		{service && <ServiceConfigDialog capability={serviceCapability(service)} selector={service.selector} onClose={() => setService(null)} onAdvanced={() => { setService(null); setRawOpen(true); }} onLogin={() => { setLogin(serviceCapability(service).supplier); setService(null); }} />}
+		{login !== null && <OauthLoginDialog initialProviderQuery={login} onClose={() => setLogin(null)} />}
+		{rawOpen && <RawFilesDialog onClose={() => setRawOpen(false)} />}
+	</div>;
+}
+
+function SupplierModels({ models, kindTitle, row, onConfigure }: { models: ModelKindEntry[]; kindTitle: (kind: string) => string; row?: ProviderRow; onConfigure: (entry: ModelKindEntry) => void }) {
+	const { t } = useT();
+	const [query, setQuery] = useState("");
+	const [kind, setKind] = useState("");
+	const [page, setPage] = useState(1);
+	const large = models.length > 6;
+	const filtered = models.filter((entry) => (!kind || kind === entry.kind) && [entry.name, entry.selector, entry.kind, kindTitle(entry.kind)].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+	const pages = Math.max(1, Math.ceil(filtered.length / 8));
+	const currentPage = Math.min(page, pages);
+	const visible = large ? filtered.slice((currentPage - 1) * 8, currentPage * 8) : models;
+	return <div className="min-w-0 space-y-3 border-t border-[var(--border-divider)] bg-[var(--well-bg)]/40 px-4 py-3">
+		{large && <><SearchInput value={query} onChange={(value) => { setQuery(value); setPage(1); }} placeholder={t("providers.otherModelsSearch")} ariaLabel={t("providers.otherModelsSearch")} /><div role="group" aria-label={t("providers.otherModelsTypes")} className="flex flex-wrap gap-2">{["", ...new Set(models.map((entry) => entry.kind))].map((value) => <button type="button" key={value} aria-pressed={kind === value} onClick={() => { setKind(value); setPage(1); }} className={`rounded-lg border px-2 py-1 text-xs ${kind === value ? "border-[var(--accent)]" : "border-[var(--border-divider)]"}`}>{value ? kindTitle(value) : t("providers.otherModelsAllTypes")}</button>)}</div></>}
+		<ul aria-label={t("providers.otherModelsList")} className="space-y-3">{visible.map((entry) => <li key={`${entry.selector}:${entry.kind}`} className="min-w-0"><div className="break-words [overflow-wrap:anywhere] text-sm">{entry.name || entry.selector}</div><p className="select-text break-words [overflow-wrap:anywhere] font-mono text-[11px] text-[var(--text-dim)]">{entry.selector}</p><p className="break-words text-xs text-[var(--text-dim)]">{kindTitle(entry.kind)}</p><details className="mt-1 text-xs text-[var(--text-dim)]"><summary aria-label={t("providers.otherModelsDetailsLabel", { name: entry.name || entry.selector })} className="cursor-pointer">{t("providers.otherModelsDetails")}</summary><p className="py-2">{t("providers.registeredNotTested")}</p>{["local", "settings"].includes(serviceCapability(entry).method) && <Button onClick={() => onConfigure(entry)}>{t("common.edit")}</Button>}</details></li>)}</ul>
+		{visible.length === 0 && <p className="text-xs text-[var(--text-dim)]">{t("providers.otherModelsNoMatch")}</p>}
+		{large && <nav aria-label={t("providers.otherModelsPagination")} className="flex flex-wrap items-center gap-2"><p role="status" className="min-w-0 flex-1 text-xs text-[var(--text-dim)]">{t("providers.otherModelsRange", { from: filtered.length ? (currentPage - 1) * 8 + 1 : 0, to: Math.min(currentPage * 8, filtered.length), total: filtered.length, page: currentPage, pages })}</p><Button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>{t("providers.otherModelsPrevious")}</Button><select aria-label={t("providers.otherModelsJumpPage")} value={currentPage} onChange={(event) => setPage(Number(event.target.value))} className="rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-2 py-1 text-xs">{Array.from({ length: pages }, (_, index) => <option key={index + 1} value={index + 1}>{t("providers.otherModelsPage", { page: index + 1 })}</option>)}</select><Button disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>{t("providers.otherModelsNext")}</Button></nav>}
+		<p className="text-xs leading-5 text-[var(--text-dim)]">{t(row?.key.kind === "oauth" ? "providers.supplierReuseAccount" : row && ["encrypted", "plaintext", "loginStored"].includes(row.key.kind) ? "providers.supplierReuseKey" : "providers.registeredNotTested")}</p>
+	</div>;
 }

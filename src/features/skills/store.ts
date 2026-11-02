@@ -134,8 +134,8 @@ export function computeSkillStats(
 		disabled: 0,
 	};
 	for (const s of skills) {
-		if (s.source === "project") stats.projectCount++;
-		else if (s.source === "user") stats.userCount++;
+		if (s.source === "project" || s.locations?.some((location) => location.source === "project")) stats.projectCount++;
+		if (s.source === "user" || s.locations?.some((location) => location.source === "user")) stats.userCount++;
 		if (!resolveSkillEnablement(s, cfg).enabled) stats.disabled++;
 		const issues = s.issues;
 		if (issues.length > 0) {
@@ -196,7 +196,14 @@ function matchesQuery(skill: SkillItem, query: string): boolean {
 	return (
 		skill.name.toLowerCase().includes(query) ||
 		(skill.description ?? "").toLowerCase().includes(query) ||
-		(skill.root ?? "").toLowerCase().includes(query)
+		(skill.root ?? "").toLowerCase().includes(query) ||
+		skill.dir.toLowerCase().includes(query) ||
+		skill.path.toLowerCase().includes(query) ||
+		(skill.locations ?? []).some((location) =>
+			location.root.toLowerCase().includes(query) ||
+			location.dir.toLowerCase().includes(query) ||
+			location.path.toLowerCase().includes(query)
+		)
 	);
 }
 
@@ -227,8 +234,8 @@ function compareSkills(state: SkillListState, a: SkillItem, b: SkillItem): numbe
 export function selectVisibleSkills(state: SkillListState): SkillItem[] {
 	const q = state.searchQuery.trim().toLowerCase();
 	const filtered = (state.catalog?.skills ?? []).filter((skill) => {
-		if (state.sourceFilter === "user" && skill.source !== "user") return false;
-		if (state.sourceFilter === "project" && skill.source !== "project") return false;
+		if (state.sourceFilter !== "all" && skill.source !== state.sourceFilter &&
+			!skill.locations?.some((location) => location.source === state.sourceFilter)) return false;
 		return matchesStatus(skill, state) && matchesQuery(skill, q);
 	});
 	return [...filtered].sort((a, b) => compareSkills(state, a, b));
@@ -260,14 +267,17 @@ export function groupSkillsByLocation(state: SkillListState): SkillLocationGroup
 	const groups = new Map<string, SkillLocationGroup>();
 	for (const skill of state.catalog?.skills ?? []) {
 		if (!matchesStatus(skill, state)) continue;
-		const skillMatches = matchesQuery(skill, q);
+		// Metadata matches apply to every copy; location paths match only that copy.
+		const skillMatches = !q || skill.name.toLowerCase().includes(q) ||
+			(skill.description ?? "").toLowerCase().includes(q);
 		for (const location of locationsOf(skill)) {
 			if (state.sourceFilter !== "all" && location.source !== state.sourceFilter) continue;
 			if (
 				q &&
 				!skillMatches &&
 				!location.root.toLowerCase().includes(q) &&
-				!location.dir.toLowerCase().includes(q)
+				!location.dir.toLowerCase().includes(q) &&
+				!location.path.toLowerCase().includes(q)
 			)
 				continue;
 			const key = `${location.source}\u0000${location.root}\u0000${location.provider}`;
@@ -370,7 +380,7 @@ function drawerAfterReload(
 	if (!drawer) return null;
 	const found =
 		drawer.kind === "skill"
-			? catalog.skills.some((sk) => sk.path === drawer.path)
+			? catalog.skills.some((sk) => sk.path === drawer.path || sk.locations?.some((location) => location.path === drawer.path))
 			: catalog.extensions.some((ex) => ex.path === drawer.path);
 	return found ? drawer : null;
 }

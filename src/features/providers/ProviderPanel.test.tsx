@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelKindEntry, ProviderKeyKind, ProviderRow } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 
 const ipc = vi.hoisted(() => ({
 	providerRows: vi.fn(),
@@ -201,6 +202,24 @@ describe("enable switch", () => {
 });
 
 describe("search", () => {
+	it("does not leak search-key-only suppliers into chat providers", async () => {
+		await renderPanel([row("brave", "encrypted"), row("tavily", "encrypted"), row("chat-supplier", "missing")]);
+		expect(screen.queryByText("brave")).toBeNull();
+		expect(screen.queryByText("tavily")).toBeNull();
+		expect(screen.getByText("chat-supplier")).toBeTruthy();
+	});
+	it("uses explicit kinds and dedicated APIs before model-name guesses while keeping mixed suppliers", async () => {
+		await renderPanel([
+			row("only-services", "encrypted", { models: [{ id: "plain-alpha", kind: "image" }, { id: "plain-beta", kind: "stt" }, { id: "plain-gamma", kind: "future-kind" }] }),
+			row("api-only-service", "encrypted", { models: [{ id: "plain-delta", api: "openai-transcriptions" }] }),
+			row("mixed-supplier", "encrypted", { models: [{ id: "plain-epsilon", kind: "image" }, { id: "whisper-looking-chat", kind: "chat" }] }),
+			row("tiny-supplier", "encrypted", { models: [{ id: "embedding-looking-tiny", kind: "tiny" }] }),
+		]);
+		expect(screen.queryByText("only-services")).toBeNull();
+		expect(screen.queryByText("api-only-service")).toBeNull();
+		expect(screen.getByText("mixed-supplier")).toBeTruthy();
+		expect(screen.getByText("tiny-supplier")).toBeTruthy();
+	});
 	it("matches object-form model ids and protocol", async () => {
 		await renderPanel([
 			row("alpha", "plaintext", { models: [{ id: "zeta-model-9", contextWindow: 1000 }] }),
@@ -473,85 +492,122 @@ describe(".env import", () => {
 	});
 });
 
-describe("other model catalog", () => {
+describe("grouped other model catalog", () => {
 	const entry = (selector: string, kind: string, name: string): ModelKindEntry => ({
 		selector, kind, name, provider: selector.split("/")[0], thinking: [],
 	});
+	const supplierName = (provider: string) => tNow("providers.otherModelsSelectSupplier", { provider });
+	const editName = (provider: string) => tNow("providers.supplierActionFor", { action: tNow("common.edit"), provider });
 
-	it("shows every registered non-LLM kind including runners without provider rows", async () => {
-		data = [row("chat-connection", "plaintext", { models: ["voice-looking-name"] })];
+	it("separates registered services from unused credentials and unclassified manual connections", async () => {
+		data = [
+			row("builtin-unused", "missing", { origin: "builtin", models: ["picture"] }),
+			row("builtin-added", "encrypted", { origin: "builtin", models: ["picture"] }),
+			row("builtin-chat", "encrypted", { origin: "builtin", models: ["chat"] }),
+			row("custom-chat", "encrypted", { models: ["chat"] }),
+			row("manual-empty", "missing", { models: [] }),
+			row("manual-unknown", "missing", { models: ["unregistered"] }),
+		];
 		kindData = [
-			entry("chat-connection/voice-looking-name", "chat", "Chat only"),
-			entry("tiny/small", "tiny", "Tiny LLM"),
-			...["search", "judge", "image", "tts", "stt", "embedding", "rerank", "video", "future-kind"].map((kind) => entry(`runner-${kind}/plain-id`, kind, `Registered ${kind}`)),
+			entry("builtin-unused/picture", "image", "Unused builtin image"),
+			entry("builtin-added/picture", "image", "Configured builtin image"),
+			entry("builtin-chat/chat", "chat", "Builtin chat"),
+			entry("custom-chat/chat", "chat", "Custom chat"),
 		];
 		render(<ProviderPanel category="other" />);
-		await screen.findByRole("button", { name: "全部类型 (9)" });
-		const labels: Record<string, string> = { search: "搜索", judge: "评估", image: "图像生成", tts: "语音合成", stt: "语音识别", embedding: "向量嵌入", rerank: "重排", video: "视频", "future-kind": "其他类型 · future-kind" };
-		for (const model of kindData.slice(2)) {
-			fireEvent.click(screen.getByRole("button", { name: `${labels[model.kind]} (1)` }));
-			expect(screen.getByText(model.name!)).toBeTruthy();
-			fireEvent.click(screen.getByRole("button", { name: `模型详情：${model.name}` }));
-			expect(screen.getByText(model.selector)).toBeTruthy();
-			expect(screen.getByText("目录已注册 · 尚未验证调用可用性")).toBeTruthy();
-			expect(screen.getByText("由 OMP 管理；此处无对应的通用 API 连接配置")).toBeTruthy();
+		await screen.findByRole("button", { name: supplierName("builtin-added") });
+		await waitFor(() => expect(useModelKindCatalog.getState().entries).toHaveLength(4));
+		for (const id of ["builtin-unused", "builtin-chat", "custom-chat", "manual-empty", "manual-unknown"]) {
+			expect(screen.queryByRole("button", { name: supplierName(id) })).toBeNull();
 		}
-		expect(screen.queryByText("Chat only")).toBeNull();
-		expect(screen.queryByText("Tiny LLM")).toBeNull();
-		expect(screen.queryByText("chat-connection")).toBeNull();
-		expect(ipc.providerTestModel).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: tNow("providers.addService") }));
+		const dialog = await screen.findByRole("dialog", { name: tNow("providers.addService") });
+		expect(within(dialog).getByRole("button", { name: supplierName("builtin-unused") })).toBeTruthy();
+		expect(within(dialog).queryByRole("button", { name: supplierName("builtin-added") })).toBeNull();
+		expect(within(dialog).queryByRole("button", { name: supplierName("builtin-chat") })).toBeNull();
+		expect(within(dialog).queryByRole("button", { name: supplierName("manual-empty") })).toBeNull();
+		expect(within(dialog).queryByRole("button", { name: supplierName("manual-unknown") })).toBeNull();
 	});
 
-	it("searches actual kind and source and counts only this category", async () => {
-		data = [row("shared", "missing", { models: ["chat-a", "chat-b", "image-a"], sources: ["models.yml"] })];
-		kindData = [entry("shared/image-a", "image", "Picture runner"), entry("web/search-a", "search", "Search runner"), entry("shared/chat-a", "chat", "Chat runner")];
+	it("discovers unconfigured registered services and retains the custom add path", async () => {
+		data = [];
+		kindData = [entry("private-runner/item", "future-kind", "Private registered service")];
 		render(<ProviderPanel category="other" />);
-		await screen.findByRole("button", { name: "全部类型 (2)" });
-		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "models.yml" } });
-		expect(screen.getByText("Picture runner")).toBeTruthy();
-		expect(screen.queryByText("Search runner")).toBeNull();
-		expect(within(screen.getByRole("region", { name: "模型列表" })).getAllByRole("listitem")).toHaveLength(1);
-		fireEvent.click(screen.getByRole("button", { name: "模型详情：Picture runner" }));
-		expect(screen.getByText("连接已启用 · 未配置密钥")).toBeTruthy();
-		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "search" } });
-		expect(screen.getByText("Search runner")).toBeTruthy();
-		expect(screen.queryByText("Picture runner")).toBeNull();
-		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "not-found" } });
-		expect(screen.getByText("未找到匹配的其他类型模型。")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
-		expect(within(screen.getByRole("region", { name: "模型列表" })).getAllByRole("listitem")).toHaveLength(2);
+		await waitFor(() => expect(useModelKindCatalog.getState().entries).toHaveLength(1));
+		expect(screen.queryByRole("button", { name: supplierName("private-runner") })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: tNow("providers.addService") }));
+		const discovery = await screen.findByRole("dialog", { name: tNow("providers.addService") });
+		fireEvent.change(within(discovery).getByRole("textbox"), { target: { value: "Private registered service" } });
+		expect(within(discovery).getByRole("button", { name: supplierName("private-runner") })).toBeTruthy();
+		fireEvent.click(within(discovery).getByRole("button", { name: tNow("providers.addProviderBtn") }));
+		expect(await screen.findByRole("dialog", { name: /添加供应商/ })).toBeTruthy();
 	});
 
-	it("edits a connection with no other models without duplicating credentials or clearing search", async () => {
-		const existing = row("existing", "encrypted", { models: ["chat-only"] });
-		data = [existing];
-		kindData = [entry("web/search-a", "search", "Search runner")];
-		ipc.providerUpsert.mockResolvedValueOnce({ ...existing, baseUrl: "https://changed.example/v1" });
+	it("edits advanced registered runner configuration through the actual raw file dialog", async () => {
+		data = [];
+		kindData = [entry("private-runner/item", "future-kind", "Advanced runner")];
 		render(<ProviderPanel category="other" />);
-		await screen.findByText("Search runner");
-		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "search" } });
-		fireEvent.click(screen.getByRole("button", { name: "管理连接" }));
-		fireEvent.click(await screen.findByRole("button", { name: /existing/ }));
-		await screen.findByRole("dialog", { name: /编辑供应商/ });
-		expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe("existing");
-		expect((screen.getByLabelText("API 密钥") as HTMLInputElement).value).toBe("");
-		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://changed.example/v1" } });
-		kindData = [entry("web/search-a", "search", "Updated search")];
-		fireEvent.click(screen.getByRole("button", { name: "保存" }));
-		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null, "encrypted");
-		expect((screen.getByLabelText("搜索模型、类型或来源") as HTMLInputElement).value).toBe("search");
-		expect(await screen.findByText("Updated search")).toBeTruthy();
+		await waitFor(() => expect(useModelKindCatalog.getState().entries).toHaveLength(1));
+		fireEvent.click(screen.getByRole("button", { name: tNow("providers.addService") }));
+		const discovery = await screen.findByRole("dialog", { name: tNow("providers.addService") });
+		fireEvent.click(within(discovery).getByRole("button", { name: editName("private-runner") }));
+		const dialog = await screen.findByRole("dialog", { name: "编辑原始配置文件" });
+		const content = await within(dialog).findByLabelText("models.yml 内容");
+		await waitFor(() => expect((content as HTMLTextAreaElement).value).toBe("providers: {}\n"));
+		fireEvent.change(content, { target: { value: "providers: {}\n# edited connection configuration\n" } });
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.writeTextFile).toHaveBeenCalledWith("/home/u/.omp/agent/models.yml", "providers: {}\n# edited connection configuration\n"));
+		expect(ipc.providerUpsert).not.toHaveBeenCalled();
 	});
 
-	it("keeps the existing add-connection path reachable in an empty catalog", async () => {
+	it("keeps custom service creation reachable when the registry is empty", async () => {
 		data = [];
 		kindData = [];
 		render(<ProviderPanel category="other" />);
-		await screen.findByText("OMP 目录中暂无已注册的其他类型模型。可管理现有连接或编辑配置后刷新。");
-		fireEvent.click(screen.getAllByRole("button", { name: "管理连接" })[0]);
-		fireEvent.click(await screen.findByRole("button", { name: "添加供应商" }));
+		await waitFor(() => expect(useModelKindCatalog.getState().entries).toEqual([]));
+		fireEvent.click(screen.getByRole("button", { name: tNow("providers.addService") }));
+		const dialog = await screen.findByRole("dialog", { name: tNow("providers.addService") });
+		fireEvent.click(within(dialog).getByRole("button", { name: tNow("providers.addProviderBtn") }));
 		expect(await screen.findByRole("dialog", { name: /添加供应商/ })).toBeTruthy();
+	});
+
+	it("keeps mixed providers together and renders small catalogs inline without chat models", async () => {
+		data = [row("shared", "missing", { models: [{ id: "chat-a", kind: "chat" }, { id: "picture", kind: "image" }, { id: "speech", kind: "stt" }] })];
+		kindData = [entry("shared/picture", "image", "Picture runner"), entry("shared/speech", "stt", "Speech runner"), entry("shared/chat-a", "chat", "Chat runner")];
+		render(<ProviderPanel category="other" />);
+		const toggle = await screen.findByRole("button", { name: supplierName("shared") });
+		expect(screen.getAllByRole("button", { name: supplierName("shared") })).toHaveLength(1);
+		expect(screen.getByRole("button", { name: editName("shared") }).textContent).toBe("编辑");
+		fireEvent.click(toggle);
+		expect(screen.getByText("Picture runner")).toBeTruthy();
+		expect(screen.getByText("Speech runner")).toBeTruthy();
+		expect(screen.queryByText("Chat runner")).toBeNull();
+		expect(screen.queryByRole("navigation", { name: "模型分页" })).toBeNull();
+		expect(ipc.providerTestModel).not.toHaveBeenCalled();
+	});
+
+	it("recovers an empty custom connection through the regular provider editor without replacing its stored key", async () => {
+		const existing = row("existing", "encrypted", { models: [] });
+		data = [existing];
+		kindData = [];
+		ipc.providerUpsert.mockResolvedValueOnce({ ...existing, baseUrl: "https://changed.example/v1", models: ["chat-only"] });
+		render(<ProviderPanel category="other" />);
+		await waitFor(() => expect(useModelKindCatalog.getState().entries).toEqual([]));
+		expect(screen.queryByRole("button", { name: supplierName("existing") })).toBeNull();
+		cleanup();
+		await renderPanel([existing]);
+		fireEvent.click(await screen.findByText("existing"));
+		fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+		const dialog = await screen.findByRole("dialog", { name: /编辑供应商/ });
+		expect((within(dialog).getByLabelText("名称") as HTMLInputElement).value).toBe("existing");
+		expect((within(dialog).getByLabelText("API 密钥") as HTMLInputElement).value).toBe("");
+		fireEvent.change(within(dialog).getByLabelText("地址"), { target: { value: "https://changed.example/v1" } });
+		fireEvent.change(within(dialog).getByLabelText("第 1 个模型 ID"), { target: { value: "chat-only" } });
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null, "encrypted");
+		expect(screen.getByText("existing")).toBeTruthy();
+		expect(ipc.providerSetKey).not.toHaveBeenCalled();
 	});
 
 	it("shows catalog failures and retries without presenting them as an empty catalog", async () => {
@@ -560,56 +616,36 @@ describe("other model catalog", () => {
 		render(<ProviderPanel category="other" />);
 		expect((await screen.findByRole("alert")).textContent).toContain("catalog offline");
 		expect(screen.queryByText(/OMP 目录中暂无/)).toBeNull();
-		kindData = [entry("web/search-a", "search", "Recovered search")];
-		fireEvent.click(screen.getByRole("button", { name: "重试" }));
-		expect(await screen.findByText("Recovered search")).toBeTruthy();
+		kindData = [entry("ollama/image", "image", "Recovered image")];
+		fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+		fireEvent.click(await screen.findByRole("button", { name: supplierName("ollama") }));
+		expect(screen.getByText("Recovered image")).toBeTruthy();
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("does not hide registered runners when reading connection configuration fails", async () => {
+	it("preserves registered keyless models and truthful unknown credential state when connection loading fails", async () => {
+		data = [];
 		ipc.providerRows.mockRejectedValueOnce(new Error("config unreadable"));
-		kindData = [entry("web/search-a", "search", "Independent search")];
+		kindData = [entry("ollama/image", "image", "Independent image")];
 		render(<ProviderPanel category="other" />);
-		expect(await screen.findByText("Independent search")).toBeTruthy();
+		fireEvent.click(await screen.findByRole("button", { name: supplierName("ollama") }));
+		expect(screen.getByText("Independent image")).toBeTruthy();
 		expect((await screen.findByRole("alert")).textContent).toContain("config unreadable");
-		fireEvent.click(screen.getByRole("button", { name: "模型详情：Independent search" }));
-		expect(screen.getByText("连接配置状态未知")).toBeTruthy();
-		expect(screen.queryByText("由 OMP 管理；此处无对应的通用 API 连接配置")).toBeNull();
-	});
-});
-
-describe("other model runner configuration", () => {
-	it("saves real configuration and refreshes runners without clearing the model search", async () => {
-		data = [];
-		kindData = [{ selector: "web/runner", kind: "search", provider: "web", name: "Initial runner", thinking: [] }];
-		render(<ProviderPanel category="other" />);
-		await screen.findByText("Initial runner");
-		fireEvent.change(screen.getByLabelText("搜索模型、类型或来源"), { target: { value: "web" } });
-		fireEvent.click(screen.getByRole("button", { name: "编辑配置" }));
-		const dialog = await screen.findByRole("dialog", { name: "编辑原始配置文件" });
-		const content = await within(dialog).findByLabelText("models.yml 内容");
-		await waitFor(() => expect((content as HTMLTextAreaElement).value).toBe("providers: {}\n"));
-		fireEvent.change(content, { target: { value: "providers: {}\n# edited connection configuration\n" } });
-		kindData = [{ selector: "web/runner", kind: "search", provider: "web", name: "Refreshed runner", thinking: [] }];
-		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
-		await waitFor(() => expect(ipc.writeTextFile).toHaveBeenCalledWith("/home/u/.omp/agent/models.yml", "providers: {}\n# edited connection configuration\n"));
-		expect(await screen.findByText("Refreshed runner")).toBeTruthy();
-		const closeButtons = within(dialog).getAllByRole("button", { name: "关闭" });
-		fireEvent.click(closeButtons[closeButtons.length - 1]);
-		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-		expect((screen.getByLabelText("搜索模型、类型或来源") as HTMLInputElement).value).toBe("web");
+		expect(screen.getByText(tNow("providers.supplierUnknown"))).toBeTruthy();
+		expect(screen.queryByText("已连接")).toBeNull();
 	});
 
-	it("shows catalog loading until registered entries arrive", async () => {
+	it("shows catalog loading until real registered entries arrive", async () => {
 		data = [];
-		// The project's ES2021 library target does not expose Promise.withResolvers.
+		// This project targets ES2021, which does not expose Promise.withResolvers.
 		let complete!: (models: ModelKindEntry[]) => void;
 		ipc.modelKindCatalog.mockImplementationOnce(() => new Promise<ModelKindEntry[]>((resolve) => { complete = resolve; }));
 		render(<ProviderPanel category="other" />);
 		expect(screen.getByRole("status").textContent).toContain("正在读取所有类型的模型目录");
 		expect(screen.queryByText(/OMP 目录中暂无/)).toBeNull();
-		complete([{ selector: "custom/runner", kind: "future-kind", provider: "custom", name: "Delayed runner", thinking: [] }]);
-		expect(await screen.findByText("Delayed runner")).toBeTruthy();
+		complete([entry("ollama/runner", "future-kind", "Delayed runner")]);
+		fireEvent.click(await screen.findByRole("button", { name: supplierName("ollama") }));
+		expect(screen.getByText("Delayed runner")).toBeTruthy();
 		expect(screen.queryByText(/正在读取所有类型的模型目录/)).toBeNull();
 	});
 });

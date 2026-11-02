@@ -10,6 +10,7 @@ import {
 	type ContextWindowRule,
 } from "../settings/contextWindow/core";
 import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
+import { isExplicitServiceModel } from "./presets";
 
 /** A new model that already has an explicit window differing from its matching rule. */
 export interface RuleConflict {
@@ -46,6 +47,7 @@ export function planContextWindows(
 	const conflicts: RuleConflict[] = [];
 	for (const entry of after.models) {
 		const spec = modelEntrySpec(entry);
+		if (isExplicitServiceModel(spec)) continue;
 		const isNew = !oldIds.has(spec.id);
 		const current = spec.contextWindow ?? null;
 		if (current == null) {

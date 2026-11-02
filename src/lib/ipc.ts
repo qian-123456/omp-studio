@@ -4,6 +4,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { ServiceConfigChanges, ServiceConfigSnapshot } from "./serviceConfigTypes";
 import type {
 	AppPaths,
 	BacklogItem,
@@ -594,6 +595,14 @@ export const ompConfigSet = (key: string, value: string) =>
 
 export const ompConfigReset = (key: string) =>
 	invoke<void>("omp_config_reset", { key });
+
+/** Global service parameters; stored credentials are represented only by presence flags. */
+export const serviceConfigRead = (target: string) =>
+	invoke<ServiceConfigSnapshot>("service_config_read", { target });
+
+/** Omitted fields stay unchanged; explicit null restores the upstream default. */
+export const serviceConfigWrite = (target: string, changes: ServiceConfigChanges, expectedStamp: string | null) =>
+	invoke<ServiceConfigSnapshot>("service_config_write", { target, changes, expectedStamp });
 
 /** Read `<cwd>/.omp/config.yml` verbatim (exists=false when missing). */
 export const ompProjectConfigRead = (cwd: string) =>

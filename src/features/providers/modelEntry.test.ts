@@ -12,6 +12,14 @@ import {
 } from "./modelEntry";
 
 describe("modelEntry helpers", () => {
+	it("roundtrips mixed service and chat metadata without changing chat entries", () => {
+		const entries: ModelEntry[] = [
+			"chat-id",
+			{ id: "image-id", name: "Image", kind: "image", api: "openai-images" },
+			{ id: "future-id", kind: "future-kind", api: "future-api", contextWindow: 123, maxTokens: 45 },
+		];
+		expect(rowsToModelEntries(modelEntriesToRows(entries))).toEqual(entries);
+	});
 	it("extracts id correctly", () => {
 		expect(modelEntryId("claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
 		expect(

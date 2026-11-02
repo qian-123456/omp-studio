@@ -188,9 +188,63 @@ pub fn map_rpc_frame(val: &serde_json::Value, provider_id: &str) -> Option<Oauth
     }
 }
 
-/// Query available login providers by launching a probe `omp --mode rpc` process.
-pub async fn oauth_login_providers() -> Result<Vec<serde_json::Value>, String> {
-    let mut cmd = tokio::process::Command::new("omp");
+async fn query_login_providers(
+    stdin: &mut (impl tokio::io::AsyncWrite + Unpin),
+    stdout: impl tokio::io::AsyncRead + Unpin,
+) -> Result<Vec<serde_json::Value>, String> {
+    // RPC buffers ordinary commands during startup; ready is informational, not
+    // a prerequisite for writing. Correlate the response instead of guessing readiness.
+    stdin
+        .write_all(b"{\"id\":\"lp\",\"type\":\"get_login_providers\"}\n")
+        .await
+        .map_err(|e| format!("发送 get_login_providers 命令失败: {e}"))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|e| format!("刷新标准输入失败: {e}"))?;
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .map_err(|e| format!("读取登录提供方失败: {e}"))?
+    {
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if val.get("type").and_then(|v| v.as_str()) != Some("response")
+            || val.get("id").and_then(|v| v.as_str()) != Some("lp")
+            || val.get("command").and_then(|v| v.as_str()) != Some("get_login_providers")
+        {
+            continue;
+        }
+        if val.get("success").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(val
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("获取登录提供方失败")
+                .to_string());
+        }
+        return val
+            .pointer("/data/providers")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .ok_or_else(|| "omp 返回的登录提供方列表格式无效".to_string());
+    }
+    Err("omp 探测进程在返回登录提供方前已退出".to_string())
+}
+
+/// Query actual kernel metadata without requiring a configured/credentialed LLM.
+pub async fn oauth_login_providers(binary: &str) -> Result<Vec<serde_json::Value>, String> {
+    // The official role resolver tries available models, then the full catalog.
+    // @tiny uses the kernel's own small-chat defaults without inventing credentials
+    // or coupling this metadata request to a concrete provider/model ID.
+    let model = "@tiny";
+    let mut cmd = tokio::process::Command::new(if binary.trim().is_empty() {
+        "omp"
+    } else {
+        binary
+    });
+    cmd.kill_on_drop(true);
     cmd.args([
         "--mode",
         "rpc",
@@ -199,85 +253,28 @@ pub async fn oauth_login_providers() -> Result<Vec<serde_json::Value>, String> {
         "--no-extensions",
         "--no-skills",
         "--no-rules",
+        "--model",
+        model,
     ]);
     cmd.current_dir(std::env::temp_dir());
     cmd.env("PATH", crate::terminal::env::augmented_path());
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::null());
-
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 omp 探测进程失败: {e}"))?;
     let mut stdin = child.stdin.take().ok_or("无法打开子进程标准输入")?;
     let stdout = child.stdout.take().ok_or("无法打开子进程标准输出")?;
-
-    let run_probe = async move {
-        let mut lines = tokio::io::BufReader::new(stdout).lines();
-        let mut ready = false;
-        while let Ok(Ok(Some(line))) =
-            tokio::time::timeout(Duration::from_secs(15), lines.next_line()).await
-        {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
-                if val.get("type").and_then(|v| v.as_str()) == Some("ready") {
-                    ready = true;
-                    break;
-                }
-            }
-        }
-        if !ready {
-            return Err("等待 omp 探测进程就绪超时".to_string());
-        }
-
-        let req = serde_json::json!({
-            "id": "lp",
-            "type": "get_login_providers",
-        });
-        let mut req_str = req.to_string();
-        req_str.push('\n');
-        stdin
-            .write_all(req_str.as_bytes())
-            .await
-            .map_err(|e| format!("发送 get_login_providers 命令失败: {e}"))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|e| format!("刷新标准输入失败: {e}"))?;
-
-        while let Ok(Ok(Some(line))) =
-            tokio::time::timeout(Duration::from_secs(10), lines.next_line()).await
-        {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
-                let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                let cmd = val.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                if msg_type == "response" && (cmd == "get_login_providers" || id == "lp") {
-                    let success = val
-                        .get("success")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !success {
-                        let err = val
-                            .get("error")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("获取登录提供方失败");
-                        return Err(err.to_string());
-                    }
-                    if let Some(providers) =
-                        val.pointer("/data/providers").and_then(|p| p.as_array())
-                    {
-                        return Ok(providers.clone());
-                    }
-                    return Ok(Vec::new());
-                }
-            }
-        }
-        Err("读取 get_login_providers 响应超时".to_string())
-    };
-
-    let res = run_probe.await;
+    let result = tokio::time::timeout(
+        Duration::from_secs(15),
+        query_login_providers(&mut stdin, stdout),
+    )
+    .await
+    .unwrap_or_else(|_| Err("读取 get_login_providers 响应超时".to_string()));
+    drop(stdin);
     let _ = child.kill().await;
-    res
+    result
 }
 
 /// Start an OAuth / account login flow for a provider.
@@ -694,6 +691,52 @@ pub async fn oauth_logout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn metadata_request_precedes_ready_and_preserves_kernel_flags() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        for ready in [true, false] {
+            let (mut client, server) = tokio::io::duplex(4096);
+            let (client_read, mut client_write) = tokio::io::split(&mut client);
+            let peer = tokio::spawn(async move {
+                let (read, mut write) = tokio::io::split(server);
+                let mut lines = tokio::io::BufReader::new(read).lines();
+                let request: serde_json::Value =
+                    serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+                assert_eq!(request["type"], "get_login_providers");
+                if ready {
+                    write.write_all(b"{\"type\":\"ready\"}\n").await.unwrap();
+                }
+                write.write_all(b"{\"type\":\"response\",\"id\":\"other\",\"command\":\"get_login_providers\",\"success\":true,\"data\":{\"providers\":[]}}\n").await.unwrap();
+                write.write_all(b"{\"type\":\"response\",\"id\":\"lp\",\"command\":\"get_login_providers\",\"success\":true,\"data\":{\"providers\":[{\"id\":\"synthetic\",\"available\":false,\"authenticated\":true}]}}\n").await.unwrap();
+            });
+            let providers = tokio::time::timeout(
+                Duration::from_secs(1),
+                query_login_providers(&mut client_write, client_read),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                providers,
+                vec![serde_json::json!({"id":"synthetic","available":false,"authenticated":true})]
+            );
+            peer.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn metadata_response_errors_and_eof_are_not_timeouts() {
+        for (frame, expected) in [
+            ("", "已退出"),
+            ("{\"type\":\"response\",\"id\":\"lp\",\"command\":\"get_login_providers\",\"success\":false,\"error\":\"synthetic rejection\"}\n", "synthetic rejection"),
+            ("{\"type\":\"response\",\"id\":\"lp\",\"command\":\"get_login_providers\",\"success\":true,\"data\":{}}\n", "格式无效"),
+        ] {
+            let mut stdin = tokio::io::sink();
+            let error = query_login_providers(&mut stdin, frame.as_bytes()).await.unwrap_err();
+            assert!(error.contains(expected), "{error}");
+        }
+    }
 
     #[tokio::test]
     async fn cancellation_reaps_child_and_stops_reader_before_releasing_slot() {
