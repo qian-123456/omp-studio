@@ -77,6 +77,15 @@
 | 32 | 粘贴图片不跳动；token/缩略图打开灯箱 | 粘贴后保持滚动/光标；图片 token 由可见的图片 span 作为唯一指针目标，键盘 Tab/Enter/Space 可达，点击打开预览；普通文本镜像层仍在 textarea 之下，仅图片字形 `relative z-20`，光标与原生选区绘制保留，字形宽度/换行不变。已删除矩形命中计算和原始光标/dataset 回退；文件/技能 token 不可交互，缺失图片不做成按钮 | `src/features/chat/Composer.tsx`；`Composer.inlineBehavior.test.tsx`（`inline image token click`）、`Composer.attachments.test.tsx`（token 编号与删除） | 已落地 | 通过：整套 3229/3229，含专属用例（见文件/测试列） | **原生通过（Case 2，NativePointerAcceptance，主代理复核实际截图）**：前台物理点击图片 token 中心打开灯箱（`case2_after_click_result.png`）、右边缘点击同样打开（`case2_after_right_edge_click.png`）、相邻文本点击不弹窗（`case2_after_adjacent_click.png`）；2065 字符、零换行的长段落（超过 25 个软换行行），光标在逻辑中间，粘贴 PNG 后 2071 字符并带 token，尾部文本保留，未发送给模型、未发生滚动跳动（`case2_pasted_midtext.png`、`composer_pasted_crop.png`）；主代理看到 token 后光标在中段区域可见、其后仍有多行。历史：此前原生失败（点击中心只移动光标）→ 根因由「语义图片 span」产品修复解决；中途 AX 语义按下的结果与测试调用端坐标换算修正（旧 `px.sh` 误除 1.225，已修，`bash -n` 通过；窗口曾部分在屏幕外 x=-302，用 `set_window_frame`+`bring_to_front`+新截图+十字准线后命中可见，不是驱动 bug）是各自独立的事项 |
 | 33 | 批注可粘贴/选取/移除自有图片，主/辅聊天均发送真实二进制 | `Annotation.images` + `annotationImageAttachments` 出站去重；路径→`ImageContent` 的唯一规范边界为 `rpc::image_blocks_from_paths`（magic 嗅探 + `build_images`，仅 png/jpeg/gif/webp），缺失/不可读/不支持即发送失败，不静默跳过。辅助对话：`side_chat_ask(image_paths)` 在命令内转换；主对话：`image_contents_from_paths` / `ipc.imageContentsFromPaths`，主对话与辅助对话均已接入该规范转换，发送真实二进制。待导入图片生命周期（工具栏/弹层/芯片）：代次 + 待处理计数、保存延后至导入完成、Esc 使进行中的导入失效、仅接受原生支持的格式。删除批注只移除该批注与图片的关联，**不删除磁盘/缓存中的物理文件，也不影响普通或共享附件** | `src/stores/composer.ts`、`AnnotationImages.tsx`、`AnnotationNotePopover.tsx`；`src-tauri/src/rpc/mod.rs`、`rpc/commands.rs`、`rpc/sidechat.rs`；`AnnotationImages.test.tsx`、`annotationImages.test.ts`；Rust 测试位于 `sidechat.rs` | 已落地 | 通过：整套 3229/3229，含专属用例（见文件/测试列） | 原生部分通过（Case 3）：真实 UI 粘贴一张 `sample.png` 并保存，重开后缩略图保留；**未**原生发送，故「发送真实二进制」仅由自动化/Rust 测试证明，未做原生发送验证（0 token） |
 
+## 单图重复缩略图修复（2026-11-02）
+
+- 已定位为显示层附件别名合并错误，不是再次发送：针对会话 `01a19a0a-65df-72ff-a515-d90b76c3e82a` 的 JSONL 第 8、35、502 行，仅提取图片字段观察到每条均为 **一个** `type:image` / `blob:sha256:` 内容块和 **一个** `[Image #1, WxH: 本地路径]` 标记。没有读取或记录无关消息正文。
+- 持久化解析保留 blob 文件路径，文字标记保留原始剪贴板路径。`collectUserImages` 原来只按路径去重，因两种路径不同而把同一图片追加为第二个附件。现在按编号标记的附件身份合并，同时保留路径去重、独立标记附件和原有附件顺序；无法解析 blob 时仍可使用标记中的本地路径。
+- `catalog::parse_images` 同步按标记编号绑定结构化图片，不再用“首个缺少宽度的附件”猜测目标，避免多图无尺寸或文字标记重排时串图。
+- 回归覆盖：`userMessageBubble.test.tsx` 的持久化别名重载、双图实时回显顺序、未解析 blob 回退，以及原有独立标记图片；Rust `image_markers_bind_native_slots_not_first_missing_width`、`image_marker_without_dimensions_keeps_each_slot_identity`、独立 marker-only 图片。
+- 本次自动化实证：图片气泡与发送测试共 16 个通过；Rust `image_` 定向测试共 10 个通过；前端类型检查、desktop Vite 生产构建通过。构建仍报告 CSS `::highlight`、混合动态/静态导入与大 chunk 非致命警告，未扩展修改。独立转换原始与修复后的真实 collector，单图结果由 2 变 1，真实双图保持 2 且顺序不变；没有回滚或改写共享工作树。
+- 本次原生实证：独立 HOME/data/1427 验收窗口中，单图 1 张、同尺寸真实双图 2 张、切回单图仍 1 张；证据 `/tmp/native-image-single-loaded.png`、`/tmp/native-image-double-loaded.png`、`/tmp/native-image-single-reopened.png`。未发送模型请求。全页重载与灯箱未完成原生验收，不将快捷键投递或历史截图算作通过。
+
 ## 文档状态
 
 - 各行文件/测试映射已对照各 Slice 最终回复、当前源码与实际测试标题核对。

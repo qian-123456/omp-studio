@@ -551,6 +551,7 @@ pub fn parse_images(content: Option<&Value>) -> Vec<crate::contracts::ImageAttac
         }
     }
 
+    let native_count = images.len();
     let check_text =
         |text: &str, images: &mut Vec<crate::contracts::ImageAttachment>, idx: &mut usize| {
             for caps in marker_detail_re().captures_iter(text) {
@@ -563,9 +564,24 @@ pub fn parse_images(content: Option<&Value>) -> Vec<crate::contracts::ImageAttac
                     .map(|m| m.as_str().trim().to_string());
                 let resolved_path = raw_path.filter(|p| Path::new(p).exists());
 
-                if let Some(existing) = images.iter_mut().find(|img| {
-                    img.width.is_none() && (w.is_some() || h.is_some() || resolved_path.is_some())
-                }) {
+                // Numbered markers refer to native image slots, even when the
+                // marker's clipboard path differs from the persisted blob path.
+                // Width is metadata, never an indication that a slot is unused.
+                let number = caps
+                    .name("num1")
+                    .or_else(|| caps.name("num2"))
+                    .and_then(|m| m.as_str().parse::<usize>().ok());
+                let existing_index = number
+                    .and_then(|n| n.checked_sub(1))
+                    .filter(|&n| n < native_count)
+                    .or_else(|| {
+                        resolved_path.as_ref().and_then(|path| {
+                            images
+                                .iter()
+                                .position(|img| img.path.as_ref() == Some(path))
+                        })
+                    });
+                if let Some(existing) = existing_index.map(|n| &mut images[n]) {
                     if existing.width.is_none() {
                         existing.width = w;
                     }
@@ -791,6 +807,68 @@ mod tests {
         let t = parse_tail(body.as_bytes());
         assert_eq!(t.title_change.as_deref(), Some("New name"));
         assert_eq!(t.model.as_deref(), Some("p/m2"));
+    }
+
+    #[test]
+    fn independent_marker_only_images_do_not_claim_native_slots() {
+        let dir = std::env::temp_dir().join(format!("ompws-images-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let one = dir.join("one.png");
+        let two = dir.join("two.png");
+        std::fs::write(&one, []).unwrap();
+        std::fs::write(&two, []).unwrap();
+        let content = serde_json::json!(format!(
+            "[Image #2: {}] [Image #1: {}]",
+            two.display(),
+            one.display()
+        ));
+        let images = parse_images(Some(&content));
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].path.as_deref(), two.to_str());
+        assert_eq!(images[1].path.as_deref(), one.to_str());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn image_markers_bind_native_slots_not_first_missing_width() {
+        let content = serde_json::json!([
+            {"type": "image", "path": "/blob/one.webp"},
+            {"type": "image", "path": "/blob/two.webp"},
+            {"type": "text", "text": "[Image #2, 200x100: /clip/two.png] [Image #1, 80x40: /clip/one.png]"}
+        ]);
+        let images = parse_images(Some(&content));
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].path.as_deref(), Some("/blob/one.webp"));
+        assert_eq!(images[0].width, Some(80));
+        assert_eq!(
+            images[0].marker.as_deref(),
+            Some("[Image #1, 80x40: /clip/one.png]")
+        );
+        assert_eq!(images[1].path.as_deref(), Some("/blob/two.webp"));
+        assert_eq!(images[1].width, Some(200));
+        assert_eq!(
+            images[1].marker.as_deref(),
+            Some("[Image #2, 200x100: /clip/two.png]")
+        );
+    }
+
+    #[test]
+    fn image_marker_without_dimensions_keeps_each_slot_identity() {
+        let content = serde_json::json!([
+            {"type": "image", "path": "/blob/one.webp"},
+            {"type": "image", "path": "/blob/two.webp"},
+            {"type": "text", "text": "[Image #1: /missing/one.png] [Image #2: /missing/two.png]"}
+        ]);
+        let images = parse_images(Some(&content));
+        assert_eq!(images.len(), 2);
+        assert_eq!(
+            images[0].marker.as_deref(),
+            Some("[Image #1: /missing/one.png]")
+        );
+        assert_eq!(
+            images[1].marker.as_deref(),
+            Some("[Image #2: /missing/two.png]")
+        );
     }
 
     #[test]

@@ -13,6 +13,7 @@ vi.mock("../privacy/SecretChip", async (orig) => ({
 vi.mock("../../lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 
 import { UserMessageBubble } from "./ExecutionDisclosure";
+import { makeUserEcho, useLive } from "../../stores/live";
 
 afterEach(cleanup);
 
@@ -37,6 +38,41 @@ describe("UserMessageBubble (queued / delivered mid-turn)", () => {
 			/>,
 		);
 		expect(container.querySelectorAll("img")).toHaveLength(2);
+	});
+
+	it("renders one persisted blob and its clipboard marker as one thumbnail after reload", () => {
+		const text = "[Image #1, 1000x419: /clip/original.png] inspect this";
+		const item = makeUserEcho(text, [{
+			id: "img-1", path: "/blobs/hash.png", marker: "[Image #1, 1000x419: /clip/original.png]",
+		}]);
+		useLive.getState().setItems("image-alias-reload", [item], 0);
+		const loaded = useLive.getState().sessions["image-alias-reload"].items[0];
+		const { container } = render(<UserMessageBubble text={loaded.text!} images={loaded.images} />);
+		expect(container.querySelectorAll("img")).toHaveLength(1);
+		expect(container.querySelector("img")?.getAttribute("src")).toContain("/blobs/hash.png");
+		expect(container.textContent).toContain("🖼️#1");
+	});
+
+	it("keeps multiple live attachments in slot order without adding path aliases", () => {
+		const text = "[Image #2: /clip/two.png] then [Image #1: /clip/one.png] compare";
+		const item = makeUserEcho(text, [
+			{ id: "img-1", path: "/blobs/one.webp", marker: "[图片 #1]" },
+			{ id: "img-2", path: "/blobs/two.webp", marker: "[图片 #2]" },
+		]);
+		const { container, rerender } = render(<UserMessageBubble text={item.text!} images={item.images} />);
+		expect([...container.querySelectorAll("img")].map((img) => img.getAttribute("src"))).toEqual([
+			"/blobs/one.webp", "/blobs/two.webp",
+		]);
+		rerender(<UserMessageBubble text={text} images={item.images} />);
+		expect(container.querySelectorAll("img")).toHaveLength(2);
+	});
+
+	it("uses an inline path when the matching structured blob cannot resolve", () => {
+		const { container } = render(<UserMessageBubble text="[Image #1: /clip/one.png]" images={[
+			{ id: "img-1", path: null, marker: "[图片 #1]" },
+		]} />);
+		expect(container.querySelectorAll("img")).toHaveLength(1);
+		expect(container.querySelector("img")?.getAttribute("src")).toBe("/clip/one.png");
 	});
 
 	it("falls back to emptyText for marker-only messages", () => {

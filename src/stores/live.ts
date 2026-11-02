@@ -392,20 +392,43 @@ let nextEchoId = 1;
 
 const ECHO_IMAGE_RE =
 	/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*([^\]]+))?\]|\[图片:\s*([^\]]+)\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
-/** Attachments of a user message: the given ones plus any image whose path only
- * appears as an inline marker in the text (deduped by path). */
+/** Merge structured attachments and inline references. A numbered marker names
+ * an attachment slot, not a second file: persisted images may use blob paths
+ * while the marker retains the original clipboard path. */
 export function collectUserImages(
 	text: string,
 	images?: ImageAttachment[],
 ): ImageAttachment[] {
 	const all: ImageAttachment[] = [...(images ?? [])];
 	const known = new Set(all.map((img) => img.path).filter(Boolean));
+	const markerNumber = (marker?: string | null) =>
+		marker?.match(/^\[(?:Image|图片)\s*#(\d+)/)?.[1];
+	const slots = new Map(
+		all.flatMap((img) => {
+			const num = markerNumber(img.marker);
+			return num ? [[num, img] as const] : [];
+		}),
+	);
 	let i = all.length;
 	for (const m of text.matchAll(ECHO_IMAGE_RE)) {
 		const path = (m[1] ?? m[2] ?? m[3])?.trim() || null;
+		const num = markerNumber(m[0]);
+		const existing = num ? slots.get(num) : undefined;
+		if (existing) {
+			// A resolvable inline path also repairs an unresolved structured blob.
+			if (!existing.path && path) {
+				const replacement = { ...existing, path };
+				all[all.indexOf(existing)] = replacement;
+				slots.set(num!, replacement);
+				known.add(path);
+			}
+			continue;
+		}
 		if (path && known.has(path)) continue;
 		if (path) known.add(path);
-		all.push({ id: `pending-img-${i++}`, path, marker: m[0] });
+		const image = { id: `pending-img-${i++}`, path, marker: m[0] };
+		all.push(image);
+		if (num) slots.set(num, image);
 	}
 	return all;
 }
