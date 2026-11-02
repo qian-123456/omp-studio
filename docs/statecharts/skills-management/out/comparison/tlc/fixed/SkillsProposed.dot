@@ -1,0 +1,118 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+2423181463832049690 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 0\n/\\ success = FALSE\n/\\ catalog = {1}",style = filled]
+-4649852232327045472 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 0\n/\\ success = FALSE\n/\\ catalog = {1, 2}",style = filled]
+2423181463832049690 -> 7268202192148361278 [label="OpenDelete",color="black",fontcolor="black"];
+7268202192148361278 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+-4649852232327045472 -> 3749871335935782674 [label="OpenDelete",color="black",fontcolor="black"];
+3749871335935782674 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+7268202192148361278 -> 2089366680002800808 [label="CancelDelete",color="black",fontcolor="black"];
+2089366680002800808 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+7268202192148361278 -> -765665145689490167 [label="ConfirmDelete",color="black",fontcolor="black"];
+-765665145689490167 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+3749871335935782674 -> -1807294934492735547 [label="CancelDelete",color="black",fontcolor="black"];
+-1807294934492735547 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+3749871335935782674 -> 8262758593314809771 [label="ConfirmDelete",color="black",fontcolor="black"];
+8262758593314809771 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+2089366680002800808 -> 7268202192148361278 [label="OpenDelete",color="black",fontcolor="black"];
+-765665145689490167 -> 5331572273351264093 [label="TrashSucceeded",color="black",fontcolor="black"];
+5331572273351264093 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1}"];
+-765665145689490167 -> -2994459840365906827 [label="TrashFailed",color="black",fontcolor="black"];
+-2994459840365906827 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+-1807294934492735547 -> 3749871335935782674 [label="OpenDelete",color="black",fontcolor="black"];
+8262758593314809771 -> 3165999911850262943 [label="TrashSucceeded",color="black",fontcolor="black"];
+3165999911850262943 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1, 2}"];
+8262758593314809771 -> -873557566770346064 [label="TrashFailed",color="black",fontcolor="black"];
+-873557566770346064 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+5331572273351264093 -> 6875152992278480305 [label="LoadCatalog",color="black",fontcolor="black"];
+6875152992278480305 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = TRUE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"loading\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1}"];
+-2994459840365906827 -> -2984450195439199974 [label="FinishDelete",color="black",fontcolor="black"];
+-2984450195439199974 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+3165999911850262943 -> 2329699604961552546 [label="LoadCatalog",color="black",fontcolor="black"];
+2329699604961552546 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = TRUE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"loading\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1, 2}"];
+-873557566770346064 -> -8585044287983960084 [label="FinishDelete",color="black",fontcolor="black"];
+-8585044287983960084 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+6875152992278480305 -> 4532479044069179684 [label="LoadSucceeded",color="black",fontcolor="black"];
+4532479044069179684 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+6875152992278480305 -> -7964709246635634187 [label="LoadFailed",color="black",fontcolor="black"];
+-7964709246635634187 [label="/\\ trashingDirs = {1}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+-2984450195439199974 -> -2386501340465608000 [label="OpenDelete",color="black",fontcolor="black"];
+-2386501340465608000 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+2329699604961552546 -> -4017948726500376728 [label="LoadSucceeded",color="black",fontcolor="black"];
+-4017948726500376728 [label="/\\ trashingDirs = {1}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {2}"];
+2329699604961552546 -> 9078194702044445600 [label="LoadFailed",color="black",fontcolor="black"];
+9078194702044445600 [label="/\\ trashingDirs = {1}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+-8585044287983960084 -> -8104910376936192375 [label="OpenDelete",color="black",fontcolor="black"];
+-8104910376936192375 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+4532479044069179684 -> 4251503399765461424 [label="FinishDelete",color="black",fontcolor="black"];
+4251503399765461424 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+-7964709246635634187 -> 5420766426273991015 [label="FinishDelete",color="black",fontcolor="black"];
+5420766426273991015 [label="/\\ trashingDirs = {}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+-2386501340465608000 -> -2984450195439199974 [label="CancelDelete",color="black",fontcolor="black"];
+-2386501340465608000 -> 419304447602509442 [label="ConfirmDelete",color="black",fontcolor="black"];
+419304447602509442 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1}"];
+-4017948726500376728 -> -4560598814359182322 [label="FinishDelete",color="black",fontcolor="black"];
+-4560598814359182322 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {2}"];
+9078194702044445600 -> -4905014918346647460 [label="FinishDelete",color="black",fontcolor="black"];
+-4905014918346647460 [label="/\\ trashingDirs = {}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {}"];
+-8104910376936192375 -> -8585044287983960084 [label="CancelDelete",color="black",fontcolor="black"];
+-8104910376936192375 -> 6510152846276684163 [label="ConfirmDelete",color="black",fontcolor="black"];
+6510152846276684163 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {1, 2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 1\n/\\ success = FALSE\n/\\ catalog = {1, 2}"];
+419304447602509442 -> -6980431507824996857 [label="TrashSucceeded",color="black",fontcolor="black"];
+-6980431507824996857 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1}"];
+419304447602509442 -> -2994459840365906827 [label="TrashFailed",color="black",fontcolor="black"];
+-4560598814359182322 -> -5583538584250792839 [label="OpenDelete",color="black",fontcolor="black"];
+-5583538584250792839 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {2}"];
+6510152846276684163 -> -296739319216606876 [label="TrashSucceeded",color="black",fontcolor="black"];
+-296739319216606876 [label="/\\ trashingDirs = {1}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 1\n/\\ success = TRUE\n/\\ catalog = {1, 2}"];
+6510152846276684163 -> -873557566770346064 [label="TrashFailed",color="black",fontcolor="black"];
+-6980431507824996857 -> 6875152992278480305 [label="LoadCatalog",color="black",fontcolor="black"];
+-5583538584250792839 -> -8694444909195879976 [label="CancelDelete",color="black",fontcolor="black"];
+-8694444909195879976 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {2}"];
+-5583538584250792839 -> -5487757866757924753 [label="ConfirmDelete",color="black",fontcolor="black"];
+-5487757866757924753 [label="/\\ trashingDirs = {2}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 2\n/\\ success = FALSE\n/\\ catalog = {2}"];
+-296739319216606876 -> 2329699604961552546 [label="LoadCatalog",color="black",fontcolor="black"];
+-8694444909195879976 -> -5583538584250792839 [label="OpenDelete",color="black",fontcolor="black"];
+-5487757866757924753 -> -7295264026228660751 [label="TrashSucceeded",color="black",fontcolor="black"];
+-7295264026228660751 [label="/\\ trashingDirs = {2}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {2}"];
+-5487757866757924753 -> -499304696393457890 [label="TrashFailed",color="black",fontcolor="black"];
+-499304696393457890 [label="/\\ trashingDirs = {2}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 2\n/\\ success = FALSE\n/\\ catalog = {2}"];
+-7295264026228660751 -> -1550551384119830985 [label="LoadCatalog",color="black",fontcolor="black"];
+-1550551384119830985 [label="/\\ trashingDirs = {2}\n/\\ error = \"\"\n/\\ loading = TRUE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"loading\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {2}"];
+-499304696393457890 -> -9052906086080403088 [label="FinishDelete",color="black",fontcolor="black"];
+-9052906086080403088 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 2\n/\\ success = FALSE\n/\\ catalog = {2}"];
+-1550551384119830985 -> -7156728753855427901 [label="LoadSucceeded",color="black",fontcolor="black"];
+-7156728753855427901 [label="/\\ trashingDirs = {2}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {}"];
+-1550551384119830985 -> 6952955124353473584 [label="LoadFailed",color="black",fontcolor="black"];
+6952955124353473584 [label="/\\ trashingDirs = {2}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"finish\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {}"];
+-9052906086080403088 -> -4044615328943948899 [label="OpenDelete",color="black",fontcolor="black"];
+-4044615328943948899 [label="/\\ trashingDirs = {}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"confirm\"\n/\\ dir = 2\n/\\ success = FALSE\n/\\ catalog = {2}"];
+-7156728753855427901 -> -3738042511161665315 [label="FinishDelete",color="black",fontcolor="black"];
+-3738042511161665315 [label="/\\ trashingDirs = {}\n/\\ error = \"\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {}"];
+6952955124353473584 -> -4889220701159401462 [label="FinishDelete",color="black",fontcolor="black"];
+-4889220701159401462 [label="/\\ trashingDirs = {}\n/\\ error = \"refresh\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = FALSE\n/\\ pc = \"idle\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {}"];
+-4044615328943948899 -> -9052906086080403088 [label="CancelDelete",color="black",fontcolor="black"];
+-4044615328943948899 -> 5320977041077545364 [label="ConfirmDelete",color="black",fontcolor="black"];
+5320977041077545364 [label="/\\ trashingDirs = {2}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {2}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"trash\"\n/\\ dir = 2\n/\\ success = FALSE\n/\\ catalog = {2}"];
+5320977041077545364 -> -2153831568917948954 [label="TrashSucceeded",color="black",fontcolor="black"];
+-2153831568917948954 [label="/\\ trashingDirs = {2}\n/\\ error = \"trash\"\n/\\ loading = FALSE\n/\\ path = {}\n/\\ deleteAnchor = TRUE\n/\\ pc = \"reload\"\n/\\ dir = 2\n/\\ success = TRUE\n/\\ catalog = {2}"];
+5320977041077545364 -> -499304696393457890 [label="TrashFailed",color="black",fontcolor="black"];
+-2153831568917948954 -> -1550551384119830985 [label="LoadCatalog",color="black",fontcolor="black"];
+{rank = same; -4649852232327045472;2423181463832049690;}
+{rank = same; 7268202192148361278;3749871335935782674;}
+{rank = same; 2089366680002800808;-1807294934492735547;-765665145689490167;8262758593314809771;}
+{rank = same; 5331572273351264093;3165999911850262943;-2994459840365906827;-873557566770346064;}
+{rank = same; -2984450195439199974;6875152992278480305;-8585044287983960084;2329699604961552546;}
+{rank = same; -2386501340465608000;-7964709246635634187;9078194702044445600;-4017948726500376728;4532479044069179684;-8104910376936192375;}
+{rank = same; 419304447602509442;-4560598814359182322;6510152846276684163;}
+{rank = same; -6980431507824996857;-5583538584250792839;-296739319216606876;}
+{rank = same; -8694444909195879976;-5487757866757924753;}
+{rank = same; -7295264026228660751;-499304696393457890;}
+{rank = same; -9052906086080403088;-1550551384119830985;}
+{rank = same; 6952955124353473584;-4044615328943948899;-7156728753855427901;}
+{rank = same; 5320977041077545364;}
+{rank = same; -2153831568917948954;}
+}
+}

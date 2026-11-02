@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/usr/local/bin/node",
+    "/Users/qianhairui/Documents/omp-workspace/node_modules/vitest/vitest.mjs",
+    "run",
+    "--config",
+    "/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/omp-skills-audit-ry43jq/replay/vitest.config.mjs",
+    "--reporter=verbose",
+    "--reporter=json",
+    "--outputFile.json=/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/omp-skills-audit-ry43jq/replay/vitest-results.json"
+  ],
+  "cwd": "/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/omp-skills-audit-ry43jq/replay",
+  "exitCode": 0,
+  "boundary": "Actual frontend store, mocked IPC/config/toast; no real file deletion or native UI replay"
+}

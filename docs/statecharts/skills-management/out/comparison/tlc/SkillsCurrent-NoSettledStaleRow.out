@@ -1,0 +1,324 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 44 and seed 5232280358973837581 with 1 worker on 8 cores with 3641MB heap and 64MB offheap memory [pid: 15457] (Mac OS X 27.0.1 aarch64, Oracle Corporation 17.0.18 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /private/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/statechart-inputs-xZh7R6/private/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/omp-skills-audit-ry43jq/SkillsCurrent.tla
+Parsing file /private/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/tlc-UxpK7d/tmp/Naturals.tla
+Parsing file /private/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/tlc-UxpK7d/tmp/FiniteSets.tla
+Parsing file /private/var/folders/ng/yl4778md18g1rdyxndp91dmc0000gn/T/tlc-UxpK7d/tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module SkillsCurrent
+Starting... (2026-11-02 11:57:50)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-02 11:57:50.
+Error: Invariant NoSettledStaleRow is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 0
+/\ success = FALSE
+/\ catalog = {1}
+
+State 2: <OpenDelete line 13, col 3 to line 16, col 66 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1}
+/\ deleteAnchor = TRUE
+/\ pc = "confirm"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1}
+
+State 3: <ConfirmDelete line 22, col 3 to line 25, col 62 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1}
+/\ deleteAnchor = TRUE
+/\ pc = "trash"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1}
+
+State 4: <TrashSucceeded line 27, col 3 to line 30, col 70 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "reload"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1}
+
+State 5: <LoadCatalog line 36, col 3 to line 38, col 69 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = TRUE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "loading"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1}
+
+State 6: <LoadFailed line 44, col 3 to line 46, col 69 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "finish"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1}
+
+State 7: <FinishDelete line 48, col 3 to line 50, col 57 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1}
+
+Error: Invariant NoSettledStaleRow is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 0
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 2: <OpenDelete line 13, col 3 to line 16, col 66 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = TRUE
+/\ pc = "confirm"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 3: <ConfirmDelete line 22, col 3 to line 25, col 62 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = TRUE
+/\ pc = "trash"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 4: <TrashSucceeded line 27, col 3 to line 30, col 70 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "reload"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+State 5: <LoadCatalog line 36, col 3 to line 38, col 69 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = TRUE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "loading"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+State 6: <LoadFailed line 44, col 3 to line 46, col 69 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "finish"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+State 7: <FinishDelete line 48, col 3 to line 50, col 57 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+Error: Invariant NoSettledStaleRow is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 0
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 2: <OpenDelete line 13, col 3 to line 16, col 66 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = TRUE
+/\ pc = "confirm"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 3: <ConfirmDelete line 22, col 3 to line 25, col 62 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {1, 2}
+/\ deleteAnchor = TRUE
+/\ pc = "trash"
+/\ dir = 1
+/\ success = FALSE
+/\ catalog = {1, 2}
+
+State 4: <TrashSucceeded line 27, col 3 to line 30, col 70 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "reload"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+State 5: <LoadCatalog line 36, col 3 to line 38, col 69 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = TRUE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "loading"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {1, 2}
+
+State 6: <LoadSucceeded line 40, col 3 to line 42, col 67 of module SkillsCurrent>
+/\ trashingDirs = {1}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "finish"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {2}
+
+State 7: <FinishDelete line 48, col 3 to line 50, col 57 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 1
+/\ success = TRUE
+/\ catalog = {2}
+
+State 8: <OpenDelete line 13, col 3 to line 16, col 66 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "confirm"
+/\ dir = 2
+/\ success = TRUE
+/\ catalog = {2}
+
+State 9: <ConfirmDelete line 22, col 3 to line 25, col 62 of module SkillsCurrent>
+/\ trashingDirs = {2}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {2}
+/\ deleteAnchor = TRUE
+/\ pc = "trash"
+/\ dir = 2
+/\ success = FALSE
+/\ catalog = {2}
+
+State 10: <TrashSucceeded line 27, col 3 to line 30, col 70 of module SkillsCurrent>
+/\ trashingDirs = {2}
+/\ error = ""
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "reload"
+/\ dir = 2
+/\ success = TRUE
+/\ catalog = {2}
+
+State 11: <LoadCatalog line 36, col 3 to line 38, col 69 of module SkillsCurrent>
+/\ trashingDirs = {2}
+/\ error = ""
+/\ loading = TRUE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "loading"
+/\ dir = 2
+/\ success = TRUE
+/\ catalog = {2}
+
+State 12: <LoadFailed line 44, col 3 to line 46, col 69 of module SkillsCurrent>
+/\ trashingDirs = {2}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = TRUE
+/\ pc = "finish"
+/\ dir = 2
+/\ success = TRUE
+/\ catalog = {2}
+
+State 13: <FinishDelete line 48, col 3 to line 50, col 57 of module SkillsCurrent>
+/\ trashingDirs = {}
+/\ error = "refresh"
+/\ loading = FALSE
+/\ path = {}
+/\ deleteAnchor = FALSE
+/\ pc = "idle"
+/\ dir = 2
+/\ success = TRUE
+/\ catalog = {2}
+
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.3E-17
+56 states generated, 41 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-11-02 11:57:50)

@@ -1,0 +1,245 @@
+{
+  "boundary": "Actual frontend store; mocked IPC/config/toasts; no filesystem deletion",
+  "observations": [
+    {
+      "case": 1,
+      "before": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/user/skills/replay-skill",
+            "path": "/mock-only/user/skills/replay-skill/SKILL.md",
+            "copies": 2,
+            "source": "user",
+            "provider": "native"
+          }
+        ],
+        "error": null,
+        "loading": false,
+        "drawer": {
+          "kind": "skill",
+          "path": "/mock-only/user/skills/replay-skill/SKILL.md"
+        },
+        "trashingDirs": [],
+        "sourceToggles": {},
+        "successToasts": [],
+        "errorToasts": [],
+        "trashCalls": [],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "duringReload": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/user/skills/replay-skill",
+            "path": "/mock-only/user/skills/replay-skill/SKILL.md",
+            "copies": 2,
+            "source": "user",
+            "provider": "native"
+          }
+        ],
+        "error": null,
+        "loading": true,
+        "drawer": null,
+        "trashingDirs": [
+          "/mock-only/user/skills/replay-skill"
+        ],
+        "sourceToggles": {},
+        "successToasts": [
+          "已将「replay-skill」移到废纸篓"
+        ],
+        "errorToasts": [],
+        "trashCalls": [
+          [
+            "/mock-only/user/skills/replay-skill"
+          ]
+        ],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ],
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "after": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/user/skills/replay-skill",
+            "path": "/mock-only/user/skills/replay-skill/SKILL.md",
+            "copies": 2,
+            "source": "user",
+            "provider": "native"
+          }
+        ],
+        "error": "replay: catalog reload failed after trash",
+        "loading": false,
+        "drawer": null,
+        "trashingDirs": [],
+        "sourceToggles": {},
+        "successToasts": [
+          "已将「replay-skill」移到废纸篓"
+        ],
+        "errorToasts": [],
+        "trashCalls": [
+          [
+            "/mock-only/user/skills/replay-skill"
+          ]
+        ],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ],
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "outcome": "resolved",
+      "events": [
+        "trash:resolved",
+        "toast:success",
+        "reload:requested",
+        "reload:rejected",
+        "entrypoint:resolved"
+      ]
+    },
+    {
+      "case": 2,
+      "before": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/user/skills/replay-skill",
+            "path": "/mock-only/user/skills/replay-skill/SKILL.md",
+            "copies": 2,
+            "source": "user",
+            "provider": "native"
+          }
+        ],
+        "error": null,
+        "loading": false,
+        "drawer": {
+          "kind": "skill",
+          "path": "/mock-only/user/skills/replay-skill/SKILL.md"
+        },
+        "trashingDirs": [],
+        "sourceToggles": {},
+        "successToasts": [],
+        "errorToasts": [],
+        "trashCalls": [],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "after": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/project/.claude/skills/replay-skill",
+            "path": "/mock-only/project/.claude/skills/replay-skill/SKILL.md",
+            "copies": 1,
+            "source": "project",
+            "provider": "claude"
+          }
+        ],
+        "error": null,
+        "loading": false,
+        "drawer": null,
+        "trashingDirs": [],
+        "sourceToggles": {},
+        "successToasts": [
+          "已将「replay-skill」移到废纸篓"
+        ],
+        "errorToasts": [],
+        "trashCalls": [
+          [
+            "/mock-only/user/skills/replay-skill"
+          ]
+        ],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ],
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "outcome": "resolved"
+    },
+    {
+      "case": 3,
+      "enablement": {
+        "enabled": false,
+        "reason": {
+          "kind": "source",
+          "key": "skills.enablePiUser"
+        }
+      },
+      "before": {
+        "rows": [
+          {
+            "name": "replay-skill",
+            "dir": "/mock-only/user/skills/replay-skill",
+            "path": "/mock-only/user/skills/replay-skill/SKILL.md",
+            "copies": 2,
+            "source": "user",
+            "provider": "native"
+          }
+        ],
+        "error": null,
+        "loading": false,
+        "drawer": null,
+        "trashingDirs": [],
+        "sourceToggles": {
+          "skills.enablePiUser": false
+        },
+        "successToasts": [],
+        "errorToasts": [],
+        "trashCalls": [],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "after": {
+        "rows": [],
+        "error": null,
+        "loading": false,
+        "drawer": null,
+        "trashingDirs": [],
+        "sourceToggles": {
+          "skills.enablePiUser": false
+        },
+        "successToasts": [
+          "已将「replay-skill」移到废纸篓"
+        ],
+        "errorToasts": [],
+        "trashCalls": [
+          [
+            "/mock-only/user/skills/replay-skill"
+          ]
+        ],
+        "catalogCalls": [
+          [
+            "/mock-only/project"
+          ],
+          [
+            "/mock-only/project"
+          ]
+        ]
+      },
+      "outcome": "resolved"
+    }
+  ]
+}

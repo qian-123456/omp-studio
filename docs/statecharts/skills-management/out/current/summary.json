@@ -1,0 +1,39 @@
+{
+  "view": "customer",
+  "modelStates": 62,
+  "modelTransitions": 81,
+  "chartStates": 22,
+  "chartTransitions": 32,
+  "chartStatus": {
+    "works": 16,
+    "wrong": 2,
+    "fixed": 0,
+    "mixed": 4,
+    "after": 0
+  },
+  "mixedStatus": [
+    "列表显示 1 个来源，移除失败，可重试",
+    "列表显示 1 个来源，等待确认移除",
+    "列表显示 2 个来源，移除失败，可重试",
+    "列表显示 2 个来源，等待确认移除"
+  ],
+  "classes": [
+    {
+      "n": 1,
+      "end": "列表显示 1 个来源，已移走的目录仍在，操作已结束",
+      "invariant": "NoSettledStaleRow",
+      "rule": "删除操作结束后，列表不能继续把已移走的目录当成当前安装位置。 Mutators: src/features/skills/store.ts:317-348,566-584.",
+      "cause": "副本移走后扫描失败，旧目录未从列表失效",
+      "readerSteps": 6,
+      "modelSteps": 7,
+      "counterexamples": 3,
+      "lastSteps": [
+        "结束操作并解除忙碌状态"
+      ],
+      "startsHere": false,
+      "fix": null
+    }
+  ],
+  "codeLike": [],
+  "brokenProperties": []
+}

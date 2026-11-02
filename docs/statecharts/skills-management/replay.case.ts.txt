@@ -1,0 +1,167 @@
+import { writeFileSync } from 'node:fs';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SkillItem, SkillsCatalog } from '__REPO_ROOT__/src/lib/contracts';
+import * as ipc from '__REPO_ROOT__/src/lib/ipc';
+import { toast } from '__REPO_ROOT__/src/lib/toast';
+import { resolveSkillEnablement } from '__REPO_ROOT__/src/lib/skillEnablement';
+import { tNow } from '__REPO_ROOT__/src/stores/language';
+import { selectVisibleSkills, useSkillsStore } from '__REPO_ROOT__/src/features/skills/store';
+
+const { invalidate } = vi.hoisted(() => ({ invalidate: vi.fn() }));
+vi.mock('__REPO_ROOT__/src/features/settings/ompConfigStore', () => ({
+  useOmpConfigStore: { getState: () => ({ invalidate }) },
+}));
+vi.mock('__REPO_ROOT__/src/lib/toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+vi.mock('__REPO_ROOT__/src/lib/ipc', () => ({
+  skillsList: vi.fn(), skillsUsage: vi.fn(), skillsTrash: vi.fn(),
+  ompConfigList: vi.fn(), ompProjectConfigRead: vi.fn(),
+  ompConfigSet: vi.fn(), extensionEnableFile: vi.fn(),
+}));
+
+const CWD = '/mock-only/project';
+const current: SkillItem = {
+  name: 'replay-skill', description: 'Synthetic catalog row, no corresponding files',
+  source: 'user', provider: 'native', root: '~/.omp/agent/skills',
+  dir: '/mock-only/user/skills/replay-skill',
+  path: '/mock-only/user/skills/replay-skill/SKILL.md',
+  copies: 2, issues: [], promptChars: 10,
+};
+const remaining: SkillItem = {
+  ...current, source: 'project', provider: 'claude', root: './.claude/skills',
+  dir: '/mock-only/project/.claude/skills/replay-skill',
+  path: '/mock-only/project/.claude/skills/replay-skill/SKILL.md', copies: 1,
+};
+const catalog = (...skills: SkillItem[]): SkillsCatalog => ({ skills, extensions: [] });
+const initialState = useSkillsStore.getInitialState();
+const observations: unknown[] = [];
+
+function deferred<T>() {
+  return Promise.withResolvers<T>();
+}
+function snapshot() {
+  const s = useSkillsStore.getState();
+  return {
+    rows: selectVisibleSkills(s).map(({ name, dir, path, copies, source, provider }) =>
+      ({ name, dir, path, copies, source, provider })),
+    error: s.error, loading: s.loading, drawer: s.drawer, trashingDirs: [...s.trashingDirs],
+    sourceToggles: { ...s.skillConfig.sourceToggles },
+    successToasts: vi.mocked(toast.success).mock.calls.map(([message]) => message),
+    errorToasts: vi.mocked(toast.error).mock.calls.map(([message]) => message),
+    trashCalls: vi.mocked(ipc.skillsTrash).mock.calls.map((args) => [...args]),
+    catalogCalls: vi.mocked(ipc.skillsList).mock.calls.map((args) => [...args]),
+  };
+}
+beforeEach(() => {
+  vi.resetAllMocks();
+  useSkillsStore.setState(initialState, true);
+  vi.mocked(ipc.ompConfigList).mockResolvedValue({ found: true, error: null, entries: [] });
+  vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue({
+    path: CWD + '/.omp/config.yml', exists: false, content: '',
+  });
+  vi.mocked(ipc.skillsTrash).mockResolvedValue(undefined);
+});
+afterAll(() => {
+  writeFileSync('__OBSERVATIONS__',
+    JSON.stringify({ boundary: 'Actual frontend store; mocked IPC/config/toasts; no filesystem deletion', observations }, null, 2) + '\n');
+});
+
+describe('actual skills store deletion replay (external scratch only)', () => {
+  it('1: trash IPC resolves, reload rejects, success and stale row coexist and entrypoint resolves', async () => {
+    const reload = deferred<SkillsCatalog>();
+    const reloadStarted = deferred<void>();
+    const events: string[] = [];
+    vi.mocked(ipc.skillsList).mockResolvedValueOnce(catalog(current)).mockImplementationOnce(() => {
+      events.push('reload:requested'); reloadStarted.resolve(); return reload.promise;
+    });
+    await useSkillsStore.getState().loadCatalog(CWD);
+    useSkillsStore.getState().openDrawer({ kind: 'skill', path: current.path });
+    const before = snapshot();
+    vi.mocked(ipc.skillsTrash).mockImplementationOnce(async () => {
+      events.push('trash:resolved');
+    });
+    vi.mocked(toast.success).mockImplementation(() => { events.push('toast:success'); });
+    let outcome = 'pending';
+    const deletion = useSkillsStore.getState().trashSkill(current, CWD).then((value) => {
+      outcome = 'resolved'; events.push('entrypoint:resolved'); return value;
+    });
+    await reloadStarted.promise;
+    const duringReload = snapshot();
+    expect(events).toEqual(['trash:resolved', 'toast:success', 'reload:requested']);
+    expect(outcome).toBe('pending');
+    expect(duringReload.successToasts).toEqual([tNow('skills.trashSkillSuccess', { name: current.name })]);
+    expect(duringReload.drawer).toBeNull();
+    expect(duringReload.loading).toBe(true);
+    expect(duringReload.trashingDirs).toEqual([current.dir]);
+    events.push('reload:rejected');
+    reload.reject(new Error('replay: catalog reload failed after trash'));
+    await expect(deletion).resolves.toBeUndefined();
+    const after = snapshot();
+    expect(outcome).toBe('resolved');
+    expect(events).toEqual(['trash:resolved', 'toast:success', 'reload:requested', 'reload:rejected', 'entrypoint:resolved']);
+    expect(after.rows).toEqual(before.rows);
+    expect(after.rows[0].dir).toBe(current.dir);
+    expect(after.error).toBe('replay: catalog reload failed after trash');
+    expect(after.loading).toBe(false);
+    expect(after.drawer).toBeNull();
+    expect(after.trashingDirs).toEqual([]);
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(ipc.skillsTrash).toHaveBeenCalledExactlyOnceWith(current.dir);
+    expect(ipc.skillsList).toHaveBeenCalledTimes(2);
+    observations.push({ case: 1, before, duringReload, after, outcome, events });
+  });
+
+  it('2: reloaded same-name copy remains visible with replacement dir and reduced copies', async () => {
+    vi.mocked(ipc.skillsList).mockResolvedValueOnce(catalog(current)).mockResolvedValueOnce(catalog(remaining));
+    await useSkillsStore.getState().loadCatalog(CWD);
+    useSkillsStore.getState().openDrawer({ kind: 'skill', path: current.path });
+    const before = snapshot();
+    await expect(useSkillsStore.getState().trashSkill(current, CWD)).resolves.toBeUndefined();
+    const after = snapshot();
+    const visible = selectVisibleSkills(useSkillsStore.getState());
+    expect(visible).toEqual([remaining]);
+    expect(visible[0].name).toBe(current.name);
+    expect(visible[0].dir).not.toBe(current.dir);
+    expect(visible[0].copies).toBe(1);
+    expect(after.error).toBeNull();
+    expect(after.loading).toBe(false);
+    expect(after.drawer).toBeNull();
+    expect(after.trashingDirs).toEqual([]);
+    expect(ipc.skillsTrash).toHaveBeenCalledExactlyOnceWith(current.dir);
+    expect(ipc.skillsList).toHaveBeenCalledTimes(2);
+    expect(ipc.skillsList).toHaveBeenNthCalledWith(2, CWD);
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith(tNow('skills.trashSkillSuccess', { name: current.name }));
+    expect(toast.error).not.toHaveBeenCalled();
+    observations.push({ case: 2, before, after, outcome: 'resolved' });
+  });
+
+  it('3: source-disabled skill is still accepted by the public trash entrypoint', async () => {
+    vi.mocked(ipc.ompConfigList).mockResolvedValue({
+      found: true, error: null, entries: [{
+        key: 'skills.enablePiUser', value: false, valueType: 'boolean',
+        description: '', redacted: false, tab: '',
+      }],
+    });
+    vi.mocked(ipc.skillsList).mockResolvedValueOnce(catalog(current)).mockResolvedValueOnce(catalog());
+    await useSkillsStore.getState().loadCatalog(CWD);
+    const enablement = resolveSkillEnablement(current, useSkillsStore.getState().skillConfig);
+    expect(enablement).toEqual({ enabled: false, reason: { kind: 'source', key: 'skills.enablePiUser' } });
+    const before = snapshot();
+    expect(before.rows).toHaveLength(1);
+    await expect(useSkillsStore.getState().trashSkill(current, CWD)).resolves.toBeUndefined();
+    const after = snapshot();
+    expect(ipc.skillsTrash).toHaveBeenCalledExactlyOnceWith(current.dir);
+    expect(ipc.skillsList).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith(tNow('skills.trashSkillSuccess', { name: current.name }));
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(after.rows).toEqual([]);
+    expect(after.error).toBeNull();
+    expect(after.loading).toBe(false);
+    expect(after.trashingDirs).toEqual([]);
+    expect(after.sourceToggles).toEqual({ 'skills.enablePiUser': false });
+    expect(ipc.ompConfigSet).not.toHaveBeenCalled();
+    observations.push({ case: 3, enablement, before, after, outcome: 'resolved' });
+  });
+});

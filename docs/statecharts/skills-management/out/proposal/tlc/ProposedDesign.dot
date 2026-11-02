@@ -1,0 +1,40 @@
+strict digraph DiskGraph {
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+1397628941353773908 [label="/\\ Step2 = \"Idle\"\n/\\ Step = \"Installed\"",style = filled]
+1397628941353773908 -> -3300571389203779181 [label="Step3",color="black",fontcolor="black"];
+-3300571389203779181 [label="/\\ Step2 = \"Idle\"\n/\\ Step = \"Choosing\""];
+-3300571389203779181 -> 1397628941353773908 [label="Step4",color="black",fontcolor="black"];
+-3300571389203779181 -> 1743459585102167827 [label="Step5",color="black",fontcolor="black"];
+1743459585102167827 [label="/\\ Step2 = \"Pending\"\n/\\ Step = \"Removing\""];
+-3300571389203779181 -> 1743459585102167827 [label="Step5",color="black",fontcolor="black"];
+1743459585102167827 -> -8583903283084431881 [label="Step6",color="black",fontcolor="black"];
+-8583903283084431881 [label="/\\ Step2 = \"Pending\"\n/\\ Step = \"Checking\""];
+1743459585102167827 -> 7406150341674741876 [label="Step7",color="black",fontcolor="black"];
+7406150341674741876 [label="/\\ Step2 = \"Failed\"\n/\\ Step = \"Installed\""];
+1743459585102167827 -> 7406150341674741876 [label="Step7",color="black",fontcolor="black"];
+1743459585102167827 -> -514023517605627496 [label="Step8",color="black",fontcolor="black"];
+-514023517605627496 [label="/\\ Step2 = \"Partial\"\n/\\ Step = \"Remaining\""];
+1743459585102167827 -> -514023517605627496 [label="Step8",color="black",fontcolor="black"];
+-8583903283084431881 -> 5930435132058847604 [label="Step9",color="black",fontcolor="black"];
+5930435132058847604 [label="/\\ Step2 = \"Done\"\n/\\ Step = \"Removed\""];
+-8583903283084431881 -> 5930435132058847604 [label="Step9",color="black",fontcolor="black"];
+-8583903283084431881 -> -514023517605627496 [label="Step10",color="black",fontcolor="black"];
+-8583903283084431881 -> -514023517605627496 [label="Step10",color="black",fontcolor="black"];
+-8583903283084431881 -> -4206328545594998920 [label="Step11",color="black",fontcolor="black"];
+-4206328545594998920 [label="/\\ Step2 = \"NeedRefresh\"\n/\\ Step = \"Unknown\""];
+-8583903283084431881 -> -4206328545594998920 [label="Step11",color="black",fontcolor="black"];
+7406150341674741876 -> -3300571389203779181 [label="Step3",color="black",fontcolor="black"];
+7406150341674741876 -> -3300571389203779181 [label="Step3",color="black",fontcolor="black"];
+-514023517605627496 -> -3300571389203779181 [label="Step3",color="black",fontcolor="black"];
+-514023517605627496 -> -3300571389203779181 [label="Step3",color="black",fontcolor="black"];
+-4206328545594998920 -> -8583903283084431881 [label="Step12",color="black",fontcolor="black"];
+-4206328545594998920 -> -8583903283084431881 [label="Step12",color="black",fontcolor="black"];
+{rank = same; 1397628941353773908;}
+{rank = same; -3300571389203779181;}
+{rank = same; 1743459585102167827;}
+{rank = same; 7406150341674741876;-8583903283084431881;-514023517605627496;}
+{rank = same; -4206328545594998920;}
+}
+}

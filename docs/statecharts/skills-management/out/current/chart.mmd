@@ -1,0 +1,106 @@
+---
+title: "当前技能移除流程"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+    state "Breaks a rule" as legendWrong
+    state "Breaks a rule in some cases" as legendMixed
+  }
+  class legendWorks works
+  class legendWrong wrong
+  class legendMixed mixed
+  state "列表不再显示该技能，扫描完成，正在结束操作" as s0
+  state "列表不再显示该技能，移除成功" as s1
+  state "列表显示 1 个来源，刷新失败，正在结束操作" as s2
+  state "列表显示 1 个来源，副本已移走，已提示成功" as s3
+  state "列表显示 1 个来源，尚未移除" as s4
+  state "列表显示 1 个来源，已移走的目录仍在，操作已结束" as s5
+  state "列表显示 1 个来源，扫描完成，正在结束操作" as s6
+  state "列表显示 1 个来源，正在移除当前副本" as s7
+  state "列表显示 1 个来源，正在重新扫描" as s8
+  state "列表显示 1 个来源，移除失败，可重试" as s9
+  state "列表显示 1 个来源，移除失败，正在结束操作" as s10
+  state "列表显示 1 个来源，移除成功" as s11
+  state "列表显示 1 个来源，等待确认移除" as s12
+  state "列表显示 2 个来源，刷新失败，正在结束操作" as s13
+  state "列表显示 2 个来源，副本已移走，已提示成功" as s14
+  state "列表显示 2 个来源，尚未移除" as s15
+  state "列表显示 2 个来源，已移走的目录仍在，操作已结束" as s16
+  state "列表显示 2 个来源，正在移除当前副本" as s17
+  state "列表显示 2 个来源，正在重新扫描" as s18
+  state "列表显示 2 个来源，移除失败，可重试" as s19
+  state "列表显示 2 个来源，移除失败，正在结束操作" as s20
+  state "列表显示 2 个来源，等待确认移除" as s21
+  [*] --> s4
+  [*] --> s15
+  s4 --> s12 : 点击移除
+  s15 --> s21 : 点击移除
+  s12 --> s4 : 取消
+  s12 --> s7 : 确认仅移除当前副本
+  s21 --> s15 : 取消
+  s21 --> s17 : 确认仅移除当前副本
+  s7 --> s3 : 系统移走当前副本并提示成功
+  s7 --> s10 : 系统未能移走副本
+  s17 --> s14 : 系统移走当前副本并提示成功
+  s17 --> s20 : 系统未能移走副本
+  s3 --> s8 : 开始刷新列表
+  s10 --> s9 : 结束操作并解除忙碌状态
+  s14 --> s18 : 开始刷新列表
+  s20 --> s19 : 结束操作并解除忙碌状态
+  s8 --> s0 : 扫描成功，展示剩余副本
+  s8 --> s2 : 扫描失败
+  s9 --> s12 : 点击移除
+  s18 --> s6 : 扫描成功，展示剩余副本
+  s18 --> s13 : 扫描失败
+  s19 --> s21 : 点击移除
+  s0 --> s1 : 结束操作并解除忙碌状态
+  s2 --> s5 : 结束操作并解除忙碌状态
+  s12 --> s9 : 取消
+  s6 --> s11 : 结束操作并解除忙碌状态
+  s13 --> s16 : 结束操作并解除忙碌状态
+  s21 --> s19 : 取消
+  s5 --> s12 : 点击移除
+  s11 --> s12 : 点击移除
+  s16 --> s21 : 点击移除
+  s12 --> s5 : 取消
+  s12 --> s11 : 取消
+  s21 --> s16 : 取消
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 wrong
+  class s6 works
+  class s7 works
+  class s8 works
+  class s9 mixed
+  class s10 works
+  class s11 works
+  class s12 mixed
+  class s13 works
+  class s14 works
+  class s15 works
+  class s16 wrong
+  class s17 works
+  class s18 works
+  class s19 mixed
+  class s20 works
+  class s21 mixed

@@ -1,0 +1,53 @@
+---
+title: "技能移除建议方案（未实现）"
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef mixed fill:#fdebd0,stroke:#d35400,color:#7e5109
+  classDef after fill:#ffffff,stroke:#808b96,color:#566573
+  classDef worse fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  classDef mixedPath fill:#fdebd0,stroke:#1f3a93,stroke-width:4px,color:#7e5109
+  classDef afterPath fill:#ffffff,stroke:#1f3a93,stroke-width:4px,color:#566573
+  classDef worsePath fill:#f4ecf7,stroke:#1f3a93,stroke-width:4px,color:#4a235a
+  state "Legend" as legend {
+    state "Works" as legendWorks
+  }
+  class legendWorks works
+  state "仍有副本，位置明确可见 | 仅部分移除，列出剩余位置" as s0
+  state "已安装，可展开所有位置 | 尚未宣告结果" as s1
+  state "已安装，可展开所有位置 | 移除失败，可重试" as s2
+  state "已无副本 | 全部移除完成" as s3
+  state "文件已移走，核对剩余位置 | 处理中，不提前宣告完成" as s4
+  state "正在移走所选副本 | 处理中，不提前宣告完成" as s5
+  state "结果待核对，旧位置不可操作 |<br/>文件已移除，列表刷新失败" as s6
+  state "选择移除位置，预览影响 | 尚未宣告结果" as s7
+  [*] --> s1
+  s1 --> s7 : 点击移除
+  s7 --> s1 : 取消
+  s7 --> s5 : 确认移除所选位置
+  s5 --> s4 : 所选副本已移到废纸篓
+  s5 --> s2 : 移除失败且文件未变
+  s5 --> s0 : 部分移除失败并列出结果
+  s4 --> s3 : 扫描确认已无副本
+  s4 --> s0 : 扫描确认仍有副本
+  s4 --> s6 : 扫描失败
+  s2 --> s7 : 点击移除
+  s0 --> s7 : 点击移除
+  s6 --> s4 : 点击重新核对
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works
+  class s5 works
+  class s6 works
+  class s7 works
