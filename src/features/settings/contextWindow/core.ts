@@ -9,6 +9,41 @@ export type ContextWindowRule = { id: string; keywords: string[]; contextWindow:
 
 export const RULES_STORAGE_KEY = "ompws.contextWindowRules.v1";
 
+const PROVIDER_WINDOWS_KEY = "ompws.providerContextWindows.v1";
+
+/** Provider-scoped defaults are distinct from model-name keyword rules. */
+export function loadProviderWindows(): Record<string, number> {
+	try {
+		const value: unknown = JSON.parse(globalThis.localStorage?.getItem(PROVIDER_WINDOWS_KEY) ?? "{}");
+		if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+		return Object.fromEntries(Object.entries(value).filter(([id, window]) =>
+			id && typeof window === "number" && Number.isSafeInteger(window) && window > 0 && window <= 2_000_000));
+	} catch {
+		return {};
+	}
+}
+
+export function setProviderWindow(id: string, window: number | null): void {
+	if (!id || (window !== null && (!Number.isSafeInteger(window) || window < 1 || window > 2_000_000))) {
+		throw new Error("Invalid provider context window");
+	}
+	const windows = loadProviderWindows();
+	if (window === null) delete windows[id];
+	else windows[id] = window;
+	globalThis.localStorage?.setItem(PROVIDER_WINDOWS_KEY, JSON.stringify(windows));
+}
+
+/** Move an existing provider default together with a successful provider rename. */
+export function moveProviderWindow(from: string, to: string): void {
+	if (from === to) return;
+	const windows = loadProviderWindows();
+	const value = windows[from];
+	if (value == null) return;
+	delete windows[from];
+	windows[to] = value;
+	globalThis.localStorage?.setItem(PROVIDER_WINDOWS_KEY, JSON.stringify(windows));
+}
+
 function sanitizeRule(r: unknown): ContextWindowRule | null {
 	if (!r || typeof r !== "object") return null;
 	const o = r as Record<string, unknown>;

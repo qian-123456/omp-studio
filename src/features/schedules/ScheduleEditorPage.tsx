@@ -187,11 +187,12 @@ export function ScheduleEditorPage({
 }: Props) {
 	const { t, locale } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
-	// Spaces are isolated: the editor only offers the active mode's workspaces.
+	// An existing schedule keeps its original space even when opened from another one.
 	const activeMode = useSidebarStore((s) => s.activeMode);
+	const targetMode = editingSchedule?.mode ?? template?.mode ?? activeMode;
 	const modeWorkspaces = useMemo(
-		() => workspaces.filter((w) => w.mode === activeMode),
-		[workspaces, activeMode],
+		() => workspaces.filter((w) => w.mode === targetMode),
+		[workspaces, targetMode],
 	);
 	const selectSession = useUi((s) => s.selectSession);
 	const runs = useSchedulesStore((s) =>
@@ -379,12 +380,13 @@ export function ScheduleEditorPage({
 				// re-enabled so it can fire; recurring tasks keep their pause state.
 				editingSchedule ? editingSchedule.enabled || onceRescheduled : true,
 			);
+			draft.mode = editingSchedule?.mode ?? template?.mode ?? activeMode;
 			const saved = await onSave(draft);
 			if (saved) onClose();
 		} finally {
 			setSaving(false);
 		}
-	}, [cadence, endAt, maxRuns, form, editingSchedule, onSave, onClose, errors, onceRescheduled]);
+	}, [cadence, endAt, maxRuns, form, editingSchedule, template, activeMode, onSave, onClose, errors, onceRescheduled]);
 
 	const handleBrowseCwd = async () => {
 		try {

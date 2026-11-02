@@ -14,6 +14,9 @@ export type DrawerTabStatus = "opening" | "ready" | "exited" | "error";
 export interface DrawerTab {
 	id: string;
 	cwd: string;
+	scope: string;
+	sessionId: string | null;
+	workspaceId: string | null;
 	title: string;
 	status: DrawerTabStatus;
 	exitCode: number | null;
@@ -23,6 +26,9 @@ export interface DrawerTab {
 interface PersistedTab {
 	id: string;
 	cwd: string;
+	scope?: string;
+	sessionId?: string | null;
+	workspaceId?: string | null;
 	title: string;
 	detached?: boolean;
 }
@@ -40,9 +46,12 @@ function newTabId(): string {
 }
 
 function persistTabs(tabs: DrawerTab[]): void {
-	const metas: PersistedTab[] = tabs.map(({ id, cwd, title, detached }) => ({
+	const metas: PersistedTab[] = tabs.map(({ id, cwd, scope, sessionId, workspaceId, title, detached }) => ({
 		id,
 		cwd,
+		scope,
+		sessionId,
+		workspaceId,
 		title,
 		...(detached ? { detached: true } : {}),
 	}));
@@ -66,6 +75,9 @@ function loadTabs(): DrawerTab[] {
 			.map((t) => ({
 				id: t.id,
 				cwd: t.cwd,
+				scope: t.scope ?? t.cwd,
+				sessionId: t.sessionId ?? null,
+				workspaceId: t.workspaceId ?? null,
 				title: t.title,
 				status: "opening" as const,
 				exitCode: null,
@@ -84,8 +96,12 @@ function firstVisibleId(tabs: DrawerTab[]): string | null {
 export interface DrawerState {
 	tabs: DrawerTab[];
 	activeTabId: string | null;
+	scope: string;
+	activeByScope: Record<string, string>;
+	setScope(scope: string): void;
+	reconcileScopes(scopes: Record<string, string>): void;
 	/** Append a tab and activate it; returns the new tab id. */
-	addTab(cwd: string, title: string): string;
+	addTab(cwd: string, title: string, sessionId?: string | null, scope?: string, workspaceId?: string | null): string;
 	/** Drop a tab (PTY teardown is the caller's job via drawerRegistry). */
 	removeTab(id: string): void;
 	setActive(id: string): void;
@@ -107,12 +123,32 @@ const initialTabs = loadTabs();
 export const useDrawerStore = create<DrawerState>((set) => ({
 	tabs: initialTabs,
 	activeTabId: firstVisibleId(initialTabs),
-	addTab: (cwd, title) => {
+	scope: "",
+	activeByScope: {},
+	setScope: (scope) => set((s) => {
+		const visible = s.tabs.filter((t) => !t.detached && t.scope === scope);
+		const saved = s.activeByScope[scope];
+		return { scope, activeTabId: visible.some((t) => t.id === saved) ? saved : (visible[0]?.id ?? null) };
+	}),
+	reconcileScopes: (scopes) => set((s) => {
+		if (!s.tabs.some((tab) => scopes[tab.id] !== undefined && scopes[tab.id] !== tab.scope)) return s;
+		const activeByScope: Record<string, string> = {};
+		const tabs = s.tabs.map((tab) => {
+			const scope = scopes[tab.id] ?? tab.scope;
+			if (s.activeByScope[tab.scope] === tab.id) activeByScope[scope] = tab.id;
+			return scope === tab.scope ? tab : { ...tab, scope };
+		});
+		const active = tabs.find((tab) => tab.id === s.activeTabId && !tab.detached);
+		if (active) activeByScope[active.scope] = active.id;
+		persistTabs(tabs);
+		return { tabs, activeByScope };
+	}),
+	addTab: (cwd, title, sessionId = null, scope = cwd, workspaceId = null) => {
 		const id = newTabId();
 		set((s) => {
-			const tabs = [...s.tabs, { id, cwd, title, status: "opening" as const, exitCode: null, detached: false }];
+			const tabs = [...s.tabs, { id, cwd, scope, sessionId, workspaceId, title, status: "opening" as const, exitCode: null, detached: false }];
 			persistTabs(tabs);
-			return { tabs, activeTabId: id };
+			return { tabs, activeTabId: id, activeByScope: { ...s.activeByScope, [scope]: id } };
 		});
 		return id;
 	},
@@ -121,13 +157,15 @@ export const useDrawerStore = create<DrawerState>((set) => ({
 			const idx = s.tabs.findIndex((t) => t.id === id);
 			if (idx < 0) return s;
 			const tabs = s.tabs.filter((t) => t.id !== id);
-			const visible = tabs.filter((t) => !t.detached);
-			const activeTabId =
-				s.activeTabId === id ? (visible[Math.min(idx, visible.length - 1)]?.id ?? null) : s.activeTabId;
+			const visible = tabs.filter((t) => !t.detached && t.scope === s.scope);
+			const activeTabId = s.activeTabId === id ? (visible[0]?.id ?? null) : s.activeTabId;
 			persistTabs(tabs);
 			return { tabs, activeTabId };
 		}),
-	setActive: (id) => set({ activeTabId: id }),
+	setActive: (id) => set((s) => {
+		const tab = s.tabs.find((t) => t.id === id && !t.detached);
+		return tab ? { activeTabId: id, activeByScope: { ...s.activeByScope, [tab.scope]: id } } : s;
+	}),
 	updateTab: (id, patch) =>
 		set((s) => {
 			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t));
@@ -140,14 +178,15 @@ export const useDrawerStore = create<DrawerState>((set) => ({
 		set((s) => {
 			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, detached: true } : t));
 			persistTabs(tabs);
-			const activeTabId = s.activeTabId === id ? firstVisibleId(tabs) : s.activeTabId;
+			const activeTabId = s.activeTabId === id ? firstVisibleId(tabs.filter((t) => t.scope === s.scope)) : s.activeTabId;
 			return { tabs, activeTabId };
 		}),
 	reattachTab: (id) =>
 		set((s) => {
 			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, detached: false } : t));
 			persistTabs(tabs);
-			return { tabs, activeTabId: id };
+			const tab = tabs.find((t) => t.id === id);
+			return tab ? { tabs, activeTabId: id, activeByScope: { ...s.activeByScope, [tab.scope]: id } } : { tabs };
 		}),
 	hydrate: () => {
 		const tabs = loadTabs();

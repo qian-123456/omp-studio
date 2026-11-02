@@ -40,6 +40,7 @@ import { ThreadFindBar } from "./find/ThreadFindBar";
 import { useFindHighlights } from "./find/useFindHighlights";
 import { useThreadFind } from "./find/threadFindStore";
 import { TopCapsule } from "./subagents/TopCapsule";
+import { useGutterSelection } from "./gutterSelection";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
 const NO_REF = { current: null };
@@ -83,6 +84,7 @@ export function SessionView({
 	const askActive = Boolean(ask.route) || ask.awaiting;
 
 	const scrollRef = useRef<HTMLDivElement>(null);
+	useGutterSelection(scrollRef);
 	const [scrollPill, setScrollPill] = useState({
 		nearBottom: true,
 		hasNewMessages: false,

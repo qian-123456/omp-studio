@@ -332,6 +332,40 @@ describe("turnGrouping", () => {
 		}
 	});
 
+    it("keeps automatic model changes standalone while preserving tool-result association", () => {
+        const call: ToolCall = { id: "call-1", name: "read", args: {}, intent: null };
+        const blocks = groupTurnBlocks([
+            makeItem({ id: "u", kind: "user", text: "inspect" }),
+            makeItem({ id: "a-tool", kind: "assistant", toolCalls: [call] }),
+            makeItem({ id: "switch", kind: "model_change", model: "provider/new" }),
+            makeItem({
+                id: "result",
+                kind: "tool_result",
+                toolResult: { toolCallId: "call-1", toolName: "read", text: "contents", isError: false, details: null },
+            }),
+            makeItem({ id: "answer", kind: "assistant", text: "done" }),
+        ]);
+        expect(blocks.map((block) => block.type)).toEqual(["turn", "protocol", "turn"]);
+        const first = blocks[0];
+        if (first.type === "turn") {
+            const toolStep = first.intermediateSteps.find((step) => step.kind === "tool");
+            expect(toolStep?.kind).toBe("tool");
+            if (toolStep?.kind === "tool") expect(toolStep.result?.toolCallId).toBe("call-1");
+        }
+        expect(blocks[1].type === "protocol" && blocks[1].item.id).toBe("switch");
+    });
+
+    it("does not lose a model divider when its pending tool result never arrives", () => {
+        const call: ToolCall = { id: "call-2", name: "read", args: {}, intent: null };
+        const blocks = groupTurnBlocks([
+            makeItem({ id: "u", kind: "user", text: "inspect" }),
+            makeItem({ id: "a-tool", kind: "assistant", toolCalls: [call] }),
+            makeItem({ id: "switch", kind: "model_change", model: "provider/new" }),
+        ]);
+        expect(blocks.map((block) => block.type)).toEqual(["turn", "protocol"]);
+        expect(blocks[1].type === "protocol" && blocks[1].item.id).toBe("switch");
+    });
+
 	it("keeps a mid-run visible notice inside the turn as a notice step", () => {
 		const call1: ToolCall = { id: "call-1", name: "run", args: {}, intent: null };
 		const call2: ToolCall = { id: "call-2", name: "run", args: {}, intent: null };

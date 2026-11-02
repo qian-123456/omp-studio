@@ -1,8 +1,12 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import type { Model } from "../lib/contracts";
-import { listModels } from "../lib/ipc";
+import { listModels, ompModelsContextWindowOverrides, ompModelsSetContextWindows } from "../lib/ipc";
 import { type ModelOption, parseModels } from "../lib/models";
+import { loadProviderWindows, loadRules, pickRule } from "../features/settings/contextWindow/core";
+import { errMsg } from "../lib/dialogs";
+import { toast } from "../lib/toast";
+import { tNow } from "./language";
 
 const CACHE_KEY = "ompws:cached-models";
 
@@ -66,10 +70,36 @@ export const useModelCatalog = create<ModelCatalogState>((set) => ({
 		inflight ??= (async () => {
 			set({ loading: true });
 			try {
-				const list = await listModels();
+				let list = await listModels();
 				if (Array.isArray(list) && list.length > 0) {
 					set({ models: list });
 					writeCachedModels(list);
+					const rules = loadRules();
+					const providerWindows = loadProviderWindows();
+					let writing = false;
+					if (rules.length > 0 || Object.keys(providerWindows).length > 0) {
+						try {
+							const overrides = await ompModelsContextWindowOverrides();
+							const explicit = new Set(overrides.map((o) => `${o.providerId}\0${o.modelId}`));
+							const edits = list.flatMap((model) => {
+								const window = providerWindows[model.provider] ?? pickRule(rules, model.id)?.contextWindow;
+								return window != null && !explicit.has(`${model.provider}\0${model.id}`)
+									? [{ providerId: model.provider, modelId: model.id, contextWindow: window }]
+									: [];
+							});
+							if (edits.length > 0) {
+								writing = true;
+								await ompModelsSetContextWindows(edits, true);
+								list = await listModels();
+								if (list.length > 0) {
+									set({ models: list });
+									writeCachedModels(list);
+								}
+							}
+						} catch (error) {
+							toast.error(tNow(writing ? "settingsSectionsContext.context.writeFailed" : "settingsSectionsContext.context.readOverridesFailed", { error: errMsg(error) }));
+						}
+					}
 				}
 			} catch {
 				// Keep the previous catalog on failure.

@@ -2,6 +2,8 @@ import clsx from "clsx";
 import { FolderTree, RefreshCw } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
+import { resolveActiveSessionTarget } from "../../lib/activeSessionTarget";
+import { usePendingSession } from "../sessions/pendingSession";
 import { errMsg } from "../../lib/dialogs";
 import { useShortPath } from "../../lib/hooks";
 import { gitDiff, gitListWorktrees, gitLog, gitRepoRoot, gitSummary, tmList } from "../../lib/ipc";
@@ -35,15 +37,20 @@ const MIN_DETAIL_H = 140;
 
 /** [C] Right tab: worktree map on top; the selected worktree's changes/history below. */
 export function GitPanel() {
-	// Same session the header/bottom bar describe: the selection, else the last
-	// session (a restored view can be on screen with nothing "selected").
-	const sid = useUi((s) => s.selectedSessionId || s.lastSessionId);
+	const sid = useUi((s) => s.selectedSessionId);
+	const centerView = useUi((s) => s.centerView);
+	const drafts = usePendingSession((s) => s.drafts);
+	const selectedDraftId = usePendingSession((s) => s.selectedId);
+	const sessions = useSessions((s) => s.sessions);
+	const target = resolveActiveSessionTarget({
+		selectedSessionId: sid,
+		selectedDraftId: !sid && centerView === "session" ? selectedDraftId : null,
+		drafts,
+		sessions,
+	});
 	const { t } = useT();
-	const session = useSessions((s) => (sid ? s.sessions[sid] : undefined));
-	// Stored catalog facts only: the panel must show the selected session's repo
-	// whether or not its omp process is running. `repoRoot` covers a session
-	// whose cwd is gone but whose repository is still known.
-	const dir = gitDirOf(session);
+	const session = sid ? sessions[sid] : undefined;
+	const dir = target.source === "draft" ? target.cwd : gitDirOf(session);
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			{dir ? (
@@ -144,7 +151,10 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				setMode((m) => m ?? (wts?.length === 1 ? "branches" : "worktrees"));
 			} catch (e) {
 				// Background polls fail quietly; visible loads surface the error.
-				if (spinner && seq === reqSeq.current) setError(errMsg(e));
+				if (spinner && seq === reqSeq.current) {
+					setIsRepo(null);
+					setError(errMsg(e));
+				}
 			} finally {
 				if (spinner && seq === reqSeq.current) setLoading(false);
 			}

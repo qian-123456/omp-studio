@@ -47,9 +47,9 @@ describe("mergeDiskAndLive", () => {
 		expect(rows["0-Explore"].status).toBe("running");
 	});
 
-	it("hides unknown / zero cost", () => {
+	it("preserves a recorded zero cost", () => {
 		const { rows } = mergeDiskAndLive([disk({ cost: 0 })], {});
-		expect(rows["0-Explore"].cost).toBeUndefined();
+		expect(rows["0-Explore"].cost).toBe(0);
 	});
 
 	it("adds queued agents of a running task call and counts them", () => {

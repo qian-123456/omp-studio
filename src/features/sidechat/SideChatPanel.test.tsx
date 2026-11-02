@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type * as Ipc from "../../lib/ipc";
 import type { SessionMeta } from "../../lib/contracts";
 import { sideChatAnnKey, useComposer } from "../../stores/composer";
+import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { SideChatPanel } from "./SideChatPanel";
@@ -22,6 +23,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => ({
 	getTranscript: vi.fn(async () => ({ items: [] })),
 	acceptSession: vi.fn(async () => undefined),
 }));
+vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/api/webview", () => ({
 	getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
@@ -36,14 +38,6 @@ vi.mock("../chat/ImageChips", () => ({
 			#{index}
 		</button>
 	),
-}));
-vi.mock("../../stores/live", () => ({
-	useLive: Object.assign(
-		(selector: (s: { sessions: Record<string, never>; scrollToItem: () => void }) => unknown) =>
-			selector({ sessions: {}, scrollToItem: () => {} }),
-		{ getState: () => ({ sessions: {}, addUserEcho: h.addUserEcho }) },
-	),
-	holdTranscript: () => () => {},
 }));
 vi.mock("../../stores/modelCatalog", () => ({
 	useModelOptions: () => null,
@@ -111,6 +105,7 @@ beforeEach(() => {
 	h.createSideChat.mockReset().mockResolvedValue({ sessionId: "child-new" });
 	h.sideChatAsk.mockReset().mockResolvedValue(undefined);
 	h.addUserEcho.mockReset();
+	useLive.setState({ sessions: {}, addUserEcho: h.addUserEcho });
 	useComposer.setState({
 		annotations: {},
 		sideChatDrafts: {},
@@ -202,6 +197,17 @@ describe("SideChatPanel blank new chat", () => {
 		expect(blankId.startsWith("new:")).toBe(true);
 		expect(useComposer.getState().annotations[sideChatAnnKey("p1")] ?? []).toEqual([]);
 		expect(screen.getByTestId("child-view").textContent).toBe("child-new");
+	});
+	it("opens the attached image when its inline marker is clicked", () => {
+		useComposer.getState().addImage(blankId, "/first.png");
+		useComposer.getState().setSideChatDraft(blankId, "查看 🖼️#1");
+		render(<SideChatPanel />);
+		fireEvent.click(screen.getByRole("button", { name: /🖼️#1/u }));
+		expect(document.querySelector('[data-layer="lightbox"]')).toBeTruthy();
+		expect(document.querySelector('[data-layer="lightbox"] img')?.getAttribute("src")).toBe("/first.png");
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(document.querySelector('[data-layer="lightbox"]')).toBeNull();
+		expect(document.activeElement).toBe(input());
 	});
 	it("allows image-only first sends and preserves prompt and echo attachment order", async () => {
 		const first = useComposer.getState().addImage(blankId, "/first.png");

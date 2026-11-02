@@ -35,6 +35,19 @@ const text = (stat: RequestStat, fields = ALL_FIELDS) =>
 	formatRequestStat(stat, fields).map((p) => `${p.glyph}${p.text}`);
 
 describe("requestStats", () => {
+	it("preserves output-only and known zero without inventing other fields", () => {
+		const stat = requestStatFromMessage({ usage: { output: 0 }, duration: 1000 }, 0);
+		expect(stat.usage).toMatchObject({ input: null, output: 0, cacheRead: null, cacheWrite: null, totalTokens: null, cost: null });
+		expect(text(stat).slice(1, 6)).toEqual(["↘—", "↗0", "💾—", "⏱—", "⚡0.0/s"]);
+	});
+
+	it("does not present a partial aggregate as a complete total", () => {
+		const a = requestStatFromMessage({ usage: { input: 4, output: 10, cacheRead: 2, cacheWrite: 0, cost: 1 }, duration: 1000 }, 0);
+		const b = requestStatFromMessage({ usage: { output: 5 }, duration: 1000 }, 0);
+		expect(aggregateRequestStats([a, b])).toMatchObject({ input: null, output: 15, cacheRead: null, cost: null, avgTps: 7.5 });
+		expect(aggregateRequestStats([a, requestStatFromMessage({ usage: {}, duration: 1000 }, 0)]).avgTps).toBeNull();
+	});
+
 	it("formats a real omp message like the TUI line", () => {
 		const completedAt = new Date(2026, 9, 17, 12, 47, 30).getTime();
 		const stat = requestStatFromMessage(

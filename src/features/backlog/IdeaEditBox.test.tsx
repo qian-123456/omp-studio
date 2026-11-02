@@ -8,7 +8,7 @@ vi.mock("../../lib/ipc", () => ({ backlogAdd, backlogList, saveClipboardImage: v
 vi.mock("../../lib/events", () => ({ onBacklogChanged: vi.fn(() => Promise.resolve(() => {})) }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => p }));
 vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
-vi.mock("../chat/imageTokens", () => ({ getImageTokenPalette: () => ({ hex: "#888888" }) }));
+vi.mock("../chat/imageTokens", async (original) => ({ ...(await original<Record<string, unknown>>()), getImageTokenPalette: () => ({ hex: "#888888" }) }));
 
 import { useSessions } from "../../stores/sessions";
 import { useBacklog } from "./backlogStore";
@@ -39,6 +39,15 @@ afterEach(() => {
 });
 
 describe("IdeaEditBox ESC and overlay layering", () => {
+	it.each(["Backspace", "Delete"] as const)("removes an adjacent image marker atomically with %s", (key) => {
+		render(<IdeaEditBox id="item-1" kind="idea" onKindChange={() => {}} project="" onProjectChange={() => {}} onSave={() => {}} onCancel={() => {}} />);
+		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+		const caret = key === "Backspace" ? "🖼️ #1".length : 0;
+		textarea.setSelectionRange(caret, caret);
+		fireEvent.keyDown(textarea, { key });
+		expect(useBacklog.getState().editBuffer?.text).toBe("hello");
+		expect(useBacklog.getState().editBuffer?.images).toEqual([]);
+	});
 	it("ESC with image preview open keeps editor mounted and content; second ESC cancels the editor", async () => {
 		const onCancel = vi.fn();
 		const onSave = vi.fn();

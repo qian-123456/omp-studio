@@ -103,31 +103,31 @@ export function SessionStatsPopover({
 				<div className="flex items-center justify-between">
 					<span className="text-[var(--text-40)]">{t("chatView.sessionStats.totalTokens")}</span>
 					<span className="font-mono tabular-nums font-medium text-[var(--text)]">
-						{formatTokens(stats.totalTokens)}
+						{stats.totalTokens == null ? "—" : formatTokens(stats.totalTokens)}
 					</span>
 				</div>
 
 				<div className="flex items-center justify-between">
 					<span className="text-[var(--text-40)]">{t("chatView.sessionStats.cacheHitRate")}</span>
 					<span className="font-mono tabular-nums font-medium text-[var(--text)]">
-						{stats.cacheHitRate.toFixed(1)}%
+						{stats.cacheHitRate == null ? "—" : `${stats.cacheHitRate.toFixed(1)}%`}
 					</span>
 				</div>
 
-				{stats.inputTokens > 0 && (
+				{(stats.inputTokens == null || stats.outputTokens == null || stats.inputTokens > 0) && (
 					<div className="flex items-center justify-between text-[var(--text-40)]">
 						<span>{t("chatView.sessionStats.inputOutput")}</span>
 						<span className="font-mono tabular-nums">
-							{formatTokens(stats.inputTokens)} / {formatTokens(stats.outputTokens)}
+							{stats.inputTokens == null ? "—" : formatTokens(stats.inputTokens)} / {stats.outputTokens == null ? "—" : formatTokens(stats.outputTokens)}
 						</span>
 					</div>
 				)}
 
-				{stats.cacheRead > 0 && (
+				{(stats.cacheRead == null || stats.cacheRead > 0) && (
 					<div className="flex items-center justify-between text-[var(--text-40)]">
 						<span>{t("chatView.sessionStats.cacheRead")}</span>
 						<span className="font-mono tabular-nums text-[var(--text-60)]">
-							{formatTokens(stats.cacheRead)}
+							{stats.cacheRead == null ? "—" : formatTokens(stats.cacheRead)}
 						</span>
 					</div>
 				)}

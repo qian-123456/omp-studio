@@ -24,6 +24,18 @@ export interface WireImage {
 
 const TOKEN_RE = /🖼️\s*#(\d+)/gu;
 
+/** Locate the whole attachment marker adjacent to an unselected caret. */
+export function adjacentAttachmentToken(text: string, caret: number, key: "Backspace" | "Delete") {
+	const match = key === "Backspace"
+		? /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])[ \t]?$/u.exec(text.slice(0, caret))
+		: /^[ \t]?(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])/u.exec(text.slice(caret));
+	if (!match) return null;
+	const token = match[0];
+	const start = key === "Backspace" ? caret - token.length : caret;
+	const end = key === "Backspace" ? caret : caret + token.length;
+	return { start, end, num: Number(/\d+/.exec(token)?.[0]), isFile: token.includes("📎") || /\[(?:File|文件)/u.test(token) };
+}
+
 const marker = (n: number, img: WireImage): string => {
 	const dim = img.width && img.height ? `, ${img.width}x${img.height}` : "";
 	return `[Image #${n}${dim}: ${img.path}]`;

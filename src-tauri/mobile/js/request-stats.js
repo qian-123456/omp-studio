@@ -52,12 +52,13 @@
 		if (!u || typeof u !== "object") return null;
 		const cost = u.cost;
 		return {
-			input: finiteOrNull(u.input) ?? 0,
-			output: finiteOrNull(u.output) ?? 0,
-			cacheRead: finiteOrNull(u.cacheRead) ?? 0,
-			cacheWrite: finiteOrNull(u.cacheWrite) ?? 0,
-			totalTokens: finiteOrNull(u.totalTokens) ?? 0,
-			cost: finiteOrNull(cost) ?? (cost && typeof cost === "object" ? (finiteOrNull(cost.total) ?? 0) : 0),
+			input: finiteOrNull(u.input),
+			output: finiteOrNull(u.output),
+			cacheRead: finiteOrNull(u.cacheRead),
+			cacheWrite: finiteOrNull(u.cacheWrite),
+			totalTokens: finiteOrNull(u.totalTokens) ?? ([u.input, u.output, u.cacheRead, u.cacheWrite].every((v) => finiteOrNull(v) !== null)
+				? u.input + u.output + u.cacheRead + u.cacheWrite : null),
+			cost: finiteOrNull(cost) ?? (cost && typeof cost === "object" ? finiteOrNull(cost.total) : null),
 		};
 	}
 
@@ -73,7 +74,7 @@
 
 	/** Output tokens per second over the whole request (TUI ⚡); null without duration. */
 	function tokensPerSecond(stat) {
-		if (!stat || !stat.usage || !stat.durationMs || stat.durationMs <= 0) return null;
+		if (!stat || !stat.usage || stat.usage.output == null || !stat.durationMs || stat.durationMs <= 0) return null;
 		return stat.usage.output / (stat.durationMs / 1000);
 	}
 
@@ -127,11 +128,11 @@
 			case "time":
 				return stat.startedAt == null ? null : formatStatClock(stat.startedAt);
 			case "input":
-				return u ? formatStatTokens(u.input + u.cacheWrite) : null;
+				return u && u.input != null && u.cacheWrite != null ? formatStatTokens(u.input + u.cacheWrite) : null;
 			case "output":
-				return u ? formatStatTokens(u.output) : null;
+				return u && u.output != null ? formatStatTokens(u.output) : null;
 			case "cache":
-				return u ? formatStatTokens(u.cacheRead) : null;
+				return u && u.cacheRead != null ? formatStatTokens(u.cacheRead) : null;
 			case "ttft":
 				return stat.ttftMs == null ? null : formatStatSeconds(stat.ttftMs);
 			case "tps": {
@@ -141,7 +142,7 @@
 			case "duration":
 				return stat.durationMs == null ? null : formatStatSeconds(stat.durationMs);
 			case "cost":
-				return u ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
+				return u && u.cost != null ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
 		}
 		return null;
 	}

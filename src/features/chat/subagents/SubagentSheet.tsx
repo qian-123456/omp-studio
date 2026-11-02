@@ -39,6 +39,8 @@ import { toast } from "../../../lib/toast";
 import { tNow, useT } from "../../../stores/language";
 import { Markdown } from "../../../components/Markdown";
 import { formatTokens } from "../sessionStats";
+import { RequestStatsLine } from "../RequestStatsLine";
+import { requestStatFromItem } from "../requestStats";
 import { formatDurationCompact, formatShortModel } from "../turnGrouping";
 import { type AgentRow, isTerminalStatus, normStatus } from "./merge";
 import { formatClockTime } from "./subagentTree";
@@ -292,13 +294,8 @@ export function SubagentSheet({
 	const effectiveThinking = summary?.thinkingLevel ?? row.thinkingLevel;
 	const effectiveToolCount = summary?.toolCallCount || row.toolCount;
 	const effectiveRequests = summary?.requestCount || row.requests;
-	const effectiveTokens = summary?.tokens || row.tokens;
-	const effectiveCost =
-		typeof summary?.cost === "number" && summary.cost > 0
-			? summary.cost
-			: typeof row.cost === "number" && row.cost > 0
-				? row.cost
-				: undefined;
+	const effectiveTokens = summary ? summary.tokens ?? undefined : row.tokens;
+	const effectiveCost = summary ? summary.cost ?? undefined : row.cost;
 
 	// subagent_transcript takes the PARENT session file. `row.filePath` is the
 	// agent's own `<parent-stem>/<id>.jsonl`; derive the parent from it when
@@ -580,7 +577,7 @@ export function SubagentSheet({
 								<StatCard
 									icon={Coins}
 									label={t("subagents.statTokens")}
-									value={effectiveTokens ? formatTokens(effectiveTokens) : undefined}
+									value={effectiveTokens != null ? formatTokens(effectiveTokens) : undefined}
 								/>
 								<StatCard
 									icon={Gauge}
@@ -739,6 +736,7 @@ export function SubagentSheet({
 												/>
 											))}
 											{it.text && <Markdown text={it.text} />}
+											<RequestStatsLine stat={requestStatFromItem(it)!} className="mt-0.5" />
 										</div>
 									);
 								}

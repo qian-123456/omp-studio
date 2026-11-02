@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as apiModule from "../../../core/api";
 import { ToastHost } from "../../../ui/Toast";
@@ -20,7 +20,9 @@ describe("role inverse persistence", () => {
    return { snapshot: { global: { modelRoles: { ...global } }, project: { modelRoles: { ...project } } }, models: [{ provider: "fixture", id: "first", name: "First", thinking: ["low", "high"] }, { provider: "fixture", id: "second", name: "Second", thinking: ["low", "high"] }] };
   });
   render(<><SettingsRolesPage route={{ name: "settingsRoles", path: "/settings/roles", params: {}, query: cwd ? { cwd } : {} }} /><ToastHost /></>);
-  fireEvent.click(await screen.findByRole("button", { name: /全局默认（主力模型）/ }));
+  const role = await screen.findByRole<HTMLButtonElement>("button", { name: /全局默认（主力模型）/ });
+  await waitFor(() => expect(role.disabled).toBe(false));
+  fireEvent.click(role);
   fireEvent.click(await screen.findByRole("option", { name: /Second/ }));
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "保存" })));
   const target = cwd ? project : global;
@@ -35,7 +37,9 @@ describe("role inverse persistence", () => {
 it.each(["compound", "inherit"])("requires explicit confirmation before %s role changes", async (kind) => {
  const request=vi.spyOn(apiModule,"api").mockResolvedValue({snapshot:{global:{modelRoles:{default:"fixture/first:low"}},project:{modelRoles:{default:"fixture/first:low"}}},models:[{provider:"fixture",id:"first",name:"First",thinking:["low","high"]},{provider:"fixture",id:"second",name:"Second",thinking:["low","high"]}]});
  render(<SettingsRolesPage route={{name:"settingsRoles",path:"/settings/roles",params:{},query:{cwd:"/confirm/project"}}}/>);
- fireEvent.click(await screen.findByRole("button",{name:/全局默认（主力模型）/}));
+ const role = await screen.findByRole<HTMLButtonElement>("button", { name: /全局默认（主力模型）/ });
+ await waitFor(() => expect(role.disabled).toBe(false));
+ fireEvent.click(role);
  if(kind==="inherit")fireEvent.click(screen.getByRole("button",{name:"恢复继承"}));
  else{fireEvent.click(await screen.findByRole("option",{name:/Second/}));fireEvent.click(screen.getByRole("radio",{name:"高"}));fireEvent.click(screen.getByRole("button",{name:"保存"}));}
  expect(request.mock.calls.filter(([method])=>method==="POST")).toHaveLength(0);

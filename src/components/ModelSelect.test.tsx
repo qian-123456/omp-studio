@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelOption } from "../lib/models";
 import { useModelCatalog } from "../stores/modelCatalog";
@@ -71,6 +71,49 @@ describe("ModelMenuContent groups", () => {
 		);
 		expect(screen.getByRole("button", { name: /深度模型/ })).toBeTruthy();
 	});
+});
+
+describe("ModelMenuContent selection persistence", () => {
+    it("opens a favorite current model in its true provider group", () => {
+        useModelSelectPrefs.setState({ recent: ["openai/gpt-5"] });
+        const { container } = render(
+            <ModelMenuContent models={MODELS} currentValue="openai/gpt-5" onSelect={() => {}} />,
+        );
+        const provider = container.querySelector('[data-model-group="p:openai"]');
+        expect(provider?.className).toContain("bg-[var(--bg-active-fill)]");
+        expect(container.querySelector('[data-model-key="openai/gpt-5"]')).toBeTruthy();
+    });
+
+    it("keeps a hand-selected provider when the catalog refreshes", () => {
+        const { container, rerender } = render(
+            <ModelMenuContent models={MODELS} currentValue="anthropic/claude-opus" onSelect={() => {}} />,
+        );
+        fireEvent.click(container.querySelector('[data-model-group="p:deepseek"]') as HTMLElement);
+        rerender(
+            <ModelMenuContent
+                models={[...MODELS, model("zeta", "new-model")]}
+                currentValue="anthropic/claude-opus"
+                onSelect={() => {}}
+            />,
+        );
+        expect(container.querySelector('[data-model-key="deepseek/deepseek-flash"]')).toBeTruthy();
+    });
+  });
+
+it("keeps the search input and caption stable across catalog loading", () => {
+    render(
+        <ModelMenuContent models={MODELS} caption="模型" onSelect={() => {}} />,
+    );
+    const input = screen.getByPlaceholderText(/搜索模型/);
+    fireEvent.change(input, { target: { value: "gpt" } });
+    act(() => useModelCatalog.setState({ loading: true }));
+    expect(screen.getByText("模型")).toBeTruthy();
+    const spinner = screen.getByLabelText(/刷新模型/);
+    expect(spinner.parentElement?.parentElement?.querySelector("input")).toBe(input);
+    expect(screen.getByPlaceholderText(/搜索模型/)).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("gpt");
+    act(() => useModelCatalog.setState({ loading: false }));
+    expect(screen.getByPlaceholderText(/搜索模型/)).toBe(input);
 });
 
 describe("ModelMenuContent keyboard", () => {

@@ -28,6 +28,7 @@ const MODELS: ModelOption[] = ["a", "b", "c"].map((id) => ({
 	id: `model-${id}`,
 	name: `model-${id}`,
 	thinking: ["low", "high"],
+	contextWindow: id === "a" ? 100_000 : id === "b" ? 200_000 : 400_000,
 	reasoning: true,
 }));
 
@@ -168,6 +169,15 @@ afterEach(() => {
 });
 
 describe("Composer plan model chip", () => {
+	it("recalculates context usage using the selected plan model window", async () => {
+		const state = live("model-a", { enabled: true, version: 0, planModel: "p/model-b" }) as Record<string, unknown>;
+		state.state = { model: { provider: "p", id: "model-a" }, thinkingLevel: "low", contextUsage: { tokens: 50_000, contextWindow: 100_000, percent: 50 } };
+		setSessions({ [S1]: state });
+		render(<Composer sessionId={S1} />);
+		expect(Array.from(document.querySelectorAll("button")).some((button) => button.title.includes("25%"))).toBe(true);
+		await pick("c");
+		expect(Array.from(document.querySelectorAll("button")).some((button) => button.title.includes("13%"))).toBe(true);
+	});
 	it("shows the plan model immediately (not the session model) and applies it once", async () => {
 		setSessions({ [S1]: live("model-a") });
 		render(<Composer sessionId={S1} />);

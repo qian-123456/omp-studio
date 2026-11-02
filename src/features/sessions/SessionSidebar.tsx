@@ -91,11 +91,9 @@ import { GroupHeader } from "./GroupHeader";
 import { chunkSessionsByTime } from "./timeChunking";
 import {
 	type BranchSubgroup,
-	type GroupedSessionsResult,
 	groupSessions,
 	inferWorktreeName,
 	needsAttention,
-	snapshotOrder,
 } from "./grouping";
 import { visibleCut } from "./paging";
 import {
@@ -336,9 +334,6 @@ export function SessionSidebar() {
 		if (renamingGroupId) groupRenameInputRef.current?.focus();
 	}, [renamingGroupId]);
 
-	// Frozen order during hover to prevent row reshuffling under mouse (G14)
-	const [frozenOrder, setFrozenOrder] = useState<ReadonlyMap<string, number> | undefined>(undefined);
-	const lastGroupedRef = useRef<GroupedSessionsResult | null>(null);
 
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const modeSwitcherRef = useRef<HTMLButtonElement>(null);
@@ -492,13 +487,11 @@ export function SessionSidebar() {
 		const res = groupSessions(sessionsList, workspaces, {
 			showArchived,
 			mode: activeMode,
-			frozenOrder,
 			worktrees,
 			groupByWorktree,
 		});
-		lastGroupedRef.current = res;
 		return res;
-	}, [sessionsList, workspaces, showArchived, activeMode, frozenOrder, worktrees, groupByWorktree]);
+	}, [sessionsList, workspaces, showArchived, activeMode, worktrees, groupByWorktree]);
 
 	// 无项目 sessions of the active mode, split into per-group buckets.
 	const noProjectSplit = useMemo(() => {
@@ -575,31 +568,6 @@ export function SessionSidebar() {
 		});
 	};
 
-	// Reset frozen order on filter/mode changes, blur, pointerdown outside, or menu interactions (C9)
-	useEffect(() => {
-		setFrozenOrder(undefined);
-	}, [showArchived, activeMode]);
-
-	useEffect(() => {
-		const handleBlur = () => setFrozenOrder(undefined);
-		const handlePointerDown = (e: PointerEvent) => {
-			if (scrollRef.current && !scrollRef.current.contains(e.target as Node)) {
-				setFrozenOrder(undefined);
-			}
-		};
-		window.addEventListener("blur", handleBlur);
-		window.addEventListener("pointerdown", handlePointerDown);
-		return () => {
-			window.removeEventListener("blur", handleBlur);
-			window.removeEventListener("pointerdown", handlePointerDown);
-		};
-	}, []);
-
-	useEffect(() => {
-		if (wsMenu || plusMenu || modeMenuOpen || grpMenu) {
-			setFrozenOrder(undefined);
-		}
-	}, [wsMenu, plusMenu, modeMenuOpen, grpMenu]);
 
 	// Q06 + reveal: when selectedSessionId changes and its row is not rendered,
 	// expand the containing workspace/group and subgroup, then scroll into view.
@@ -1319,15 +1287,7 @@ export function SessionSidebar() {
 					}
 				}}
 				onKeyDown={handleListKeyDown}
-				onPointerEnter={() => {
-					if (lastGroupedRef.current) {
-						setFrozenOrder(snapshotOrder(lastGroupedRef.current));
-					}
-				}}
-				onPointerLeave={() => {
-					setFrozenOrder(undefined);
-				}}
-				className="group/list flex-1 overflow-y-auto divide-y divide-neutral-800/40 pb-8 focus:outline-none"
+				className="group/list flex-1 overflow-y-auto divide-y divide-neutral-800/40 pb-8 outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
 			>
 				{loadState === "error" && (
 					<LoadFailed what={t("sessions.sessionList")} error={storeLoadError} onRetry={() => void loadSessions().catch(() => {})} />
@@ -2017,7 +1977,7 @@ export function SessionSidebar() {
 											groupKey="__deleted"
 											title={t("sidebar.cleanedWorktrees")}
 											icon={
-												<FolderGit2
+												<GitBranch
 													size={14}
 													className="text-[var(--text-dim)] shrink-0"
 												/>
@@ -2546,7 +2506,7 @@ function CollapsibleSubgroup({
 				title={displayLabel}
 				icon={
 					sub.kind === "worktree" ? (
-						<FolderGit2
+						<GitBranch
 							size={12}
 							className="text-indigo-600 dark:text-indigo-400 shrink-0"
 						/>
@@ -2716,7 +2676,7 @@ function DeletedWorktreesFolder({
 				groupKey={folderKey}
 				title={`${t("sidebar.cleanedWorktrees")} (${subgroups.length})`}
 				icon={
-					<FolderGit2
+					<GitBranch
 						size={12}
 						className="text-[var(--text-dim)] shrink-0"
 					/>

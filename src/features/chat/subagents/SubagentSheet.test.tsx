@@ -32,6 +32,41 @@ const transcript = (output: string) => ({
 afterEach(cleanup);
 
 describe("SubagentSheet", () => {
+	it("shows real per-request statistics in the process pane", async () => {
+		subagentTranscript.mockResolvedValueOnce({
+			...transcript(""),
+			items: [{
+				id: "request", kind: "assistant", ts: "2026-10-26T22:16:54.000Z",
+				text: "answer", toolCalls: [], stopReason: "stop", duration: 4000, ttft: 1000,
+				usage: { input: 1200, output: 400, cacheRead: 2400, cacheWrite: 0, totalTokens: 4000, cost: 0 },
+			}],
+		});
+		render(<SubagentSheet parentFile="/s/parent.jsonl" row={row("stats")} onClose={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: "过程" }));
+		expect(await screen.findByText(/↘1.2K/)).toBeTruthy();
+		expect(screen.getByText(/↗400/)).toBeTruthy();
+		expect(screen.getByText(/💾2.4K/)).toBeTruthy();
+		expect(screen.getByText(/⏱1.0s/)).toBeTruthy();
+		expect(screen.getByText(/⚡100.0\/s/)).toBeTruthy();
+	});
+
+	it("shows known zero output and missing partial usage independently", async () => {
+		subagentTranscript.mockResolvedValueOnce({
+			...transcript(""),
+			items: [{
+				id: "partial", kind: "assistant", ts: "2026-10-26T22:16:54.000Z",
+				text: "partial", toolCalls: [], stopReason: "stop", duration: 1000, ttft: null,
+				usage: { input: null, output: 0, cacheRead: null, cacheWrite: null, totalTokens: null, cost: null },
+			}],
+		});
+		render(<SubagentSheet parentFile="/s/parent.jsonl" row={row("partial")} onClose={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: "过程" }));
+		expect(await screen.findByText("↗0")).toBeTruthy();
+		expect(screen.getByText("↘—")).toBeTruthy();
+		expect(screen.getByText("💾—")).toBeTruthy();
+		expect(screen.getByText("⚡0.0/s")).toBeTruthy();
+	});
+
 	it("drops the previous subagent's output when stepping to one that fails to load", async () => {
 		subagentTranscript.mockResolvedValueOnce(transcript("OUTPUT-A"));
 		const props = { parentFile: "/s/parent.jsonl", onClose: () => {} };
@@ -81,7 +116,7 @@ describe("SubagentSheet", () => {
 		expect(screen.getByText("$0.045")).toBeTruthy();
 	});
 
-	it("hides cost when zero/unknown and avoids showing bogus 0秒", async () => {
+	it("shows a recorded zero cost without inventing a duration", async () => {
 		const pendingRow = {
 			...row("zero-cost"),
 			status: "pending" as const,
@@ -99,9 +134,7 @@ describe("SubagentSheet", () => {
 		});
 		render(<SubagentSheet parentFile="/s/parent.jsonl" row={pendingRow} onClose={() => {}} />);
 
-		// Neither $0.00 nor 0秒 should appear
-		expect(screen.queryByText("$0.00")).toBeNull();
-		expect(screen.queryByText("$0.000")).toBeNull();
+		expect(await screen.findByText("$0.000")).toBeTruthy();
 		expect(screen.queryByText("0秒")).toBeNull();
 		expect(screen.queryByText("用时")).toBeNull();
 	});

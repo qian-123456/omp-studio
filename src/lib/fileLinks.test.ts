@@ -95,6 +95,7 @@ describe("resolveFilePath", () => {
 describe("previewKind", () => {
 	it("classifies text, images and everything else", () => {
 		expect(previewKind("/a/AGENTS.md")).toBe("text");
+		expect(previewKind("/a/diagram.mmd")).toBe("text");
 		expect(previewKind("/a/data.json")).toBe("text");
 		expect(previewKind("/a/Dockerfile")).toBe("text");
 		expect(previewKind("/a/shot.PNG")).toBe("image");

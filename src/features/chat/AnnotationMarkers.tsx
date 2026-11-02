@@ -20,6 +20,7 @@ import {
 	segmentRange,
 	type TextSegment,
 } from "./annotationAnchor";
+import { RangeHighlightOverlay } from "./rangeHighlightGeometry";
 
 const MARKER_PX = 20;
 /** How far the badge dips into the quote's first line (it sits on the line, not
@@ -42,14 +43,15 @@ const KIND_CLASS: Record<MarkerKind, string> = {
 };
 
 interface MarkerSource {
-	id: string;
-	n: number;
-	itemId: string;
-	quote: string;
-	occurrence?: number;
-	answerPart?: number;
-	title: string;
-	kind: MarkerKind;
+    id: string;
+    n: number;
+    itemId?: string;
+    docFile?: string;
+    quote: string;
+    occurrence?: number;
+    answerPart?: number;
+    title: string;
+    kind: MarkerKind;
 }
 
 interface MarkerPos extends MarkerSource {
@@ -93,32 +95,49 @@ function messageMarkerSources(
 	return out;
 }
 
+function docMarkerSources(
+    list: readonly Annotation[],
+    kind: MarkerKind,
+    docFile: string,
+): MarkerSource[] {
+    const out: MarkerSource[] = [];
+    textAnnotationsOf(list).forEach((a, i) => {
+        if (a.source !== "doc" || a.file !== docFile) return;
+        const n = i + 1;
+        const label = a.comment?.trim() ? quoteSnippet(a.comment) : quoteSnippet(a.text);
+        out.push({
+            id: a.id,
+            n,
+            docFile,
+            quote: a.text,
+            title:
+                kind === "main"
+                    ? tNow("chat.annotation.mainMarkerTitle", { n, label })
+                    : tNow("chat.annotation.sidechatMarkerTitle", { n, label }),
+            kind,
+        });
+    });
+    return out;
+}
+
 /**
  * Markers for a session's main annotations plus the side-chat annotations staged
  * under `sideChatAnnKey(sessionId)`. Each list keeps its own `[n]` numbering —
  * the same one `formatWithAnnotations` writes into the outgoing message.
  */
 export function markerSources(
-	main: readonly Annotation[],
-	sidechat: readonly Annotation[],
+    main: readonly Annotation[],
+    sidechat: readonly Annotation[],
+    docFile?: string,
 ): MarkerSource[] {
-	return [
-		...messageMarkerSources(main, "main"),
-		...messageMarkerSources(sidechat, "sidechat"),
-	];
+    return [
+        ...messageMarkerSources(main, "main"),
+        ...messageMarkerSources(sidechat, "sidechat"),
+        ...(docFile ? docMarkerSources(main, "main", docFile) : []),
+        ...(docFile ? docMarkerSources(sidechat, "sidechat", docFile) : []),
+    ];
 }
 
-const SAVED_HIGHLIGHT = "annotation-saved";
-
-function paintSaved(ranges: readonly Range[]) {
-	if (typeof CSS === "undefined" || !("highlights" in CSS)) return;
-	if (ranges.length === 0) CSS.highlights.delete(SAVED_HIGHLIGHT);
-	else CSS.highlights.set(SAVED_HIGHLIGHT, new Highlight(...ranges));
-}
-
-function clearSaved() {
-	if (typeof CSS !== "undefined" && "highlights" in CSS) CSS.highlights.delete(SAVED_HIGHLIGHT);
-}
 
 interface ItemText {
 	el: HTMLElement;
@@ -166,18 +185,15 @@ export function measureMarkers(
 	const itemTexts = new Map<string, ItemText | null>();
 	const out: MarkerPos[] = [];
 
-	for (const src of sources) {
-		const key = JSON.stringify([src.itemId, src.answerPart]);
-		let item = itemTexts.get(key);
-		if (item === undefined) {
-			const el = messageQuoteRoot(src.itemId, src.answerPart);
-			item =
-				el && container.contains(el)
-					? { el, ...collectTextSegments(el) }
-					: null;
-			itemTexts.set(key, item);
-		}
-		if (!item) continue;
+    for (const src of sources) {
+        const key = JSON.stringify([src.itemId, src.answerPart, src.docFile]);
+        let item = itemTexts.get(key);
+        if (item === undefined) {
+            const el = src.docFile ? container : src.itemId ? messageQuoteRoot(src.itemId, src.answerPart) : null;
+            item = el && container.contains(el) ? { el, ...collectTextSegments(el) } : null;
+            itemTexts.set(key, item);
+        }
+        if (!item) continue;
 
 		const hit = locateQuote(item.text, src.quote, src.occurrence);
 		if (!hit) continue;
@@ -233,22 +249,23 @@ function sameMarkers(a: readonly MarkerPos[], b: readonly MarkerPos[]): boolean 
 }
 
 function MarkerLayer({
-	sessionId,
-	containerRef,
-	sources,
+    sessionId,
+    containerRef,
+    sources,
 }: {
-	sessionId: string;
-	containerRef: RefObject<HTMLElement | null>;
-	sources: MarkerSource[];
+    sessionId: string;
+    containerRef: RefObject<HTMLElement | null>;
+    sources: MarkerSource[];
 }) {
-	const layerRef = useRef<HTMLDivElement>(null);
-	const [markers, setMarkers] = useState<MarkerPos[]>([]);
-	const rangesRef = useRef<Range[]>([]);
-	const markersRef = useRef<MarkerPos[]>([]);
-	const main = useComposer((s) => s.annotations[sessionId] ?? EMPTY_ANNOTATIONS);
-	const side = useComposer((s) => s.annotations[sideChatAnnKey(sessionId)] ?? EMPTY_ANNOTATIONS);
-	const storeKeyOf = (kind: MarkerKind) => (kind === "main" ? sessionId : sideChatAnnKey(sessionId));
-	const [active, setActive] = useState<{ id: string; anchor: Anchor } | null>(null);
+    const layerRef = useRef<HTMLDivElement>(null);
+    const [markers, setMarkers] = useState<MarkerPos[]>([]);
+    const [savedRanges, setSavedRanges] = useState<Range[]>([]);
+    const rangesRef = useRef<Range[]>([]);
+    const markersRef = useRef<MarkerPos[]>([]);
+    const main = useComposer((s) => s.annotations[sessionId] ?? EMPTY_ANNOTATIONS);
+    const side = useComposer((s) => s.annotations[sideChatAnnKey(sessionId)] ?? EMPTY_ANNOTATIONS);
+    const storeKeyOf = (kind: MarkerKind) => (kind === "main" ? sessionId : sideChatAnnKey(sessionId));
+    const [active, setActive] = useState<{ id: string; anchor: Anchor } | null>(null);
 	// The popover closes on pointerdown; the click that follows on the same
 	// marker/text must not reopen it (re-click = toggle closed).
 	const closedAt = useRef<{ id: string; at: number } | null>(null);
@@ -283,7 +300,7 @@ function MarkerLayer({
 			if (disposed) return;
 			const ranges: Range[] = [];
 			const next = measureMarkers(container, sources, ranges);
-			paintSaved(ranges);
+            setSavedRanges(ranges);
 			rangesRef.current = ranges;
 			markersRef.current = next;
 			setMarkers((prev) => (sameMarkers(prev, next) ? prev : next));
@@ -326,14 +343,14 @@ function MarkerLayer({
 
 		return () => {
 			disposed = true;
-			clearSaved();
+            setSavedRanges([]);
 			if (frame !== 0) cancelAnimationFrame(frame);
 			resizeObserver.disconnect();
 			mutationObserver.disconnect();
 			window.removeEventListener("resize", schedule);
 			container.removeEventListener("scroll", onNestedScroll, { capture: true });
 		};
-	}, [containerRef, sources]);
+    }, [containerRef, sources]);
 
 	// Highlights have no DOM, so hover/click on annotated text hit-tests the
 	// painted ranges against the pointer position.
@@ -412,6 +429,7 @@ function MarkerLayer({
 
 	return (
 		<>
+            <RangeHighlightOverlay rootRef={containerRef} ranges={savedRanges} tone="saved" />
 			<div
 				ref={layerRef}
 				className="pointer-events-none absolute left-0 top-0 h-0 w-full"
@@ -459,11 +477,13 @@ function MarkerLayer({
 /** Mounts inside the message scroll container. Renders nothing (and attaches no
  * observers) unless the session has message quotes. */
 export function AnnotationMarkers({
-	sessionId,
-	containerRef,
+    sessionId,
+    containerRef,
+    docFile,
 }: {
-	sessionId: string;
-	containerRef: RefObject<HTMLElement | null>;
+    sessionId: string;
+    containerRef: RefObject<HTMLElement | null>;
+    docFile?: string;
 }) {
 	const { locale } = useT();
 	const annotations = useComposer(
@@ -476,9 +496,9 @@ export function AnnotationMarkers({
 	);
 	// `locale` re-derives the titles (built via tNow) when the language changes.
 	const sources = useMemo(
-		() => markerSources(annotations, sideChatAnnotations),
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[annotations, sideChatAnnotations, locale],
+        () => markerSources(annotations, sideChatAnnotations, docFile),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [annotations, sideChatAnnotations, docFile, locale],
 	);
 	if (sources.length === 0) return null;
 	return (

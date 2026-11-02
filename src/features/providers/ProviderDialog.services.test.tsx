@@ -3,15 +3,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, expect, it, vi } from "vitest";
 import { tNow } from "../../stores/language";
 const upsert = vi.hoisted(() => vi.fn(async (_config: unknown, _key: unknown, _mode: unknown) => {}));
-vi.mock("./store", () => ({ useProviders: (select: (state: unknown) => unknown) => select({ rows: [], upsert, tests: {} }) }));
-vi.mock("../../lib/ipc", () => ({ providerFetchModels: vi.fn(), providerReadEnvFile: vi.fn(), listModels: vi.fn(async () => []) }));
+const saveBuiltin = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("./store", () => ({ useProviders: (select: (state: unknown) => unknown) => select({ rows: [], upsert, saveBuiltin, tests: {} }) }));
+vi.mock("../../lib/ipc", () => ({ providerFetchModels: vi.fn(), providerReadEnvFile: vi.fn(), listModels: vi.fn(async () => []), ompModelsSetContextWindows: vi.fn(async () => {}) }));
+vi.mock("../../stores/modelCatalog", () => ({ useModelCatalog: { getState: () => ({ refresh: vi.fn(async () => {}) }) } }));
 vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../../lib/dialogs", () => ({ confirmDialog: vi.fn(async () => true), errMsg: String }));
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }) }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/u" }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 import { ProviderDialog } from "./ProviderDialog";
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+import { loadProviderWindows } from "../settings/contextWindow/core";
+import type { ProviderRow } from "../../lib/contracts";
+afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
 it("adds an image service from an OpenAI connection without preset chat models", async () => {
  render(<ProviderDialog target={{ mode: "add" }} pickerCategory="other" onClose={vi.fn()} />);
  fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
@@ -70,4 +74,28 @@ it("submits six mixed service capabilities with explicit model APIs and no provi
   { id: "rerank-id", kind: "rerank", api: "openrouter-rerank" },
   { id: "video-id", kind: "video", api: "openrouter-video" },
  ] });
+});
+
+it("persists a zero-model provider default on save and restores it on reopening", async () => {
+ const builtin = { id: "empty-provider", origin: "builtin", models: [], extraModels: [], key: { kind: "missing" }, api: "openai-completions", authNone: false } as unknown as ProviderRow;
+ const target = { mode: "edit" as const, row: builtin };
+ const view = render(<ProviderDialog target={target} onClose={vi.fn()} />);
+ fireEvent.change(screen.getByLabelText(tNow("providers.colContextWindow")), { target: { value: "64000" } });
+ expect(loadProviderWindows()).toEqual({});
+ fireEvent.click(screen.getByRole("button", { name: tNow("common.save") }));
+ await waitFor(() => expect(loadProviderWindows()["empty-provider"]).toBe(64000));
+ view.unmount();
+ render(<ProviderDialog target={target} onClose={vi.fn()} />);
+ expect((screen.getByLabelText(tNow("providers.colContextWindow")) as HTMLInputElement).value).toBe("64000");
+ fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
+ expect((screen.getByLabelText(tNow("providers.contextWindowAria", { index: 1 })) as HTMLInputElement).value).toBe("64000");
+});
+
+it("rejects an invalid provider window without persisting", async () => {
+ const builtin = { id: "bad-window", origin: "builtin", models: [], extraModels: [], key: { kind: "missing" }, api: "openai-completions", authNone: false } as unknown as ProviderRow;
+ render(<ProviderDialog target={{ mode: "edit", row: builtin }} onClose={vi.fn()} />);
+ fireEvent.change(screen.getByLabelText(tNow("providers.colContextWindow")), { target: { value: "2000001" } });
+ fireEvent.click(screen.getByRole("button", { name: tNow("common.save") }));
+ expect(loadProviderWindows()).toEqual({});
+ expect(saveBuiltin).not.toHaveBeenCalled();
 });

@@ -13,6 +13,7 @@ import { invalidateWarmDrafts } from "../sessions/draftSession";
 import { markLiveSessionsStale } from "../sessions/modelRegistrySync";
 import { useModelCatalog } from "../../stores/modelCatalog";
 import { useModelKindCatalog } from "../../stores/modelKinds";
+import { moveProviderWindow, setProviderWindow } from "../settings/contextWindow/core";
 import {
 	providerSaveBuiltin,
 	providerDecrypt,
@@ -138,6 +139,7 @@ export const useProviders = create<ProvidersState>((set, get) => {
 
 		upsert: async (input, apiKey, keyMode) => {
 			const row = await providerUpsert(input, apiKey, keyMode);
+			if (input.originalId && input.originalId !== row.id) moveProviderWindow(input.originalId, row.id);
 			applyRow(row, input.originalId ?? row.id);
 			await syncModelConfig();
 			return row;
@@ -159,6 +161,7 @@ export const useProviders = create<ProvidersState>((set, get) => {
 
 		remove: async (id) => {
 			await providerDelete(id);
+			setProviderWindow(id, null);
 			await get().load();
 			await syncModelConfig();
 			set((s) => ({

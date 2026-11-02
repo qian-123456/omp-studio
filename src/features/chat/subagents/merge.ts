@@ -212,8 +212,8 @@ function applySummary(row: AgentRow, s: SubagentSummary) {
 	row.line ??= firstLine(s.prompt ?? undefined);
 	if (s.toolCallCount) row.toolCount = s.toolCallCount;
 	if (s.requestCount) row.requests = s.requestCount;
-	if (s.tokens) row.tokens = s.tokens;
-	if (typeof s.cost === "number" && s.cost > 0) row.cost = s.cost;
+	if (s.tokens != null) row.tokens = s.tokens;
+	if (s.cost != null) row.cost = s.cost;
 	if (s.startedAt) row.startedAt = s.startedAt;
 	if (s.endedAt) row.endedAt = s.endedAt;
 	row.outputPath ??= s.outputPath ?? undefined;

@@ -87,6 +87,7 @@ pub fn git_cmd(dir: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(dir)
+        .env("PATH", crate::todos::omp::augmented_path())
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C");

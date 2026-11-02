@@ -8,7 +8,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, FolderOpen, RefreshCw, Save } from "lucide-react";
-import React, { Suspense, useEffect, useRef } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import { importImageFile } from "../../lib/ipc";
 import { errMsg } from "../../lib/dialogs";
 import { basename, shortPath } from "../../lib/paths";
 import { useHomeDir } from "../../lib/hooks";
@@ -17,8 +18,10 @@ import { previewKind } from "../../lib/fileLinks";
 import { type FileTab, useFilePreview } from "../../stores/filePreview";
 import { useUi } from "../../stores/ui";
 import { SelectionToolbar } from "../chat/SelectionToolbar";
+import { AnnotationMarkers } from "../chat/AnnotationMarkers";
 import { Segmented } from "../../components/Segmented";
 import { Markdown } from "../../components/Markdown";
+import { MermaidBlock } from "../chat/MermaidBlock";
 import { useFileBuffer } from "../editor/useFileBuffer";
 import { useT } from "../../stores/language";
 import { buildHtmlPreviewDoc, HTML_PREVIEW_SANDBOX, isHtmlPreviewPath, relayedExternalUrl } from "./htmlPreview";
@@ -58,6 +61,22 @@ function ImageBody({ path }: { path: string }) {
 	const { t } = useT();
 	const home = useHomeDir();
 	const resolved = path.startsWith("~/") && home ? `${home.replace(/\/+$/, "")}${path.slice(1)}` : path;
+	const [imagePath, setImagePath] = useState<string | null>(null);
+	const [failed, setFailed] = useState(false);
+	useEffect(() => {
+		if (path.startsWith("~/") && !home) return;
+		let cancelled = false;
+		setImagePath(null);
+		setFailed(false);
+		void importImageFile(resolved).then((stored) => {
+			if (!cancelled) setImagePath(stored);
+		}).catch(() => {
+			if (!cancelled) setFailed(true);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [home, path, resolved]);
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--border-divider)] px-3 py-1.5 text-[11px]">
@@ -66,10 +85,18 @@ function ImageBody({ path }: { path: string }) {
 			<div className="min-h-0 flex-1 overflow-auto p-3">
 				{path.startsWith("~/") && !home ? (
 					<div className="text-xs text-[var(--text-60)]">{t("files.cannotResolveTildePath", { path })}</div>
+				) : failed ? (
+					<div className="flex min-h-32 flex-col items-center justify-center gap-1 text-center text-xs text-[var(--text-60)]">
+						<span>{t("components.imageLoadFailed")}</span>
+						<span className="select-text break-all text-[var(--text-40)]">{resolved}</span>
+					</div>
+				) : !imagePath ? (
+					<div className="flex min-h-32 items-center justify-center text-xs text-[var(--text-60)]">{t("files.loading")}</div>
 				) : (
 					<img
-						src={convertFileSrc(resolved)}
+						src={convertFileSrc(imagePath)}
 						alt={basename(path)}
+						onError={() => setFailed(true)}
 						className="mx-auto max-w-full rounded-lg border border-[var(--line)] object-contain"
 					/>
 				)}
@@ -87,6 +114,7 @@ function TextBody({ tab }: { tab: FileTab }) {
 	const sessionId = useUi((s) => s.selectedSessionId);
 	const previewRef = useRef<HTMLDivElement>(null);
 	const isMarkdown = /\.(md|markdown|mdx)$/i.test(tab.path);
+	const isMermaid = /\.mmd$/i.test(tab.path);
 	const isHtml = isHtmlPreviewPath(tab.path);
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -194,9 +222,11 @@ function TextBody({ tab }: { tab: FileTab }) {
 					</Suspense>
 				</div>
 			) : (
-				<div ref={previewRef} className={isHtml ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-auto px-4 py-3"}>
+                <div ref={previewRef} className={`${isHtml ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-auto px-4 py-3"} relative`}>
 					{isMarkdown ? (
 						<Markdown text={draft} cwd={tab.cwd ?? tab.path.replace(/\/[^/]*$/, "")} />
+					) : isMermaid ? (
+						<MermaidBlock source={draft} />
 					) : isHtml ? (
 						<iframe
 							ref={iframeRef}
@@ -211,7 +241,8 @@ function TextBody({ tab }: { tab: FileTab }) {
 							{draft}
 						</pre>
 					)}
-					{sessionId && <SelectionToolbar sessionId={sessionId} containerRef={previewRef} docFile={tab.path} />}
+                    {sessionId && <AnnotationMarkers sessionId={sessionId} containerRef={previewRef} docFile={tab.path} />}
+                    {sessionId && <SelectionToolbar sessionId={sessionId} containerRef={previewRef} docFile={tab.path} />}
 				</div>
 			)}
 		</div>

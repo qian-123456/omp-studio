@@ -251,12 +251,12 @@ pub struct ToolResultInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Usage {
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
-    pub total_tokens: u64,
-    pub cost: f64,
+    pub input: Option<u64>,
+    pub output: Option<u64>,
+    pub cache_read: Option<u64>,
+    pub cache_write: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub cost: Option<f64>,
 }
 
 /// Structured image reference attached to a transcript item.
@@ -368,9 +368,9 @@ pub struct SubagentSummary {
     /// Assistant messages = model requests.
     pub request_count: u32,
     /// input + output + cacheWrite (cacheRead excluded), AgentProgress.tokens style.
-    pub tokens: u64,
+    pub tokens: Option<u64>,
     /// USD, summed over assistant usage.
-    pub cost: f64,
+    pub cost: Option<f64>,
     /// First / last entry timestamps in the jsonl.
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
@@ -879,8 +879,8 @@ pub struct MobileStatus {
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
     pub available: bool,
-    pub tokens: u64,
-    pub cost: f64,
+    pub tokens: Option<u64>,
+    pub cost: Option<f64>,
     /// "token-tracker" | "transcript"
     pub source: String,
 }
@@ -1576,6 +1576,8 @@ pub struct Schedule {
     pub name: String,
     pub prompt: String,
     pub cwd: String,
+    #[serde(default)]
+    pub mode: SpaceMode,
     pub run_mode: ScheduleRunMode,
     pub cadence: ScheduleCadence,
     pub model: Option<String>,
@@ -1611,6 +1613,8 @@ pub struct ScheduleDraft {
     pub name: String,
     pub prompt: String,
     pub cwd: String,
+    #[serde(default)]
+    pub mode: SpaceMode,
     #[serde(default)]
     pub run_mode: ScheduleRunMode,
     pub cadence: ScheduleCadence,

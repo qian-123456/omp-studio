@@ -279,10 +279,10 @@ export function SubagentDetailPage({ route }: PageProps) {
 	const elapsed = summary ? formatElapsed(elapsedMs(summary, now)) : "";
 	const usage = summary
 		? [
-				summary.tokens ? `${compactNumber(summary.tokens)} 词元` : "",
+				summary.tokens != null ? `${compactNumber(summary.tokens)} 词元` : "— 词元",
 				summary.requestCount ? `${summary.requestCount} 次请求` : "",
 				summary.toolCallCount ? `${summary.toolCallCount} 次工具调用` : "",
-				summary.cost ? `$${summary.cost.toFixed(3)}` : "",
+				summary.cost != null ? `$${summary.cost.toFixed(3)}` : "—",
 			].filter(Boolean)
 		: [];
 

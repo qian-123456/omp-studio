@@ -579,6 +579,9 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let effective_model = opts.model.as_deref().or_else(|| {
+        if opts.resume_file.is_some() {
+            return None;
+        }
         let m = settings.new_session_model.as_deref()?.trim();
         if m.is_empty() {
             None
@@ -789,12 +792,23 @@ pub async fn spawn_with_sink(
         .stdin
         .take()
         .ok_or_else(|| "omp stdin not piped".to_string())?;
+    let startup_stderr = Arc::new(parking_lot::Mutex::new(String::new()));
+    let recording_stderr = Arc::new(AtomicBool::new(true));
+    let (stderr_done_tx, stderr_done_rx) = oneshot::channel();
     if let Some(stderr) = child.stderr.take() {
+        let output = startup_stderr.clone();
+        let recording = recording_stderr.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 tracing::debug!(target: "omp-stderr", "{line}");
+                if recording.load(Ordering::Relaxed) {
+                    let mut text = output.lock();
+                    text.push_str(&line);
+                    text.push('\n');
+                }
             }
+            let _ = stderr_done_tx.send(());
         });
     }
 
@@ -866,7 +880,8 @@ pub async fn spawn_with_sink(
     // Monitor task owns the child; emits rpc:process on exit and cleans up.
     let monitor_handle = handle.clone();
     let monitor_sink = sink.clone();
-    let monitor_task = tokio::spawn(monitor(monitor_sink, monitor_handle, child));
+    let (exit_tx, exit_rx) = oneshot::channel();
+    let monitor_task = tokio::spawn(monitor(monitor_sink, monitor_handle, child, exit_tx));
 
     struct SpawnGuard {
         handle: Arc<SessionHandle>,
@@ -905,10 +920,26 @@ pub async fn spawn_with_sink(
     };
 
     // Handshake.
-    let ready = tokio::time::timeout(READY_TIMEOUT, ready_rx)
-        .await
-        .map_err(|_| "omp did not emit a ready frame".to_string())?
-        .map_err(|_| "ready channel dropped".to_string())?;
+    let ready = match tokio::time::timeout(READY_TIMEOUT, ready_rx).await {
+        Ok(Ok(ready)) => ready,
+        result => {
+            let reason = if result.is_err() {
+                "omp did not emit a ready frame"
+            } else {
+                "omp stdout closed before ready"
+            };
+            let exit = tokio::time::timeout(Duration::from_secs(1), exit_rx)
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .unwrap_or_else(|| "process has not exited".to_string());
+            let _ = tokio::time::timeout(Duration::from_secs(1), stderr_done_rx).await;
+            let stderr = startup_stderr.lock().clone();
+            return Err(format!("{reason}; {exit}; cwd: {}\n{stderr}", opts.cwd));
+        }
+    };
+    recording_stderr.store(false, Ordering::Relaxed);
+    startup_stderr.lock().clear();
     if ready
         .get("supportedProtocolVersions")
         .and_then(Value::as_array)
@@ -1007,8 +1038,17 @@ async fn read_loop(
     handle.stdout_closed.send_replace(true);
 }
 
-async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
+async fn monitor(
+    sink: OutSink,
+    handle: Arc<SessionHandle>,
+    mut child: Child,
+    exit_tx: oneshot::Sender<String>,
+) {
     let status = child.wait().await;
+    let _ = exit_tx.send(match &status {
+        Ok(status) => format!("exit status: {status}"),
+        Err(err) => format!("failed to wait for process: {err}"),
+    });
     handle.alive.store(false, Ordering::SeqCst);
     // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
     let _ = handle.shutdown.send(true);
@@ -1076,6 +1116,37 @@ pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn startup_exit_reports_status_and_stderr() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ompws-startup-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let executable = dir.join("fake-omp");
+        std::fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'startup diagnostic\\n' >&2\nexit 42\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let opts = StartOpts {
+            cwd: dir.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let settings = Settings {
+            omp_binary: executable.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let sink: OutSink = Arc::new(|_| {});
+        let err = match spawn_with_sink(&opts, &settings, sink).await {
+            Ok(_) => panic!("expected startup failure"),
+            Err(err) => err,
+        };
+        assert!(err.contains("startup diagnostic"), "{err}");
+        assert!(err.contains("42"), "{err}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn old_process_exit_does_not_revoke_replacement_registration() {
@@ -1555,6 +1626,56 @@ mod tests {
             .map(|a| a.to_string_lossy().to_string())
             .collect();
         assert!(!args_none.contains(&"--plan-yolo".to_string()));
+    }
+    fn command_args(opts: &StartOpts, settings: &Settings) -> Vec<String> {
+        build_command(opts, settings)
+            .unwrap()
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn build_command_resume_does_not_apply_new_session_model() {
+        let mut settings = Settings::default();
+        settings.new_session_model = Some("openai/gpt-5".into());
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            resume_file: Some("/tmp/session.jsonl".into()),
+            ..Default::default()
+        };
+        let args = command_args(&opts, &settings);
+        assert!(!args.contains(&"--model".to_string()));
+        assert!(args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_command_resume_keeps_explicit_model_override() {
+        let mut settings = Settings::default();
+        settings.new_session_model = Some("openai/gpt-5".into());
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            resume_file: Some("/tmp/session.jsonl".into()),
+            model: Some("anthropic/claude-sonnet".into()),
+            ..Default::default()
+        };
+        let args = command_args(&opts, &settings);
+        let pos = args.iter().position(|arg| arg == "--model").unwrap();
+        assert_eq!(args[pos + 1], "anthropic/claude-sonnet");
+    }
+
+    #[test]
+    fn build_command_fresh_still_uses_new_session_model() {
+        let mut settings = Settings::default();
+        settings.new_session_model = Some("openai/gpt-5".into());
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            ..Default::default()
+        };
+        let args = command_args(&opts, &settings);
+        let pos = args.iter().position(|arg| arg == "--model").unwrap();
+        assert_eq!(args[pos + 1], "openai/gpt-5");
     }
     #[test]
     fn build_command_plugin_dir_gated_by_visualize_enabled() {

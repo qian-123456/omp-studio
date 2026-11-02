@@ -25,21 +25,18 @@ import {
 	X,
 } from "lucide-react";
 import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import {
 	appPaths,
 	termOpen,
 	termResize,
 	termWrite,
-	terminalSetCurrentSession,
 } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { tNow, useT } from "../../stores/language";
-import { useSessions } from "../../stores/sessions";
-import { useUi } from "../../stores/ui";
 import { openSideChatTab } from "../sidechat/sideChatActions";
 import { useDrawerStore, type DrawerTab } from "./drawerStore";
 import { addTerminalTab } from "./terminalTabs";
@@ -51,12 +48,10 @@ import {
 	type DrawerTerminalEntry,
 } from "./drawerRegistry";
 import { bindXtermTheme, currentXtermTheme, getSearchDecorations } from "./terminalTheme";
+import { currentTerminalScope, currentTerminalTarget, retryTerminalScopes, terminalScopesReady, useTerminalScope, useTerminalTarget } from "./terminalTarget";
 
-/** Default cwd: selected session → global workspace dir → $HOME. */
+/** Default cwd when no project or session is selected. */
 async function resolveCwd(): Promise<string> {
-	const sessionId = useUi.getState().selectedSessionId;
-	const session = sessionId ? useSessions.getState().sessions[sessionId] : undefined;
-	if (session?.cwd) return session.cwd;
 	try {
 		const paths = await appPaths();
 		if (paths?.globalDir) return paths.globalDir;
@@ -85,11 +80,17 @@ const panelUi = {
 export function CommandTerminalPanel() {
 	const { t } = useT();
 	const tabs = useDrawerStore((s) => s.tabs);
-	const activeTabId = useDrawerStore((s) => s.activeTabId);
+	const storedActiveTabId = useDrawerStore((s) => s.activeTabId);
+	const target = useTerminalTarget();
+	const { scope, ready: scopeReady, error: scopeError } = useTerminalScope();
 	const updateTab = useDrawerStore((s) => s.updateTab);
-	const visibleTabs = tabs.filter((t) => !t.detached);
+	const committedScope = useDrawerStore((s) => s.scope);
+	const visibleTabs = scopeReady && committedScope === scope ? tabs.filter((t) => !t.detached && t.scope === scope) : [];
+	const activeTabId = visibleTabs.some((t) => t.id === storedActiveTabId) ? storedActiveTabId : null;
 	const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? null;
 	const activeEntry = activeTabId ? drawerRegistry.get(activeTabId) : undefined;
+	const scopeReadyRef = useRef(false);
+	scopeReadyRef.current = scopeReady && committedScope === scope;
 
 	const hostRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 	const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -105,18 +106,18 @@ export function CommandTerminalPanel() {
 	const [searchResult, setSearchResult] = useState<{ index: number; count: number } | null>(null);
 
 	// Agent ops state (selection of the active tab)
-	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const lastSessionId = useUi((s) => s.lastSessionId);
-	const parentSessionId = selectedSessionId || lastSessionId;
+	const parentSessionId = target.sessionId;
 	const [hasSelection, setHasSelection] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const captureSelectionRef = useRef<() => void>(() => {});
 
-	// Start the shared event bridge; showing the panel with no visible tabs
-	// spawns the first shell (StrictMode-safe: re-checks the store).
+	useLayoutEffect(() => {
+		if (!scopeReady) return;
+		useDrawerStore.getState().setScope(scope);
+		if (!useDrawerStore.getState().tabs.some((t) => !t.detached && t.scope === scope)) addTerminalTab();
+	}, [scope, scopeReady]);
 	useEffect(() => {
 		void ensureDrawerEventBridge().catch(() => {});
-		if (!useDrawerStore.getState().tabs.some((t) => !t.detached)) addTerminalTab();
 	}, []);
 
 	// Rebind xterm handler callbacks to this mount
@@ -235,17 +236,11 @@ export function CommandTerminalPanel() {
 
 		void (async () => {
 			try {
-				// Prefer the currently selected session's cwd/file over the stored
-				// tab cwd so a restored or freshly spawned shell lands in the
-				// session context (agent-aware init resumes its transcript).
-				const selected = useUi.getState().selectedSessionId;
-				const session = selected ? useSessions.getState().sessions[selected] : undefined;
-				void terminalSetCurrentSession(session?.file ?? null).catch(() => {});
-				const cwd = session?.cwd || tab.cwd || (await resolveCwd());
+				const cwd = tab.cwd || (await resolveCwd());
 				if (cwd !== tab.cwd) {
 					useDrawerStore.getState().updateTab(tab.id, { cwd });
 				}
-				await startDrawerTerminal(tab.id, entry, () => termOpen(cwd, [], term.cols || 80, term.rows || 24));
+				await startDrawerTerminal(tab.id, entry, () => termOpen(cwd, [], term.cols || 80, term.rows || 24, tab.sessionId));
 				if (drawerRegistry.get(tab.id) !== entry) return;
 				if (entry.phase === "ready" && entry.termId && term.cols > 2 && term.rows > 1) {
 					void termResize(entry.termId, term.cols, term.rows).catch(() => {});
@@ -376,6 +371,7 @@ export function CommandTerminalPanel() {
 	// Agent ops: quote selection into the composer / send to side chat.
 	// Read live state so the xterm key handler (created once) stays current.
 	const captureSelection = useCallback(() => {
+		if (!scopeReadyRef.current || !terminalScopesReady() || useDrawerStore.getState().scope !== currentTerminalScope()) return;
 		const id = useDrawerStore.getState().activeTabId;
 		const entry = id ? drawerRegistry.get(id) : undefined;
 		const text = entry?.term.getSelection()?.trim();
@@ -383,8 +379,7 @@ export function CommandTerminalPanel() {
 			toast.info(tNow("terminal.noSelection"));
 			return;
 		}
-		const ui = useUi.getState();
-		const sessionId = ui.selectedSessionId || ui.lastSessionId;
+		const sessionId = currentTerminalTarget().sessionId;
 		if (sessionId) {
 			useComposer.getState().addAnnotation(sessionId, { source: "terminal", text });
 			toast.success(tNow("terminal.addedToAnnotation"));
@@ -394,16 +389,16 @@ export function CommandTerminalPanel() {
 		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1500);
-	}, []);
+	}, [scope]);
 	captureSelectionRef.current = captureSelection;
 
 	const handleSendToSideChat = useCallback(() => {
 		setContextMenu(null);
+		if (!scopeReadyRef.current || !terminalScopesReady() || useDrawerStore.getState().scope !== currentTerminalScope()) return;
 		const id = useDrawerStore.getState().activeTabId;
 		const entry = id ? drawerRegistry.get(id) : undefined;
 		const sel = entry?.term.getSelection()?.trim();
-		const ui = useUi.getState();
-		const sessionId = ui.selectedSessionId || ui.lastSessionId;
+		const sessionId = currentTerminalTarget().sessionId;
 		if (!sel || !sessionId) {
 			toast.info(tNow("terminal.noSelection"));
 			return;
@@ -411,7 +406,7 @@ export function CommandTerminalPanel() {
 		// Stage the output as quoted context in a blank side chat; nothing is sent.
 		useComposer.getState().addAnnotation(sideChatAnnKey(sessionId), { source: "terminal", text: sel });
 		void openSideChatTab(sessionId);
-	}, []);
+	}, [scope]);
 
 	return (
 		<div className="flex h-full flex-col bg-[var(--bg-panel)]">
@@ -445,6 +440,12 @@ export function CommandTerminalPanel() {
 						/>
 					))}
 
+					{scopeError && (
+						<div role="alert" className="absolute top-0 inset-x-0 z-10 flex items-center gap-2 border-b border-[var(--border-divider)] bg-[var(--bg-panel)] p-2 text-xs text-[var(--status-error)]">
+							<span className="min-w-0 flex-1 break-words">{scopeError}</span>
+							<button type="button" onClick={retryTerminalScopes}>{t("chat.message.retryLoading")}</button>
+						</div>
+					)}
 					{visibleTabs.length === 0 && (
 						<div className="flex h-full items-center justify-center text-xs text-neutral-600">
 							{t("terminal.emptyPrompt")}

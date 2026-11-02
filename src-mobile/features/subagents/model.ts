@@ -15,8 +15,8 @@ export interface SubagentSummary {
 	messageCount?: number;
 	toolCallCount?: number;
 	requestCount?: number;
-	tokens?: number;
-	cost?: number;
+	tokens?: number | null;
+	cost?: number | null;
 	startedAt?: string | null;
 	endedAt?: string | null;
 	outputPath?: string | null;

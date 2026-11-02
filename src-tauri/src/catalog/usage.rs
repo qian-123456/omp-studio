@@ -26,7 +26,7 @@ pub async fn summary(session_id: &str, file: Option<&Path>) -> UsageSummary {
     if let Some((tokens, cost)) = tracker_lookup(session_id).await {
         return UsageSummary {
             available: true,
-            tokens,
+            tokens: Some(tokens),
             cost,
             source: "token-tracker".to_string(),
         };
@@ -43,13 +43,13 @@ pub async fn summary(session_id: &str, file: Option<&Path>) -> UsageSummary {
     };
     UsageSummary {
         available: sum.is_some(),
-        tokens: sum.map_or(0, |s| s.0),
-        cost: sum.map_or(0.0, |s| s.1),
+        tokens: sum.and_then(|s| s.0),
+        cost: sum.and_then(|s| s.1),
         source: "transcript".to_string(),
     }
 }
 
-async fn tracker_lookup(session_id: &str) -> Option<(u64, f64)> {
+async fn tracker_lookup(session_id: &str) -> Option<(u64, Option<f64>)> {
     let insights = cached_insights().await?;
     find_session(&insights, session_id)
 }
@@ -67,7 +67,7 @@ async fn cached_insights() -> Option<Value> {
 }
 
 /// Find a per-session row in a session-insights payload.
-pub fn find_session(insights: &Value, session_id: &str) -> Option<(u64, f64)> {
+pub fn find_session(insights: &Value, session_id: &str) -> Option<(u64, Option<f64>)> {
     let rows = insights.get("sessions")?.as_array()?;
     let row = rows.iter().find(|r| {
         ["session_id", "sessionId", "id"]
@@ -78,14 +78,11 @@ pub fn find_session(insights: &Value, session_id: &str) -> Option<(u64, f64)> {
     let tokens = ["total_tokens", "totalTokens", "tokens"]
         .iter()
         .find_map(|k| row.get(*k).and_then(Value::as_u64))?;
-    let cost = ["cost_usd", "cost", "total_cost_usd"]
-        .iter()
-        .find_map(|k| {
-            let v = row.get(*k)?;
-            v.as_f64().or_else(|| v.as_str()?.parse().ok())
-        })
-        .unwrap_or(0.0);
-    (tokens > 0).then_some((tokens, cost))
+    let cost = ["cost_usd", "cost", "total_cost_usd"].iter().find_map(|k| {
+        let v = row.get(*k)?;
+        v.as_f64().or_else(|| v.as_str()?.parse().ok())
+    });
+    Some((tokens, cost))
 }
 
 /// Minimal HTTP/1.1 GET returning a JSON body (1.5 s budget, no redirects).
@@ -147,8 +144,8 @@ mod tests {
     #[test]
     fn finds_session_rows() {
         let v = json!({"sessions":[{"session_id":"abc","total_tokens":10,"cost_usd":"0.5"},{"id":"zero","total_tokens":0}]});
-        assert_eq!(find_session(&v, "abc"), Some((10, 0.5)));
-        assert_eq!(find_session(&v, "zero"), None);
+        assert_eq!(find_session(&v, "abc"), Some((10, Some(0.5))));
+        assert_eq!(find_session(&v, "zero"), Some((0, None)));
         assert_eq!(find_session(&v, "missing"), None);
         assert_eq!(find_session(&json!({"sessions":[]}), "abc"), None);
     }
@@ -175,7 +172,7 @@ mod tests {
         .unwrap();
         let s = summary("definitely-not-tracked-session", Some(&f)).await;
         assert!(s.available);
-        assert_eq!((s.tokens, s.source.as_str()), (3, "transcript"));
+        assert_eq!((s.tokens, s.source.as_str()), (Some(3), "transcript"));
         let none = summary("x", None).await;
         assert!(!none.available);
         std::fs::remove_dir_all(&dir).unwrap();

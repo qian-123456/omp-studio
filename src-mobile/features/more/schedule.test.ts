@@ -16,6 +16,7 @@ const base: Schedule = {
 	name: "晨报",
 	prompt: "总结昨天",
 	cwd: "/w",
+	mode: "work",
 	runMode: "local",
 	cadence: { kind: "daily", time: "09:00", weekdays: [1, 3], every: 2, anchor: "2026-01-05" },
 	model: "anthropic/claude",
@@ -38,6 +39,7 @@ describe("schedule form", () => {
 		const payload = buildPayload(formFromSchedule(base), base);
 		expect(payload).toMatchObject({
 			id: "s1",
+			mode: "work",
 			cadence: { kind: "daily", time: "09:00", weekdays: [1, 3], every: 2, anchor: "2026-01-05" },
 			approvalMode: "yolo",
 			model: "anthropic/claude",

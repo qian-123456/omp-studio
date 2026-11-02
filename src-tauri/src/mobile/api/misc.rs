@@ -414,6 +414,7 @@ fn open_term(
     cols: u16,
     rows: u16,
     grace: Duration,
+    session_file: Option<&str>,
 ) -> Result<String, ApiError> {
     if terms().lock().len() >= MAX_TERMINALS {
         return Err(ApiError(
@@ -422,7 +423,7 @@ fn open_term(
         ));
     }
     let (argv, extra_env) =
-        crate::terminal::shell_init::drawer_spawn(&argv).unwrap_or((argv, vec![]));
+        crate::terminal::shell_init::drawer_spawn(&argv, session_file).unwrap_or((argv, vec![]));
     let (tx, _) = broadcast::channel(512);
     let entry = Arc::new(TermEntry {
         backlog: Mutex::new(Backlog {
@@ -462,12 +463,14 @@ async fn term_open<B: Backend>(
         .await
         .ok_or(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
     let cwd = meta.cwd;
+    let session_file = meta.file;
     let (cols, rows) = (body.cols.unwrap_or(80), body.rows.unwrap_or(24));
     let cwd2 = cwd.clone();
-    let id =
-        tokio::task::spawn_blocking(move || open_term(&cwd2, vec![], cols, rows, DETACH_GRACE))
-            .await
-            .map_err(gateway)??;
+    let id = tokio::task::spawn_blocking(move || {
+        open_term(&cwd2, vec![], cols, rows, DETACH_GRACE, Some(&session_file))
+    })
+    .await
+    .map_err(gateway)??;
     Ok(Json(json!({ "termId": id, "cwd": cwd })))
 }
 
@@ -631,8 +634,15 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn terminal_open_write_read_close() {
-        let id =
-            open_term("/tmp", vec!["sh".into()], 80, 24, Duration::from_secs(60)).expect("open");
+        let id = open_term(
+            "/tmp",
+            vec!["sh".into()],
+            80,
+            24,
+            Duration::from_secs(60),
+            None,
+        )
+        .expect("open");
         let (_sd_tx, sd_rx) = watch::channel(false);
         let entry = get_term(&id).expect("entry");
         let mut s = attach_stream(id.clone(), entry.clone(), sd_rx);

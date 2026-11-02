@@ -6,12 +6,12 @@ import { tNow } from "../../stores/language";
 export interface ComputedSessionStats {
 	rounds: number;
 	steps: number;
-	totalTokens: number;
-	inputTokens: number;
-	outputTokens: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cacheHitRate: number; // 0 - 100
+	totalTokens: number | null;
+	inputTokens: number | null;
+	outputTokens: number | null;
+	cacheRead: number | null;
+	cacheWrite: number | null;
+	cacheHitRate: number | null;
 	/** Σ request durations reported by the model, failed requests included
 	 * (their wait was real wall time); 0 when nothing recorded one. */
 	modelDurationMs: number;
@@ -80,19 +80,20 @@ export function computeSessionStats(
 	let assistantCount = 0;
 	let toolCallCount = 0;
 
-	let totalTokens = 0;
-	let inputTokens = 0;
-	let outputTokens = 0;
-	let cacheRead = 0;
-	let cacheWrite = 0;
+	let totalTokens: number | null = 0;
+	let inputTokens: number | null = 0;
+	let outputTokens: number | null = 0;
+	let cacheRead: number | null = 0;
+	let cacheWrite: number | null = 0;
 
 	let toolDurationMs = 0;
 	let modelDurationMs = 0;
-	let timedOutput = 0;
+	let timedOutput: number | null = 0;
 	let timedMs = 0;
 	let timedRequests = 0;
 	let ttftSum = 0;
 	let ttftCount = 0;
+	let missingTtft = false;
 
 	for (const item of items) {
 		if (item.kind === "user") {
@@ -123,12 +124,11 @@ export function computeSessionStats(
 	const requestStats = sessionRequestStats(items, live);
 	for (const stat of requestStats) {
 		const u = stat.usage;
-		if (!u) continue;
-		inputTokens += u.input || 0;
-		outputTokens += u.output || 0;
-		cacheRead += u.cacheRead || 0;
-		cacheWrite += u.cacheWrite || 0;
-		totalTokens += u.totalTokens || u.input + u.output + u.cacheRead + u.cacheWrite;
+		inputTokens = inputTokens != null && u?.input != null ? inputTokens + u.input : null;
+		outputTokens = outputTokens != null && u?.output != null ? outputTokens + u.output : null;
+		cacheRead = cacheRead != null && u?.cacheRead != null ? cacheRead + u.cacheRead : null;
+		cacheWrite = cacheWrite != null && u?.cacheWrite != null ? cacheWrite + u.cacheWrite : null;
+		totalTokens = totalTokens != null && u?.totalTokens != null ? totalTokens + u.totalTokens : null;
 	}
 
 	// Real per-request timing comes from the messages themselves; live requests
@@ -138,7 +138,7 @@ export function computeSessionStats(
 			modelDurationMs += stat.durationMs;
 			if (!stat.error) {
 				timedMs += stat.durationMs;
-				timedOutput += stat.usage?.output ?? 0;
+				timedOutput = timedOutput != null && stat.usage?.output != null ? timedOutput + stat.usage.output : null;
 				timedRequests++;
 			}
 		}
@@ -146,6 +146,7 @@ export function computeSessionStats(
 			ttftSum += stat.ttftMs;
 			ttftCount++;
 		}
+		else if (!stat.error) missingTtft = true;
 	}
 
 	// Tool durations from transcript: pair each toolResult with its issuing
@@ -190,9 +191,9 @@ export function computeSessionStats(
 	// Cache hit rate: cacheRead / total input. `cacheWrite` tokens were computed
 	// this request (cache miss, now stored) and `input` is the uncached remainder,
 	// so misses = input + cacheWrite, hits = cacheRead.
-	const totalInput = cacheRead + cacheWrite + inputTokens;
-	const cacheHitRate =
-		totalInput > 0 ? Math.min(100, Math.max(0, (cacheRead / totalInput) * 100)) : 0;
+	const totalInput = cacheRead != null && cacheWrite != null && inputTokens != null ? cacheRead + cacheWrite + inputTokens : null;
+	const cacheHitRate = totalInput == null || cacheRead == null ? null
+		: totalInput > 0 ? Math.min(100, Math.max(0, (cacheRead / totalInput) * 100)) : 0;
 
 	return {
 		rounds,
@@ -205,10 +206,10 @@ export function computeSessionStats(
 		cacheHitRate,
 		modelDurationMs,
 		toolDurationMs,
-		avgTtftMs: ttftCount > 0 ? ttftSum / ttftCount : null,
-		tps: timedMs > 0 ? timedOutput / (timedMs / 1000) : null,
+		avgTtftMs: !missingTtft && ttftCount > 0 ? ttftSum / ttftCount : null,
+		tps: timedMs > 0 && timedOutput != null ? timedOutput / (timedMs / 1000) : null,
 		timedRequests,
-		hasData: rounds > 0 || steps > 0 || totalTokens > 0,
+		hasData: rounds > 0 || steps > 0 || (totalTokens != null && totalTokens > 0),
 	};
 }
 

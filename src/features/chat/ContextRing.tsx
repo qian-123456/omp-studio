@@ -224,7 +224,6 @@ interface ContextRingProps {
 }
 
 export function ContextRing({
-	percent,
 	usageObj,
 	totalTokensStr,
 	onCompact,
@@ -259,11 +258,10 @@ export function ContextRing({
 	if (typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0) {
 		fraction = Math.max(0, rawTokens / rawWindow);
 		percentage = fraction * 100;
-	} else if (typeof percent === "number" && !Number.isNaN(percent)) {
-		percentage = Math.max(0, percent);
-		fraction = percentage / 100;
 	}
 
+	const knownUsage = typeof rawTokens === "number" && Number.isFinite(rawTokens) &&
+		typeof rawWindow === "number" && Number.isFinite(rawWindow) && rawWindow > 0;
 	const pctInt = Math.round(percentage);
 
 	// Ring colour
@@ -329,7 +327,7 @@ export function ContextRing({
 				onPointerEnter={() => {
 					if (!open) setPrefetchTick((n) => n + 1);
 				}}
-				title={t("chat.context.usageTooltip", { pct: pctInt, total: totalTokensStr ? ` (${totalTokensStr})` : "" })}
+				title={knownUsage ? t("chat.context.usageTooltip", { pct: pctInt, total: totalTokensStr ? ` (${totalTokensStr})` : "" }) : t("chat.context.window")}
 				className="group flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 			>
 				{/* Circular Progress Ring */}
@@ -365,7 +363,7 @@ export function ContextRing({
 				</div>
 				{showPercent && (
 					<span className="font-mono text-[11px] text-[var(--text-40)] group-hover:text-[var(--text)]">
-						{pctInt}%
+						{knownUsage ? `${pctInt}%` : "—"}
 					</span>
 				)}
 			</button>

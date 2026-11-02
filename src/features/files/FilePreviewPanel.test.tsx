@@ -2,9 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openPath, openUrl } = vi.hoisted(() => ({
+const { openPath, openUrl, importImageFile } = vi.hoisted(() => ({
 	openPath: vi.fn(async (_path: string): Promise<void> => undefined),
 	openUrl: vi.fn(async (_url: string): Promise<void> => undefined),
+	importImageFile: vi.fn(async (path: string) => path),
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({
 	openPath,
@@ -18,6 +19,12 @@ const readTextFile = vi.fn<(path: string) => Promise<string>>();
 vi.mock("../../lib/ipc", () => ({
 	readTextFile: (path: string) => readTextFile(path),
 	writeTextFile: vi.fn(async () => undefined),
+	importImageFile,
+}));
+vi.mock("../chat/mermaidRender", () => ({
+	currentMermaidMode: () => "dark",
+	renderMermaidSvg: vi.fn(async () => '<svg viewBox="0 0 100 40"></svg>'),
+	svgViewBoxSize: () => ({ width: 100, height: 40 }),
 }));
 
 import { FilePreviewPanel } from "./FilePreviewPanel";
@@ -26,6 +33,8 @@ import { useFilePreview } from "../../stores/filePreview";
 describe("FilePreviewPanel", () => {
 	beforeEach(() => {
 		readTextFile.mockReset();
+		importImageFile.mockReset();
+		importImageFile.mockImplementation(async (path: string) => path);
 		useFilePreview.setState({ tabs: [], activePath: null });
 	});
 
@@ -39,6 +48,27 @@ describe("FilePreviewPanel", () => {
 		expect(screen.getByText("预览")).toBeTruthy();
 		expect(screen.getByText("编辑")).toBeTruthy();
 		expect(readTextFile).toHaveBeenCalledWith("/Users/me/AGENTS.md");
+	});
+	it("renders .mmd as a Mermaid diagram instead of blocking the file", async () => {
+		readTextFile.mockResolvedValue("graph TD\n  A-->B");
+		useFilePreview.getState().openFile("/Users/me/chart.mmd");
+		const { container } = render(<FilePreviewPanel />);
+		await waitFor(() => expect(container.querySelector("img")).toBeTruthy());
+		expect(screen.getByText("图表")).toBeTruthy();
+	});
+	it("imports a project image before rendering it", async () => {
+		useFilePreview.getState().openFile("/Users/me/project/chart.png");
+		const { container } = render(<FilePreviewPanel />);
+		await waitFor(() => expect(container.querySelector("img")).toBeTruthy());
+		expect(importImageFile).toHaveBeenCalledWith("/Users/me/project/chart.png");
+		expect(container.querySelector("img")?.getAttribute("src")).toBe("/Users/me/project/chart.png");
+	});
+	it("shows an honest error when importing a project image fails", async () => {
+		importImageFile.mockRejectedValueOnce(new Error("outside asset scope"));
+		useFilePreview.getState().openFile("/Users/me/project/missing.png");
+		render(<FilePreviewPanel />);
+		expect(await screen.findByText("无法加载这张图片")).toBeTruthy();
+		expect(screen.getByText("/Users/me/project/missing.png")).toBeTruthy();
 	});
 
 	it("shows the read error in full instead of a blank pane", async () => {

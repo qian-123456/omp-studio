@@ -278,11 +278,12 @@ export function WorktreeSection({
 		}
 	};
 
-	const openTerminal = (wt: WorktreeInfo) => {
+	const openTerminal = async (wt: WorktreeInfo) => {
 		const name = wt.branch ?? "worktree";
-		addTerminalTabWithCwd(wt.path, name);
-		setRightTab("terminal");
-		toast.success(t("worktree.openedTerminal", { name }));
+		if (await addTerminalTabWithCwd(wt.path, name)) {
+			setRightTab("terminal");
+			toast.success(t("worktree.openedTerminal", { name }));
+		}
 	};
 
 	// Launch an AI session that performs the conflicting operation itself and resolves it.

@@ -133,6 +133,11 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
         model: schedule.model.clone(),
         approval_mode: schedule.approval_mode.clone(),
         label: Some(label),
+        mode: if resume_file.is_none() {
+            Some(schedule.mode)
+        } else {
+            None
+        },
         resume_file,
         ..Default::default()
     };
@@ -149,6 +154,7 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
                 schedule.id
             );
             opts.resume_file = None;
+            opts.mode = Some(schedule.mode);
             match crate::rpc::start(&state, &opts).await {
                 Ok(info) => info,
                 Err(e) => {

@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { ArrowUp, ChevronDown, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { type ClipboardEvent, type DragEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -22,6 +23,7 @@ import { composeSelection, parseSelection, RESOLVABLE_ROLES, roleIdOf } from "..
 import { ensureSettings, useSettings } from "../settings/store";
 import { startNewSession } from "../sessions/newSession";
 import { SessionView } from "../chat/SessionView";
+import { COMPOSER_TEXT_METRICS_CLASS, COMPOSER_TEXT_METRICS_STYLE, renderHighlightedText } from "../chat/Composer";
 import { AnnotationChip } from "../chat/AnnotationChip";
 import { AddMenuPopover } from "../chat/AddMenuPopover";
 const SketchPad = lazy(() =>
@@ -165,6 +167,8 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const pendingQuestion = useSideChatView((s) => s.pending[tabId] ?? null);
 	const [error, setError] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const backdropRef = useRef<HTMLDivElement | null>(null);
+	const [previewImage, setPreviewImage] = useState<number | null>(null);
 	const images = useComposer((s) => s.images[tabId] ?? EMPTY_IMAGES);
 	const [attachingImages, setAttachingImages] = useState(0);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -575,6 +579,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 											showIndex
 											variant="strip"
 											onRemove={() => removeImage(index)}
+											onOpen={() => setPreviewImage(index)}
 										/>
 									))}
 								</div>
@@ -592,6 +597,19 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								</div>
 							)}
 
+							{previewImage !== null && (
+								<ImagePreviewModal
+									images={images.map((image, index) => ({ path: image.path, name: image.name, marker: `🖼️#${index + 1}` }))}
+									initialIndex={previewImage}
+									onClose={() => { setPreviewImage(null); textareaRef.current?.focus(); }}
+								/>
+							)}
+							<div className="relative">
+							{images.length > 0 && (
+								<div ref={backdropRef} className={clsx(COMPOSER_TEXT_METRICS_CLASS, "pointer-events-none absolute inset-0 overflow-hidden px-4 pt-3 pb-1.5 text-[var(--text)] select-none")} style={COMPOSER_TEXT_METRICS_STYLE}>
+									{renderHighlightedText(question, { count: images.length, label: t("sidechat.addImage"), onOpen: (num) => setPreviewImage(num - 1) })}
+								</div>
+							)}
 							<textarea
 								ref={textareaRef}
 								value={question}
@@ -602,6 +620,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 									e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
 								}}
 								onSelect={(e) => rememberSelection(e.currentTarget)}
+								onScroll={(e) => { if (backdropRef.current) backdropRef.current.scrollTop = e.currentTarget.scrollTop; }}
 								onPaste={onPaste}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" && !e.shiftKey) {
@@ -612,8 +631,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								}}
 								placeholder={t("sidechat.inputPlaceholder")}
 								rows={1}
-								className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[40px]"
+								className={clsx(COMPOSER_TEXT_METRICS_CLASS, "relative w-full resize-none bg-transparent px-4 pt-3 pb-1.5 outline-none max-h-36 min-h-[40px] placeholder:text-[var(--text-30,var(--text-dim))]", images.length ? "text-transparent caret-[var(--text)]" : "text-[var(--text)]")}
+								style={COMPOSER_TEXT_METRICS_STYLE}
 							/>
+							</div>
 
 							<div className="flex min-w-0 items-end justify-between gap-2 px-2.5 pb-2 text-[12px]">
 								<button

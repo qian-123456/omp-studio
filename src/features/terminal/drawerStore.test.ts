@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { countLiveCommandTabs, useDrawerStore } from "./drawerStore";
 
 function reset() {
-	useDrawerStore.setState({ tabs: [], activeTabId: null });
+	useDrawerStore.setState({ tabs: [], activeTabId: null, scope: "", activeByScope: {} });
 }
 
 describe("drawerStore", () => {
@@ -37,8 +37,9 @@ describe("drawerStore", () => {
 	});
 
 	it("detachTab moves the active tab to the first visible one; reattachTab activates it", () => {
+		useDrawerStore.getState().setScope("/tmp/a");
 		const a = useDrawerStore.getState().addTab("/tmp/a", "a");
-		const b = useDrawerStore.getState().addTab("/tmp/b", "b");
+		const b = useDrawerStore.getState().addTab("/tmp/a", "b");
 		useDrawerStore.getState().detachTab(b);
 		expect(useDrawerStore.getState().activeTabId).toBe(a);
 		useDrawerStore.getState().reattachTab(b);
@@ -58,13 +59,14 @@ describe("drawerStore", () => {
 		const stored = JSON.parse(mem.get("ompws:drawer-tabs") ?? "[]") as Array<Record<string, string>>;
 		expect(stored).toHaveLength(2);
 		// Only metas are persisted, not transient status
-		expect(Object.keys(stored[0]).sort()).toEqual(["cwd", "id", "title"]);
+		expect(Object.keys(stored[0]).sort()).toEqual(["cwd", "id", "scope", "sessionId", "title", "workspaceId"]);
 	});
 
 	it("removeTab drops the tab and reassigns the active tab to a neighbor", () => {
+		useDrawerStore.getState().setScope("/tmp/a");
 		const id1 = useDrawerStore.getState().addTab("/tmp/a", "a");
-		const id2 = useDrawerStore.getState().addTab("/tmp/b", "b");
-		const id3 = useDrawerStore.getState().addTab("/tmp/c", "c");
+		const id2 = useDrawerStore.getState().addTab("/tmp/a", "b");
+		const id3 = useDrawerStore.getState().addTab("/tmp/a", "c");
 
 		useDrawerStore.getState().removeTab(id2);
 		expect(useDrawerStore.getState().tabs.map((t) => t.id)).toEqual([id1, id3]);
@@ -108,6 +110,38 @@ describe("drawerStore", () => {
 		expect(s.tabs).toHaveLength(2);
 		expect(s.tabs[1]).toMatchObject({ id: "t1", cwd: "/tmp/x", title: "x", status: "opening", exitCode: null });
 		expect(s.activeTabId).toBe("t1");
+	});
+
+	it("restores the active tab independently per worktree without removing the others", () => {
+		const store = useDrawerStore.getState();
+		store.setScope("/project/a");
+		const a = store.addTab("/project/a", "A", "session-a");
+		const a2 = store.addTab("/project/a", "A2", "session-a");
+		store.setActive(a);
+		store.setScope("/project/b");
+		const b = store.addTab("/project/b", "B", "session-b");
+		store.setScope("/project/a");
+		expect(useDrawerStore.getState().activeTabId).toBe(a);
+		expect(useDrawerStore.getState().tabs.map((t) => [t.id, t.scope, t.sessionId])).toEqual([
+			[a, "/project/a", "session-a"], [a2, "/project/a", "session-a"], [b, "/project/b", "session-b"],
+		]);
+		store.setScope("/project/b");
+		expect(useDrawerStore.getState().activeTabId).toBe(b);
+	});
+
+	it("atomically migrates delayed worktree roots without replacing tab identities", () => {
+		const store = useDrawerStore.getState();
+		store.setScope("/repo/sub");
+		const a = store.addTab("/repo/sub", "a", "session-a", "/repo/sub", "ws");
+		const b = store.addTab("/repo/other", "b", "session-b", "/repo/other", "ws");
+		store.setActive(a);
+		store.reconcileScopes({ [a]: "/repo", [b]: "/repo" });
+		expect(useDrawerStore.getState().tabs.map((tab) => [tab.id, tab.scope, tab.cwd, tab.sessionId])).toEqual([
+			[a, "/repo", "/repo/sub", "session-a"],
+			[b, "/repo", "/repo/other", "session-b"],
+		]);
+		store.setScope("/repo");
+		expect(useDrawerStore.getState().activeTabId).toBe(a);
 	});
 
 	it("hydrate starts clean when storage is corrupted", () => {

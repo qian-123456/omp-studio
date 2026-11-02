@@ -32,11 +32,12 @@ export interface TreeNode {
  * Build the dispatch tree. The only parent signal in the data is a running
  * subagent's `progress.inflightTaskDetails.progress[]` (the subagents it
  * dispatched); children listed there that are also tracked become nested under
- * it. Everything else is a root. Siblings display newest (highest index) first
- * within running and non-running groups.
+ * it. Everything else is a root. Running siblings lead, and finished siblings
+ * are ordered by their actual end time when known.
  */
 export function buildSubagentTree(
 	subagents: Record<string, SubagentInfo>,
+	rows: Record<string, Pick<AgentRow, "endedAt">> = {},
 ): TreeNode[] {
 	const ids = Object.keys(subagents)
 		.map((id, i) => ({ id, i, index: subagents[id].index ?? Number.POSITIVE_INFINITY }))
@@ -91,7 +92,21 @@ export function buildSubagentTree(
 		const parent = parentOf.get(id);
 		(parent ? nodes.get(parent)!.children : roots).push(node);
 	}
-	return sortRunningFirst(roots);
+	const sort = (nodes: TreeNode[]): TreeNode[] => {
+		for (const node of nodes) node.children = sort(node.children);
+		return nodes.sort((a, b) => {
+			if (a.state === "running" || b.state === "running") {
+				return Number(b.state === "running") - Number(a.state === "running");
+			}
+			const end = (id: string) => {
+				const value = rows[id]?.endedAt;
+				const time = value ? Date.parse(value) : NaN;
+				return Number.isFinite(time) ? time : -Infinity;
+			};
+			return end(b.id) - end(a.id) || 0;
+		});
+	};
+	return sort(roots);
 }
 
 /** Stable sort, running siblings first; recency order within each group survives. */

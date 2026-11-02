@@ -6,6 +6,7 @@ import { useSessions } from "../../stores/sessions";
 import type { SessionMeta } from "../../lib/contracts";
 import type { RightTab } from "../../stores/ui";
 import { useDrawerStore, countLiveCommandTabs } from "../terminal/drawerStore";
+import { useTerminalScope } from "../terminal/terminalTarget";
 
 export function computeSidechatBadge(
 	sessions: Record<string, SessionMeta>,
@@ -144,7 +145,8 @@ export function useTabBadges(
 	const servicesCount = useServicesBadge();
 	const sidechatCount = useSidechatBadge(selectedSessionId);
 	const heatmapCount = useHeatmapBadge(selectedSessionId);
-	const terminalCount = useDrawerStore((s) => countLiveCommandTabs(s.tabs));
+	const { scope: terminalScope } = useTerminalScope();
+	const terminalCount = useDrawerStore((s) => countLiveCommandTabs(s.tabs.filter((tab) => tab.scope === terminalScope)));
 
 	return useMemo(
 		() => ({

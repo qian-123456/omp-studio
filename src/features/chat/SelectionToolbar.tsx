@@ -26,8 +26,7 @@ import { claimEscape } from "../../lib/escapeClaim";
 import { collectTextSegments, quoteOccurrence, segmentOffset } from "./annotationAnchor";
 
 import { useT } from "../../stores/language";
-/** Custom Highlight API name painting the quoted text while its comment is typed. */
-const PENDING_HIGHLIGHT = "annotation-pending";
+import { RangeHighlightOverlay } from "./rangeHighlightGeometry";
 
 /** Tallest the comment box grows before it scrolls instead of expanding. */
 const COMMENT_MAX_HEIGHT = 160;
@@ -258,17 +257,34 @@ export function SelectionToolbar({
 		ta.style.height = `${Math.min(ta.scrollHeight, COMMENT_MAX_HEIGHT)}px`;
 		ta.style.overflowY = ta.scrollHeight > COMMENT_MAX_HEIGHT ? "auto" : "hidden";
 	}, [commenting, draft]);
+    const pendingRange = commenting ? sel?.range : undefined;
+    const nativeRangeRef = useRef<Range | null>(null);
+    const [nativeRangeVersion, setNativeRangeVersion] = useState(0);
+    const clearNativeRange = useCallback(() => {
+        if (!nativeRangeRef.current) return;
+        nativeRangeRef.current = null;
+        setNativeRangeVersion((version) => version + 1);
+    }, []);
+    useEffect(() => {
+        const onSelectionChange = () => {
+            const root = containerRef.current;
+            const selection = window.getSelection();
+            if (commenting || !root || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+                clearNativeRange();
+                return;
+            }
+            const range = selection.getRangeAt(0);
+            if (!root.contains(range.commonAncestorContainer)) {
+                clearNativeRange();
+                return;
+            }
+            nativeRangeRef.current = range.cloneRange();
+            setNativeRangeVersion((version) => version + 1);
+        };
+        document.addEventListener("selectionchange", onSelectionChange);
+        return () => document.removeEventListener("selectionchange", onSelectionChange);
+    }, [clearNativeRange, commenting, containerRef]);
 
-	// Paint the quoted text while the comment is typed; the Highlight is
-	// removed on dismiss/unmount via the effect cleanup.
-	const pendingRange = commenting ? sel?.range : undefined;
-	useEffect(() => {
-		if (!pendingRange || typeof CSS === "undefined" || !("highlights" in CSS)) return;
-		CSS.highlights.set(PENDING_HIGHLIGHT, new Highlight(pendingRange));
-		return () => {
-			CSS.highlights.delete(PENDING_HIGHLIGHT);
-		};
-	}, [pendingRange]);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -391,11 +407,20 @@ export function SelectionToolbar({
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
 	}, [sel, dismiss]);
+    const nativeRange = !commenting && nativeRangeVersion > 0 ? nativeRangeRef.current : null;
+    useEffect(() => {
+        const root = containerRef.current;
+        if (!root) return;
+        root.toggleAttribute("data-native-overlay-active", Boolean(nativeRange));
+        return () => root.removeAttribute("data-native-overlay-active");
+    }, [containerRef, nativeRange, nativeRangeVersion]);
 
-	if (!sel) return null;
-
-	return (
-		<SelectionBubble anchor={sel.rect} ref={boxRef} className={commenting ? "!rounded-2xl !p-1.5" : undefined}>
+    return (
+        <>
+            <RangeHighlightOverlay rootRef={containerRef} ranges={nativeRange ? [nativeRange] : []} tone="native" />
+            <RangeHighlightOverlay rootRef={containerRef} ranges={pendingRange ? [pendingRange] : []} tone="pending" />
+            {sel && (
+                <SelectionBubble anchor={sel.rect} ref={boxRef} className={commenting ? "!rounded-2xl !p-1.5" : undefined}>
 			{/* Read by MessageList: no auto-scroll while the annotation bubble is open. */}
 			<div data-selection-toolbar-active="true" className="contents">
 			{commenting ? (
@@ -505,5 +530,7 @@ export function SelectionToolbar({
 			)}
 			</div>
 		</SelectionBubble>
+            )}
+        </>
 	);
 }

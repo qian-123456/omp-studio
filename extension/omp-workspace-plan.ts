@@ -173,6 +173,7 @@ Resolve unknowns by discovery (\`grep\`, \`find\`, \`read\`, code-intelligence t
 ## Plan contents
 
 Scannable markdown with \`##\` sections; depth follows the change.
+- Write the plan in the conversation's language (Chinese for a Chinese conversation); an explicit user-requested language takes precedence. Preserve code, identifiers, and proper names verbatim.
 - **Context** — literal ask, need, intended end state; 2–4 sentences.
 - **Approach** — ordered, load-bearing change steps grouped by behavior: exact targets, reused utilities, exact new signatures/literals, every callsite of renames/removals, error/empty handling.
 - **Critical files & anchors** — ≤5 files with symbol/region and one-line reason.

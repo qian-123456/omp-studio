@@ -366,7 +366,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
 }
 
 pub fn parse_usage(u: &Value) -> Usage {
-    let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let n = |k: &str| u.get(k).and_then(Value::as_u64);
     let mut usage = Usage {
         input: n("input"),
         output: n("output"),
@@ -376,10 +376,20 @@ pub fn parse_usage(u: &Value) -> Usage {
         cost: u
             .pointer("/cost/total")
             .and_then(Value::as_f64)
-            .unwrap_or(0.0),
+            .or_else(|| u.get("cost").and_then(Value::as_f64)),
     };
-    if usage.total_tokens == 0 {
-        usage.total_tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+    if usage.total_tokens.is_none() {
+        usage.total_tokens = usage
+            .input
+            .zip(usage.output)
+            .zip(usage.cache_read)
+            .zip(usage.cache_write)
+            .and_then(|(((input, output), read), write)| {
+                input
+                    .checked_add(output)?
+                    .checked_add(read)?
+                    .checked_add(write)
+            });
     }
     usage
 }
@@ -398,22 +408,26 @@ fn num_i64(v: Option<&Value>) -> Option<i64> {
 }
 
 /// Sum assistant `usage` over the whole transcript: (total tokens, cost).
-pub fn sum_usage(path: &Path) -> std::io::Result<(u64, f64)> {
+pub fn sum_usage(path: &Path) -> std::io::Result<(Option<u64>, Option<f64>)> {
     let reader = BufReader::with_capacity(256 * 1024, File::open(path)?);
-    let (mut tokens, mut cost) = (0u64, 0f64);
+    let (mut tokens, mut cost) = (Some(0u64), Some(0f64));
     for line in reader.split(b'\n') {
         let line = line?;
-        // Cheap prefilter before JSON parsing.
-        if !contains(&line, b"\"usage\"") || !contains(&line, b"\"assistant\"") {
+        if !contains(&line, b"\"assistant\"") {
             continue;
         }
         let Ok(v) = serde_json::from_slice::<Value>(&line) else {
             continue;
         };
-        if let Some(u) = v.pointer("/message/usage") {
-            let u = parse_usage(u);
-            tokens += u.total_tokens;
-            cost += u.cost;
+        if v.pointer("/message/role").and_then(Value::as_str) == Some("assistant") {
+            let u = v
+                .pointer("/message/usage")
+                .map(parse_usage)
+                .unwrap_or_default();
+            tokens = tokens
+                .zip(u.total_tokens)
+                .and_then(|(a, b)| a.checked_add(b));
+            cost = cost.zip(u.cost).map(|(a, b)| a + b);
         }
     }
     Ok((tokens, cost))
@@ -454,8 +468,9 @@ pub fn session_snapshot(path: &Path) -> std::io::Result<SessionSnapshot> {
                 }
                 if let Some(u) = v.pointer("/message/usage") {
                     let u = parse_usage(u);
-                    let prompt = u.input + u.cache_read + u.cache_write;
-                    if prompt > 0 {
+                    if let Some(prompt) = u.input.zip(u.cache_read).zip(u.cache_write).and_then(
+                        |((input, read), write)| input.checked_add(read)?.checked_add(write),
+                    ) {
                         snap.context_tokens = Some(prompt);
                     }
                 }
@@ -484,6 +499,22 @@ fn opt(s: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn partial_usage_preserves_unknown_and_explicit_zero() {
+        let entry: Value = serde_json::from_str(
+            r#"{"type":"message","id":"a","message":{"role":"assistant","usage":{"output":0}}}"#,
+        )
+        .unwrap();
+        let usage = normalize_entry(&entry).unwrap().usage.unwrap();
+        assert_eq!(usage.output, Some(0));
+        assert_eq!(usage.input, None);
+        assert_eq!(usage.cache_read, None);
+        assert_eq!(usage.total_tokens, None);
+        assert_eq!(usage.cost, None);
+        let json = serde_json::to_value(usage).unwrap();
+        assert_eq!(json["output"], 0);
+        assert!(json["input"].is_null());
+    }
 
     const FIXTURE: &str = concat!(
         r#"{"type":"title","v":1,"title":"t","pad":"  "}"#,
@@ -529,7 +560,7 @@ mod tests {
         let a = &items[3];
         assert_eq!(a.thinking.as_deref(), Some("hmm"));
         assert_eq!(a.tool_calls[0].intent.as_deref(), Some("List"));
-        assert_eq!(a.usage.as_ref().unwrap().total_tokens, 115);
+        assert_eq!(a.usage.as_ref().unwrap().total_tokens, Some(115));
         assert_eq!(a.parent_id.as_deref(), Some("u"));
         let r = items[4].tool_result.as_ref().unwrap();
         assert_eq!((r.tool_call_id.as_str(), r.text.as_str()), ("c1", "a.txt"));
@@ -631,7 +662,7 @@ mod tests {
         let page3 = read_page(&path, "S", 10_000_000, None).unwrap();
         assert!(page3.reset);
         assert_eq!(page3.items.len(), 7);
-        assert_eq!(sum_usage(&path).unwrap(), (115, 0.5));
+        assert_eq!(sum_usage(&path).unwrap(), (Some(115), Some(0.5)));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

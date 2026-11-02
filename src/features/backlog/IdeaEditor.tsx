@@ -2,8 +2,8 @@ import { ChevronDown, Paperclip } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { exceedsLines, useLineClampOverflow } from "../../lib/useLineClamp";
-import { getImageTokenPalette } from "../chat/imageTokens";
-import { splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
+import { adjacentAttachmentToken, getImageTokenPalette } from "../chat/imageTokens";
+import { reconcileDoc, splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
 import { claimEscape } from "../../lib/escapeClaim";
 import { useT, tNow } from "../../stores/language";
 export interface IdeaEditorHandle {
@@ -84,7 +84,7 @@ export const IdeaEditor = forwardRef<
 	// (kerning/ligatures split differently across chip spans; a classic scrollbar narrows only
 	// the textarea's wrap width), leaving the caret far right of the painted text until the
 	// next reflow. The textarea scrollbar is hidden so its content box equals the overlay's.
-	const base = `w-full whitespace-pre-wrap break-words border px-2.5 py-1.5 ${textClass} [font-kerning:none] [font-variant-ligatures:none] [tab-size:4] [word-break:normal] ${boxClass}`;
+	const base = `w-full whitespace-pre-wrap break-words border px-2.5 py-1.5 font-sans ${textClass} [font-kerning:none] [font-variant-ligatures:none] [tab-size:4] [word-break:normal] ${boxClass}`;
 
 	return (
 		<div className="relative">
@@ -104,6 +104,16 @@ export const IdeaEditor = forwardRef<
 						setPreview(null);
 						taRef.current?.focus();
 						return;
+					}
+					if ((e.key === "Backspace" || e.key === "Delete") && !e.shiftKey && !e.metaKey && !e.altKey && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
+						const token = adjacentAttachmentToken(doc.text, e.currentTarget.selectionStart, e.key);
+						if (token && !token.isFile) {
+							e.preventDefault();
+							const text = doc.text.slice(0, token.start) + doc.text.slice(token.end);
+							pendingCaret.current = token.start;
+							onChange(reconcileDoc({ text, images: doc.images }));
+							return;
+						}
 					}
 					onKeyDown?.(e);
 				}}

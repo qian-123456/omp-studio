@@ -345,6 +345,7 @@ describe("formFromSchedule", () => {
 		name: "n",
 		prompt: "p",
 		cwd: "/x",
+		mode: "code",
 		runMode: "worktree",
 		cadence: { kind: "monthly", day: 15, time: "10:30" },
 		model: "openai/gpt-5",

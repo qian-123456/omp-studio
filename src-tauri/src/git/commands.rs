@@ -89,7 +89,21 @@ pub async fn git_repo_root(
     _state: tauri::State<'_, AppState>,
     cwd: String,
 ) -> Result<Option<String>, String> {
-    blocking(move || Ok(repo_root(&PathBuf::from(cwd)))).await
+    blocking(move || {
+        let path = crate::services::files::resolve(&cwd)?;
+        let probe = super::cmd::git(&path, &["rev-parse", "--is-inside-work-tree"])?;
+        if !probe.ok() {
+            let error = probe.err_msg();
+            if error.contains("not a git repository") {
+                return Ok(None);
+            }
+            return Err(error);
+        }
+        repo_root(&path)
+            .map(Some)
+            .ok_or_else(|| format!("failed to resolve Git repository: {}", path.display()))
+    })
+    .await
 }
 
 #[tauri::command]

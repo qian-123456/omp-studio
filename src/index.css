@@ -871,11 +871,19 @@ body {
 
 /* Selection: refined translucent sapphire highlight with natural text contrast */
 ::selection,
+a::selection,
+strong::selection,
 code::selection,
 pre::selection {
-	background: rgba(56, 189, 248, 0.32) !important;
-	color: inherit !important;
-	text-shadow: none !important;
+    background: rgba(56, 189, 248, 0.32) !important;
+    color: inherit !important;
+    text-shadow: none !important;
+}
+
+/* The geometry overlay owns the selected root while it has a valid range; other roots keep native selection paint. */
+[data-native-overlay-active]::selection,
+[data-native-overlay-active] *::selection {
+    background: transparent !important;
 }
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
@@ -1586,18 +1594,6 @@ html[data-theme="lavender"] {
 	.hljs-deletion {
 		color: #b31d28;
 	}
-}
-
-/* Quoted text of a message selection while its annotation comment is typed:
- * the same sapphire as ::selection, kept painted after focus leaves the text. */
-::highlight(annotation-pending) {
-	background-color: rgba(56, 189, 248, 0.32);
-}
-
-/* Text of saved message annotations: a warm amber, distinct from the sapphire
- * selection / pending colour. */
-::highlight(annotation-saved) {
-	background-color: rgba(251, 191, 36, 0.3);
 }
 
 /* In-thread find: every match, and the current one distinct. */

@@ -176,12 +176,12 @@ export interface ToolResultInfo {
 }
 
 export interface Usage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	cost: number;
+	input: number | null;
+	output: number | null;
+	cacheRead: number | null;
+	cacheWrite: number | null;
+	totalTokens: number | null;
+	cost: number | null;
 }
 
 /** Structured image reference attached to a transcript item. */
@@ -257,8 +257,8 @@ export interface SubagentSummary {
 	messageCount: number;
 	toolCallCount: number;
 	requestCount: number;
-	tokens: number;
-	cost: number;
+	tokens: number | null;
+	cost: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
 	outputPath: string | null;
@@ -624,8 +624,8 @@ export interface MobileStatus {
 
 export interface UsageSummary {
 	available: boolean;
-	tokens: number;
-	cost: number;
+	tokens: number | null;
+	cost: number | null;
 	/** "token-tracker" | "transcript" */
 	source: string;
 }
@@ -1515,6 +1515,7 @@ export interface Schedule {
 	name: string;
 	prompt: string;
 	cwd: string;
+	mode: SpaceMode;
 	runMode: ScheduleRunMode;
 	cadence: ScheduleCadence;
 	model: string | null;
@@ -1547,6 +1548,7 @@ export interface ScheduleDraft {
 	name: string;
 	prompt: string;
 	cwd: string;
+	mode?: SpaceMode;
 	runMode?: ScheduleRunMode;
 	cadence: ScheduleCadence;
 	model?: string | null;

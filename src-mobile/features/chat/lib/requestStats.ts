@@ -4,12 +4,12 @@
 export type StatField = "time" | "input" | "output" | "cache" | "ttft" | "tps" | "duration" | "cost";
 
 export interface RequestUsage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	cost: number;
+	input: number | null;
+	output: number | null;
+	cacheRead: number | null;
+	cacheWrite: number | null;
+	totalTokens: number | null;
+	cost: number | null;
 }
 
 export interface RequestStat {
@@ -59,14 +59,13 @@ function usageOf(u: unknown): RequestUsage | null {
 	const r = u as Record<string, unknown>;
 	const cost = r.cost;
 	return {
-		input: finiteOrNull(r.input) ?? 0,
-		output: finiteOrNull(r.output) ?? 0,
-		cacheRead: finiteOrNull(r.cacheRead) ?? 0,
-		cacheWrite: finiteOrNull(r.cacheWrite) ?? 0,
-		totalTokens: finiteOrNull(r.totalTokens) ?? 0,
-		cost:
-			finiteOrNull(cost) ??
-			(cost && typeof cost === "object" ? (finiteOrNull((cost as Record<string, unknown>).total) ?? 0) : 0),
+		input: finiteOrNull(r.input),
+		output: finiteOrNull(r.output),
+		cacheRead: finiteOrNull(r.cacheRead),
+		cacheWrite: finiteOrNull(r.cacheWrite),
+		totalTokens: finiteOrNull(r.totalTokens) ?? ([r.input, r.output, r.cacheRead, r.cacheWrite].every((v) => finiteOrNull(v) !== null)
+			? Number(r.input) + Number(r.output) + Number(r.cacheRead) + Number(r.cacheWrite) : null),
+		cost: finiteOrNull(cost) ?? (cost && typeof cost === "object" ? finiteOrNull((cost as Record<string, unknown>).total) : null),
 	};
 }
 
@@ -103,7 +102,7 @@ export function requestStatFromMessage(msg: Record<string, unknown>, fallbackTs?
 
 /** Output tokens per second over the whole request (TUI ⚡); null without duration. */
 export function tokensPerSecond(stat: RequestStat | null | undefined): number | null {
-	if (!stat || !stat.usage || !stat.durationMs || stat.durationMs <= 0) return null;
+	if (!stat || stat.usage?.output == null || !stat.durationMs || stat.durationMs <= 0) return null;
 	return stat.usage.output / (stat.durationMs / 1000);
 }
 
@@ -149,11 +148,11 @@ export function fieldText(stat: RequestStat, field: StatField): string | null {
 		case "time":
 			return stat.startedAt == null ? null : formatStatClock(stat.startedAt);
 		case "input":
-			return u ? formatStatTokens(u.input + u.cacheWrite) : null;
+			return u?.input != null && u.cacheWrite != null ? formatStatTokens(u.input + u.cacheWrite) : null;
 		case "output":
-			return u ? formatStatTokens(u.output) : null;
+			return u?.output != null ? formatStatTokens(u.output) : null;
 		case "cache":
-			return u ? formatStatTokens(u.cacheRead) : null;
+			return u?.cacheRead != null ? formatStatTokens(u.cacheRead) : null;
 		case "ttft":
 			return stat.ttftMs == null ? null : formatStatSeconds(stat.ttftMs);
 		case "tps": {
@@ -163,7 +162,7 @@ export function fieldText(stat: RequestStat, field: StatField): string | null {
 		case "duration":
 			return stat.durationMs == null ? null : formatStatSeconds(stat.durationMs);
 		case "cost":
-			return u ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
+			return u?.cost != null ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
 	}
 }
 
@@ -175,9 +174,8 @@ export function statSummary(stat: RequestStat): string {
 	const parts: string[] = [];
 	if (stat.startedAt != null) parts.push(formatStatClock(stat.startedAt).slice(0, 5));
 	const u = stat.usage;
-	if (u) {
-		const total = u.input + u.cacheWrite + u.cacheRead + u.output;
-		if (total > 0) parts.push(`${formatStatTokens(total)} tokens`);
+	if (u?.totalTokens != null) {
+		if (u.totalTokens > 0) parts.push(`${formatStatTokens(u.totalTokens)} tokens`);
 	}
 	if (stat.durationMs != null && stat.durationMs > 0) parts.push(`${(stat.durationMs / 1000).toFixed(1)} 秒`);
 	return parts.join(" · ");

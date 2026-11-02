@@ -191,15 +191,14 @@ export function ModelMenuContent({
 			const found = providers.find(([, list]) =>
 				list.some((m) => toModelKey(m.provider, m.id) === selectedKey),
 			);
-			if (found && !recentModels.some((m) => toModelKey(m.provider, m.id) === selectedKey)) {
-				return providerGroup(found[0]);
-			}
+            if (found) return providerGroup(found[0]);
 		}
 		return groupIds[0] ?? null;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [groupIds]);
 	const effectiveGroup =
 		group !== null && groupIds.includes(group) ? group : (defaultGroup ?? groupIds[0] ?? null);
+
 
 	const searching = q.trim().length > 0;
 	const searchHits = useMemo(() => {
@@ -212,6 +211,15 @@ export function ModelMenuContent({
 				m.provider.toLowerCase().includes(needle),
 		);
 	}, [models, q, searching]);
+    useEffect(() => {
+        if (searching || !rootRef.current) return;
+        const left = Array.from(rootRef.current.querySelectorAll<HTMLElement>("[data-model-group]"))
+            .find((el) => el.dataset.modelGroup === effectiveGroup);
+        left?.scrollIntoView({ block: "nearest" });
+        const right = Array.from(rootRef.current.querySelectorAll<HTMLElement>("[data-model-key]"))
+            .find((el) => el.dataset.modelKey === selectedKey);
+        right?.scrollIntoView({ block: "nearest" });
+    }, [effectiveGroup, models, searching, selectedKey]);
 	const customQuery = q.trim();
 	const showCustomRow =
 		allowCustom &&
@@ -327,6 +335,7 @@ export function ModelMenuContent({
 				<div
 					key={e.id}
 					{...hiProps}
+                    data-model-key={key}
 					className={clsx(
 						"group flex w-full items-center rounded-[8px] transition-colors",
 						isSelected ? ROW_SELECTED : highlighted ? ROW_HI : ROW_IDLE,
@@ -430,6 +439,7 @@ export function ModelMenuContent({
 			<button
 				key={id}
 				type="button"
+                    data-model-group={id}
 				onClick={() => setGroup(id)}
 				className={clsx(
 					"flex w-full items-center justify-between gap-1 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
@@ -473,16 +483,9 @@ export function ModelMenuContent({
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: key handling for the whole picker
 		<div ref={rootRef} className="flex min-h-0 flex-col outline-none" onKeyDown={onKeyDown} tabIndex={-1}>
-			{(caption || refreshing) && (
+			{caption && (
 				<div className="flex shrink-0 items-center justify-between gap-2 px-2.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
 					<span className="break-all">{caption}</span>
-					{refreshing && (
-						<Loader2
-							size={11}
-							className="shrink-0 animate-spin text-neutral-500"
-							aria-label={t("models.refreshingModels")}
-						/>
-					)}
 				</div>
 			)}
 			{(models.length > 5 || allowCustom) && (
@@ -497,6 +500,9 @@ export function ModelMenuContent({
 							placeholder={allowCustom ? t("models.searchPlaceholderWithCustom") : t("models.searchPlaceholder")}
 							className="w-full bg-transparent outline-none placeholder:text-neutral-500"
 						/>
+						<span className="flex h-[11px] w-[11px] shrink-0 items-center justify-center">
+							{refreshing && <Loader2 size={11} className="animate-spin text-neutral-500" aria-label={t("models.refreshingModels")} />}
+						</span>
 					</div>
 				</div>
 			)}

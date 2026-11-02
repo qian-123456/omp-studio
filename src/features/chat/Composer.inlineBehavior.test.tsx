@@ -18,10 +18,12 @@ import { Composer } from "./Composer";
 
 const S1 = "inline-s1";
 const S2 = "inline-s2";
+const DRAFT = "local-draft:inline";
 
 const h = vi.hoisted(() => ({
 	imageContents: vi.fn(async (_paths: string[]) => [] as Array<{ type: "image"; data: string; mimeType: string }>),
 	rpcSend: vi.fn(async (_id: string, _cmd: unknown) => ({}) as Record<string, unknown>),
+	materialize: vi.fn(async (_id: string) => S1),
 }));
 
 vi.mock("../../components/ImagePreviewModal", () => ({
@@ -36,6 +38,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		rpcSend: h.rpcSend,
 		imageContentsFromPaths: h.imageContents,
 		rpcEnsureLive: vi.fn(async () => ({ sessionId: S1 })),
+		rpcRelease: vi.fn(async () => {}),
 		ompModelRolesRead: vi.fn(async () => ({
 			global: { path: "/g", exists: true, modelRoles: {}, agentModelOverrides: {} },
 			project: null,
@@ -59,7 +62,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 });
 vi.mock("../sessions/draftSession", async (importOriginal) => {
 	const orig = await importOriginal<typeof DraftSessionModule>();
-	return { ...orig, materializeDraft: vi.fn(async () => S1), warmDraft: () => {}, prewarmDraft: async () => S1 };
+	return { ...orig, materializeDraft: h.materialize, warmDraft: () => {}, prewarmDraft: async () => S1 };
 });
 vi.mock("@tauri-apps/api/webview", () => ({
 	getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
@@ -125,6 +128,8 @@ beforeEach(() => {
 	h.imageContents.mockImplementation(async () => [{ type: "image", data: PNG_B64, mimeType: "image/png" }]);
 	h.rpcSend.mockReset();
 	h.rpcSend.mockImplementation(async () => ({}));
+	h.materialize.mockReset();
+	h.materialize.mockImplementation(async (_id) => S1);
 	useComposer.setState({ drafts: {}, annotations: {}, images: {}, files: {}, history: [] });
 	useLive.setState({ sessions: {} });
 	useSessions.setState({ sessions: {} } as never);
@@ -210,6 +215,40 @@ describe("/plan intent", () => {
 		fireEvent.keyDown(textarea(S1), { key: "Enter" });
 		await flush();
 		expect(prompts().slice(-2)).toEqual(["/plan-action enable", "hello"]);
+	});
+
+	it("sends plan enable and the user message to the materialized real session", async () => {
+		const actualDraft = await vi.importActual<typeof DraftSessionModule>("../sessions/draftSession");
+		h.materialize.mockImplementation(actualDraft.materializeDraft);
+		usePendingSession.setState({
+			drafts: {
+				[DRAFT]: {
+					id: DRAFT, cwd: "/tmp/proj", mode: "code", groupId: null,
+					opts: { cwd: "/tmp/proj" } as never, model: null, thinking: null,
+					sessionId: S1, startError: null,
+				},
+			},
+			selectedId: DRAFT,
+		});
+		liveFor(DRAFT, S1);
+		render(<Composer sessionId={DRAFT} />);
+		await flush();
+		typePlanWithSpace(textarea(DRAFT));
+		await flush();
+		type(textarea(DRAFT), "hello");
+		fireEvent.keyDown(textarea(DRAFT), { key: "Enter" });
+		await flush();
+		expect(h.materialize).toHaveBeenCalledWith(DRAFT);
+		expect(usePendingSession.getState().drafts[DRAFT]).toBeUndefined();
+		const sent = h.rpcSend.mock.calls.flatMap(([id, command]) => {
+			if (!command || typeof command !== "object" || !("type" in command) || command.type !== "prompt") return [];
+			if (!("message" in command) || typeof command.message !== "string") throw new Error("Prompt missing message");
+			return [[id, command.message]];
+		});
+		expect(sent).toEqual([
+			[S1, "/plan-action enable"],
+			[S1, "hello"],
+		]);
 	});
 });
 

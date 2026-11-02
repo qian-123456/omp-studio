@@ -92,8 +92,8 @@ struct AgentMeta {
     tool_call_count: u32,
     request_count: u32,
     /// input + output + cacheWrite, matching AgentProgress.tokens.
-    tokens: u64,
-    cost: f64,
+    tokens: Option<u64>,
+    cost: Option<f64>,
     last_assistant_text: Option<String>,
     last_stop_reason: Option<String>,
     has_assistant: bool,
@@ -151,11 +151,27 @@ fn accumulate(meta: &mut AgentMeta, v: &Value) {
                     if !text.trim().is_empty() {
                         meta.last_assistant_text = Some(text);
                     }
-                    if let Some(u) = msg.get("usage") {
-                        let u = cat_transcript::parse_usage(u);
-                        meta.tokens += u.input + u.output + u.cache_write;
-                        meta.cost += u.cost;
-                    }
+                    let usage = msg
+                        .get("usage")
+                        .map(cat_transcript::parse_usage)
+                        .unwrap_or_default();
+                    let tokens = usage
+                        .input
+                        .zip(usage.output)
+                        .zip(usage.cache_write)
+                        .and_then(|((input, output), write)| {
+                            input.checked_add(output)?.checked_add(write)
+                        });
+                    meta.tokens = if meta.request_count == 1 {
+                        tokens
+                    } else {
+                        meta.tokens.zip(tokens).and_then(|(a, b)| a.checked_add(b))
+                    };
+                    meta.cost = if meta.request_count == 1 {
+                        usage.cost
+                    } else {
+                        meta.cost.zip(usage.cost).map(|(a, b)| a + b)
+                    };
                     if let Some(sr) = msg.get("stopReason").and_then(Value::as_str) {
                         meta.last_stop_reason = Some(sr.to_string());
                     }
@@ -285,8 +301,16 @@ fn summary_from(
         message_count: scan.meta.message_count,
         tool_call_count: scan.meta.tool_call_count,
         request_count: scan.meta.request_count,
-        tokens: scan.meta.tokens,
-        cost: scan.meta.cost,
+        tokens: if scan.meta.request_count == 0 {
+            Some(0)
+        } else {
+            scan.meta.tokens
+        },
+        cost: if scan.meta.request_count == 0 {
+            Some(0.0)
+        } else {
+            scan.meta.cost
+        },
         started_at: scan.started_at.clone(),
         ended_at: scan.ended_at.clone(),
         output_path: output.map(|p| p.to_string_lossy().into_owned()),
@@ -617,12 +641,33 @@ mod tests {
         assert_eq!(done.prompt.as_deref(), Some("do the thing"));
         assert_eq!(done.tool_call_count, 1);
         assert_eq!(done.request_count, 2);
-        assert_eq!(done.tokens, 10 + 5 + 1 + 3 + 2); // cacheRead excluded
-        assert!((done.cost - 0.6).abs() < 1e-9);
+        assert_eq!(done.tokens, Some(10 + 5 + 1 + 3 + 2));
+        assert!((done.cost.unwrap() - 0.6).abs() < 1e-9);
         assert_eq!(done.started_at.as_deref(), Some("T0"));
         assert_eq!(done.ended_at.as_deref(), Some("T7"));
         assert!(done.output_path.as_deref().unwrap().ends_with("Done.md"));
         assert_eq!(by["Live"].status, SubagentStatus::Running);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn partial_request_usage_stays_unknown_in_transcript_and_aggregate() {
+        let (root, parent, subdir) = setup();
+        let partial = r#"{"type":"message","id":"partial","timestamp":"T8","message":{"role":"assistant","usage":{"output":0}}}"#;
+        fs::write(subdir.join("A.jsonl"), format!("{AGENT}\n{partial}\n")).unwrap();
+        let t = transcript_in(parent.to_str().unwrap(), "A", 0, &root).unwrap();
+        let usage = t
+            .items
+            .iter()
+            .find(|item| item.id == "partial")
+            .unwrap()
+            .usage
+            .as_ref()
+            .unwrap();
+        assert_eq!(usage.output, Some(0));
+        assert_eq!(usage.input, None);
+        assert_eq!(t.summary.tokens, None);
+        assert_eq!(t.summary.cost, None);
         fs::remove_dir_all(&root).ok();
     }
 

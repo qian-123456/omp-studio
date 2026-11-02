@@ -187,8 +187,8 @@ export function BottomBar() {
 						)}
 						<span className="text-neutral-600">·</span>
 						<Coins size={11} className="text-neutral-500 group-hover:text-amber-400 transition-colors" />
-						<span className="tabular-nums font-mono">{formatTokens(stats.totalTokens)}</span>
-						{stats.cacheHitRate > 0 && (
+						<span className="tabular-nums font-mono">{stats.totalTokens == null ? "—" : formatTokens(stats.totalTokens)}</span>
+						{stats.cacheHitRate != null && stats.cacheHitRate > 0 && (
 							<>
 								<span className="text-neutral-600">·</span>
 								<span className="tabular-nums font-mono">{t("bottomBar.cacheHitRate", { rate: stats.cacheHitRate.toFixed(1) })}</span>

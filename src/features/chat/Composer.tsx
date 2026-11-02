@@ -233,7 +233,7 @@ import {
 } from "./slash/menu";
 import { detectFirstWordSpace, detectSpaceToken, splitFirstWord } from "./slash/spaceToken";
 import { SlashMenu } from "./slash/SlashMenu";
-import { expandImagesForSend, expandImageTokens } from "./imageTokens";
+import { adjacentAttachmentToken, expandImagesForSend, expandImageTokens } from "./imageTokens";
 import { runPlanAction } from "./plan/planActions";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { cancelCompaction, runCompaction, useCompaction } from "./slash/compaction";
@@ -598,8 +598,8 @@ export function Composer({
 		let cancelled = false;
 		sessionUsage(sessionId)
 			.then((u) => {
-				if (!cancelled && u.available) {
-					setTotalTokensRec({ id: sessionId, str: formatTokens(u.tokens) });
+				if (!cancelled) {
+					setTotalTokensRec(u.available && u.tokens != null ? { id: sessionId, str: formatTokens(u.tokens) } : null);
 				}
 			})
 			.catch((err) => console.warn("[composer] session usage fetch failed", err));
@@ -751,7 +751,7 @@ export function Composer({
 			});
 			if (!selected) return;
 			const paths = typeof selected === "string" ? [selected] : selected;
-			for (const p of paths) await attachPath(p);
+			for (const p of paths) await attachPastedPath(p);
 			if (paths.length > 0) toast.success(t("composer.addedFileRefs", { count: paths.length }));
 		} catch (dialogErr) {
 			toast.error(t("composer.openFileDialogFailed", { error: errMsg(dialogErr) }));
@@ -992,14 +992,16 @@ export function Composer({
 		typeof contextRaw === "object" && contextRaw !== null ? (contextRaw as Record<string, unknown>) : null;
 	const draftBaseTokens = useDraftBaseContext(isLocalDraft, sessionId, sessionMeta?.cwd);
 	const contextUsageObj: Record<string, unknown> | null = liveUsage
-		? contextWindow && typeof liveUsage.tokens === "number"
-			? { ...liveUsage, contextWindow, percent: (liveUsage.tokens / contextWindow) * 100 }
-			: liveUsage
-		: (snapshot?.contextTokens ?? (isLocalDraft ? (draftBaseTokens ?? 0) : null)) != null && contextWindow
+		? contextWindow
+			? { ...liveUsage, contextWindow, percent: typeof liveUsage.tokens === "number" ? (liveUsage.tokens / contextWindow) * 100 : undefined }
+			: planChoice || (current.value && sessionCurrent.value && current.value !== sessionCurrent.value)
+				? { ...liveUsage, contextWindow: undefined, percent: undefined }
+				: liveUsage
+		: (snapshot?.contextTokens ?? (isLocalDraft ? draftBaseTokens : null)) != null
 			? {
-					tokens: snapshot?.contextTokens ?? draftBaseTokens ?? 0,
+					tokens: snapshot?.contextTokens ?? draftBaseTokens,
 					contextWindow,
-					percent: ((snapshot?.contextTokens ?? draftBaseTokens ?? 0) / contextWindow) * 100,
+					percent: contextWindow ? ((snapshot?.contextTokens ?? draftBaseTokens!) / contextWindow) * 100 : undefined,
 				}
 			: null;
 	const contextPct =
@@ -1307,15 +1309,15 @@ export function Composer({
 
 	/** Plan mode is owned by the omp plan extension. Explicit, idempotent,
 	 * silent host commands (`/plan-action enable|disable`): never a toggle. */
-	const setPlanMode = async (enable: boolean): Promise<boolean> => {
+	const setPlanMode = async (enable: boolean): Promise<string | null> => {
 		try {
 			const target = await slashTarget("plan");
 			await runPlanAction(target, enable ? "enable" : "disable");
-			return true;
+			return target;
 		} catch (err) {
 			if (!isResumeCancelled(err))
 				toast.error(t("composer.cmdFailed", { name: "plan", error: errMsg(err) }));
-			return false;
+			return null;
 		}
 	};
 
@@ -1497,7 +1499,9 @@ export function Composer({
 			// `/plan` picked alongside other chips: enable plan mode first, the prompt (and any
 			// `/skill:` chip) then runs inside the plan turn. A failed enable keeps the draft,
 			// the chips and the pending intent so the user can simply retry.
-			if (!(await setPlanMode(true))) return;
+			const target = await setPlanMode(true);
+			if (!target) return;
+			inputOwner = target;
 			setPlanIntent(false);
 		}
 		// Chip + args serialize to the exact `/name args` the user would have
@@ -1517,7 +1521,7 @@ export function Composer({
 			void linkSentSecrets(inputOwner, sentSecrets, sessionEntryIds, markScopes);
 		};
 		setArgHintLine(null);
-		const slashImages = useComposer.getState().images[sessionId] ?? [];
+		const slashImages = useComposer.getState().images[inputOwner] ?? [];
 		const slashAttachments: ImageAttachment[] = slashImages.map((img, i) => ({
 			id: img.id || `img-${i + 1}`,
 			path: img.path,
@@ -1535,7 +1539,9 @@ export function Composer({
 			setChip(null);
 			try {
 				// A draft becomes a real session first unless the command is UI-only.
-				const target = await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "");
+				const target = inputOwner === sessionId
+					? await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "")
+					: inputOwner;
 				inputOwner = target;
 				const outcome = await runSlashInput(
 					target,
@@ -1593,7 +1599,7 @@ export function Composer({
 
 		// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself;
 		// deleted tokens still ship their path so nothing silently drops out.
-		const currentSessionFiles = useComposer.getState().files[sessionId] ?? [];
+		const currentSessionFiles = useComposer.getState().files[inputOwner] ?? [];
 		outgoingRaw = expandFilesForSend(outgoingRaw, currentSessionFiles);
 
 		const mainImageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
@@ -1619,13 +1625,13 @@ export function Composer({
 		// Queue (and a plain send that raced turn-end while streaming): hold locally
 		// (ARCHITECTURE §11 B); the post-turn HeldQueueBar sends it with its image attachments.
 		if (action === "queue" || (action === "send" && streaming)) {
-			pushHeld(sessionId, message, imageAttachments);
+			pushHeld(inputOwner, message, imageAttachments);
 			pushHistory(raw.trim());
 			finishPrivacySend();
-			clearDraft(sessionId);
-			clearAnnotations(sessionId);
-			clearImages(sessionId);
-			clearFiles(sessionId);
+			clearDraft(inputOwner);
+			clearAnnotations(inputOwner);
+			clearImages(inputOwner);
+			clearFiles(inputOwner);
 			return;
 		}
 		setBusy(true);
@@ -1633,7 +1639,7 @@ export function Composer({
 		// resume/RPC awaits below can take seconds. Restore everything if the send fails.
 		const prevAnnotations = annotations;
 		let released = false;
-		const releaseComposer = (targetId = sessionId) => {
+		const releaseComposer = (targetId = inputOwner) => {
 			released = true;
 			inputOwner = targetId;
 			const store = useComposer.getState();
@@ -1687,10 +1693,10 @@ export function Composer({
 			// hold the message rather than dropping it.
 			const idle =
 				action === "interrupt" && streaming
-					? await interruptAndWait(sessionId, INTERRUPT_WAIT_MS)
+					? await interruptAndWait(inputOwner, INTERRUPT_WAIT_MS)
 					: true;
 			if (idle) {
-				heldBatch = takeReadyHeldBatch(sessionId, true);
+				heldBatch = takeReadyHeldBatch(inputOwner, true);
 				if (heldBatch) {
 					const merged = mergeHeldItems([
 						{ id: "composer-send", text: message, images: imageAttachments },
@@ -1699,7 +1705,7 @@ export function Composer({
 					outgoingMessage = merged.text;
 					outgoingImages = merged.images;
 				}
-				await sendPrompt(sessionId, outgoingMessage, {
+				await sendPrompt(inputOwner, outgoingMessage, {
 					steer: action === "steer",
 					images: outgoingImages,
 					onEchoed: releaseComposer,
@@ -1707,13 +1713,13 @@ export function Composer({
 				// Cancelled takeover returns without echoing: keep the draft and queue for retry.
 				if (!released) {
 					if (heldBatch) {
-						restoreReadyHeldBatch(sessionId, heldBatch);
+						restoreReadyHeldBatch(inputOwner, heldBatch);
 						heldRestored = true;
 					}
 					return;
 				}
 			} else {
-				pushHeld(sessionId, message, imageAttachments);
+				pushHeld(inputOwner, message, imageAttachments);
 				toast.error(t("composer.interruptTimeout"));
 				releaseComposer();
 			}
@@ -1722,12 +1728,12 @@ export function Composer({
 		} catch (err) {
 			restoreComposer();
 			if (heldBatch && !heldRestored) {
-				restoreReadyHeldBatch(sessionId, heldBatch);
+				restoreReadyHeldBatch(inputOwner, heldBatch);
 				heldRestored = true;
 			}
 			if (!isResumeCancelled(err)) toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 		} finally {
-			if (heldBatch) releaseReadyHeldBatch(sessionId);
+			if (heldBatch) releaseReadyHeldBatch(inputOwner);
 			setBusy(false);
 		}
 	};
@@ -2238,65 +2244,21 @@ export function Composer({
 			}
 		}
 
-		// Atomic backspace for attachment tokens `🖼️ #N` / `📎 #N` (either bracket form)
-		if (e.key === "Backspace" && !e.shiftKey && !e.metaKey && !e.altKey) {
+		if ((e.key === "Backspace" || e.key === "Delete") && !e.shiftKey && !e.metaKey && !e.altKey) {
 			const ta = taRef.current;
-			if (ta && ta.selectionStart === ta.selectionEnd) {
-				const pos = ta.selectionStart;
-				const before = text.slice(0, pos);
-				const match = /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])[ \t]?$/.exec(before);
-				if (match) {
-					e.preventDefault();
-					const tokenStr = match[0];
-					const startIdx = pos - tokenStr.length;
-					const numMatch = /\d+/.exec(tokenStr);
-					const tokNum = numMatch ? parseInt(numMatch[0], 10) : null;
-					const isFileToken = tokenStr.includes("📎") || /\[(?:File|文件)/.test(tokenStr);
-
-					const nextText = text.slice(0, startIdx) + text.slice(pos);
-					setText(nextText);
-					setDraft(sessionId, nextText);
-					setCursorPos(startIdx);
-					setTimeout(() => {
-						ta.setSelectionRange(startIdx, startIdx);
-					}, 0);
-					if (tokNum !== null) {
-						if (isFileToken) removeFileByIndex(tokNum - 1, nextText);
-						else removeImageByIndex(tokNum - 1, nextText);
-					}
-					return;
-				}
-			}
-		}
-
-		// Atomic delete for attachment tokens `🖼️ #N` / `📎 #N`
-		if (e.key === "Delete" && !e.shiftKey && !e.metaKey && !e.altKey) {
-			const ta = taRef.current;
-			if (ta && ta.selectionStart === ta.selectionEnd) {
-				const pos = ta.selectionStart;
-				const after = text.slice(pos);
-				const match = /^[ \t]?(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
-				if (match) {
-					e.preventDefault();
-					const tokenStr = match[0];
-					const endIdx = pos + tokenStr.length;
-					const numMatch = /\d+/.exec(tokenStr);
-					const tokNum = numMatch ? parseInt(numMatch[0], 10) : null;
-					const isFileToken = tokenStr.includes("📎") || /\[(?:File|文件)/.test(tokenStr);
-
-					const nextText = text.slice(0, pos) + text.slice(endIdx);
-					setText(nextText);
-					setDraft(sessionId, nextText);
-					setCursorPos(pos);
-					setTimeout(() => {
-						ta.setSelectionRange(pos, pos);
-					}, 0);
-					if (tokNum !== null) {
-						if (isFileToken) removeFileByIndex(tokNum - 1, nextText);
-						else removeImageByIndex(tokNum - 1, nextText);
-					}
-					return;
-				}
+			const token = ta && ta.selectionStart === ta.selectionEnd
+				? adjacentAttachmentToken(text, ta.selectionStart, e.key)
+				: null;
+			if (ta && token) {
+				e.preventDefault();
+				const nextText = text.slice(0, token.start) + text.slice(token.end);
+				setText(nextText);
+				setDraft(sessionId, nextText);
+				setCursorPos(token.start);
+				setTimeout(() => ta.setSelectionRange(token.start, token.start), 0);
+				if (token.isFile) removeFileByIndex(token.num - 1, nextText);
+				else removeImageByIndex(token.num - 1, nextText);
+				return;
 			}
 		}
 

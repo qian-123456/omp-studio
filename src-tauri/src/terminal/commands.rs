@@ -88,8 +88,27 @@ pub async fn term_open(
     command: Vec<String>,
     cols: u16,
     rows: u16,
+    session_id: Option<String>,
 ) -> Result<String, String> {
-    let (argv, extra_env) = shell_init::drawer_spawn(&command).unwrap_or((command, vec![]));
+    let session_file = session_id
+        .as_deref()
+        .map(|id| {
+            crate::catalog::file_of(id)
+                .filter(|path| !path.as_os_str().is_empty())
+                .ok_or_else(|| format!("session not found: {id}"))
+        })
+        .transpose()?;
+    if let Some(path) = session_file.as_ref() {
+        if !path.is_file() {
+            return Err(format!("session transcript not found: {}", path.display()));
+        }
+    }
+    let session_file = session_file
+        .as_deref()
+        .map(|p| p.to_str().ok_or("session path is not UTF-8"))
+        .transpose()?;
+    let (argv, extra_env) =
+        shell_init::drawer_spawn(&command, session_file).unwrap_or((command, vec![]));
     pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)
 }
 

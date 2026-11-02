@@ -2123,7 +2123,7 @@ async fn context_windows_set<B: Backend>(
     State(_ctx): State<Arc<Ctx<B>>>,
     Json(body): Json<ContextWindowsSetBody>,
 ) -> ApiResult<Value> {
-    crate::providers::models_yml_write::omp_models_set_context_windows(body.entries)
+    crate::providers::models_yml_write::omp_models_set_context_windows(body.entries, None)
         .await
         .map_err(bad_request)?;
     Ok(Json(json!({ "ok": true })))

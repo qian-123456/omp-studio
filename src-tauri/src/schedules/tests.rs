@@ -233,6 +233,7 @@ fn setup_test_db() -> Connection {
            prompt TEXT NOT NULL,
            cwd TEXT NOT NULL,
            run_mode TEXT NOT NULL DEFAULT 'local',
+           mode TEXT NOT NULL DEFAULT 'code',
            cadence TEXT NOT NULL,
            model TEXT,
            thinking TEXT,
@@ -278,6 +279,7 @@ fn test_store_crud() {
         name: "每日代码总结".to_string(),
         prompt: "总结今日代码提交".to_string(),
         cwd: "/tmp/project".to_string(),
+        mode: crate::contracts::SpaceMode::Work,
         run_mode: ScheduleRunMode::Local,
         cadence: ScheduleCadence::Daily {
             time: "09:00".to_string(),
@@ -298,6 +300,7 @@ fn test_store_crud() {
     let created = upsert(&conn, &draft).unwrap();
     assert!(!created.id.is_empty());
     assert_eq!(created.name, "每日代码总结");
+    assert_eq!(created.mode, crate::contracts::SpaceMode::Work);
     assert!(created.next_run_at.is_some());
     assert!(created.last_run_at.is_none());
 
@@ -315,6 +318,7 @@ fn test_store_crud() {
         name: "工作日代码总结 (已更新)".to_string(),
         prompt: "更新后的提示词".to_string(),
         cwd: "/tmp/project".to_string(),
+        mode: crate::contracts::SpaceMode::Work,
         run_mode: ScheduleRunMode::Worktree,
         cadence: ScheduleCadence::Interval { minutes: 30 },
         model: None,
@@ -330,6 +334,7 @@ fn test_store_crud() {
     let updated = upsert(&conn, &update_draft).unwrap();
     assert_eq!(updated.name, "工作日代码总结 (已更新)");
     assert_eq!(updated.run_mode, ScheduleRunMode::Worktree);
+    assert_eq!(updated.mode, crate::contracts::SpaceMode::Work);
     assert_eq!(updated.approval_mode.as_deref(), Some("yolo"));
 
     // 4. Disable / Enable toggle
@@ -393,6 +398,7 @@ fn recover_stale_runs_settles_leftover_running_rows() {
         name: "清理遗留运行".to_string(),
         prompt: "p".to_string(),
         cwd: "/tmp/project".to_string(),
+        mode: crate::contracts::SpaceMode::Code,
         run_mode: ScheduleRunMode::Local,
         cadence: ScheduleCadence::Interval { minutes: 30 },
         model: None,
@@ -441,6 +447,7 @@ fn once_draft(at: &str, enabled: bool) -> ScheduleDraft {
         name: "一次性".to_string(),
         prompt: "run".to_string(),
         cwd: "/tmp".to_string(),
+        mode: crate::contracts::SpaceMode::Code,
         run_mode: ScheduleRunMode::Local,
         cadence: ScheduleCadence::Once { at: at.to_string() },
         model: None,
@@ -460,6 +467,7 @@ fn daily_draft(end_at: Option<String>, enabled: bool) -> ScheduleDraft {
         name: "每日".to_string(),
         prompt: "run".to_string(),
         cwd: "/tmp".to_string(),
+        mode: crate::contracts::SpaceMode::Code,
         run_mode: ScheduleRunMode::Local,
         cadence: ScheduleCadence::Daily {
             time: "09:00".to_string(),
@@ -570,6 +578,7 @@ fn test_derive_lifecycle_states() {
         name: "n".to_string(),
         prompt: "p".to_string(),
         cwd: "/tmp".to_string(),
+        mode: crate::contracts::SpaceMode::Code,
         run_mode: ScheduleRunMode::Local,
         cadence: ScheduleCadence::Interval { minutes: 15 },
         model: None,
@@ -637,7 +646,7 @@ fn test_record_run_start() {
 }
 
 /// A draft JSON without the new fields deserializes to the backend defaults
-/// (notify=all, newChatEachRun=true); explicit values round-trip.
+/// (mode=code, notify=all, newChatEachRun=true); explicit values round-trip.
 #[test]
 fn test_draft_deserialize_defaults() {
     let json = serde_json::json!({
@@ -647,6 +656,7 @@ fn test_draft_deserialize_defaults() {
         "cadence": { "kind": "interval", "minutes": 60 },
     });
     let draft: ScheduleDraft = serde_json::from_value(json).unwrap();
+    assert_eq!(draft.mode, crate::contracts::SpaceMode::Code);
     assert_eq!(draft.notify, ScheduleNotify::All);
     assert!(draft.new_chat_each_run);
 
@@ -654,11 +664,14 @@ fn test_draft_deserialize_defaults() {
         "name": "n",
         "prompt": "p",
         "cwd": "/tmp",
+        "mode": "research",
         "cadence": { "kind": "interval", "minutes": 60 },
         "notify": "important",
         "newChatEachRun": false,
     });
     let draft2: ScheduleDraft = serde_json::from_value(json2).unwrap();
+    assert_eq!(draft2.mode, crate::contracts::SpaceMode::Research);
+    assert_eq!(serde_json::to_value(&draft2).unwrap()["mode"], "research");
     assert_eq!(draft2.notify, ScheduleNotify::Important);
     assert!(!draft2.new_chat_each_run);
 }
@@ -1126,6 +1139,48 @@ fn automatic_claim_rechecks_occurrence_and_cannot_exceed_cap() {
     assert!(!capped.enabled);
     assert!(capped.next_run_at.is_none());
     assert_eq!(list_runs(&conn, &schedule.id, 10).unwrap().len(), 1);
+}
+
+#[test]
+fn manual_and_automatic_claims_use_latest_mode_and_workspace() {
+    for automatic in [false, true] {
+        let conn = setup_test_db();
+        let mut draft = daily_draft(None, true);
+        draft.mode = crate::contracts::SpaceMode::Work;
+        draft.cwd = "/tmp/scheduled-work".to_string();
+        let schedule = upsert(&conn, &draft).unwrap();
+        let due = "2020-01-01T00:00:00Z";
+        conn.execute(
+            "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+            params![schedule.id, due],
+        )
+        .unwrap();
+        let snapshot = crate::schedules::store::find_due(&conn, &now_rfc3339())
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(snapshot.mode, crate::contracts::SpaceMode::Work);
+        assert_eq!(snapshot.cwd, "/tmp/scheduled-work");
+
+        // Saving after the timer read must update execution metadata, not its occurrence.
+        draft.id = Some(schedule.id.clone());
+        draft.mode = crate::contracts::SpaceMode::Research;
+        draft.cwd = "/tmp/scheduled-research".to_string();
+        upsert(&conn, &draft).unwrap();
+        let persisted = list(&conn).unwrap().pop().unwrap();
+        assert_eq!(persisted.mode, crate::contracts::SpaceMode::Research);
+        assert_eq!(persisted.cwd, "/tmp/scheduled-research");
+
+        let expected_next = if automatic {
+            snapshot.next_run_at.as_deref()
+        } else {
+            None
+        };
+        let (claimed, run) = claim_run(&conn, &snapshot.id, "current", expected_next).unwrap();
+        assert_eq!(claimed.mode, crate::contracts::SpaceMode::Research);
+        assert_eq!(claimed.cwd, "/tmp/scheduled-research");
+        assert_eq!(run.schedule_id, schedule.id);
+    }
 }
 
 #[test]

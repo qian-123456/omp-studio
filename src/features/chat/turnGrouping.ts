@@ -409,6 +409,7 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 		/** The last item ended the agent's run (assistant message without tool calls). */
 		lastIdle?: boolean;
 	} | null = null;
+    const pendingModelChanges: TranscriptItem[] = [];
 
 	// Advance the turn end. A gap after a finished assistant message is idle time
 	// (e.g. a background-job notice waking the agent a day later), not work.
@@ -470,6 +471,9 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 		}
 		return false;
 	};
+
+    const hasOpenToolCall = () =>
+        currentTurn?.intermediateSteps.some((step) => step.kind === "tool" && !step.result) ?? false;
 
 	// True when the agent keeps working after index i: scan forward skipping
 	// hidden items; true at the first assistant/tool_result, false at user/end.
@@ -537,6 +541,17 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 				continue;
 			}
 			finalizeCurrentTurn();
+            if (pendingModelChanges.length > 0) {
+                for (const change of pendingModelChanges) {
+                    blocks.push({
+                        type: "protocol",
+                        id: `protocol-${change.id}`,
+                        item: change,
+                        allItemIds: [change.id],
+                    });
+                }
+                pendingModelChanges.length = 0;
+            }
 			currentTurn = {
 				userItem: item,
 				intermediateSteps: [],
@@ -549,26 +564,30 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 
 		// Protocol item: mid-run it becomes a notice step inside the turn;
 		// otherwise it is a standalone ProtocolBlock between turns.
-		if (isProtocolKind(item.kind)) {
-			if (currentTurn && hasAgentActivityAfter(i)) {
-				currentTurn.intermediateSteps.push({
-					id: `notice-${item.id}`,
-					kind: "notice",
-					item,
-				});
-				currentTurn.allItemIds.push(item.id);
-				bump(currentTurn, item);
-				continue;
-			}
-			finalizeCurrentTurn();
-			blocks.push({
-				type: "protocol",
-				id: `protocol-${item.id}`,
-				item,
-				allItemIds: [item.id],
-			});
-			continue;
-		}
+        if (isProtocolKind(item.kind)) {
+            if (item.kind === "model_change" && hasOpenToolCall()) {
+                pendingModelChanges.push(item);
+                continue;
+            }
+            if (item.kind !== "model_change" && currentTurn && hasAgentActivityAfter(i)) {
+                currentTurn.intermediateSteps.push({
+                    id: `notice-${item.id}`,
+                    kind: "notice",
+                    item,
+                });
+                currentTurn.allItemIds.push(item.id);
+                bump(currentTurn, item);
+                continue;
+            }
+            finalizeCurrentTurn();
+            blocks.push({
+                type: "protocol",
+                id: `protocol-${item.id}`,
+                item,
+                allItemIds: [item.id],
+            });
+            continue;
+        }
 
 		if (!currentTurn) {
 			if (item.kind === "assistant" || item.kind === "tool_result") {
@@ -616,6 +635,18 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 					text: item.text || item.toolResult?.text || tNow("chatView.turnGrouping.toolOutput"),
 				});
 			}
+            if (pendingModelChanges.length > 0 && !hasOpenToolCall()) {
+                finalizeCurrentTurn();
+                for (const change of pendingModelChanges) {
+                    blocks.push({
+                        type: "protocol",
+                        id: `protocol-${change.id}`,
+                        item: change,
+                        allItemIds: [change.id],
+                    });
+                }
+                pendingModelChanges.length = 0;
+            }
 			continue;
 		}
 
@@ -773,7 +804,15 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 		currentTurn.allItemIds.push(item.id);
 	}
 
-	finalizeCurrentTurn();
+    finalizeCurrentTurn();
+    for (const change of pendingModelChanges) {
+        blocks.push({
+            type: "protocol",
+            id: `protocol-${change.id}`,
+            item: change,
+            allItemIds: [change.id],
+        });
+    }
 
 	return blocks;
 }

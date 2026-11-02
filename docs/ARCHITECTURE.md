@@ -236,7 +236,10 @@ pub struct SessionGroup { pub id: String, pub mode: SpaceMode, pub name: String,
 pub enum TranscriptKind { User, Assistant, ToolResult, Bash, Custom, Compaction, BranchSummary, ModelChange, System, Unknown }
 pub struct ToolCall { pub id: String, pub name: String, pub args: serde_json::Value, pub intent: Option<String> }
 pub struct ToolResultInfo { pub tool_call_id: String, pub tool_name: String, pub text: String, pub is_error: bool, pub details: Option<serde_json::Value> }
-pub struct Usage { pub input: u64, pub output: u64, pub cache_read: u64, pub cache_write: u64, pub total_tokens: u64, pub cost: f64 }
+pub struct Usage { pub input: Option<u64>, pub output: Option<u64>, pub cache_read: Option<u64>, pub cache_write: Option<u64>, pub total_tokens: Option<u64>, pub cost: Option<f64> }
+// Missing fields serialize as null; a reported zero remains known. Prefer a reported total;
+// derive it only when every required component is known. Per-field aggregates propagate
+// unknown from any participating assistant request rather than presenting partial sums as totals.
 pub struct ImageAttachment {
   pub id: String, pub marker: Option<String>, pub path: Option<String>,
   pub mime_type: Option<String>, pub width: Option<u32>, pub height: Option<u32>,
@@ -320,7 +323,7 @@ pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<
   pub ipv6_url: Option<String> /* https://<ddns host>:<port> when DDNS is synced to the current addr AND the active listener certificate covers that hostname, else https://[addr]:<port> */,
   pub cert_sha256: Option<String> /* self-signed cert fingerprint, AA:BB:… */, pub ddns: DdnsStatus }
 
-pub struct UsageSummary { pub available: bool, pub tokens: u64, pub cost: f64, pub source: String /* "token-tracker" | "transcript" */ }
+pub struct UsageSummary { pub available: bool, pub tokens: Option<u64>, pub cost: Option<f64>, pub source: String /* "token-tracker" | "transcript" */ }
 
 pub struct Settings {
   pub system_detection: bool,        // default true
@@ -371,6 +374,7 @@ pub enum ScheduleNotify { All, Important, None }        // lowercase; inbox poli
                                                       //   runs that hit AwaitingApproval/AwaitingAnswer; none = never
 pub struct Schedule {
   pub id: String, pub name: String, pub prompt: String, pub cwd: String,
+  pub mode: SpaceMode,                 // serde default serializes as "code"; distinct from run_mode
   pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
   pub model: Option<String>, pub thinking: Option<String>, pub approval_mode: Option<String>,
   pub enabled: bool, pub next_run_at: Option<String>, pub last_run_at: Option<String>,
@@ -386,6 +390,7 @@ pub struct Schedule {
 }
 pub struct ScheduleDraft {
   pub id: Option<String>, pub name: String, pub prompt: String, pub cwd: String,
+  pub mode: SpaceMode,                 // absent legacy drafts default to serialized "code"
   pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
   pub model: Option<String>, pub thinking: Option<String>, pub approval_mode: Option<String>,
   pub end_at: Option<String>,           // ignored for Once
@@ -433,7 +438,7 @@ pub struct SubagentSummary {
   pub id: String, pub status: SubagentStatus, pub model: Option<String>, pub thinking_level: Option<String>,
   pub agent: Option<String> /* omp agent type, session_init.agent */,
   pub prompt: Option<String> /* first user message preview */, pub message_count: u32, pub tool_call_count: u32,
-  pub request_count: u32, pub tokens: u64 /* input+output+cacheWrite */, pub cost: f64,
+  pub request_count: u32, pub tokens: Option<u64> /* input+output+cacheWrite */, pub cost: Option<f64>,
   pub started_at: Option<String>, pub ended_at: Option<String>, pub output_path: Option<String>, pub file_path: String,
 }
 pub struct SubagentTranscript {
@@ -538,6 +543,7 @@ CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used
   -- v3: scheduled tasks (schedules and schedule_runs tables)
 CREATE TABLE schedules(
   id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, cwd TEXT NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'code',         -- v23: ordinary sidebar space; independent of run_mode
   run_mode TEXT NOT NULL DEFAULT 'local', cadence TEXT NOT NULL,
   model TEXT, thinking TEXT, approval_mode TEXT,
   enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_at TEXT,
@@ -577,7 +583,7 @@ CREATE TABLE model_switch_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, rul
   edits TEXT NOT NULL, previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);
 -- v18: each of the three tables above gained `scope TEXT NOT NULL DEFAULT 'global'` ('global' or an absolute project directory)
 ```
-Use a `user_version` pragma for migrations (current: v22; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`; v20 adds `idx_session_meta_parent` on `session_meta(parent_session_id)` for side-chat child lookups; v22 adds nullable `backlog.restored_at`, preserving explicit restoration across startup and age-based archiving). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v23; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`; v20 adds `idx_session_meta_parent` on `session_meta(parent_session_id)` for side-chat child lookups; v22 adds nullable `backlog.restored_at`, preserving explicit restoration across startup and age-based archiving; v23 adds `schedules.mode TEXT NOT NULL DEFAULT 'code'`, without inferring old task modes from cwd). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -620,6 +626,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
 - `rpc_omp_staleness() -> OmpStaleness` — stat-only (never runs omp): `fingerprint` identifies the binary a new spawn would exec (settings `omp_binary` resolved against the spawn PATH, canonicalized, + mtime + size; None if unresolvable); `stale_session_ids` = live sessions whose spawn-time fingerprint (stored on `SessionHandle`) differs. Unknown spawn fingerprint or None current → not stale. Detects `omp update` run outside the app; fix with `rpc_restart`.
+- RPC initialization keeps bounded startup stderr and process-exit diagnostics before cleanup; early stdout EOF and readiness timeout remain distinct. A dropped readiness sender is not presented as the underlying process failure. Resuming without an explicit model does not inject `new_session_model`; fresh sessions still use that default.
 - `subagent_list(parent_file: String) -> Vec<SubagentSummary>` — scans the parent session's subagent dir recursively (nested agents live in `<dir>/<A>/<A>.<B>.jsonl`; id = file stem, `Parent.Child`; `subagent_transcript` resolves nested ids too); status inferred
   (output file → completed; fresh lock/jsonl ≤5 min → running; last stopReason error/aborted → failed/aborted)
 - `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
@@ -685,10 +692,10 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
 - `mobile_ipv6_start() -> MobileStatus` (persists `mobile_ipv6_enabled=true`), `mobile_ipv6_stop()` (persists false)
 - `mobile_ddns_set_token(token) -> DdnsStatus` (verifies, stores in vault), `mobile_ddns_clear_token() -> DdnsStatus`, `mobile_ddns_sync() -> DdnsStatus`
-- `term_open(cwd, command: Vec<String>, cols: u16, rows: u16) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`
+- `term_open(cwd, command: Vec<String>, cols: u16, rows: u16, session_id: Option<String>) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`. A bound id resolves through `catalog::file_of`; an unresolved binding errors rather than resuming another session.
 - `term_open_session(session_id, agent: String /* "omp"|"claude"|"codex" */, cols, rows) -> String` — one agent terminal per session (reopening, even with another agent, replaces the PTY); unknown agent → `Err("未知的 Agent: …")`. `omp`: stops the RPC process for that session if live, then runs `omp --resume <file> <app extension flags>`; `claude`: `claude --continue`; `codex`: `codex resume --last` (RPC process untouched). All run in the session cwd (fallback home) with the privacy file env; claude/codex are resolved against the login-shell-augmented PATH first and a missing CLI returns a Chinese `Err` before anything is torn down
 - `session_resume_command(session_id) -> String` — one-line `cd <cwd> && [env] omp --resume <file> <prompt_shape_args>` for resuming in an EXTERNAL terminal (session overflow menu 「复制终端续接命令」). A bare `omp --resume` there drops the app's `--append-system-prompt`/`--plugin-dir`/`-e` flags, which changes the system prompt digest and cold-misses the Anthropic prompt cache past the first ~9K tokens. Env carries only privacy file pointers; never API keys (encrypted provider keys resolve through the key shim in models.yml).
-- `terminal_set_current_session(path: Option<String>)` — writes/clears `~/.omp-workspace/current-session`; `term_open` command-terminal shells (right panel) source generated `zdot/`/`bashrc`/`terminal-init.*` so bare `omp`/`claude`/`codex` resume that transcript (session terminals unaffected — they run `term_open_session` directly)
+- `terminal_set_current_session(path: Option<String>)` still writes/clears `~/.omp-workspace/current-session` for legacy/external compatibility. Every desktop/mobile drawer shell instead receives `OMP_WORKSPACE_SESSION_FILE`: the directly bound JSONL path, or an explicitly empty string for an unbound draft. Empty means no resume; only an unset variable may consult the legacy pointer file. A direct transcript path is never read as a pointer file. For bare `omp`, a missing nonempty explicit binding reports an error instead of starting a fresh session. Session terminals remain separate (`term_open_session`).
 
 **Providers (added module — §2 ownership):**
 - Desktop `OtherModelsPanel` retains the “其他类型模型” tab and includes every non-LLM runtime kind, unknown kinds and registered runners without a connection row. `chat` and `tiny` remain LLM kinds; the Chinese `judge` label is “判断”. Registration never claims live availability. Provider mutations and advanced configuration saves refresh the shared catalog; the `providers` / `otherModels` settings target and role-return origin remain unchanged.
@@ -709,8 +716,10 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - In-place keys: OMP's `models.yml` is the source of truth (`providers/models_yml_providers.rs`: line-level provider-block edits, everything outside the touched lines is preserved; writes go through `models_yml_write::commit_text` = timestamped `.bak-<ts>` backup, read-back verification, restore on failure; `providers/ops.rs` holds the mutations, serialized by the providers mutation lock). Encrypting moves the plaintext `apiKey` into the AES-256-GCM vault (`providers/vault.rs`: `~/.omp-workspace/env/keys.env`, entry name `<sanitize_slug(id) upper>_API_KEY`, master key `~/.omp-workspace/env/.master.key` mode 0600; macOS Keychain only a legacy migration source) and writes the command reference `apiKey: "!'<data_dir>/bin/ompws-key' '<provider id>'"` (sh single-quoted, then YAML double-quoted — a plain scalar starting with `!` is a tag). OMP runs `!…` values through `/bin/sh -c` itself, so keys resolve in ANY terminal. The shim `<data_dir>/bin/ompws-key` (mode 0700, POSIX sh; exports `OMPWS_DATA_DIR` when the data dir is overridden; rewritten at every start when the executable path changed) does `exec <app executable> --ompws-key "$@"`; `main.rs` answers that flag before any Tauri/logging/DB init: key on stdout without newline and exit 0, or a secret-free stderr message and exit 1 (`providers/key_ref.rs`). Decrypting writes the plaintext back and drops the vault entry. Nothing injects keys into spawned processes any more: no `-e` provider extension, no `OMP_WORKSPACE_PROVIDERS`, no env vars.
 - Startup migration (`providers/migration.rs`, from `providers::init`, idempotent): if `~/.omp-workspace/providers.json` exists, (1) a models.yml provider whose `apiKey` equals the env var that record used to inject and whose key is in the vault gets the command ref; (2) workbench-only records that are not built-ins / existing providers / stale duplicates (same baseUrl + api + key as a models.yml provider) are appended to models.yml as custom providers (api mapping as the retired extension did: anthropic→`anthropic-messages`, gemini→`google-generative-ai` + `/v1beta`, openai_responses→`openai-responses`, ollama→`openai-completions` at `<base>/v1` with `auth: none`); disabled records go to `disabledProviders`; (3) `models.yml.bak-<ts>` backup, `providers.json` → `providers.json.migrated-<ts>`. Vault entries are kept; the log summary has counts only.
 - Mobile (`mobile/api/left.rs`): `GET /left/providers` → `{providers: ProviderRow[]}`; `POST /left/providers/save {id, base_url?, api_key?}` edits a custom provider's Base URL and/or key (storage mode kept) and returns `{provider}`.
-- `omp_models_set_context_windows(entries: Vec<ModelContextWindowEdit>)` (`providers/models_yml_write.rs`) — the only writer of `~/.omp/agent/models.yml`: line-level edit of `providers.<id>.modelOverrides.<modelId>.contextWindow` (None deletes; empty model/`modelOverrides` maps are dropped), all other bytes preserved, `models.yml.bak-<timestamp>` backup alongside, re-parse + verify after write, original restored on failure; never returns file contents. Takes effect in new OMP sessions.
+- `omp_models_set_context_windows(entries: Vec<ModelContextWindowEdit>, only_if_absent: Option<bool>)` (`providers/models_yml_write.rs`) — the only writer of context-window overrides in `~/.omp/agent/models.yml`: line-level edit of `providers.<id>.modelOverrides.<modelId>.contextWindow` (None deletes; empty model/`modelOverrides` maps are dropped), all other bytes preserved, `models.yml.bak-<timestamp>` backup alongside, re-parse + verify after write, original restored on failure; never returns file contents. Omitted/false preserves explicit user overwrite semantics; true re-reads and skips existing overrides inside the same mutation lock as the write, protecting concurrent manual changes. Takes effect in new OMP sessions.
 - `omp_models_context_window_overrides() -> Vec<ModelContextWindowEdit>` (`providers/models_yml_write.rs`) — read-only: returns only existing `providers.*.modelOverrides.*.contextWindow` as providerId/modelId/contextWindow (missing file → empty); nothing else from models.yml leaves the backend. Lets the context-window page distinguish catalog defaults from overrides so undo deletes an override that did not exist before.
+- Shared `modelCatalog.refresh` applies matching context defaults to discovered catalog entries without explicit model overrides through the existing conditional writer, then re-reads the actual catalog. Catalog-supplied windows are not user overrides. A single-flight boundary prevents reentrant rewrites; no separate seen-model watermark is stored.
+- Provider-wide chat context defaults persist as `ompws.providerContextWindows.v1`, a localStorage object from exact provider id to positive integer (maximum 2,000,000). Only successful provider saves persist them; cancellation does not. After a successful backend deletion or ID rename, the provider store clears or migrates only the owning default before any catalog refresh, regardless of chat/other-model entry; failed backend mutations leave defaults untouched. Empty providers retain the number. Provider defaults precede generic model-keyword rules; explicit per-model overrides remain highest priority. Active user saves update existing model windows through the ordinary writer; later discoveries use conditional writes.
 - `install_status_extension_globally() -> String` — copies the extension into `~/.omp/agent/extensions/` (opt-in button)
 
 **E — schedules (定时任务):**
@@ -929,12 +938,12 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/home/StartPage` | center when `ui.centerView === "home"` (default composer-first screen) |
 | `features/chat/SessionView` (props `{ sessionId }`) | center when `ui.centerView === "session"` (or `StartPage` if none selected) |
 | `features/editor/DocView` (props `{ path }`) | center when `centerView === "doc"` (or `StartPage` if none selected) |
-| `features/files/FilePreviewPanel` | right tab `files` (one Chrome-style tab per open file in `RightPanelHeader`; text starts in 预览, 编辑 = lazy CodeMirror, ⌘S saves; images render inline) |
+| `features/files/FilePreviewPanel` | right tab `files` (one Chrome-style tab per open file in `RightPanelHeader`; text starts in 预览, 编辑 = lazy CodeMirror, ⌘S saves; images are imported into allowed persistent assets before inline display while retaining the original source path; `.mmd` supports a Mermaid diagram and source view) |
 | `features/inbox/InboxPage` | center when `centerView === "inbox"` (session status hub) |
 | `features/schedules/SchedulesPage` | center when `centerView === "schedules"` |
 | `features/skills/SkillsPage` | center when `centerView === "skills"` |
 | `features/settings/SettingsOverlay` | overlay when `centerView === "settings"`, keeps underlying center view mounted |
-| `features/terminal/CommandTerminalPanel` | 终端: body of RightTab `"terminal"` in `RightAside` (multi-tab login shells; tab strip — tabs, status, "+" new tab (added synchronously, cwd resolved at spawn), close kills PTY, fold to background service — lives in `terminalTabs.ts` (`addTerminalTab`/`closeTerminalTab`/`detachTerminalTab`); `RightPanelHeader` renders each visible terminal as its own Chrome-style tab while the terminal panel tab is active, so there is a single header row; agent ops: quote selection to composer annotation ⌘⇧A, send selection to side chat; search ⌘F; context menu). xterm/PTY instances live in `drawerRegistry` and are re-attached + re-fitted when the panel remounts, so processes and scrollback survive right-panel tab switches, closing the panel and session switches. Showing the tab with zero visible command tabs spawns one; closing/folding the last one closes the panel tab. Tab metas in `drawerStore` (persisted `ompws:drawer-tabs`). Entry: header 终端图标按钮 or ⌘` (toggles the right panel on this tab). Right-panel badge = live command tabs. |
+| `features/terminal/CommandTerminalPanel` | RightTab `terminal` multi-tab login shells. `terminalTabs.ts` owns add/close/detach; `RightPanelHeader` renders the active project's/worktree's tabs in one header row. `DrawerTab` persists cwd, workspaceId, scope and fixed creation-time sessionId. Target and existing tabs share the same root resolver; successful root discovery atomically reconciles scope and active ids without recreating PTYs/xterm instances. Non-Git directories use the workspace root; real Git discovery errors preserve old terminals and expose retry, never merge scopes or auto-create a replacement. Manual and automatic creation require successfully verified current/tab scopes. Rendering and quote/send actions use the committed identity; discovery failure cannot quote a hidden terminal into a newly selected session. `drawerRegistry` preserves processes/scrollback across panel and project switches. Git/service actions targeting another worktree verify candidate sessions/drafts by their own actual roots, then navigate to an existing target or an unmaterialized draft without starting a model. Navigation guards reject intervening context changes, including A→C→A, before committing an asynchronous action. Quote selection to main/side chat, search, context menu and detach remain available; header counts and tab limits use the same scope. Entry: header terminal button or ⌘`. |
 | `components/CenterHeader` 终端图标按钮 | Toggles RightTab `"terminal"` in the right panel (`setRightTab("terminal")`, or closes right panel if already showing). No badge. Shortcut ⌘`. |
 | `features/chat/subagents/TopCapsule` | top bar, right |
 | `features/backlog/IdeasCapsule` | top bar, right (next to TopCapsule) |
@@ -944,7 +953,7 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/heatmap/HeatmapPanel` | right tab `heatmap` |
 | `features/git/GitPanel` | right tab `git` |
 | `features/services/ServicesPanel` | right tab `services` |
-| `features/explorer/FileExplorer` | right tab `explorer` |
+| `features/explorer/FileExplorer` | right tab `explorer`; selecting an image or `.mmd` opens the existing file preview, while ordinary documents keep the center `DocView` route |
 | `features/mobile/MobilePanel` | inside SettingsPage (under `mobile` section) |
 | `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?, branch?, useWorktree?})`) |
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
@@ -1161,6 +1170,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Text selection anywhere in the stream → floating toolbar "批注" (inline optional-comment input + destination segmented control 主对话|辅助对话 + ✓; Enter/✓ → addAnnotation under the session id or `sidechat:<parentId>`; numbered markers (`AnnotationMarkers`, distinct colour for side-chat) sit in the stream margin next to the quoted text) / "记到收集箱" (open
   QuickCapture via `ui.openModal("quick-capture", {text, sessionId})`). "辅助对话" is disabled once the parent reaches the 3-level fork cap.
   Existing annotations open `AnnotationNotePopover`: its round up-arrow button saves the note and closes, exactly like Enter; it does not send the chat message. Shift+Enter inserts a line break and Escape discards the edit. The ideas panel's select-all action is an outlined capsule, and its capture editor starts at a compact 32px minimum while retaining multiline auto-growth.
+- `activeSessionTarget` is the shared neutral target resolver for workspace-dependent panels. Callers pass the existing pending draft id only in the session view with no real selected session; pending draft opts win, then the real selected session, never `lastSessionId`. File explorer preserves intentional manual workspace pins. Root/search requests reject stale results after target changes. Git distinguishes an actual non-repository from executable, permission and other command failures.
+- Native selection, pending annotation and saved annotation backgrounds share measured per-line range geometry across inline links, code and bold text. Each overlay owns its cleanup; main/document layers do not erase each other. Native background suppression is limited to the current root while a valid native overlay exists; the actual selection and copy semantics remain native. File previews filter document annotations by path. The main stream's left-gutter drag correction only adjusts that drag's anchor to the actual text row, without preventing normal browser drag/scroll or intercepting controls.
 - Slash commands (`features/chat/slash/`): `registry.ts` defines app commands (会话 /new /fork /rename /compact /handoff /export /copy
   /retry; 模型 /model /thinking /fast /advisor; 状态 /status /context /usage /tools /jobs /todo /stats; 集成 /mcp /plugins /memory
   /browser /computer /extended-context; 设置 /agents /approvals /login /settings), each with optional `settingsTarget`. `menu.ts`
@@ -1380,6 +1391,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Re-enable guards (`schedules_set_enabled` / re-enable via save): `once` that already ran → Err "一次性任务已执行，请复制或重新创建"; recurring past `end_at` → Err "结束时间已过，请先修改结束时间".
 - Execution options: spawned RPC session gets `--model`/`--approval-mode`/`label` from the schedule and applies the stored `thinking` level via the `set_thinking_level` RPC (same command as the interactive composer) before the prompt is sent.
 - Isolated execution: supports `local` cwd or `worktree` mode (creates isolated worktree `.worktrees/sched-<slug>-<id8>` via git).
+- Sidebar space is the persisted `Schedule.mode`, not `runMode`: both fresh execution and failed-resume fallback pass it into session creation. Editors, copies and mobile saves preserve it. Legacy rows/drafts default to serialized `code`; no hidden scheduled-conversation group is introduced.
 - Completion detection: spawns RPC session with label `⏰ <name>`, subscribes to bus; turn completion detected by transition to `SessionStatus::Review` or `Idle` (after work started) → `Ok`; `Error` / `Interrupted` / non-zero process exit → `Error`. Timeout cap 1 hour.
 - Todo write: writes `ScheduleRun` record with status and last assistant text summary, updates schedule's `last_run_at` (and derives `last_run_status` via `SCHEDULE_COLS` subquery), and writes a `Todo` with kind `schedule_run`, source `schedule` (always visible, not gated by the system-detection switch), dedupe key `sched:<run_id>`, payload `{"scheduleId","runId","ok":bool}`. Emits `schedules:changed`.
 - Notify policy (`Schedule.notify`, DB v8): the `sched:<run_id>` todo is gated by `should_create_inbox_todo` —

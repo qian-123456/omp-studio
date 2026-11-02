@@ -81,6 +81,18 @@ describe("buildSubagentTree", () => {
 });
 
 describe("newest-first order", () => {
+	it("orders terminal agents by actual end time rather than dispatch order", () => {
+		const tree = buildSubagentTree({
+			first: sub("completed", { index: 0 }),
+			second: sub("failed", { index: 1 }),
+			unknown: sub("aborted", { index: 2 }),
+			active: sub("running", { index: 3 }),
+		}, {
+			first: { endedAt: "2026-01-01T00:00:20Z" },
+			second: { endedAt: "2026-01-01T00:00:10Z" },
+		});
+		expect(flattenTree(tree).map((node) => node.id)).toEqual(["active", "first", "second", "unknown"]);
+	});
 	it("keeps running rows first and orders newest before older rows within each group", () => {
 		const roots = buildSubagentTree({
 			a: sub("completed", { index: 0 }),

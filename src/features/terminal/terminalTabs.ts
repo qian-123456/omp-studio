@@ -4,13 +4,13 @@
  * panel tab is active. Operates on drawerStore/drawerRegistry only;
  * CommandTerminalPanel mounts xterm hosts for whatever tabs the store holds.
  */
-import { confirmDialog } from "../../lib/dialogs";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
-import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { destroyDrawerTerminal, drawerRegistry } from "./drawerRegistry";
 import { type DrawerTab, useDrawerStore } from "./drawerStore";
+import { currentTerminalScope, currentTerminalTarget, prepareTerminalScope, revealTerminalScope, terminalScopesReady, watchTerminalNavigation } from "./terminalTarget";
 export const STATUS_DOT: Record<DrawerTab["status"], string> = {
 	opening: "bg-sky-400 animate-pulse",
 	ready: "bg-emerald-400",
@@ -37,42 +37,58 @@ const MAX_VISIBLE_TERMINALS = 10;
  * resolved by the panel while spawning the PTY.
  */
 export function addTerminalTab(): string | null {
-	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached);
+	if (!terminalScopesReady()) return null;
+	const target = currentTerminalTarget();
+	const cwd = target.cwd ?? "";
+	const scope = currentTerminalScope();
+	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached && t.scope === scope);
 	if (visible.length >= MAX_VISIBLE_TERMINALS) {
 		toast.info(tNow("terminal.maxLimitReached", { max: MAX_VISIBLE_TERMINALS }));
 		return null;
 	}
-	const sessionId = useUi.getState().selectedSessionId;
-	const cwd = (sessionId && useSessions.getState().sessions[sessionId]?.cwd) || "";
 	const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
 	const prefix = tNow("terminal.tabTitlePrefix");
 	let n = 1;
 	while (titles.has(`${prefix} ${n}`)) n++;
-	return useDrawerStore.getState().addTab(cwd, `${prefix} ${n}`);
+	useDrawerStore.getState().setScope(scope);
+	return useDrawerStore.getState().addTab(cwd, `${prefix} ${n}`, target.sessionId, scope, target.workspaceId);
 }
 
 /**
  * Open a terminal tab rooted at an explicit directory (e.g. a worktree), so
  * dev servers run in-place there. Same visible-tab cap as addTerminalTab.
  */
-export function addTerminalTabWithCwd(cwd: string, title?: string): string | null {
-	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached);
-	if (visible.length >= MAX_VISIBLE_TERMINALS) {
-		toast.info(tNow("terminal.maxLimitReached", { max: MAX_VISIBLE_TERMINALS }));
+export async function addTerminalTabWithCwd(cwd: string, title?: string): Promise<string | null> {
+	const navigation = watchTerminalNavigation();
+	try {
+		const scope = await prepareTerminalScope(cwd);
+		if (navigation.cancelled()) return null;
+		const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached && t.scope === scope);
+		if (visible.length >= MAX_VISIBLE_TERMINALS) {
+			toast.info(tNow("terminal.maxLimitReached", { max: MAX_VISIBLE_TERMINALS }));
+			return null;
+		}
+		const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
+		const base = title?.trim() || tNow("terminal.tabTitlePrefix");
+		let label = base;
+		for (let n = 2; titles.has(label); n++) label = `${base} ${n}`;
+		await revealTerminalScope(scope, navigation.cancelled, navigation.stop);
+		if (navigation.cancelled() || currentTerminalScope() !== scope) return null;
+		useDrawerStore.getState().setScope(scope);
+		return useDrawerStore.getState().addTab(cwd, label, null, scope, currentTerminalTarget().workspaceId);
+	} catch (error) {
+		if (!navigation.cancelled()) toast.error(errMsg(error));
 		return null;
+	} finally {
+		navigation.stop();
 	}
-	const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
-	const base = title?.trim() || tNow("terminal.tabTitlePrefix");
-	let label = base;
-	for (let n = 2; titles.has(label); n++) label = `${base} ${n}`;
-	return useDrawerStore.getState().addTab(cwd, label);
 }
 
 /** Fold a terminal into a background service; closes the panel tab when none stay visible. */
 export function detachTerminalTab(tabId: string): void {
 	drawerRegistry.get(tabId)?.term.element?.remove();
 	useDrawerStore.getState().detachTab(tabId);
-	if (!useDrawerStore.getState().tabs.some((t) => !t.detached)) {
+	if (!useDrawerStore.getState().tabs.some((t) => !t.detached && t.scope === useDrawerStore.getState().scope)) {
 		useUi.getState().closeRightTab("terminal");
 	}
 	toast.success(tNow("terminal.detachedToast"));
@@ -92,7 +108,7 @@ export async function closeTerminalTab(tabId: string): Promise<void> {
 	destroyDrawerTerminal(tabId);
 	const remainingVisible = useDrawerStore
 		.getState()
-		.tabs.filter((t) => !t.detached && t.id !== tabId).length;
+		.tabs.filter((t) => !t.detached && t.scope === useDrawerStore.getState().scope && t.id !== tabId).length;
 	useDrawerStore.getState().removeTab(tabId);
 	if (remainingVisible === 0) useUi.getState().closeRightTab("terminal");
 }

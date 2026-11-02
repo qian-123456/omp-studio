@@ -14,6 +14,7 @@ import { basename } from "./paths";
 /** Extensions we can show in the right-panel preview (UTF-8 text). */
 const READABLE_EXTENSIONS: Record<string, true> = {
 	md: true,
+	mmd: true,
 	markdown: true,
 	mdx: true,
 	txt: true,

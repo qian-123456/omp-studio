@@ -541,6 +541,7 @@ export function draftFromSchedule(s: Schedule): ScheduleDraft {
 		name: tNow("schedules.copySuffix", { name: s.name }),
 		prompt: s.prompt,
 		cwd: s.cwd,
+		mode: s.mode,
 		runMode: s.runMode,
 		cadence: s.cadence,
 		notify: s.notify,

@@ -22,6 +22,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useDrawerStore, type DrawerTab } from "../terminal/drawerStore";
 import { destroyDrawerTerminal } from "../terminal/drawerRegistry";
+import { currentTerminalScope, revealTerminalScope, watchTerminalNavigation } from "../terminal/terminalTarget";
 import { useT } from "../../stores/language";
 export function ServicesPanel() {
 	const { t } = useT();
@@ -188,9 +189,22 @@ export function ServicesPanel() {
 		}
 	};
 	const handleReattachTerminal = useCallback(
-		(tabId: string, title: string) => {
-			reattachTab(tabId);
-			useUi.getState().setRightTab("terminal");
+		async (tabId: string, title: string) => {
+			const tab = useDrawerStore.getState().tabs.find((item) => item.id === tabId);
+			if (!tab) return;
+			const navigation = watchTerminalNavigation();
+			try {
+				await revealTerminalScope(tab.scope, navigation.cancelled, navigation.stop);
+				if (navigation.cancelled() || currentTerminalScope() !== tab.scope) return;
+				useDrawerStore.getState().setScope(tab.scope);
+				reattachTab(tabId);
+				useUi.getState().setRightTab("terminal");
+			} catch (error) {
+				if (!navigation.cancelled()) toast.error(errMsg(error));
+				return;
+			} finally {
+				navigation.stop();
+			}
 			toast.success(t("services.terminalReattached", { title }));
 		},
 		[reattachTab],

@@ -462,7 +462,7 @@
 		}
 
 		function buildDiagnosePrompt() {
-			const rows = agents.map((a, i) => `${i + 1}. [${a.status}] model=${a.model || "?"} requests=${a.requestCount} tools=${a.toolCallCount} tokens=${a.tokens} cost=$${(a.cost || 0).toFixed(3)} 任务: ${a.prompt || ""}`);
+			const rows = agents.map((a, i) => `${i + 1}. [${a.status}] model=${a.model || "?"} requests=${a.requestCount} tools=${a.toolCallCount} tokens=${a.tokens ?? "—"} cost=${a.cost == null ? "—" : "$" + a.cost.toFixed(3)} 任务: ${a.prompt || ""}`);
 			return "你是会话体检助手。下面是一个会话中各子代理的运行统计，请用简体中文指出效率问题（高 token/成本、失败、重复工具调用等）并给出改进建议，控制在 300 字以内。\n\n" + rows.join("\n");
 		}
 
@@ -488,10 +488,10 @@
 				diag.disabled = false;
 				diag.textContent = "会话体检";
 			};
-			const total = agents.reduce((s, a) => s + (a.tokens || 0), 0);
-			const cost = agents.reduce((s, a) => s + (a.cost || 0), 0);
+			const total = agents.every((a) => a.tokens != null) ? agents.reduce((s, a) => s + a.tokens, 0) : null;
+			const cost = agents.every((a) => a.cost != null) ? agents.reduce((s, a) => s + a.cost, 0) : null;
 			wrap.append(
-				h("div", { class: "mc-bar" }, h("span", { class: "meta mc-grow" }, `${agents.length} 个子代理 · ${fmtTok(total)} tokens · $${cost.toFixed(2)}`), h("button", { class: "btn", onclick: loadList }, "刷新"), diag),
+				h("div", { class: "mc-bar" }, h("span", { class: "meta mc-grow" }, `${agents.length} 个子代理 · ${total == null ? "—" : fmtTok(total)} tokens · ${cost == null ? "—" : "$" + cost.toFixed(2)}`), h("button", { class: "btn", onclick: loadList }, "刷新"), diag),
 				out,
 			);
 			const list = h("div", { class: "list" });
@@ -504,8 +504,8 @@
 						{ class: "card mc-click", onclick: () => openDetail(a.id) },
 						h("div", { class: "top" }, h("span", { class: "kind mc-st-" + a.status }, SA_STATUS[a.status] || a.status), h("span", { class: "meta" }, a.id), h("span", { class: "meta mc-grow", style: { textAlign: "right" } }, relTime(a.endedAt || a.startedAt))),
 						h("div", { class: "title" }, a.prompt || "（无任务描述）"),
-						h("div", { class: "meta" }, `${a.model || "?"} · ${a.requestCount} 请求 · ${a.toolCallCount} 工具 · ${fmtTok(a.tokens)} tok · $${(a.cost || 0).toFixed(3)}`),
-						h("div", { class: "mc-heat" }, h("i", { style: { width: Math.max(2, ((a.tokens || 0) / max) * 100) + "%" } })),
+						h("div", { class: "meta" }, `${a.model || "?"} · ${a.requestCount} 请求 · ${a.toolCallCount} 工具 · ${a.tokens == null ? "—" : fmtTok(a.tokens)} tok · ${a.cost == null ? "—" : "$" + a.cost.toFixed(3)}`),
+						h("div", { class: "mc-heat" }, a.tokens == null ? null : h("i", { style: { width: Math.max(2, (a.tokens / max) * 100) + "%" } })),
 					),
 				);
 			wrap.appendChild(list);

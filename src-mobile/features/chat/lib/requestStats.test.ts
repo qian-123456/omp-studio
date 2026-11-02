@@ -25,6 +25,15 @@ describe("formatStatTokens", () => {
 });
 
 describe("stats", () => {
+	it("keeps partial output and a real zero without fabricating other fields", () => {
+		const s = requestStatFromMessage({ usage: { output: 0 }, duration: 1000 });
+		expect(fieldText(s, "input")).toBeNull();
+		expect(fieldText(s, "cache")).toBeNull();
+		expect(fieldText(s, "output")).toBe("0");
+		expect(fieldText(s, "tps")).toBe("0.0/s");
+		expect(s.usage?.totalTokens).toBeNull();
+	});
+
 	it("derives startedAt from completedAt - duration", () => {
 		expect(buildStat(10000, 4000, null, null).startedAt).toBe(6000);
 		expect(buildStat(10000, null, null, null).startedAt).toBe(10000);

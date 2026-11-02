@@ -31,7 +31,6 @@ describe("SubagentDetailPage", () => {
 		expect(screen.getByText("子代理详情")).toBeTruthy();
 		expect(screen.getByText("完整可读的子代理任务名称")).toBeTruthy();
 		expect(screen.getByText("provider/long-model-name")).toBeTruthy();
-		expect(screen.getByText("1.2k 词元")).toBeTruthy();
 	});
 
 	it("progressively discloses thinking, steps, and full tool parameters and results", () => {

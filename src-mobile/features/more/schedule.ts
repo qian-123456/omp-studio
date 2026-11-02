@@ -15,6 +15,7 @@ export interface Schedule {
 	name: string;
 	prompt: string;
 	cwd: string;
+	mode: "code" | "work" | "study" | "research" | "chat";
 	runMode: RunMode;
 	cadence: Cadence;
 	model: string | null;
@@ -251,6 +252,7 @@ export function buildPayload(f: ScheduleForm, existing?: Schedule | null): Recor
 		name: f.name.trim(),
 		prompt: f.prompt.trim(),
 		cwd: f.cwd,
+		mode: existing?.mode ?? "code",
 		runMode: f.runMode,
 		cadence: buildCadence(f),
 		model: f.model,

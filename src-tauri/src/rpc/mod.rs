@@ -306,6 +306,11 @@ pub async fn shutdown() {
 /// `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta`
 /// after the child reports its sessionId; a group requires the 通用对话 (`chat`) mode.
 pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo, String> {
+    let mut normalized = opts.clone();
+    normalized.cwd = crate::services::files::resolve(&opts.cwd)?
+        .to_string_lossy()
+        .into_owned();
+    let opts = &normalized;
     let _mutation = catalog::session_mutation_lock().lock().await;
     if let Some(file) = &opts.resume_file {
         if !std::path::Path::new(file).is_file() {
@@ -390,7 +395,7 @@ pub const CWD_MISSING_PREFIX: &str = "CWD_MISSING:";
 
 /// Some(err) when `cwd` cannot host a process (missing directory).
 fn cwd_missing_err(cwd: &str) -> Option<String> {
-    if cwd.is_empty() || !std::path::Path::new(cwd).is_dir() {
+    if cwd.is_empty() || !crate::services::files::resolve(cwd).is_ok_and(|path| path.is_dir()) {
         Some(format!("{CWD_MISSING_PREFIX}{cwd}"))
     } else {
         None
@@ -475,6 +480,9 @@ pub async fn ensure_live(
         .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
     let cwd = match cwd {
         Some(dir) => {
+            let dir = crate::services::files::resolve(&dir)?
+                .to_string_lossy()
+                .into_owned();
             let _mutation = catalog::session_mutation_lock().lock().await;
             if !std::path::Path::new(&dir).is_dir() {
                 return Err(format!("目录不存在: {dir}"));
@@ -487,7 +495,9 @@ pub async fn ensure_live(
             if let Some(err) = cwd_missing_err(&found_cwd) {
                 return Err(err);
             }
-            found_cwd
+            crate::services::files::resolve(&found_cwd)?
+                .to_string_lossy()
+                .into_owned()
         }
     };
     // Single-writer takeover: an external omp holding the file must exit (and

@@ -100,6 +100,7 @@ export function ContextWindowSection() {
 	const setRules = (next: ContextWindowRule[]) => {
 		saveRules(next);
 		setRulesState(next);
+		void useModelCatalog.getState().refresh();
 	};
 
 	const rows = useMemo<CwRow[]>(() => {

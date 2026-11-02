@@ -265,7 +265,7 @@ export function HeatmapPanel() {
 												</span>
 												<span className="truncate max-w-[90px]">{sub.id}</span>
 												<span className="font-mono text-[10px] opacity-75">
-													{formatTokens(sub.tokens)}
+													{sub.tokens == null ? "—" : formatTokens(sub.tokens)}
 												</span>
 											</button>
 										))}

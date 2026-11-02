@@ -725,8 +725,8 @@ export const providerReadEnvFile = (path: string) =>
 	invoke<string>("provider_read_env_file", { path });
 
 /** Targeted edit of `~/.omp/agent/models.yml` modelOverrides contextWindow (null deletes). */
-export const ompModelsSetContextWindows = (entries: ModelContextWindowEdit[]) =>
-	invoke<void>("omp_models_set_context_windows", { entries });
+export const ompModelsSetContextWindows = (entries: ModelContextWindowEdit[], onlyIfAbsent = false) =>
+	invoke<void>("omp_models_set_context_windows", { entries, onlyIfAbsent });
 /** Existing models.yml modelOverrides contextWindow values (only provider/model/window). */
 export const ompModelsContextWindowOverrides = () =>
 	invoke<ModelContextWindowEdit[]>("omp_models_context_window_overrides");
@@ -860,7 +860,8 @@ export const termOpen = (
 	command: string[],
 	cols: number,
 	rows: number,
-) => invoke<string>("term_open", { cwd, command, cols, rows });
+	sessionId: string | null = null,
+) => invoke<string>("term_open", { cwd, command, cols, rows, sessionId });
 
 export const termWrite = (termId: string, data: string) =>
 	invoke<void>("term_write", { termId, data });

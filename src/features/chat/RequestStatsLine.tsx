@@ -132,8 +132,8 @@ function TimeSplit({ stat }: { stat: RequestStat }) {
 	const duration = stat.durationMs;
 	const known = duration != null && duration > 0;
 	const ttft = stat.ttftMs;
-	if (!known) return <div className="h-1 w-full rounded-full bg-[var(--line)]" />;
-	const wait = Math.max(0, Math.min(duration, ttft ?? 0));
+	if (!known || ttft == null) return <div className="h-1 w-full rounded-full bg-[var(--line)]" />;
+	const wait = Math.max(0, Math.min(duration, ttft));
 	const gen = Math.max(0, duration - wait);
 	return (
 		<div>
@@ -339,15 +339,15 @@ export function TurnSummaryRows({
 		});
 		rows.push({
 			label: t("chatView.stats.summaryTotalInput"),
-			value: `${REQUEST_STAT_FIELDS.input.glyph}${formatStatTokens(totals.input)}`,
+			value: totals.input == null ? "—" : `${REQUEST_STAT_FIELDS.input.glyph}${formatStatTokens(totals.input)}`,
 		});
 		rows.push({
 			label: t("chatView.stats.summaryTotalOutput"),
-			value: `${REQUEST_STAT_FIELDS.output.glyph}${formatStatTokens(totals.output)}`,
+			value: totals.output == null ? "—" : `${REQUEST_STAT_FIELDS.output.glyph}${formatStatTokens(totals.output)}`,
 		});
 		rows.push({
 			label: t("chatView.stats.summaryCacheHit"),
-			value: `${REQUEST_STAT_FIELDS.cache.glyph}${formatStatTokens(totals.cacheRead)}`,
+			value: totals.cacheRead == null ? "—" : `${REQUEST_STAT_FIELDS.cache.glyph}${formatStatTokens(totals.cacheRead)}`,
 		});
 		rows.push({
 			label: t("chatView.stats.summaryAvgSpeed"),
@@ -359,7 +359,7 @@ export function TurnSummaryRows({
 		if (withCost) {
 			rows.push({
 				label: t("chatView.stats.summaryTotalCost"),
-				value: `$${totals.cost.toFixed(totals.cost < 1 ? 3 : 2)}`,
+				value: totals.cost == null ? "—" : `$${totals.cost.toFixed(totals.cost < 1 ? 3 : 2)}`,
 			});
 		}
 	}

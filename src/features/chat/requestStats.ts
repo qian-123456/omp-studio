@@ -147,16 +147,15 @@ export function requestStatFromMessage(
 	const cost = u?.cost;
 	const usage: Usage | null = u
 		? {
-				input: finiteOrNull(u.input) ?? 0,
-				output: finiteOrNull(u.output) ?? 0,
-				cacheRead: finiteOrNull(u.cacheRead) ?? 0,
-				cacheWrite: finiteOrNull(u.cacheWrite) ?? 0,
-				totalTokens: finiteOrNull(u.totalTokens) ?? 0,
-				cost:
-					finiteOrNull(cost) ??
-					(cost && typeof cost === "object"
-						? (finiteOrNull((cost as Record<string, unknown>).total) ?? 0)
-						: 0),
+				input: finiteOrNull(u.input),
+				output: finiteOrNull(u.output),
+				cacheRead: finiteOrNull(u.cacheRead),
+				cacheWrite: finiteOrNull(u.cacheWrite),
+				totalTokens: finiteOrNull(u.totalTokens) ?? (
+					[ u.input, u.output, u.cacheRead, u.cacheWrite ].every((v) => finiteOrNull(v) !== null)
+						? Number(u.input) + Number(u.output) + Number(u.cacheRead) + Number(u.cacheWrite) : null),
+				cost: finiteOrNull(cost) ??
+					(cost && typeof cost === "object" ? finiteOrNull((cost as Record<string, unknown>).total) : null),
 			}
 		: null;
 	const errText = typeof msg.errorMessage === "string" ? msg.errorMessage.trim() : "";
@@ -171,7 +170,7 @@ export function requestStatFromMessage(
 
 /** Output tokens per second over the whole request (TUI ⚡); null without duration. */
 export function tokensPerSecond(stat: RequestStat): number | null {
-	if (stat.error || !stat.usage || !stat.durationMs || stat.durationMs <= 0) return null;
+	if (stat.error || stat.usage?.output == null || !stat.durationMs || stat.durationMs <= 0) return null;
 	return stat.usage.output / (stat.durationMs / 1000);
 }
 
@@ -204,11 +203,11 @@ function fieldText(stat: RequestStat, field: RequestStatField): string | null {
 		case "time":
 			return stat.startedAt == null ? null : formatStatClock(stat.startedAt);
 		case "input":
-			return u ? formatStatTokens(u.input + u.cacheWrite) : null;
+			return u?.input != null && u.cacheWrite != null ? formatStatTokens(u.input + u.cacheWrite) : null;
 		case "output":
-			return u ? formatStatTokens(u.output) : null;
+			return u?.output != null ? formatStatTokens(u.output) : null;
 		case "cache":
-			return u ? formatStatTokens(u.cacheRead) : null;
+			return u?.cacheRead != null ? formatStatTokens(u.cacheRead) : null;
 		case "ttft":
 			return stat.ttftMs == null ? null : `${(stat.ttftMs / 1000).toFixed(1)}s`;
 		case "tps": {
@@ -218,7 +217,7 @@ function fieldText(stat: RequestStat, field: RequestStatField): string | null {
 		case "duration":
 			return stat.durationMs == null ? null : `${(stat.durationMs / 1000).toFixed(1)}s`;
 		case "cost":
-			return u ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
+			return u?.cost != null ? u.cost.toFixed(u.cost < 1 ? 3 : 2) : null;
 	}
 }
 
@@ -261,33 +260,32 @@ export interface TurnStatTotals {
 	/** How many of them failed (stopReason "error"); excluded from avgTps. */
 	failed: number;
 	/** Σ (input + cacheWrite). */
-	input: number;
-	output: number;
-	cacheRead: number;
-	cost: number;
+	input: number | null;
+	output: number | null;
+	cacheRead: number | null;
+	cost: number | null;
 	/** Σ output ÷ Σ duration over requests that recorded a duration. */
 	avgTps: number | null;
 }
 
 /** Whole-turn totals for the 「已处理 xx 秒」 hover. */
 export function aggregateRequestStats(stats: RequestStat[]): TurnStatTotals {
-	let input = 0;
-	let output = 0;
-	let cacheRead = 0;
-	let cost = 0;
-	let timedOutput = 0;
+	let input: number | null = 0;
+	let output: number | null = 0;
+	let cacheRead: number | null = 0;
+	let cost: number | null = 0;
+	let timedOutput: number | null = 0;
 	let timedMs = 0;
 	let failed = 0;
 	for (const s of stats) {
 		if (s.error) failed++;
 		const u = s.usage;
-		if (!u) continue;
-		input += u.input + u.cacheWrite;
-		output += u.output;
-		cacheRead += u.cacheRead;
-		cost += u.cost;
+		input = input != null && u?.input != null && u.cacheWrite != null ? input + u.input + u.cacheWrite : null;
+		output = output != null && u?.output != null ? output + u.output : null;
+		cacheRead = cacheRead != null && u?.cacheRead != null ? cacheRead + u.cacheRead : null;
+		cost = cost != null && u?.cost != null ? cost + u.cost : null;
 		if (!s.error && s.durationMs && s.durationMs > 0) {
-			timedOutput += u.output;
+			timedOutput = timedOutput != null && u?.output != null ? timedOutput + u.output : null;
 			timedMs += s.durationMs;
 		}
 	}
@@ -298,6 +296,6 @@ export function aggregateRequestStats(stats: RequestStat[]): TurnStatTotals {
 		output,
 		cacheRead,
 		cost,
-		avgTps: timedMs > 0 ? timedOutput / (timedMs / 1000) : null,
+		avgTps: timedMs > 0 && timedOutput != null ? timedOutput / (timedMs / 1000) : null,
 	};
 }

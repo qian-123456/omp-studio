@@ -8,9 +8,11 @@ import { NativeSelect } from "../../components/NativeSelect";
 import type { DiscoveredModel, KeyMode, ProviderRow } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
-import { providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
+import { ompModelsSetContextWindows, providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useT } from "../../stores/language";
+import { loadProviderWindows, setProviderWindow as saveProviderWindow } from "../settings/contextWindow/core";
+import { useModelCatalog } from "../../stores/modelCatalog";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 import { planEnvImport } from "./envImport";
 import { maskKey } from "./envparse";
@@ -86,6 +88,11 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		const initial = modelEntriesToRows(initialModels);
 		return initial.length > 0 || isBuiltin ? initial : [{ ...blankModelRow(), ...(serviceMode ? { kind: "image", api: "openai-images" } : {}) }];
 	});
+	const [providerWindow, setProviderWindow] = useState(() => {
+		const saved = editing ? loadProviderWindows()[editing.id] : undefined;
+		return saved == null ? "" : String(saved);
+	});
+	const [providerWindowChanged, setProviderWindowChanged] = useState(false);
 	const [showKey, setShowKey] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
@@ -110,6 +117,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		const entries = rowsToModelEntries(modelRows);
 		if (editing) {
 			return (
+				providerWindowChanged ||
 				id !== editing.id ||
 				baseUrl !== (isBuiltin && editing.baseUrl === defaultBaseUrl ? "" : (editing.baseUrl ?? "")) ||
 				api !== (editing.api ?? "") ||
@@ -121,6 +129,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			);
 		}
 		return (
+			providerWindowChanged ||
 			selectedPresetId !== null ||
 			id.length > 0 ||
 			baseUrl.length > 0 ||
@@ -128,7 +137,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			api !== "openai-completions" ||
 			entries.length > 0
 		);
-	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, initialKeyMode, modelRows, selectedPresetId]);
+	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, initialKeyMode, modelRows, selectedPresetId, providerWindowChanged]);
 
 	const isClosingRef = useRef(false);
 	const handleDismiss = useCallback(async () => {
@@ -210,7 +219,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	};
 
 	const replaceModelRows = (selectedIds: string[], append: boolean) => {
-		const fresh = selectedIds.map((mid) => ({ ...blankModelRow(), id: mid, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }));
+		const fresh = selectedIds.map((mid) => ({ ...blankModelRow(), id: mid, contextWindow: providerWindow, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }));
 		setModelRows((prev) => {
 			if (!append) return fresh;
 			const existing = new Set(prev.map((r) => r.id.trim()).filter(Boolean));
@@ -245,6 +254,10 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 
 	const handleSave = async () => {
 		setFormError(null);
+		if (!serviceMode && providerWindow && (!Number.isSafeInteger(Number(providerWindow)) || Number(providerWindow) < 1 || Number(providerWindow) > 2000000)) {
+			setFormError(`${t("providers.colContextWindow")}: ${t("providers.contextWindowPlaceholder")}`);
+			return;
+		}
 		if (INVALID_PROVIDER_APIS[api] === true || modelRows.some((row) => row.id.trim() && ["web-search", "local-inference", "factory-droid-agent"].includes(row.api || api))) {
 			setFormError(t("providers.unsupportedServiceProtocol"));
 			return;
@@ -283,6 +296,21 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					key || null,
 					keyMode,
 				);
+				if (!serviceMode && providerWindowChanged && providerWindow) {
+					const overrides = new Map(config.models.map((model) => [
+						typeof model === "string" ? model : model.id,
+						typeof model === "string" ? undefined : model.contextWindow,
+					]));
+					const ids = new Set([...editing.models, ...config.models].map((model) => typeof model === "string" ? model : model.id));
+					await ompModelsSetContextWindows([...ids].map((modelId) => ({
+						providerId: editing.id, modelId,
+						contextWindow: overrides.get(modelId) ?? Number(providerWindow),
+					})));
+				}
+				if (!serviceMode && providerWindowChanged) {
+					saveProviderWindow(editing.id, providerWindow ? Number(providerWindow) : null);
+					void useModelCatalog.getState().refresh();
+				}
 				toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
 				if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 				onClose();
@@ -329,6 +357,17 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 				key || null,
 				keyMode,
 			);
+			if (!serviceMode && providerWindowChanged && providerWindow) {
+				await ompModelsSetContextWindows(config.models.map((model) => ({
+					providerId: newId,
+					modelId: typeof model === "string" ? model : model.id,
+					contextWindow: (typeof model === "string" ? null : model.contextWindow) ?? Number(providerWindow),
+				})));
+			}
+			if (!serviceMode && providerWindowChanged) {
+				saveProviderWindow(newId, providerWindow ? Number(providerWindow) : null);
+				void useModelCatalog.getState().refresh();
+			}
 			toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
 			if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 			onClose();
@@ -784,7 +823,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 									</button>
 									<button
 										type="button"
-										onClick={() => setModelRows((prev) => [...prev, { ...blankModelRow(), ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }])}
+										onClick={() => setModelRows((prev) => [...prev, { ...blankModelRow(), contextWindow: providerWindow, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }])}
 										className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs text-[var(--accent)] transition-all hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95"
 									>
 										<Plus className="h-3 w-3" />
@@ -797,6 +836,25 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 									? t("providers.builtinModelsHint", { count: Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0)) })
 									: t("providers.customModelsHint")}
 							</p>
+							{!serviceMode && (
+								<label className="mt-2 flex items-center gap-2 text-xs text-neutral-300">
+									<span>{t("providers.colContextWindow")}</span>
+									<input
+										type="number"
+										min={1}
+										max={2000000}
+										value={providerWindow}
+										onChange={(e) => {
+											const value = e.target.value;
+											setProviderWindowChanged(true);
+											setProviderWindow(value);
+											setModelRows((prev) => prev.map((row) => ({ ...row, contextWindow: value })));
+										}}
+										className={cellCls}
+										placeholder={t("providers.contextWindowPlaceholder")}
+									/>
+								</label>
+							)}
 
 							<div className="mt-2 space-y-1.5">
 								{modelRows.length > 0 && (

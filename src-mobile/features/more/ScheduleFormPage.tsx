@@ -27,6 +27,7 @@ import type { CadenceKind, FormErrors, NotifyMode, RunMode, Schedule, ScheduleFo
 interface Dir {
 	path: string;
 	label?: string;
+	mode?: Schedule["mode"];
 }
 
 // Native iOS date/time inputs have an intrinsic minimum width; constrain them to the field.
@@ -150,6 +151,7 @@ function Form({ dirs, existing }: { dirs: Dir[]; existing: Schedule | null }) {
 		setSaving(true);
 		try {
 			const body = buildPayload(f, existing);
+			if (!existing) body.mode = dirs.find((dir) => dir.path === f.cwd)?.mode ?? "code";
 			if (existing) await api("PUT", `/left/schedules/${encodeURIComponent(existing.id)}`, body);
 			else await api("POST", "/left/schedules", body);
 			toast("已保存", { kind: "success" });

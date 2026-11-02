@@ -302,7 +302,7 @@ export function TopCapsule() {
 		return () => window.clearInterval(t);
 	}, [open, counts.running]);
 
-	const tree = useMemo(() => buildSubagentTree(subagents), [subagents]);
+	const tree = useMemo(() => buildSubagentTree(subagents, rows), [subagents, rows]);
 	const stats = useMemo(() => descendantStats(tree), [tree]);
 	// Collapsed parents hide their descendants before the row cap is applied,
 	// so hidden rows never count toward the "还有 N 个" overflow.

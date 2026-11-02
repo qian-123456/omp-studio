@@ -360,6 +360,21 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             Ok(())
         })?;
     }
+    if version < 23 {
+        step_with(conn, 23, |tx| {
+            let exists: bool = tx.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('schedules') WHERE name = 'mode'",
+                [],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                tx.execute_batch(
+                    "ALTER TABLE schedules ADD COLUMN mode TEXT NOT NULL DEFAULT 'code';",
+                )?;
+            }
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 
@@ -424,6 +439,30 @@ pub fn ensure_global_workspace(conn: &Connection) -> rusqlite::Result<()> {
 mod tests {
     use super::*;
 
+    /// The schedule tables present in every valid v9–v22 database.
+    fn create_v9_schedule_fixture(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE schedules(
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL,
+               cwd TEXT NOT NULL, run_mode TEXT NOT NULL DEFAULT 'local',
+               cadence TEXT NOT NULL, model TEXT, thinking TEXT, approval_mode TEXT,
+               enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_at TEXT,
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL, end_at TEXT,
+               notify TEXT NOT NULL DEFAULT 'all',
+               new_chat_each_run INTEGER NOT NULL DEFAULT 1, max_runs INTEGER,
+               runs_done INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE schedule_runs(
+               id TEXT PRIMARY KEY, schedule_id TEXT NOT NULL, session_id TEXT,
+               status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
+               summary TEXT, FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+             );
+             CREATE INDEX idx_schedule_runs_schedule_id ON schedule_runs(schedule_id, started_at DESC);
+             INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
+             VALUES('scheduled', 'n', 'p', '/tmp', '{}', 't', 't');",
+        ).unwrap();
+    }
+
     /// v1 schema -> migrate() -> latest; v2 adds `cwd_override`, keeps rows.
     #[test]
     fn migrate_v2_adds_cwd_override() {
@@ -439,7 +478,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -462,7 +501,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 22);
+        assert_eq!(v3, 23);
     }
 
     #[test]
@@ -472,7 +511,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -499,7 +538,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -574,7 +613,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -585,6 +624,12 @@ mod tests {
             .unwrap();
         assert_eq!(notify, "all");
         assert_eq!(new_chat, 1);
+        let mode: String = conn
+            .query_row("SELECT mode FROM schedules WHERE id = 's1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(mode, "code");
         // Inserts that omit the new columns get the same defaults.
         conn.execute(
             "INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
@@ -669,7 +714,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -712,6 +757,7 @@ mod tests {
              ALTER TABLE backlog ADD COLUMN project_dir TEXT;",
         )
         .unwrap();
+        create_v9_schedule_fixture(&conn);
         conn.pragma_update(None, "user_version", 9).unwrap();
         conn.execute(
             "INSERT INTO workspaces(id, path, name, kind, sort, created_at)
@@ -729,7 +775,13 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
+        let schedule_mode: String = conn
+            .query_row("SELECT mode FROM schedules WHERE id='scheduled'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(schedule_mode, "code");
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -874,7 +926,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -917,7 +969,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
         let columns = |table: &str| -> Vec<String> {
             conn.prepare(&format!("PRAGMA table_info({table})"))
                 .unwrap()
@@ -1005,8 +1057,15 @@ mod tests {
              INSERT INTO model_switch_log VALUES('l', 'c', NULL, NULL, 't', 'T', 'applied', '', '[]', NULL, '[]', NULL);",
         )
         .unwrap();
+        create_v9_schedule_fixture(&conn);
         conn.pragma_update(None, "user_version", 17).unwrap();
         migrate(&conn).unwrap();
+        let schedule_mode: String = conn
+            .query_row("SELECT mode FROM schedules WHERE id='scheduled'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(schedule_mode, "code");
         for table in ["model_templates", "model_switch_rules", "model_switch_log"] {
             let scope: String = conn
                 .query_row(&format!("SELECT scope FROM {table}"), [], |r| r.get(0))
@@ -1062,7 +1121,7 @@ mod atomic_step_tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
     }
 }
 
@@ -1103,7 +1162,7 @@ mod backlog_v19_tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 22);
+        assert_eq!(v, 23);
     }
 
     #[test]
@@ -1125,6 +1184,6 @@ mod backlog_v19_tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
     }
 }

@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
+import { resolveActiveSessionTarget } from "../../lib/activeSessionTarget";
+import { previewKind } from "../../lib/fileLinks";
+import { usePendingSession } from "../sessions/pendingSession";
 import { fsReadDir, listWorkspaceFiles } from "../../lib/ipc";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { EmptyState } from "../../components/EmptyState";
@@ -15,6 +18,7 @@ import { SearchInput } from "../../components/SearchInput";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
 import { useExplorer } from "../../stores/explorer";
+import { useFilePreview } from "../../stores/filePreview";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { FileIcon } from "./FileIcon";
@@ -28,11 +32,18 @@ export function FileExplorer() {
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const centerView = useUi((s) => s.centerView);
+	const drafts = usePendingSession((s) => s.drafts);
+	const selectedDraftId = usePendingSession((s) => s.selectedId);
 	const openDoc = useUi((s) => s.openDoc);
 	const docPath = useUi((s) => s.docPath);
 
-	// Determine active workspace: match selected session's workspace/cwd, or fallback to first non-global, or first workspace
-	const activeSession = selectedSessionId ? sessions[selectedSessionId] : null;
+	const activeTarget = resolveActiveSessionTarget({
+		selectedSessionId,
+		selectedDraftId: !selectedSessionId && centerView === "session" ? selectedDraftId : null,
+		drafts,
+		sessions,
+	});
 	const manualWorkspaceId = useExplorer((s) => s.workspaceId);
 	const setManualWorkspaceId = useExplorer((s) => s.setWorkspaceId);
 
@@ -42,22 +53,13 @@ export function FileExplorer() {
 			const found = workspaces.find((w) => w.id === manualWorkspaceId);
 			if (found) return found;
 		}
-		if (activeSession?.workspaceId) {
-			const found = workspaces.find((w) => w.id === activeSession.workspaceId);
-			if (found) return found;
-		}
-		if (activeSession?.cwd) {
-			// Find workspace containing activeSession.cwd
-			const found = workspaces.find(
-				(w) =>
-					w.kind !== "global" &&
-					(activeSession.cwd === w.path || activeSession.cwd.startsWith(`${w.path}/`)),
-			);
-			if (found) return found;
-		}
-		const nonGlobal = workspaces.find((w) => w.kind !== "global");
-		return nonGlobal || workspaces[0] || null;
-	}, [workspaces, manualWorkspaceId, activeSession]);
+		const found = workspaces.find((w) => w.id === activeTarget.workspaceId)
+			?? workspaces.filter((w) => w.kind !== "global" && activeTarget.cwd &&
+				(activeTarget.cwd === w.path || activeTarget.cwd.startsWith(`${w.path}/`)))
+				.sort((a, b) => b.path.length - a.path.length)[0];
+		if (!found || !activeTarget.cwd) return null;
+		return { ...found, path: activeTarget.cwd };
+	}, [workspaces, manualWorkspaceId, activeTarget.workspaceId, activeTarget.cwd]);
 
 	// Tree state
 	const [rootEntries, setRootEntries] = useState<DirEntry[]>([]);
@@ -66,6 +68,8 @@ export function FileExplorer() {
 	const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
 	const [selectedPath, setSelectedPath] = useState<string | null>(docPath);
 	const [isRootLoading, setIsRootLoading] = useState(false);
+	const rootPathRef = useRef(currentWorkspace?.path);
+	rootPathRef.current = currentWorkspace?.path;
 
 	// Search state
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -110,6 +114,7 @@ export function FileExplorer() {
 		setIsRootLoading(true);
 		try {
 			const entries = await fsReadDir(currentWorkspace.path);
+			if (rootPathRef.current !== currentWorkspace.path) return;
 			setRootEntries(entries);
 			// Also reload currently expanded directories
 			for (const expPath of expandedPaths) {
@@ -118,15 +123,17 @@ export function FileExplorer() {
 				}
 			}
 		} catch (err) {
+			if (rootPathRef.current !== currentWorkspace.path) return;
 			toast.error(t("explorer.loadWorkspaceFilesFailed", { error: String(err) }));
 			setRootEntries([]);
 		} finally {
-			setIsRootLoading(false);
+			if (rootPathRef.current === currentWorkspace.path) setIsRootLoading(false);
 		}
 	}, [currentWorkspace?.path, expandedPaths, loadDir]);
 
 	// Reset tree expansion and cache on workspace change, then load new root
 	useEffect(() => {
+		let cancelled = false;
 		setExpandedPaths(new Set());
 		setChildrenMap({});
 		if (!currentWorkspace?.path) {
@@ -136,15 +143,19 @@ export function FileExplorer() {
 		setIsRootLoading(true);
 		fsReadDir(currentWorkspace.path)
 			.then((entries) => {
+				if (cancelled) return;
 				setRootEntries(entries);
 			})
 			.catch((err) => {
+				if (cancelled) return;
 				toast.error(t("explorer.loadWorkspaceFilesFailed", { error: String(err) }));
 				setRootEntries([]);
 			})
 			.finally(() => {
+				if (cancelled) return;
 				setIsRootLoading(false);
 			});
+		return () => { cancelled = true; };
 	}, [currentWorkspace?.path]);
 
 	// Toggle folder expand/collapse
@@ -171,10 +182,14 @@ export function FileExplorer() {
 		setExpandedPaths(new Set());
 	};
 
-	// Open file in center DocView
+	// Images and Mermaid diagrams use the file preview rather than the text-only Docs view.
 	const handleOpenFile = (path: string) => {
 		setSelectedPath(path);
-		openDoc(path);
+		if (previewKind(path) === "image" || /\.mmd$/i.test(path)) {
+			useFilePreview.getState().openFile(path, { cwd: currentWorkspace?.path ?? null });
+		} else {
+			openDoc(path);
+		}
 	};
 
 	// Reveal current workspace root in Finder
@@ -189,6 +204,7 @@ export function FileExplorer() {
 
 	// Perform workspace file search when query changes
 	useEffect(() => {
+		let cancelled = false;
 		const q = searchQuery.trim();
 		if (!q || !currentWorkspace?.path) {
 			setSearchResults([]);
@@ -199,18 +215,19 @@ export function FileExplorer() {
 			setIsSearchingFiles(true);
 			try {
 				const allFiles = await listWorkspaceFiles(currentWorkspace.path);
+				if (cancelled) return;
 				const lowerQ = q.toLowerCase();
 				const matched = allFiles.filter((rel) =>
 					rel.toLowerCase().includes(lowerQ),
 				);
 				setSearchResults(matched);
 			} catch {
-				setSearchResults([]);
+				if (!cancelled) setSearchResults([]);
 			} finally {
-				setIsSearchingFiles(false);
+				if (!cancelled) setIsSearchingFiles(false);
 			}
 		}, 150);
-		return () => clearTimeout(timer);
+		return () => { cancelled = true; clearTimeout(timer); };
 	}, [searchQuery, currentWorkspace?.path]);
 
 	return (

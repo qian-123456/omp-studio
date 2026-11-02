@@ -327,6 +327,7 @@ fn row_to_schedule(r: &Row) -> rusqlite::Result<Schedule> {
         name: r.get(1)?,
         prompt: r.get(2)?,
         cwd: r.get(3)?,
+        mode: crate::contracts::SpaceMode::from_str_lossy(&r.get::<_, String>(21)?),
         run_mode,
         cadence,
         model: r.get(6)?,
@@ -384,7 +385,7 @@ fn row_to_run(r: &Row) -> rusqlite::Result<ScheduleRun> {
 const SCHEDULE_COLS: &str = "id, name, prompt, cwd, run_mode, cadence, model, thinking, approval_mode, enabled, next_run_at, last_run_at, created_at, updated_at, end_at, \
     (SELECT status FROM schedule_runs WHERE schedule_runs.schedule_id = schedules.id ORDER BY started_at DESC LIMIT 1), \
     (SELECT count(*) FROM schedule_runs WHERE schedule_runs.schedule_id = schedules.id), \
-    notify, new_chat_each_run, max_runs, runs_done";
+    notify, new_chat_each_run, max_runs, runs_done, mode";
 
 const RUN_COLS: &str = "id, schedule_id, session_id, status, started_at, finished_at, summary";
 pub fn list(conn: &Connection) -> Result<Vec<Schedule>, rusqlite::Error> {
@@ -512,7 +513,7 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
                  model = ?7, thinking = ?8, approval_mode = ?9, enabled = ?10,
                  next_run_at = ?11, end_at = ?12, updated_at = ?13,
                  notify = ?14, new_chat_each_run = ?15, max_runs = ?16,
-                 last_run_at = CASE WHEN ?17 THEN NULL ELSE last_run_at END
+                 last_run_at = CASE WHEN ?17 THEN NULL ELSE last_run_at END, mode = ?18
              WHERE id = ?1",
             params![
                 id,
@@ -532,6 +533,7 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
                 draft.new_chat_each_run as i32,
                 max_runs,
                 rescheduled_once,
+                draft.mode.as_str(),
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -555,8 +557,8 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
     let enabled = (draft.enabled && next_run_at.is_some()) as i32;
 
     conn.execute(
-        "INSERT INTO schedules(id, name, prompt, cwd, run_mode, cadence, model, thinking, approval_mode, enabled, next_run_at, last_run_at, end_at, notify, new_chat_each_run, max_runs, created_at, updated_at)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?15, ?16, ?16)",
+        "INSERT INTO schedules(id, name, prompt, cwd, run_mode, cadence, model, thinking, approval_mode, enabled, next_run_at, last_run_at, end_at, notify, new_chat_each_run, max_runs, created_at, updated_at, mode)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?15, ?16, ?16, ?17)",
         params![
             id,
             draft.name,
@@ -574,6 +576,7 @@ pub fn upsert(conn: &Connection, draft: &ScheduleDraft) -> Result<Schedule, Stri
             draft.new_chat_each_run as i32,
             max_runs,
             ts,
+            draft.mode.as_str(),
         ],
     )
     .map_err(|e| e.to_string())?;

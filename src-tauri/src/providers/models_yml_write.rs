@@ -13,6 +13,7 @@ const NEW_INDENT: usize = 2;
 #[tauri::command]
 pub async fn omp_models_set_context_windows(
     entries: Vec<ModelContextWindowEdit>,
+    only_if_absent: Option<bool>,
 ) -> Result<(), String> {
     // models.yml is read-modify-written as a whole by the provider editor too;
     // without the shared lock a concurrent provider save and this edit each
@@ -20,14 +21,35 @@ pub async fn omp_models_set_context_windows(
     // other change.
     let _guard = super::MUTATION_LOCK.lock().await;
     let path = super::omp_config::home_agent_dir().join("models.yml");
-    tokio::task::spawn_blocking(move || apply_to_file(&path, &entries))
-        .await
-        .map_err(|e| format!("写入任务失败: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        if only_if_absent.unwrap_or(false) {
+            apply_missing_to_file(&path, &entries)
+        } else {
+            apply_to_file(&path, &entries)
+        }
+    })
+    .await
+    .map_err(|e| format!("写入任务失败: {e}"))?
 }
 
 /// Apply all edits to `path` atomically from the caller's point of view.
 pub fn apply_to_file(path: &Path, entries: &[ModelContextWindowEdit]) -> Result<(), String> {
     apply_with(path, entries, verify)
+}
+
+/// Apply automatic rules only where no explicit window exists. Caller holds MUTATION_LOCK.
+fn apply_missing_to_file(path: &Path, entries: &[ModelContextWindowEdit]) -> Result<(), String> {
+    let existing = read_overrides(path)?;
+    let missing: Vec<_> = entries
+        .iter()
+        .filter(|entry| {
+            !existing.iter().any(|current| {
+                current.provider_id == entry.provider_id && current.model_id == entry.model_id
+            })
+        })
+        .cloned()
+        .collect();
+    apply_to_file(path, &missing)
 }
 
 /// Existing `providers.*.modelOverrides.*.contextWindow` values only; nothing
@@ -464,6 +486,27 @@ mod tests {
             .get(m)?
             .get("contextWindow")?
             .as_u64()
+    }
+
+    #[test]
+    fn automatic_rules_preserve_override_added_after_planning() {
+        let path = tmp("missing-only");
+        std::fs::write(&path, SAMPLE).unwrap();
+        let planned = [
+            entry("acme", "m1", Some(272_000)),
+            entry("acme", "m2", Some(272_000)),
+        ];
+        apply_to_file(&path, &[entry("acme", "m1", Some(128_000))]).unwrap();
+        apply_missing_to_file(&path, &planned).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(cw(&text, "acme", "m1"), Some(128_000));
+        assert_eq!(cw(&text, "acme", "m2"), Some(272_000));
+        apply_to_file(&path, &[entry("acme", "m1", Some(300_000))]).unwrap();
+        assert_eq!(
+            cw(&std::fs::read_to_string(&path).unwrap(), "acme", "m1"),
+            Some(300_000)
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

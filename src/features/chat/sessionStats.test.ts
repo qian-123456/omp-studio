@@ -58,6 +58,18 @@ describe("formatTokens", () => {
 });
 
 describe("computeSessionStats", () => {
+	it("propagates partial unknown totals without losing independent known output", () => {
+		const stats = computeSessionStats([
+			makeItem({ kind: "assistant", usage: { input: 10, output: 3, cacheRead: 0, cacheWrite: 0, totalTokens: 13, cost: 0 } }),
+			makeItem({ kind: "assistant", usage: { input: null, output: 0, cacheRead: null, cacheWrite: null, totalTokens: null, cost: null } }),
+		]);
+		expect(stats.outputTokens).toBe(3);
+		expect(stats.inputTokens).toBeNull();
+		expect(stats.cacheRead).toBeNull();
+		expect(stats.totalTokens).toBeNull();
+		expect(stats.cacheHitRate).toBeNull();
+	});
+
 	it("handles empty items gracefully", () => {
 		const stats = computeSessionStats([]);
 		expect(stats.rounds).toBe(0);
@@ -155,8 +167,8 @@ describe("computeSessionStats", () => {
 		const stats = computeSessionStats(items);
 		expect(stats.modelDurationMs).toBe(10000);
 		expect(stats.avgTtftMs).toBe(2000);
-		// No usage on these items → 0 output tokens over 10 s.
-		expect(stats.tps).toBe(0);
+		// No output usage was recorded, so speed is unknown.
+		expect(stats.tps).toBeNull();
 	});
 
 	it("folds live requests in and does not double-count transcript copies", () => {

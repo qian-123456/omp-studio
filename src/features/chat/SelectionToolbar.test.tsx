@@ -61,6 +61,9 @@ beforeAll(() => {
 	if (typeof Range.prototype.getBoundingClientRect !== "function") {
 		Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 10, 10);
 	}
+    if (typeof Range.prototype.getClientRects !== "function") {
+        Range.prototype.getClientRects = () => [new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList;
+    }
 });
 
 beforeEach(() => {

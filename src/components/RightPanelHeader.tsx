@@ -27,6 +27,7 @@ import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "../stores/language";
 import { useDrawerStore } from "../features/terminal/drawerStore";
+import { useTerminalScope } from "../features/terminal/terminalTarget";
 import {
 	STATUS_DOT,
 	STATUS_LABEL,
@@ -99,6 +100,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 	const toggleRight = useUi((s) => s.toggleRight);
 	const drawerTabs = useDrawerStore((s) => s.tabs);
 	const activeTerminalId = useDrawerStore((s) => s.activeTabId);
+	const { scope: terminalScope } = useTerminalScope();
+	const activeTerminals = useDrawerStore((s) => s.activeByScope);
 
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [overflowOpen, setOverflowOpen] = useState(false);
@@ -128,7 +131,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 	const storedSideTab = useSideChatView((s) => (selectedId ? s.openChild[selectedId] : undefined));
 	const activeSideTab = resolveActiveTab(parentTabs, storedSideTab);
 	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
-	const visibleTerminals = drawerTabs.filter((t) => !t.detached);
+	const visibleTerminals = drawerTabs.filter((t) => !t.detached && t.scope === terminalScope);
 	const fileTabs = useFilePreview((s) => s.tabs);
 	// A group whose instances are gone (session switched to one without side
 	// chats, files closed elsewhere) must not linger as an empty ghost tab.
@@ -155,7 +158,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				title: `${t.title} · ${STATUS_LABEL[t.status]}${t.cwd ? `\n${t.cwd}` : ""}`,
 				lead: <span className={clsx("h-1.5 w-1.5 shrink-0 rounded-full", STATUS_DOT[t.status])} />,
 				badge: 0,
-				active: t.id === activeTerminalId,
+				active: t.id === (visibleTerminals.some((v) => v.id === activeTerminalId) ? activeTerminalId : (visibleTerminals.find((v) => v.id === activeTerminals[terminalScope])?.id ?? visibleTerminals[0]?.id)),
 				activate: () => useDrawerStore.getState().setActive(t.id),
 				close: () => void closeTerminalTab(t.id),
 				detach: () => detachTerminalTab(t.id),

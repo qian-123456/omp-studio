@@ -34,9 +34,19 @@ const TERMINAL_INIT: &str = r#"# OMP Workspace terminal init — generated file;
 # Bypass a wrapper with a leading backslash (\omp) or `command omp`.
 
 _ompws_omp() {
-    _ompws_f=""
-    [ -f "$HOME/.omp-workspace/current-session" ] && \
-        _ompws_f="$(<"$HOME/.omp-workspace/current-session")"
+    if [ "${OMP_WORKSPACE_SESSION_FILE+x}" = x ]; then
+        _ompws_f="$OMP_WORKSPACE_SESSION_FILE"
+        if [ -n "$_ompws_f" ] && [ ! -f "$_ompws_f" ]; then
+            case "$1" in
+                -p|--prompt|-h|--help|-V|--version|--resume|-r) ;;
+                ""|-*) printf 'OMP Workspace: session transcript not found: %s\n' "$_ompws_f" >&2; return 1 ;;
+            esac
+        fi
+    else
+        _ompws_f=""
+        [ -f "$HOME/.omp-workspace/current-session" ] && \
+            _ompws_f="$(<"$HOME/.omp-workspace/current-session")"
+    fi
     # Only resume when the recorded transcript still exists.
     if [ -z "$_ompws_f" ] || [ ! -f "$_ompws_f" ]; then
         command omp "$@"
@@ -165,7 +175,7 @@ pub type DrawerSpawn = (Vec<String>, Vec<(String, String)>);
 /// argv + extra env for a drawer terminal. `None` → pass `command` through
 /// untouched (explicit non-shell spawns). Only the default shell spawn (empty
 /// `command`, i.e. `$SHELL -l`) gets the agent-aware init files.
-pub fn drawer_spawn(command: &[String]) -> Option<DrawerSpawn> {
+pub fn drawer_spawn(command: &[String], session_file: Option<&str>) -> Option<DrawerSpawn> {
     if !command.is_empty() {
         return None;
     }
@@ -180,10 +190,16 @@ pub fn drawer_spawn(command: &[String]) -> Option<DrawerSpawn> {
     match name {
         "zsh" => Some((
             vec![shell, "-l".to_string()],
-            vec![(
-                "ZDOTDIR".to_string(),
-                zdot_dir().to_string_lossy().to_string(),
-            )],
+            vec![
+                (
+                    "ZDOTDIR".to_string(),
+                    zdot_dir().to_string_lossy().to_string(),
+                ),
+                (
+                    "OMP_WORKSPACE_SESSION_FILE".to_string(),
+                    session_file.unwrap_or("").to_string(),
+                ),
+            ],
         )),
         "bash" => Some((
             vec![
@@ -191,16 +207,96 @@ pub fn drawer_spawn(command: &[String]) -> Option<DrawerSpawn> {
                 "--rcfile".to_string(),
                 bashrc_path().to_string_lossy().to_string(),
             ],
-            vec![],
+            vec![(
+                "OMP_WORKSPACE_SESSION_FILE".to_string(),
+                session_file.unwrap_or("").to_string(),
+            )],
         )),
         // Unknown shell: fall back to `$SHELL -l` with no init injection.
-        _ => Some((vec![shell, "-l".to_string()], vec![])),
+        _ => Some((
+            vec![shell, "-l".to_string()],
+            vec![(
+                "OMP_WORKSPACE_SESSION_FILE".to_string(),
+                session_file.unwrap_or("").to_string(),
+            )],
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn drawer_session_binding_does_not_follow_global_or_leak_to_blank_draft() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!("ompws-bind-{}", uuid::Uuid::new_v4()));
+        let home = dir.join("home");
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(home.join(".omp-workspace")).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let executable = bin.join("omp");
+        std::fs::write(&executable, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let a = dir.join("a.jsonl");
+        let b = dir.join("b.jsonl");
+        std::fs::write(&a, "{}").unwrap();
+        std::fs::write(&b, "{}").unwrap();
+        std::fs::write(
+            home.join(".omp-workspace/current-session"),
+            b.to_str().unwrap(),
+        )
+        .unwrap();
+        let init = dir.join("init");
+        std::fs::write(&init, TERMINAL_INIT).unwrap();
+        let run = |binding: Option<&str>| {
+            let mut cmd = Command::new("/bin/bash");
+            cmd.arg("-c")
+                .arg("source \"$INIT\"; _ompws_omp")
+                .env("HOME", &home)
+                .env("PATH", &bin)
+                .env("INIT", &init);
+            match binding {
+                Some(value) => {
+                    cmd.env("OMP_WORKSPACE_SESSION_FILE", value);
+                }
+                None => {
+                    cmd.env_remove("OMP_WORKSPACE_SESSION_FILE");
+                }
+            }
+            let output = cmd.output().unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap()
+        };
+        assert_eq!(
+            run(Some(a.to_str().unwrap())),
+            format!("--resume\n{}\n", a.display())
+        );
+        assert_eq!(run(Some("")), "\n");
+        assert_eq!(run(None), format!("--resume\n{}\n", b.display()));
+        let missing = dir.join("missing.jsonl");
+        let output = Command::new("/bin/bash")
+            .arg("-c")
+            .arg("source \"$INIT\"; _ompws_omp")
+            .env("HOME", &home)
+            .env("PATH", &bin)
+            .env("INIT", &init)
+            .env("OMP_WORKSPACE_SESSION_FILE", &missing)
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "missing explicit session must fail"
+        );
+        assert!(output.stdout.is_empty(), "must not start a new omp session");
+        assert!(
+            !output.stderr.is_empty(),
+            "missing session must be reported"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn init_files_are_written_once() {

@@ -351,10 +351,10 @@ export function WorktreeGraph({
 
 												<button
 													type="button"
-													onClick={() => {
+													onClick={async () => {
 														dismissHover();
 														const name = wt.branch || wt.path.split(/[\\/]/).filter(Boolean).pop() || wt.path;
-														if (addTerminalTabWithCwd(wt.path, name)) {
+														if (await addTerminalTabWithCwd(wt.path, name)) {
 															setRightTab("terminal");
 															toast.success(t("worktree.openedTerminal", { name }));
 														}

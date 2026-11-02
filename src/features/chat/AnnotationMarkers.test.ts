@@ -58,6 +58,15 @@ describe("markerSources", () => {
 	});
 });
 
+describe("document marker sources", () => {
+    it("renders only matching document markers and drops them after removal", () => {
+        const doc: Annotation = { id: "doc-1", source: "doc", file: "/tmp/readme.md", text: "inline quote" };
+        const other: Annotation = { id: "doc-2", source: "doc", file: "/tmp/other.md", text: "other quote" };
+        expect(markerSources([doc, other], [], "/tmp/readme.md").map((source) => source.id)).toEqual(["doc-1"]);
+        expect(markerSources([other], [], "/tmp/readme.md")).toEqual([]);
+    });
+
+});
 describe("slice marker measurement", () => {
 	it("anchors the selected local occurrence regardless of other mounted parts", () => {
 		const container = document.createElement("div");

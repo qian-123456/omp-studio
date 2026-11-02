@@ -20,6 +20,7 @@ import {
 	saveRetryHistory,
 } from "./retryNotice";
 import { useComposer } from "./composer";
+import { useSessions } from "./sessions";
 import { useHeldQueue } from "../features/chat/heldQueue";
 import { PLAN_STATUS_KEY, type PlanStatus, parsePlanStatus } from "../features/chat/plan/planStatus";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
@@ -1358,6 +1359,21 @@ function reduce(
 					// against the previous one (a payload-less `model_changed` only
 					// triggers this get_state).
 					const noted = noteModelSwitch(live, data.model);
+					const previous = live.state ?? {};
+					const oldModel = modelLabel(previous.model);
+					const newModel = modelLabel(data.model);
+					const changedModel = !!oldModel && !!newModel && oldModel !== newModel;
+					const oldUsage = asFrame(previous.contextUsage);
+					const preservedUsage = changedModel
+						? { ...oldUsage, contextWindow: undefined, percent: undefined }
+						: previous.contextUsage;
+					const state = {
+						...previous,
+						...data,
+						model: "model" in data ? data.model : previous.model,
+						thinkingLevel: "thinkingLevel" in data ? data.thinkingLevel : changedModel ? undefined : previous.thinkingLevel,
+						contextUsage: "contextUsage" in data ? data.contextUsage : preservedUsage,
+					};
 					const ompQueue =
 						data.queuedMessages !== undefined
 							? ompQueueFrom(data.queuedMessages)
@@ -1369,7 +1385,7 @@ function reduce(
 						// replay them.
 						return {
 							...noted,
-							state: data,
+							state,
 							streaming: false,
 							streamingMessage: null,
 							tools: {},
@@ -1381,7 +1397,7 @@ function reduce(
 							ompQueue,
 						};
 					}
-					return { ...noted, state: data, streaming: true, ompQueue };
+					return { ...noted, state, streaming: true, ompQueue };
 				}
 				case "get_available_commands":
 					return {
@@ -1579,6 +1595,13 @@ export const useLive = create<LiveState>((set) => ({
 		});
 		// Inputs the aborted turn dropped go back to the composer, never lost.
 		if (dropped.length) restoreTextsToDraft(sessionId, dropped.map((e) => e.text ?? ""));
+		if (f.type === "message_start" || f.type === "message_end") {
+			const role = str(asFrame(f.message).role);
+			if (role === "user" || role === "assistant") {
+				const meta = useSessions.getState().sessions[sessionId];
+				if (meta) useSessions.getState().upsert([{ ...meta, updatedAt: new Date().toISOString() }]);
+			}
+		}
 		// `session_info_update` carries a new title from /rename —
 		// patch the session list optimistically; the file watcher follows.
 		if (f.type === "session_info_update") {
