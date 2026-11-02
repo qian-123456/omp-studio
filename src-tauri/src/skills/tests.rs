@@ -443,8 +443,45 @@ fn test_skill_copies_count_losing_roots() {
     assert_eq!(dup.description, "first wins", "precedence: first root wins");
     assert_eq!(dup.source, "project");
     assert_eq!(dup.root, "./.omp/skills");
+    assert_eq!(dup.locations.len(), 2);
+    assert!(dup.locations[0].active);
+    assert_eq!(dup.locations[0].root, "./.omp/skills");
+    assert_eq!(dup.locations[0].source, "project");
+    assert_eq!(dup.locations[0].provider, SkillProvider::Native);
+    assert!(!dup.locations[1].active);
+    assert_eq!(dup.locations[1].root, "./.claude/skills");
+    assert_eq!(dup.locations[1].source, "user");
+    assert_eq!(dup.locations[1].provider, SkillProvider::Claude);
     let solo = skills.iter().find(|s| s.name == "solo").unwrap();
     assert_eq!(solo.copies, 1);
+    assert_eq!(solo.locations.len(), 1);
+    assert!(solo.locations[0].active);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_skill_locations_mark_symlink_copies() {
+    use std::os::unix::fs::symlink;
+
+    let base = fresh_test_dir("locations-symlink");
+    let target = base.join("target");
+    write_skill(
+        &target,
+        "real",
+        "---\nname: linked\ndescription: via link\n---\n",
+    );
+    let root = base.join(".omp").join("skills");
+    std::fs::create_dir_all(&root).unwrap();
+    symlink(target.join("real"), root.join("linked")).unwrap();
+
+    let skills = scan_dir(&root);
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].name, "linked");
+    assert_eq!(skills[0].locations.len(), 1);
+    assert!(skills[0].locations[0].active);
+    assert!(skills[0].locations[0].symlink);
 
     let _ = std::fs::remove_dir_all(&base);
 }

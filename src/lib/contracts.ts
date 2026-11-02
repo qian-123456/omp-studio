@@ -1588,6 +1588,20 @@ export type SkillProvider =
 	| "codex"
 	| "github"
 	| "managed";
+/** One directory that contains a copy of a skill name. */
+export interface SkillLocation {
+	dir: string;
+	path: string;
+	source: string;
+	provider: SkillProvider;
+	root: string;
+	/** True for the copy whose metadata the row shows (discovery precedence). */
+	active: boolean;
+	/** True when the directory entry is a symbolic link. */
+	symlink: boolean;
+	issues: SkillIssue[];
+}
+
 export interface SkillItem {
 	name: string;
 	description: string;
@@ -1598,6 +1612,8 @@ export interface SkillItem {
 	root: string;
 	/** How many discovery roots contain a skill with this same name (>=1); the listed one wins by precedence. */
 	copies: number;
+	/** Every discovery root containing this name, in precedence order. */
+	locations?: SkillLocation[];
 	/** Agent ecosystem of the discovery root (independent of `source`). */
 	provider: SkillProvider;
 	/** Empty = healthy. */

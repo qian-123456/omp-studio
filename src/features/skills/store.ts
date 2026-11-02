@@ -2,6 +2,8 @@ import { create } from "zustand";
 import type {
 	ExtensionItem,
 	SkillItem,
+	SkillLocation,
+	SkillProvider,
 	SkillUsage,
 	SkillUsageReport,
 	SkillsCatalog,
@@ -154,62 +156,143 @@ export function computeSkillStats(
 }
 
 /** Pure filter + search + sort for the skills table; exported for tests. */
-export function selectVisibleSkills(
-	state: Pick<
-		SkillsState,
-		"catalog" | "searchQuery" | "sourceFilter" | "statusFilter" | "sort" | "usage" | "skillConfig"
-	>,
-): SkillItem[] {
-	const skills = state.catalog?.skills ?? [];
-	const q = state.searchQuery.trim().toLowerCase();
-	const usage = state.usage;
-	const filtered = skills.filter((s) => {
-		if (state.sourceFilter === "user" && s.source !== "user") return false;
-		if (state.sourceFilter === "project" && s.source !== "project") return false;
-		if (state.statusFilter === "active" && (usage[s.name]?.count ?? 0) <= 0)
-			return false;
-		if (state.statusFilter === "idle" && (usage[s.name]?.count ?? 0) > 0)
-			return false;
-		if (state.statusFilter === "issues" && (s.issues?.length ?? 0) === 0)
-			return false;
-		if (
-			state.statusFilter === "disabled" &&
-			resolveSkillEnablement(s, state.skillConfig).enabled
-		)
-			return false;
-		if (!q) return true;
-		return (
-			s.name.toLowerCase().includes(q) ||
-			(s.description ?? "").toLowerCase().includes(q) ||
-			(s.root ?? "").toLowerCase().includes(q)
-		);
-	});
+type SkillListState = Pick<
+	SkillsState,
+	"catalog" | "searchQuery" | "sourceFilter" | "statusFilter" | "sort" | "usage" | "skillConfig"
+>;
 
-	const byName = (a: SkillItem, b: SkillItem) => a.name.localeCompare(b.name);
-	const sorted = [...filtered];
+/** One copy of a skill in one discovery root. */
+export interface SkillLocationEntry {
+	skill: SkillItem;
+	location: SkillLocation;
+}
+
+/** Every visible skill installed under one root. */
+export interface SkillLocationGroup {
+	key: string;
+	root: string;
+	source: string;
+	provider: SkillProvider;
+	items: SkillLocationEntry[];
+}
+
+function matchesStatus(skill: SkillItem, state: SkillListState): boolean {
+	if (state.statusFilter === "active" && (state.usage[skill.name]?.count ?? 0) <= 0)
+		return false;
+	if (state.statusFilter === "idle" && (state.usage[skill.name]?.count ?? 0) > 0)
+		return false;
+	if (state.statusFilter === "issues" && (skill.issues?.length ?? 0) === 0)
+		return false;
+	if (
+		state.statusFilter === "disabled" &&
+		resolveSkillEnablement(skill, state.skillConfig).enabled
+	)
+		return false;
+	return true;
+}
+
+function matchesQuery(skill: SkillItem, query: string): boolean {
+	if (!query) return true;
+	return (
+		skill.name.toLowerCase().includes(query) ||
+		(skill.description ?? "").toLowerCase().includes(query) ||
+		(skill.root ?? "").toLowerCase().includes(query)
+	);
+}
+
+const byName = (a: SkillItem, b: SkillItem) => a.name.localeCompare(b.name);
+
+function compareSkills(state: SkillListState, a: SkillItem, b: SkillItem): number {
 	switch (state.sort) {
 		case "name":
-			sorted.sort(byName);
-			break;
+			return byName(a, b);
 		case "count":
-			sorted.sort(
-				(a, b) =>
-					(usage[b.name]?.count ?? 0) - (usage[a.name]?.count ?? 0) ||
-					byName(a, b),
+			return (
+				(state.usage[b.name]?.count ?? 0) - (state.usage[a.name]?.count ?? 0) ||
+				byName(a, b)
 			);
-			break;
-		case "lastUsed":
-			sorted.sort((a, b) => {
-				const ta = usage[a.name]?.lastUsedAt ?? null;
-				const tb = usage[b.name]?.lastUsedAt ?? null;
-				if (ta === null && tb === null) return byName(a, b);
-				if (ta === null) return 1; // never triggered → last
-				if (tb === null) return -1;
-				return tb.localeCompare(ta) || byName(a, b);
-			});
-			break;
+		case "lastUsed": {
+			const ta = state.usage[a.name]?.lastUsedAt ?? null;
+			const tb = state.usage[b.name]?.lastUsedAt ?? null;
+			if (ta === null && tb === null) return byName(a, b);
+			if (ta === null) return 1; // never triggered → last
+			if (tb === null) return -1;
+			return tb.localeCompare(ta) || byName(a, b);
+		}
+		default:
+			return byName(a, b);
 	}
-	return sorted;
+}
+
+export function selectVisibleSkills(state: SkillListState): SkillItem[] {
+	const q = state.searchQuery.trim().toLowerCase();
+	const filtered = (state.catalog?.skills ?? []).filter((skill) => {
+		if (state.sourceFilter === "user" && skill.source !== "user") return false;
+		if (state.sourceFilter === "project" && skill.source !== "project") return false;
+		return matchesStatus(skill, state) && matchesQuery(skill, q);
+	});
+	return [...filtered].sort((a, b) => compareSkills(state, a, b));
+}
+
+/** Older payloads and tests may omit `locations`; treat the winner as the only copy. */
+function locationsOf(skill: SkillItem): SkillLocation[] {
+	if (skill.locations?.length) return skill.locations;
+	return [
+		{
+			dir: skill.dir,
+			path: skill.path,
+			source: skill.source,
+			provider: skill.provider,
+			root: skill.root,
+			active: true,
+			symlink: false,
+			issues: skill.issues,
+		},
+	];
+}
+
+/**
+ * Group every visible install location by its discovery root. A skill with
+ * copies in several roots appears in each group; the active copy is marked.
+ */
+export function groupSkillsByLocation(state: SkillListState): SkillLocationGroup[] {
+	const q = state.searchQuery.trim().toLowerCase();
+	const groups = new Map<string, SkillLocationGroup>();
+	for (const skill of state.catalog?.skills ?? []) {
+		if (!matchesStatus(skill, state)) continue;
+		const skillMatches = matchesQuery(skill, q);
+		for (const location of locationsOf(skill)) {
+			if (state.sourceFilter !== "all" && location.source !== state.sourceFilter) continue;
+			if (
+				q &&
+				!skillMatches &&
+				!location.root.toLowerCase().includes(q) &&
+				!location.dir.toLowerCase().includes(q)
+			)
+				continue;
+			const key = `${location.source}\u0000${location.root}\u0000${location.provider}`;
+			let group = groups.get(key);
+			if (!group) {
+				group = {
+					key,
+					root: location.root,
+					source: location.source,
+					provider: location.provider,
+					items: [],
+				};
+				groups.set(key, group);
+			}
+			group.items.push({ skill, location });
+		}
+	}
+	const result = [...groups.values()];
+	for (const group of result)
+		group.items.sort((a, b) => compareSkills(state, a.skill, b.skill));
+	result.sort((a, b) => {
+		if (a.source !== b.source) return a.source === "project" ? -1 : 1;
+		return a.root.localeCompare(b.root) || a.provider.localeCompare(b.provider);
+	});
+	return result;
 }
 
 /** Guards `loadUsage` against concurrent invocations (single-flight). */

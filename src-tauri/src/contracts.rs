@@ -1683,6 +1683,22 @@ pub enum SkillProvider {
     Managed,
 }
 
+/// One directory that contains a copy of a skill name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillLocation {
+    pub dir: String,
+    pub path: String,
+    pub source: String,
+    pub provider: SkillProvider,
+    pub root: String,
+    /// True for the copy whose metadata the item shows (discovery precedence).
+    pub active: bool,
+    /// True when the directory entry is a symbolic link.
+    pub symlink: bool,
+    pub issues: Vec<SkillIssue>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillItem {
@@ -1698,6 +1714,9 @@ pub struct SkillItem {
     pub root: String,
     /// Number of discovery roots containing a skill with this same name (>= 1).
     pub copies: u32,
+    /// Every discovery root containing this name, in precedence order.
+    #[serde(default)]
+    pub locations: Vec<SkillLocation>,
     /// Health issues; empty means healthy.
     pub issues: Vec<SkillIssue>,
     /// Estimated resident system-prompt cost: name + description chars + 4.

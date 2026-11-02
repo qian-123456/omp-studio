@@ -3,7 +3,9 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use crate::contracts::{ExtensionItem, SkillIssue, SkillItem, SkillProvider, SkillsCatalog};
+use crate::contracts::{
+    ExtensionItem, SkillIssue, SkillItem, SkillLocation, SkillProvider, SkillsCatalog,
+};
 
 /// Parses SKILL.md frontmatter for name and description without loading the entire body.
 pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, String) {
@@ -352,8 +354,8 @@ pub(crate) fn scan_skills_in_dir(
         }
 
         // Dangling symlink (or symlink to a non-dir): list it as unreadable.
-        let dangling =
-            entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) && !entry_path.is_dir();
+        let symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
+        let dangling = symlink && !entry_path.is_dir();
         if !dangling && !entry_path.is_dir() {
             continue;
         }
@@ -399,11 +401,28 @@ pub(crate) fn scan_skills_in_dir(
             (name, description, issues)
         };
 
+        let dir = entry_path.to_string_lossy().to_string();
+        let path = skill_md.to_string_lossy().to_string();
+        let location = SkillLocation {
+            dir: dir.clone(),
+            path: path.clone(),
+            source: source.to_string(),
+            provider,
+            root: root_display.to_string(),
+            active: false,
+            symlink,
+            issues: issues.clone(),
+        };
+
         if let Some(&idx) = index.get(&name) {
             // Later root loses precedence but still counts as a copy.
-            if counted.insert(name) {
+            if counted.insert(name.clone()) {
                 skills[idx].copies += 1;
             }
+            skills[idx].locations.push(SkillLocation {
+                active: false,
+                ..location
+            });
             continue;
         }
 
@@ -415,10 +434,14 @@ pub(crate) fn scan_skills_in_dir(
             description,
             source: source.to_string(),
             provider,
-            path: skill_md.to_string_lossy().to_string(),
-            dir: entry_path.to_string_lossy().to_string(),
+            path,
+            dir,
             root: root_display.to_string(),
             copies: 1,
+            locations: vec![SkillLocation {
+                active: true,
+                ..location
+            }],
             issues,
             prompt_chars,
         });

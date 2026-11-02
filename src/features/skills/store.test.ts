@@ -6,7 +6,12 @@ import {
 	resolveSkillEnablement,
 	type SkillEnableConfig,
 } from "../../lib/skillEnablement";
-import { computeSkillStats, selectVisibleSkills, useSkillsStore } from "./store";
+import {
+	computeSkillStats,
+	groupSkillsByLocation,
+	selectVisibleSkills,
+	useSkillsStore,
+} from "./store";
 
 const { invalidate } = vi.hoisted(() => ({ invalidate: vi.fn() }));
 vi.mock("../settings/ompConfigStore", () => ({
@@ -796,5 +801,84 @@ describe("project config layer", () => {
 		await useSkillsStore.getState().setSkillEnabled(mockCatalog.skills[0], false);
 		await useSkillsStore.getState().setExtensionEnabled(liveExt, false, "/c");
 		expect(ipc.ompConfigSet).not.toHaveBeenCalled();
+	});
+});
+
+describe("groupSkillsByLocation", () => {
+	const duplicate = skill({
+		name: "dup",
+		source: "project",
+		dir: "/p/.omp/skills/dup",
+		path: "/p/.omp/skills/dup/SKILL.md",
+		root: "./.omp/skills",
+		copies: 2,
+		locations: [
+			{
+				dir: "/p/.omp/skills/dup",
+				path: "/p/.omp/skills/dup/SKILL.md",
+				source: "project",
+				provider: "native",
+				root: "./.omp/skills",
+				active: true,
+				symlink: false,
+				issues: [],
+			},
+			{
+				dir: "/u/.claude/skills/dup",
+				path: "/u/.claude/skills/dup/SKILL.md",
+				source: "user",
+				provider: "claude",
+				root: "~/.claude/skills",
+				active: false,
+				symlink: true,
+				issues: ["unreadable"],
+			},
+		],
+	});
+	const catalog: SkillsCatalog = { skills: [duplicate], extensions: [] };
+	const state = (
+		over: Partial<Parameters<typeof groupSkillsByLocation>[0]> = {},
+	): Parameters<typeof groupSkillsByLocation>[0] => ({
+		catalog,
+		searchQuery: "",
+		sourceFilter: "all",
+		statusFilter: "all",
+		sort: "name",
+		usage: {},
+		skillConfig: DEFAULT_SKILL_CONFIG,
+		...over,
+	});
+
+	it("keeps every copy in its own root and marks precedence", () => {
+		const groups = groupSkillsByLocation(state());
+		expect(groups.map((group) => group.root)).toEqual([
+			"./.omp/skills",
+			"~/.claude/skills",
+		]);
+		expect(groups[0].items[0].location.active).toBe(true);
+		expect(groups[1].items[0].location.active).toBe(false);
+		expect(groups[1].items[0].location.symlink).toBe(true);
+		expect(groups[1].items[0].location.issues).toEqual(["unreadable"]);
+	});
+
+	it("filters each copy by source and by its own path", () => {
+		expect(groupSkillsByLocation(state({ sourceFilter: "project" }))).toHaveLength(1);
+		expect(groupSkillsByLocation(state({ sourceFilter: "user" }))[0].root).toBe(
+			"~/.claude/skills",
+		);
+		const searched = groupSkillsByLocation(state({ searchQuery: "claude" }));
+		expect(searched).toHaveLength(1);
+		expect(searched[0].items).toHaveLength(1);
+	});
+
+	it("falls back to the winning copy for older payloads", () => {
+		const groups = groupSkillsByLocation(
+			state({
+				catalog: { skills: [skill({ name: "solo" })], extensions: [] },
+			}),
+		);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].items[0].location.active).toBe(true);
+		expect(groups[0].items[0].location.dir).toBe("/home/.omp/agent/skills/skill");
 	});
 });

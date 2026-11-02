@@ -399,12 +399,19 @@ pub struct ScheduleRun {
 
 // Skills & Extensions catalog
 pub enum SkillProvider { Native, Claude, Agents, Codex, Github, Managed } // snake_case
+pub struct SkillLocation {
+  pub dir: String, pub path: String, pub source: String /* "project" | "user" */,
+  pub provider: SkillProvider, pub root: String,
+  pub active: bool /* winner by discovery precedence */, pub symlink: bool,
+  pub issues: Vec<SkillIssue>,
+}
 pub struct SkillItem {
   pub name: String, pub description: String, pub source: String /* "project" | "user" */,
   pub provider: SkillProvider /* ecosystem of the discovery root */,
   pub path: String /* SKILL.md */, pub dir: String,
   pub root: String /* display root: "./rel" (project) or "~/…" (user) */,
   pub copies: u32 /* discovery roots holding a skill of this name (>= 1) */,
+  pub locations: Vec<SkillLocation> /* every copy in precedence order; optional for older payloads */,
   pub issues: Vec<SkillIssue> /* empty = healthy */,
   pub prompt_chars: u32 /* name + description chars + 4 */,
 }

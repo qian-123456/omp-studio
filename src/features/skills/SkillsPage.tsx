@@ -26,7 +26,13 @@ import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
 import { SearchInput } from "../../components/SearchInput";
 import { Segmented } from "../../components/Segmented";
-import type { ExtensionItem, SkillIssue, SkillItem } from "../../lib/contracts";
+import type {
+	ExtensionItem,
+	SkillIssue,
+	SkillItem,
+	SkillLocation,
+	SkillProvider,
+} from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
 import { useEscapeKey } from "../../lib/hooks";
@@ -43,6 +49,7 @@ import { resolveSkillEnablement, type SkillDisabledReason } from "../../lib/skil
 import {
 	USAGE_DAYS,
 	computeSkillStats,
+	groupSkillsByLocation,
 	selectVisibleSkills,
 	useSkillsStore,
 	type SkillSort,
@@ -83,6 +90,16 @@ const ISSUE_ORDER: SkillIssue[] = [
 
 const sourceLabel = (source: string) =>
 	source === "project" ? tNow("skills.sourceProject") : tNow("skills.sourceGlobal");
+
+const PROVIDER_LABEL_KEYS: Record<SkillProvider, string> = {
+	native: "skills.providerNative",
+	claude: "skills.providerClaude",
+	agents: "skills.providerAgents",
+	codex: "skills.providerCodex",
+	github: "skills.providerGithub",
+	managed: "skills.providerManaged",
+};
+const providerLabel = (provider: SkillProvider) => tNow(PROVIDER_LABEL_KEYS[provider]);
 
 const SORT_OPTIONS: { value: SkillSort; labelKey: string }[] = [
 	{ value: "count", labelKey: "skills.sortCount" },
@@ -200,9 +217,11 @@ function DeleteConfirmBody({
 			>
 				{skill.dir}
 			</p>
-			{skill.copies > 1 && (
+			{(skill.locations?.length ?? skill.copies) > 1 && (
 				<p className="mt-1.5 text-[11px] leading-relaxed text-amber-400/90">
-					{t("skills.deleteCopiesWarning", { count: skill.copies - 1 })}
+					{t("skills.deleteCopiesWarning", {
+						count: (skill.locations?.length ?? skill.copies) - 1,
+					})}
 				</p>
 			)}
 			<div className="mt-3 flex items-center justify-end gap-1.5">
@@ -402,14 +421,33 @@ function DetailDrawer({
 
 	const skill =
 		target.kind === "skill"
-			? (catalog?.skills.find((s) => s.path === target.path) ?? null)
+			? (catalog?.skills.find(
+					(s) =>
+						s.path === target.path ||
+						s.locations?.some((location) => location.path === target.path),
+				) ?? null)
 			: null;
 	const extension =
 		target.kind === "extension"
 			? (catalog?.extensions.find((e) => e.path === target.path) ?? null)
 			: null;
+	const selectedLocation =
+		skill?.locations?.find((location) => location.path === target.path) ?? null;
+	const displaySkill: SkillItem | null =
+		skill && selectedLocation
+			? {
+					...skill,
+					dir: selectedLocation.dir,
+					path: selectedLocation.path,
+					source: selectedLocation.source,
+					provider: selectedLocation.provider,
+					root: selectedLocation.root,
+					issues: selectedLocation.issues,
+				}
+			: skill;
+	const standby = selectedLocation ? !selectedLocation.active : false;
 
-	const itemUsage = skill ? usage[skill.name] : undefined;
+	const itemUsage = displaySkill ? usage[displaySkill.name] : undefined;
 	const days = usageReport?.days ?? USAGE_DAYS;
 
 	// Rendered SKILL.md body (frontmatter stripped — the meta is shown above).
@@ -451,8 +489,9 @@ function DetailDrawer({
 	if (!skill && !extension) return null;
 
 	const dirName =
-		skill?.dir.split(/[\\/]/).filter(Boolean).pop() ?? skill?.name ?? "";
-	const issues = skill?.issues ?? [];
+		displaySkill?.dir.split(/[\\/]/).filter(Boolean).pop() ?? displaySkill?.name ?? "";
+	const issues = displaySkill?.issues ?? [];
+	const locationCount = skill?.locations?.length ?? skill?.copies ?? 0;
 	const enablement = skill ? resolveSkillEnablement(skill, skillConfig) : null;
 	const skillLocked =
 		enablement?.reason !== null &&
@@ -488,13 +527,32 @@ function DetailDrawer({
 							<span
 								className={clsx(
 									"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-									(skill ?? extension)?.source === "project"
+									(displaySkill ?? extension)?.source === "project"
 										? "border border-amber-500/20 bg-amber-500/10 text-amber-400"
 										: "bg-neutral-800 text-neutral-400",
 								)}
 							>
-								{sourceLabel((skill ?? extension)?.source ?? "")}
+								{sourceLabel((displaySkill ?? extension)?.source ?? "")}
 							</span>
+							{displaySkill && (
+								<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+									{providerLabel(displaySkill.provider)}
+								</span>
+							)}
+							{selectedLocation && (
+								<span
+									className={clsx(
+										"shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium",
+										selectedLocation.active
+											? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+											: "border-neutral-700 bg-neutral-800 text-neutral-400",
+									)}
+								>
+									{selectedLocation.active
+										? t("skills.locationActive")
+										: t("skills.locationStandby")}
+								</span>
+							)}
 							{extension && (
 								<span
 									className={clsx(
@@ -541,10 +599,13 @@ function DetailDrawer({
 				<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 					{/* Copyable paths */}
 					{[
-						{ label: t("skills.installLocation"), value: skill ? skill.root : null },
 						{
-							label: skill ? t("skills.skillMdPath") : t("skills.filePath"),
-							value: (skill ?? extension)?.path ?? null,
+							label: t("skills.installLocation"),
+							value: displaySkill ? displaySkill.root : null,
+						},
+						{
+							label: displaySkill ? t("skills.skillMdPath") : t("skills.filePath"),
+							value: (displaySkill ?? extension)?.path ?? null,
 						},
 					]
 						.filter((r): r is { label: string; value: string } => !!r.value)
@@ -567,6 +628,7 @@ function DetailDrawer({
 
 					{/* Meta grid */}
 					{skill ? (
+						<>
 						<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl hairline bg-[var(--well-bg)]/40 p-3.5 text-xs">
 							<div>
 								<dt className="text-neutral-500">{t("skills.dirName")}</dt>
@@ -575,7 +637,7 @@ function DetailDrawer({
 							<div>
 								<dt className="text-neutral-500">{t("skills.sourceLabel")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
-									{sourceLabel(skill.source)}
+									{sourceLabel(displaySkill?.source ?? "")}
 								</dd>
 							</div>
 							<div>
@@ -603,10 +665,10 @@ function DetailDrawer({
 								</dd>
 							</div>
 							<div>
-								<dt className="text-neutral-500">{t("skills.copiesCount")}</dt>
+								<dt className="text-neutral-500">{t("skills.locationsCount")}</dt>
 								<dd className="mt-0.5 text-neutral-200">
-									{skill.copies > 1
-										? t("skills.copiesPriority", { count: skill.copies })
+									{locationCount > 1
+										? t("skills.copiesPriority", { count: locationCount })
 										: "1"}
 								</dd>
 							</div>
@@ -623,6 +685,70 @@ function DetailDrawer({
 								</dd>
 							</div>
 						</dl>
+						{skill.locations && skill.locations.length > 1 && (
+							<div className="mt-3 rounded-xl hairline bg-[var(--well-bg)]/30 p-3.5">
+								<p className="text-xs font-medium text-neutral-300">
+									{t("skills.allLocations")}
+								</p>
+								<ul className="mt-2 space-y-2">
+									{skill.locations.map((location) => (
+										<li
+											key={location.dir}
+											className={clsx(
+												"rounded-lg border px-3 py-2",
+												location.path === target.path
+													? "border-sky-500/30 bg-sky-500/5"
+													: "border-[var(--border-divider)] bg-[var(--bg-panel)]/40",
+											)}
+										>
+											<div className="flex flex-wrap items-center gap-1.5">
+												<span
+													className={clsx(
+														"shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium",
+														location.active
+															? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+															: "border-neutral-700 bg-neutral-800 text-neutral-400",
+													)}
+												>
+													{location.active
+														? t("skills.locationActive")
+														: t("skills.locationStandby")}
+												</span>
+												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+													{sourceLabel(location.source)}
+												</span>
+												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+													{providerLabel(location.provider)}
+												</span>
+												{location.symlink && (
+													<span className="shrink-0 rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-400">
+														{t("skills.locationSymlink")}
+													</span>
+												)}
+												<span className="min-w-0 flex-1" />
+												<button
+													type="button"
+													onClick={() => revealInFinder(location.dir)}
+													title={t("skills.revealInFinder")}
+													className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+												>
+													<FolderOpen size={11} />
+												</button>
+											</div>
+											<p className="mt-1 select-text break-all font-mono text-[10px] text-neutral-500">
+												{location.dir}
+											</p>
+											{location.issues.length > 0 && (
+												<div className="mt-1">
+													<IssueBadges issues={location.issues} />
+												</div>
+											)}
+										</li>
+									))}
+								</ul>
+							</div>
+						)}
+						</>
 					) : (
 						extension && (
 							<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl hairline bg-[var(--well-bg)]/40 p-3.5 text-xs">
@@ -666,17 +792,26 @@ function DetailDrawer({
 
 					{/* Actions */}
 					<div className="mt-4 flex items-center gap-2">
-						{skill && (
+						{displaySkill && (
 							<button
 								type="button"
 								onClick={() => {
-									if (insertSkillIntoComposer(skill, enablement?.enabled ?? true)) onClose();
+									if (insertSkillIntoComposer(displaySkill, enablement?.enabled ?? true))
+										onClose();
 								}}
-								disabled={!selectedSessionId || !skillUsable(skill)}
-								title={skillUseTitle(skill, enablement?.enabled ?? true, !!selectedSessionId)}
+								disabled={!selectedSessionId || !skillUsable(displaySkill) || standby}
+								title={
+									standby
+										? t("skills.locationStandbyUseHint")
+										: skillUseTitle(
+												displaySkill,
+												enablement?.enabled ?? true,
+												!!selectedSessionId,
+											)
+								}
 								className={clsx(
 									"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95",
-									selectedSessionId
+									selectedSessionId && !standby
 										? "bg-amber-600/90 text-white hover:bg-amber-500"
 										: "cursor-not-allowed bg-neutral-800 text-neutral-500 opacity-50",
 								)}
@@ -742,7 +877,9 @@ function DetailDrawer({
 							type="button"
 							onClick={() =>
 								revealInFinder(
-									skill ? skill.dir || skill.path : (extension?.path ?? ""),
+									displaySkill
+										? displaySkill.dir || displaySkill.path
+										: (extension?.path ?? ""),
 								)
 							}
 							className="flex items-center gap-1.5 rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
@@ -750,10 +887,10 @@ function DetailDrawer({
 							<FolderOpen size={13} />
 							<span>{t("skills.revealInFinder")}</span>
 						</button>
-						{skill && (
+						{displaySkill && (
 							<button
 								type="button"
-								disabled={trashingDirs.includes(skill.dir)}
+								disabled={trashingDirs.includes(displaySkill.dir)}
 								onClick={() => setConfirmDelete(true)}
 								title={t("skills.trashSkillTitle")}
 								className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
@@ -764,13 +901,13 @@ function DetailDrawer({
 						)}
 					</div>
 					{/* Inline delete confirmation */}
-					{skill && confirmDelete && (
+					{displaySkill && confirmDelete && (
 						<div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/5 p-3.5">
 							<DeleteConfirmBody
-								skill={skill}
-								busy={trashingDirs.includes(skill.dir)}
+								skill={displaySkill}
+								busy={trashingDirs.includes(displaySkill.dir)}
 								onCancel={() => setConfirmDelete(false)}
-								onConfirm={() => onTrashSkill(skill)}
+								onConfirm={() => onTrashSkill(displaySkill)}
 							/>
 						</div>
 					)}
@@ -904,6 +1041,21 @@ export function SkillsPage() {
 		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage, skillConfig],
 	);
 
+	const [groupBy, setGroupBy] = useState<"skill" | "location">("skill");
+	const locationGroups = useMemo(
+		() =>
+			groupSkillsByLocation({
+				catalog,
+				searchQuery,
+				sourceFilter,
+				statusFilter,
+				sort,
+				usage,
+				skillConfig,
+			}),
+		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage, skillConfig],
+	);
+
 	const filteredExtensions = useMemo(() => {
 		const exts = catalog?.extensions ?? [];
 		const q = searchQuery.trim().toLowerCase();
@@ -964,6 +1116,211 @@ export function SkillsPage() {
 	const sortPending = sort !== "name" && !usageLoaded && !usageError;
 	const usageUnavailable = !!usageError && !usageReport;
 	const days = usageReport?.days ?? USAGE_DAYS;
+
+	const renderSkillRow = (
+		skill: SkillItem,
+		opts?: { key?: string; location?: SkillLocation; showCopies?: boolean },
+	) => {
+		const location = opts?.location;
+		const u = usage[skill.name];
+		const enablement = resolveSkillEnablement(skill, skillConfig);
+		const reason = enablement.reason;
+		const standby = location ? !location.active : false;
+		const locationCount = skill.locations?.length ?? skill.copies;
+		return (
+			<div
+				key={opts?.key ?? skill.path}
+				role="button"
+				tabIndex={0}
+				onClick={() => openDrawer({ kind: "skill", path: skill.path })}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" && e.target === e.currentTarget)
+						openDrawer({ kind: "skill", path: skill.path });
+				}}
+				style={{
+					contentVisibility: "auto",
+					containIntrinsicSize: "auto 52px",
+				}}
+				className={clsx(
+					"grid cursor-pointer items-center gap-3 border-b border-[var(--border-divider)]/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]/60",
+					SKILL_COLS,
+					!enablement.enabled && !location && "opacity-60",
+				)}
+			>
+				{/* Name + badges + description */}
+				<div className="min-w-0">
+					<div className="flex min-w-0 items-center gap-1.5">
+						<span className="truncate text-[13px] font-semibold text-neutral-100">
+							{skill.name}
+						</span>
+						<IssueBadges issues={skill.issues} />
+						{opts?.showCopies !== false && locationCount > 1 && (
+							<span
+								className="shrink-0 rounded bg-neutral-800 px-1 py-px text-[10px] text-neutral-500"
+								title={t("skills.copiesTooltip")}
+							>
+								{t("skills.copiesBadge", { count: locationCount })}
+							</span>
+						)}
+						{location?.symlink && (
+							<span
+								className="shrink-0 rounded border border-sky-500/20 bg-sky-500/10 px-1 py-px text-[10px] font-medium text-sky-400"
+								title={t("skills.locationSymlink")}
+							>
+								{t("skills.locationSymlink")}
+							</span>
+						)}
+						{reason && !standby && (
+							<span
+								className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-1 py-px text-[10px] font-medium text-neutral-400"
+								title={describeDisabledReason(reason).detail}
+							>
+								{describeDisabledReason(reason).badge}
+							</span>
+						)}
+					</div>
+					<p
+						className={clsx(
+							"mt-0.5 truncate text-[11px]",
+							skill.description ? "text-neutral-500" : "italic text-neutral-600",
+						)}
+					>
+						{skill.description || t("skills.noDescription")}
+					</p>
+				</div>
+
+				{/* Install root, or the exact directory in location view */}
+				<div className="min-w-0">
+					<span
+						className="inline-block max-w-full truncate rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400"
+						title={(location ? skill.dir : skill.root) || undefined}
+					>
+						{(location ? skill.dir : skill.root) || "—"}
+					</span>
+				</div>
+
+				{/* Trigger count */}
+				<div
+					className="text-right text-xs tabular-nums text-neutral-200"
+					title={usageUnavailable ? t("skills.statsUnavailable") : undefined}
+				>
+					{usagePending ? (
+						<span className="inline-block h-3 w-6 animate-pulse rounded bg-neutral-700/50" />
+					) : usageUnavailable ? (
+						<span className="text-neutral-600">—</span>
+					) : (u?.count ?? 0) > 0 ? (
+						u?.count
+					) : (
+						<span className="text-neutral-600">—</span>
+					)}
+				</div>
+
+				{/* Last used */}
+				<div
+					className="text-right text-xs text-neutral-400"
+					title={
+						u?.lastUsedAt
+							? absoluteTime(u.lastUsedAt)
+							: usageUnavailable
+								? t("skills.statsUnavailable")
+								: undefined
+					}
+				>
+					{usagePending ? (
+						<span className="inline-block h-3 w-10 animate-pulse rounded bg-neutral-700/50" />
+					) : u?.lastUsedAt ? (
+						formatRelativeTime(u.lastUsedAt)
+					) : (
+						<span className="text-neutral-600">—</span>
+					)}
+				</div>
+
+				{/* Enable switch, or this location's precedence */}
+				<div className="flex justify-end">
+					{location ? (
+						<span
+							className={clsx(
+								"whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium",
+								location.active
+									? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+									: "border-neutral-700 bg-neutral-800 text-neutral-400",
+							)}
+							title={
+								location.active
+									? t("skills.locationActiveHint")
+									: t("skills.locationStandbyHint")
+							}
+						>
+							{location.active
+								? t("skills.locationActive")
+								: t("skills.locationStandby")}
+						</span>
+					) : (
+						<SkillSwitch
+							overridden={listOverridden}
+							skill={skill}
+							enabled={enablement.enabled}
+							reason={reason}
+							pending={togglingSkill === skill.path}
+							onToggle={handleToggleSkill}
+						/>
+					)}
+				</div>
+
+				{/* Row actions */}
+				<div className="flex items-center justify-end gap-1">
+					{!location && (
+						<button
+							type="button"
+							disabled={!selectedSessionId || !skillUsable(skill)}
+							onClick={(e) => {
+								e.stopPropagation();
+								insertSkillIntoComposer(skill, enablement.enabled);
+							}}
+							title={skillUseTitle(skill, enablement.enabled, !!selectedSessionId)}
+							className={`${ROW_ACTION} hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300`}
+						>
+							<Play size={13} />
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							revealInFinder(skill.dir || skill.path);
+						}}
+						title={t("skills.revealInFinder")}
+						className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
+					>
+						<FolderOpen size={13} />
+					</button>
+					<button
+						type="button"
+						disabled={trashingDirs.includes(skill.dir)}
+						onClick={(e) => {
+							e.stopPropagation();
+							setDeleteAnchor({ skill, el: e.currentTarget });
+						}}
+						title={t("skills.moveToTrash")}
+						className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
+					>
+						<Trash2 size={13} />
+					</button>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							openDrawer({ kind: "skill", path: skill.path });
+						}}
+						title={t("skills.viewDetails")}
+						className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
+					>
+						<ChevronRight size={14} />
+					</button>
+				</div>
+			</div>
+		);
+	};
 
 	const statCards: {
 		key: "all" | "active" | "idle" | "issues";
@@ -1190,6 +1547,15 @@ export function SkillsPage() {
 								]}
 							/>
 							<div className="flex-1" />
+							<Segmented
+								value={groupBy}
+								onChange={setGroupBy}
+								size="sm"
+								options={[
+									{ value: "skill", label: t("skills.groupBySkill") },
+									{ value: "location", label: t("skills.groupByLocation") },
+								]}
+							/>
 							<button
 								ref={sortBtnRef}
 								type="button"
@@ -1236,7 +1602,9 @@ export function SkillsPage() {
 						</div>
 
 						<p className="mt-2 px-1 text-[11px] text-neutral-600">
-							{t("skills.skillsSyncHint")}
+							{groupBy === "location"
+								? t("skills.locationGroupHint")
+								: t("skills.skillsSyncHint")}
 						</p>
 
 						{/* Skills table */}
@@ -1258,8 +1626,8 @@ export function SkillsPage() {
 								</span>
 								<span className="text-right">{t("skills.thLastTriggered")}</span>
 								<span className="flex items-center justify-end gap-1">
-									{t("skills.thEnable")}
-									<EnableInfoButton />
+									{groupBy === "location" ? t("skills.thLocationState") : t("skills.thEnable")}
+									{groupBy === "skill" && <EnableInfoButton />}
 								</span>
 								<span className="text-right">{t("skills.thAction")}</span>
 							</div>
@@ -1289,7 +1657,9 @@ export function SkillsPage() {
 										/>
 									))}
 								</div>
-							) : visibleSkills.length === 0 ? (
+							) : (groupBy === "location"
+								? locationGroups.length === 0
+								: visibleSkills.length === 0) ? (
 								<EmptyState
 									icon={Sparkles}
 									title={hasSkillFilters ? t("skills.noMatchingSkillsTitle") : t("skills.noSkillsFoundTitle")}
@@ -1300,178 +1670,43 @@ export function SkillsPage() {
 									}
 								/>
 							) : (
-								visibleSkills.map((skill) => {
-									const u = usage[skill.name];
-									const enablement = resolveSkillEnablement(skill, skillConfig);
-									const reason = enablement.reason;
-									return (
-										<div
-											key={skill.path}
-											role="button"
-											tabIndex={0}
-											onClick={() =>
-												openDrawer({ kind: "skill", path: skill.path })
-											}
-											onKeyDown={(e) => {
-												if (e.key === "Enter" && e.target === e.currentTarget)
-													openDrawer({ kind: "skill", path: skill.path });
-											}}
-											style={{
-												contentVisibility: "auto",
-												containIntrinsicSize: "auto 52px",
-											}}
-											className={clsx(
-												"grid cursor-pointer items-center gap-3 border-b border-[var(--border-divider)]/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]/60",
-												SKILL_COLS,
-												!enablement.enabled && "opacity-60",
-											)}
-										>
-											{/* Name + badges + description */}
-											<div className="min-w-0">
-												<div className="flex min-w-0 items-center gap-1.5">
-													<span className="truncate text-[13px] font-semibold text-neutral-100">
-														{skill.name}
-													</span>
-													<IssueBadges issues={skill.issues} />
-													{skill.copies > 1 && (
-														<span
-															className="shrink-0 rounded bg-neutral-800 px-1 py-px text-[10px] text-neutral-500"
-															title={t("skills.copiesTooltip")}
-														>
-															{t("skills.copiesBadge", { count: skill.copies })}
-														</span>
-													)}
-													{reason && (
-														<span
-															className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-1 py-px text-[10px] font-medium text-neutral-400"
-															title={describeDisabledReason(reason).detail}
-														>
-															{describeDisabledReason(reason).badge}
-														</span>
-													)}
-												</div>
-												<p
-													className={clsx(
-														"mt-0.5 truncate text-[11px]",
-														skill.description
-															? "text-neutral-500"
-															: "italic text-neutral-600",
-													)}
-												>
-													{skill.description || t("skills.noDescription")}
-												</p>
-											</div>
-
-											{/* Install root */}
-											<div className="min-w-0">
-												<span
-													className="inline-block max-w-full truncate rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400"
-													title={skill.root || undefined}
-												>
-													{skill.root || "—"}
+								groupBy === "location" ? (
+									locationGroups.map((group) => (
+										<div key={group.key} role="group" aria-label={group.root}>
+											<div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-divider)]/60 bg-[var(--well-bg)]/35 px-4 py-2">
+												<FolderOpen size={12} className="shrink-0 text-neutral-500" />
+												<span className="min-w-0 select-text break-all font-mono text-[11px] text-neutral-300">
+													{group.root || "—"}
+												</span>
+												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+													{sourceLabel(group.source)}
+												</span>
+												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+													{providerLabel(group.provider)}
+												</span>
+												<span className="text-[11px] text-neutral-500">
+													{t("skills.locationGroupCount", { count: group.items.length })}
 												</span>
 											</div>
-
-											{/* Trigger count */}
-											<div
-												className="text-right text-xs tabular-nums text-neutral-200"
-												title={usageUnavailable ? t("skills.statsUnavailable") : undefined}
-											>
-												{usagePending ? (
-													<span className="inline-block h-3 w-6 animate-pulse rounded bg-neutral-700/50" />
-												) : usageUnavailable ? (
-													<span className="text-neutral-600">—</span>
-												) : (u?.count ?? 0) > 0 ? (
-													u?.count
-												) : (
-													<span className="text-neutral-600">—</span>
-												)}
-											</div>
-
-											{/* Last used */}
-											<div
-												className="text-right text-xs text-neutral-400"
-												title={
-													u?.lastUsedAt
-														? absoluteTime(u.lastUsedAt)
-														: usageUnavailable
-															? t("skills.statsUnavailable")
-															: undefined
-												}
-											>
-												{usagePending ? (
-													<span className="inline-block h-3 w-10 animate-pulse rounded bg-neutral-700/50" />
-												) : u?.lastUsedAt ? (
-													formatRelativeTime(u.lastUsedAt)
-												) : (
-													<span className="text-neutral-600">—</span>
-												)}
-											</div>
-
-											{/* Enable switch */}
-											<div className="flex justify-end">
-												<SkillSwitch
-													overridden={listOverridden}
-													skill={skill}
-													enabled={enablement.enabled}
-													reason={reason}
-													pending={togglingSkill === skill.path}
-													onToggle={handleToggleSkill}
-												/>
-											</div>
-
-											{/* Row actions */}
-											<div className="flex items-center justify-end gap-1">
-												<button
-													type="button"
-													disabled={!selectedSessionId || !skillUsable(skill)}
-													onClick={(e) => {
-														e.stopPropagation();
-														insertSkillIntoComposer(skill, enablement.enabled);
-													}}
-													title={skillUseTitle(skill, enablement.enabled, !!selectedSessionId)}
-													className={`${ROW_ACTION} hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300`}
-												>
-													<Play size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={(e) => {
-														e.stopPropagation();
-														revealInFinder(skill.dir || skill.path);
-													}}
-													title={t("skills.revealInFinder")}
-													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
-												>
-													<FolderOpen size={13} />
-												</button>
-												<button
-													type="button"
-													disabled={trashingDirs.includes(skill.dir)}
-													onClick={(e) => {
-														e.stopPropagation();
-														setDeleteAnchor({ skill, el: e.currentTarget });
-													}}
-													title={t("skills.moveToTrash")}
-													className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
-												>
-													<Trash2 size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={(e) => {
-														e.stopPropagation();
-														openDrawer({ kind: "skill", path: skill.path });
-													}}
-													title={t("skills.viewDetails")}
-													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
-												>
-													<ChevronRight size={14} />
-												</button>
-											</div>
+											{group.items.map(({ skill, location }) =>
+												renderSkillRow(
+													{
+														...skill,
+														dir: location.dir,
+														path: location.path,
+														source: location.source,
+														provider: location.provider,
+														root: location.root,
+														issues: location.issues,
+													},
+													{ key: location.dir, location, showCopies: false },
+												),
+											)}
 										</div>
-									);
-								})
+									))
+								) : (
+									visibleSkills.map((skill) => renderSkillRow(skill))
+								)
 							)}
 						</div>
 

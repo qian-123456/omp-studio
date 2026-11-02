@@ -116,4 +116,52 @@ describe("SkillsPage", () => {
 		expect(screen.getByRole("status").textContent).toContain("boom");
 		expect(screen.getByText("alpha")).toBeTruthy();
 	});
+
+	it("groups every copy under its install location", () => {
+		const alpha = skill("alpha");
+		const copy = {
+			...alpha,
+			dir: "/u/.claude/skills/alpha",
+			path: "/u/.claude/skills/alpha/SKILL.md",
+			source: "user",
+			provider: "claude" as const,
+			root: "~/.claude/skills",
+			active: false,
+			symlink: true,
+			issues: [],
+		};
+		seed({
+			catalog: {
+				skills: [
+					{
+						...alpha,
+						copies: 2,
+						locations: [
+							{
+								dir: alpha.dir,
+								path: alpha.path,
+								source: alpha.source,
+								provider: alpha.provider,
+								root: alpha.root,
+								active: true,
+								symlink: false,
+								issues: [],
+							},
+							copy,
+						],
+					},
+				],
+				extensions: [],
+			} as never,
+			usageLoaded: true,
+			usageLoading: false,
+		});
+		render(<SkillsPage />);
+		fireEvent.click(screen.getByRole("radio", { name: "按位置" }));
+		expect(screen.getByText("~/s")).toBeTruthy();
+		expect(screen.getByText("~/.claude/skills")).toBeTruthy();
+		expect(screen.getByText("当前生效")).toBeTruthy();
+		expect(screen.getByText("备用")).toBeTruthy();
+		expect(screen.getByText("链接")).toBeTruthy();
+	});
 });
