@@ -301,7 +301,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							))}
 						</div>
 					</div>
-					{sendButton}
+					<div className="ml-auto flex shrink-0 items-center">{sendButton}</div>
 				</div>
 			)}
 			{attach.fileInput}
