@@ -613,7 +613,7 @@ function DetailDrawer({
 							<div key={r.label} className="mb-2 flex items-center gap-2 text-xs">
 								<span className="w-24 shrink-0 whitespace-nowrap text-neutral-500">{r.label}</span>
 								<span
-									className="min-w-0 flex-1 truncate font-mono text-neutral-300"
+									className="min-w-0 flex-1 select-text break-all font-mono text-neutral-300"
 									title={r.value}
 								>
 									{r.value}
@@ -960,7 +960,7 @@ function DetailDrawer({
 }
 
 const SKILL_COLS =
-	"grid-cols-[minmax(0,2.4fr)_minmax(0,1.5fr)_minmax(88px,0.5fr)_minmax(96px,0.6fr)_52px_132px]";
+	"grid-cols-[minmax(0,2.4fr)_minmax(96px,1.5fr)_minmax(88px,0.5fr)_minmax(96px,0.6fr)_52px_132px]";
 const EXT_COLS =
 	"grid-cols-[minmax(0,1.8fr)_minmax(80px,0.4fr)_minmax(0,2fr)_minmax(110px,0.6fr)]";
 
@@ -1192,7 +1192,10 @@ export function SkillsPage() {
 				{/* Install root, or the exact directory in location view */}
 				<div className="min-w-0">
 					<span
-						className="inline-block max-w-full truncate rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400"
+						className={clsx(
+							"inline-block max-w-full rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400",
+							location ? "whitespace-normal break-all" : "truncate",
+						)}
 						title={(location ? skill.dir : skill.root) || undefined}
 					>
 						{(location ? skill.dir : skill.root) || "—"}
