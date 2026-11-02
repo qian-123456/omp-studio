@@ -355,6 +355,18 @@ pub(crate) fn scan_skills_in_dir(
 
         // Dangling symlink (or symlink to a non-dir): list it as unreadable.
         let symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
+        let link_target = if symlink {
+            std::fs::read_link(&entry_path).ok().map(|target| {
+                let absolute = if target.is_absolute() {
+                    target
+                } else {
+                    entry_path.parent().unwrap_or(Path::new("")).join(target)
+                };
+                absolute.to_string_lossy().to_string()
+            })
+        } else {
+            None
+        };
         let dangling = symlink && !entry_path.is_dir();
         if !dangling && !entry_path.is_dir() {
             continue;
@@ -411,6 +423,7 @@ pub(crate) fn scan_skills_in_dir(
             root: root_display.to_string(),
             active: false,
             symlink,
+            link_target,
             issues: issues.clone(),
         };
 

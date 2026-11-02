@@ -1599,6 +1599,8 @@ export interface SkillLocation {
 	active: boolean;
 	/** True when the directory entry is a symbolic link. */
 	symlink: boolean;
+	/** Real target of the link, when the entry is a symbolic link. */
+	linkTarget?: string | null;
 	issues: SkillIssue[];
 }
 

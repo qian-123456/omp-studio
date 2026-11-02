@@ -403,6 +403,7 @@ pub struct SkillLocation {
   pub dir: String, pub path: String, pub source: String /* "project" | "user" */,
   pub provider: SkillProvider, pub root: String,
   pub active: bool /* winner by discovery precedence */, pub symlink: bool,
+  pub link_target: Option<String> /* real target when symlink */,
   pub issues: Vec<SkillIssue>,
 }
 pub struct SkillItem {

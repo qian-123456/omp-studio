@@ -1696,6 +1696,9 @@ pub struct SkillLocation {
     pub active: bool,
     /// True when the directory entry is a symbolic link.
     pub symlink: bool,
+    /// Real target of the link, when the entry is a symbolic link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_target: Option<String>,
     pub issues: Vec<SkillIssue>,
 }
 

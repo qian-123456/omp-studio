@@ -482,6 +482,10 @@ fn test_skill_locations_mark_symlink_copies() {
     assert_eq!(skills[0].locations.len(), 1);
     assert!(skills[0].locations[0].active);
     assert!(skills[0].locations[0].symlink);
+    assert_eq!(
+        skills[0].locations[0].link_target.as_deref(),
+        Some(target.join("real").to_str().unwrap())
+    );
 
     let _ = std::fs::remove_dir_all(&base);
 }

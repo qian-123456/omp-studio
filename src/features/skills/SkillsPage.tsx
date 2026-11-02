@@ -197,11 +197,13 @@ function SkillSwitch({
 function DeleteConfirmBody({
 	skill,
 	busy,
+	symlink = false,
 	onCancel,
 	onConfirm,
 }: {
 	skill: SkillItem;
 	busy: boolean;
+	symlink?: boolean;
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
@@ -209,10 +211,12 @@ function DeleteConfirmBody({
 	return (
 		<div className="w-64">
 			<p className="text-xs leading-relaxed text-neutral-200">
-				{t("skills.deleteDialogTitle", { name: skill.name })}
+				{symlink
+					? t("skills.deleteEntryTitle", { name: skill.name })
+					: t("skills.deleteDialogTitle", { name: skill.name })}
 			</p>
 			<p
-				className="mt-1.5 truncate font-mono text-[11px] text-neutral-500"
+				className="mt-1.5 select-text break-all font-mono text-[11px] text-neutral-500"
 				title={skill.dir}
 			>
 				{skill.dir}
@@ -222,6 +226,11 @@ function DeleteConfirmBody({
 					{t("skills.deleteCopiesWarning", {
 						count: (skill.locations?.length ?? skill.copies) - 1,
 					})}
+				</p>
+			)}
+			{symlink && (
+				<p className="mt-1.5 text-[11px] leading-relaxed text-sky-300/90">
+					{t("skills.deleteSymlinkWarning")}
 				</p>
 			)}
 			<div className="mt-3 flex items-center justify-end gap-1.5">
@@ -690,6 +699,9 @@ function DetailDrawer({
 								<p className="text-xs font-medium text-neutral-300">
 									{t("skills.allLocations")}
 								</p>
+								<p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
+									{t("skills.allLocationsHint")}
+								</p>
 								<ul className="mt-2 space-y-2">
 									{skill.locations.map((location) => (
 										<li
@@ -720,11 +732,6 @@ function DetailDrawer({
 												<span className="shrink-0 rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
 													{providerLabel(location.provider)}
 												</span>
-												{location.symlink && (
-													<span className="shrink-0 rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-400">
-														{t("skills.locationSymlink")}
-													</span>
-												)}
 												<span className="min-w-0 flex-1" />
 												<button
 													type="button"
@@ -738,6 +745,31 @@ function DetailDrawer({
 											<p className="mt-1 select-text break-all font-mono text-[10px] text-neutral-500">
 												{location.dir}
 											</p>
+											{location.linkTarget && (
+												<div className="mt-1 flex items-start gap-1.5">
+													<span className="shrink-0 text-[10px] text-neutral-500">
+														{t("skills.realFilesAt")}
+													</span>
+													<span className="min-w-0 flex-1 select-text break-all font-mono text-[10px] text-neutral-400">
+														{location.linkTarget}
+													</span>
+													<button
+														type="button"
+														onClick={() =>
+															revealInFinder(location.linkTarget ?? location.dir)
+														}
+														title={t("skills.openRealLocation")}
+														className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+													>
+														<FolderOpen size={10} />
+													</button>
+												</div>
+											)}
+											{location.symlink && (
+												<p className="mt-1 text-[10px] leading-relaxed text-neutral-500">
+													{t("skills.deleteSymlinkWarning")}
+												</p>
+											)}
 											{location.issues.length > 0 && (
 												<div className="mt-1">
 													<IssueBadges issues={location.issues} />
@@ -906,6 +938,7 @@ function DetailDrawer({
 							<DeleteConfirmBody
 								skill={displaySkill}
 								busy={trashingDirs.includes(displaySkill.dir)}
+								symlink={!!selectedLocation?.symlink}
 								onCancel={() => setConfirmDelete(false)}
 								onConfirm={() => onTrashSkill(displaySkill)}
 							/>
@@ -1099,6 +1132,7 @@ export function SkillsPage() {
 	const [deleteAnchor, setDeleteAnchor] = useState<{
 		skill: SkillItem;
 		el: HTMLElement;
+		symlink: boolean;
 	} | null>(null);
 
 	const handleToggleSkill = async (skill: SkillItem, next: boolean) => {
@@ -1162,14 +1196,6 @@ export function SkillsPage() {
 								{t("skills.copiesBadge", { count: locationCount })}
 							</span>
 						)}
-						{location?.symlink && (
-							<span
-								className="shrink-0 rounded border border-sky-500/20 bg-sky-500/10 px-1 py-px text-[10px] font-medium text-sky-400"
-								title={t("skills.locationSymlink")}
-							>
-								{t("skills.locationSymlink")}
-							</span>
-						)}
 						{reason && !standby && (
 							<span
 								className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-1 py-px text-[10px] font-medium text-neutral-400"
@@ -1196,10 +1222,15 @@ export function SkillsPage() {
 							"inline-block max-w-full rounded border border-[var(--border-divider)] bg-neutral-800/60 px-1.5 py-0.5 font-mono text-[11px] text-neutral-400",
 							location ? "whitespace-normal break-all" : "truncate",
 						)}
-						title={(location ? skill.dir : skill.root) || undefined}
+						title={(location?.linkTarget ?? (location ? skill.dir : skill.root)) || undefined}
 					>
 						{(location ? skill.dir : skill.root) || "—"}
 					</span>
+					{location?.symlink && (
+						<p className="mt-1 text-[10px] leading-relaxed text-amber-400/80">
+							{t("skills.entryHint")}
+						</p>
+					)}
 				</div>
 
 				{/* Trigger count */}
@@ -1302,7 +1333,11 @@ export function SkillsPage() {
 						disabled={trashingDirs.includes(skill.dir)}
 						onClick={(e) => {
 							e.stopPropagation();
-							setDeleteAnchor({ skill, el: e.currentTarget });
+							setDeleteAnchor({
+								skill,
+								el: e.currentTarget,
+								symlink: !!location?.symlink,
+							});
 						}}
 						title={t("skills.moveToTrash")}
 						className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
@@ -1609,6 +1644,11 @@ export function SkillsPage() {
 								? t("skills.locationGroupHint")
 								: t("skills.skillsSyncHint")}
 						</p>
+						{groupBy === "location" && (
+							<p className="mt-1 px-1 text-[11px] text-neutral-500">
+								{t("skills.locationLegend")}
+							</p>
+						)}
 
 						{/* Skills table */}
 						<div className="mt-3 overflow-hidden rounded-xl hairline bg-[var(--bg-panel)]/30">
@@ -1862,6 +1902,7 @@ export function SkillsPage() {
 					<DeleteConfirmBody
 						skill={deleteAnchor.skill}
 						busy={deleteBusy || trashingDirs.includes(deleteAnchor.skill.dir)}
+						symlink={deleteAnchor.symlink}
 						onCancel={() => setDeleteAnchor(null)}
 						onConfirm={() => void handleConfirmDelete(deleteAnchor.skill)}
 					/>

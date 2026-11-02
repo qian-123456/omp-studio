@@ -160,8 +160,8 @@ describe("SkillsPage", () => {
 		fireEvent.click(screen.getByRole("radio", { name: "按位置" }));
 		expect(screen.getByText("~/s")).toBeTruthy();
 		expect(screen.getByText("~/.claude/skills")).toBeTruthy();
-		expect(screen.getByText("当前生效")).toBeTruthy();
-		expect(screen.getByText("备用")).toBeTruthy();
-		expect(screen.getByText("链接")).toBeTruthy();
+		expect(screen.getByText("现在用这里")).toBeTruthy();
+		expect(screen.getByText("现在不用")).toBeTruthy();
+		expect(screen.getByText("这里不是真实文件夹；删除这里不会删除真实文件。")).toBeTruthy();
 	});
 });
