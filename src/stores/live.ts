@@ -766,12 +766,10 @@ function requestId(req: unknown): string {
 	return str(asFrame(req).id);
 }
 
-/** The store watched this turn from its own start frame and the turn has
- * ended: later activity frames are out-of-order replays of the settled turn,
- * so they must not reopen its live rows (the wake-up / next user turn would
- * replay them). Turns this app attached to mid-flight (start missed, so
- * `turnStartedAt` is null) keep the old lenient behavior — nothing marks
- * their end as settled. */
+/** The store knows when this turn started (its own start frame, or the
+ * get_state reattach approximation) and the turn has ended: later activity
+ * frames are out-of-order replays of the settled turn, so they must not reopen
+ * its live rows (the wake-up / next user turn would replay them). */
 const turnSettled = (live: SessionLive): boolean =>
 	!live.streaming && live.turnStartedAt != null;
 
@@ -1358,7 +1356,18 @@ function reduce(
 							ompQueue,
 						};
 					}
-					return { ...noted, state: data, streaming: true, ompQueue };
+					// Mid-flight attach: the start frame was missed, so the exact
+					// start is unknown — approximate it with now. Without a stamp
+					// `turnSettled` never fires for this turn and a late replay of
+					// its `message_update` frames resurrects the bubble after it
+					// ends. Keep an existing stamp ("survives the turn's end").
+					const turnStartedAt =
+						live.turnStartedAt != null
+							? live.turnStartedAt
+							: typeof frame.timestamp === "number"
+								? frame.timestamp
+								: Date.now();
+					return { ...noted, state: data, streaming: true, ompQueue, turnStartedAt };
 				}
 				case "get_available_commands":
 					return {
@@ -1496,12 +1505,15 @@ export interface LiveState {
 
 /** `turnStartedAt` follows idle→running transitions: a start frame seen while
  * idle stamps it; running announced any other way (get_state on reattach,
- * "already processing") means the start was missed, so it is unknown (null).
- * It survives the turn's end: the committed header keeps ticking on it while
- * subagents the turn dispatched are still running. */
+ * "already processing") means the start was missed — an existing stamp is kept
+ * (the get_state branch approximates one when unknown), so the turn can still
+ * be marked settled once it ends. It survives the turn's end: the committed
+ * header keeps ticking on it while subagents the turn dispatched are still
+ * running. */
 function stampTurnStart(prev: SessionLive, next: SessionLive, frame: Frame): SessionLive {
 	if (prev.streaming || !next.streaming) return next;
 	const started = frame.type === "agent_start" || frame.type === "turn_start";
+	if (!started && next.turnStartedAt != null) return next;
 	const turnStartedAt = started ? Date.now() : null;
 	return next.turnStartedAt === turnStartedAt ? next : { ...next, turnStartedAt };
 }

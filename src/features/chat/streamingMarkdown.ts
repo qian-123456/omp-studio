@@ -99,17 +99,22 @@ function toggle(stack: OpenMarker[], marker: string, index: number): void {
 	else stack.push({ marker, index });
 }
 
+/** Code spans and closed fences may legitimately contain `$$` (shell PID):
+ * mask them (same length) so `$$` counting only sees real math delimiters
+ * and every index in the original text stays valid. */
+export function maskMathAmbiguousSpans(text: string): string {
+	return text
+		.replace(/(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n[ \t]*\2[^\n]*(?=\n|$)/g, (m) => " ".repeat(m.length))
+		.replace(/(`+)[^`\n]*?\1/g, (m) => " ".repeat(m.length));
+}
+
 /** Heal the last paragraph of a streaming markdown prefix. */
 export function healStreamingMarkdown(text: string): string {
 	if (!text || endsInsideFence(text)) return text;
 	let body = text;
 	// An unfinished `$$ … ` display formula renders as raw source: hold it back
 	// until its closer arrives.
-	// Code spans and closed fences may legitimately contain `$$` (shell PID):
-	// mask them (same length) before counting.
-	const masked = body
-		.replace(/(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n[ \t]*\2[^\n]*(?=\n|$)/g, (m) => " ".repeat(m.length))
-		.replace(/(`+)[^`\n]*?\1/g, (m) => " ".repeat(m.length));
+	const masked = maskMathAmbiguousSpans(body);
 	const dollars = masked.match(/\$\$/g)?.length ?? 0;
 	if (dollars % 2 === 1) body = body.slice(0, masked.lastIndexOf("$$"));
 
@@ -166,8 +171,11 @@ export function splitStableBlocks(text: string): { head: string; tail: string } 
 			if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) fence = "";
 			continue;
 		}
+		// `$$` inside a code span (shell PID) must not open or close math:
+		// judge it on a same-length masked copy so every index stays valid.
+		const masked = maskMathAmbiguousSpans(line);
 		if (math) {
-			if (line.includes("$$")) math = false;
+			if (masked.includes("$$")) math = false;
 			continue;
 		}
 		if (line.trim() === "") {
@@ -183,7 +191,7 @@ export function splitStableBlocks(text: string): { head: string; tail: string } 
 			inBlank = false;
 		}
 		if (fenceMatch) fence = fenceMatch[1];
-		else if ((line.match(/\$\$/g)?.length ?? 0) % 2 === 1) math = true;
+		else if ((masked.match(/\$\$/g)?.length ?? 0) % 2 === 1) math = true;
 	}
 	return { head: text.slice(0, boundary), tail: text.slice(boundary) };
 }
