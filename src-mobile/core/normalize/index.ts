@@ -201,7 +201,13 @@ export function applyLiveFrame(live: Item | null, frame: RpcFrame, now?: string)
 				status: "running",
 				result: "",
 			};
-			return { live: { ...base, tools: [...base.tools, tool] }, streaming: null, refetch: false, handled: true };
+			// A row restored from the pre-reload snapshot already carries this tool: same-id frames
+			// must update it in place instead of appending a duplicate card.
+			const known = tool.id !== "" && base.tools.some((t) => t.id === tool.id);
+			const tools = known
+				? base.tools.map((t) => (t.id === tool.id ? { ...t, status: "running" as const, result: "" } : t))
+				: [...base.tools, tool];
+			return { live: { ...base, tools }, streaming: null, refetch: false, handled: true };
 		}
 		case "tool_execution_end": {
 			if (!live) return keep(null, true);

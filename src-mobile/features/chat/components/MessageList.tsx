@@ -1,10 +1,13 @@
 import { ArrowDown, MessageSquare } from "lucide-react";
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button, EmptyState, PullToRefresh } from "../../../ui";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button, EmptyState, Markdown, PullToRefresh } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
-import type { Block, Turn } from "../lib/turns";
+import type { Item } from "../../../core/types";
+import type { Block, Step, Turn } from "../lib/turns";
 import { SubagentCapsule } from "../../subagents";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { Thinking } from "./Thinking";
+import { toolState, ToolCard } from "./ToolCard";
 import { PendingBubble, TurnView } from "./TurnView";
 
 /** Turns rendered initially / per 「更早」 press; the rest stay in memory only. */
@@ -36,6 +39,51 @@ const BlockView = memo(function BlockView({ block, isLast, sessionId }: { block:
 	);
 });
 
+/** A retained in-turn segment rendered like a finished mini turn (no live merge, no retry). */
+function segmentTurn(seg: Item): Turn {
+	const steps: Step[] = [];
+	if (seg.thinking) steps.push({ kind: "thinking", key: `seg-th-${seg.id}`, text: seg.thinking, ms: null });
+	for (const t of seg.tools) steps.push({ kind: "tool", key: `seg-tc-${t.id}`, tool: t });
+	return {
+		type: "turn",
+		id: `segment-${seg.id}`,
+		user: null,
+		steps,
+		answer: seg.text.trim() ? { id: seg.id, text: seg.text, images: seg.images } : null,
+		answerStat: null,
+		start: 0,
+		end: 0,
+		lastAssistantId: null,
+		src: [seg],
+	};
+}
+
+/** Restored half answer (中断前): clearly marked as not streaming, with a one-tap removal. */
+const InterruptedView = memo(function InterruptedView() {
+	const { controller } = useChatUi();
+	const item = useChat((s) => s.interrupted);
+	if (!item) return null;
+	return (
+		<div className="px-5 pt-2 pb-3" data-no-longpress>
+			<div className="mb-2 flex flex-wrap items-center gap-2">
+				<span className="rounded-m-pill border border-m-border bg-m-surface px-2.5 py-1 text-m-xs text-m-text-2">未完成回答（中断前）</span>
+				<Button size="sm" variant="tonal" onClick={() => controller.dismissInterrupted()}>移除</Button>
+			</div>
+			{item.thinking && <Thinking id="interrupted-thinking" text={item.thinking} live={false} />}
+			{item.tools.map((t) => (
+				<div key={t.id} className="py-0.5">
+					<ToolCard id={`interrupted-tc-${t.id}`} tool={t} state={toolState(t, false)} />
+				</div>
+			))}
+			{item.text && (
+				<div className="m-selectable">
+					<Markdown text={item.text} className="m-msg" />
+				</div>
+			)}
+		</div>
+	);
+});
+
 export function MessageList({ sessionId }: { sessionId: string }) {
 	const { controller } = useChatUi();
 	const blocks = useChat((s) => s.blocks);
@@ -44,6 +92,7 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 	const loaded = useChat((s) => s.loaded);
 	const working = useChat((s) => s.working);
 	const live = useChat((s) => s.live);
+	const segments = useChat((s) => s.segments);
 	const delivery = useChat((s) => s.delivery);
 	const [limit, setLimit] = useState(WINDOW_STEP);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -132,7 +181,12 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 	};
 
 	const lastBlock = blocks[blocks.length - 1];
-	const syntheticLive = (working || live !== null) && (optimistic.length > 0 || !lastBlock || lastBlock.type !== "turn");
+	// Retained segments always render as their own rows after the persisted turns: the live row
+	// must not merge into the last turn while they hold content the transcript does not carry yet.
+	const segmentTurns = useMemo(() => segments.map(segmentTurn), [segments]);
+	const syntheticLive =
+		(working || live !== null || segmentTurns.length > 0) &&
+		(optimistic.length > 0 || !lastBlock || lastBlock.type !== "turn" || segmentTurns.length > 0);
 	const addedWhileReading = stick.current ? 0 : Math.max(0, blocks.length - previousBlockCount.current);
 	const visibleLimit = limit + addedWhileReading;
 	const shown = blocks.length > visibleLimit ? blocks.slice(-visibleLimit) : blocks;
@@ -183,8 +237,14 @@ export function MessageList({ sessionId }: { sessionId: string }) {
 					{shown.map((b, i) => (
 						<BlockView key={b.id} block={b} isLast={!syntheticLive && i === shown.length - 1} sessionId={sessionId} />
 					))}
+					<InterruptedView />
 					{optimistic.map((o) => (
 						<PendingBubble key={o.id} text={o.text} imageUrls={o.imageUrls} />
+					))}
+					{segmentTurns.map((t) => (
+						<div key={t.id} className="m-turn">
+							<TurnView turn={t} isLast={false} sessionId={sessionId} />
+						</div>
 					))}
 					{syntheticLive && (
 						<div className="m-turn-live">

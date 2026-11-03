@@ -49,6 +49,27 @@ export function livePersisted(items: readonly Item[], live: Item | null): boolea
 	return !!lk && tail.thinking.trim() === lk;
 }
 
+/** Prefix containment either way: a snapshot is a prefix of the message, the persisted row its full text. */
+export function contentMatch(a: string, b: string): boolean {
+	const x = a.trim();
+	const y = b.trim();
+	if (!x || !y) return false;
+	return x === y || x.startsWith(y) || y.startsWith(x);
+}
+
+/** True once any recent persisted assistant row already carries this content (persisted takeover / dedup). */
+export function contentPersisted(items: readonly Item[], text: string, thinking: string): boolean {
+	const t = text.trim();
+	const k = thinking.trim();
+	if (!t && !k) return false;
+	for (let i = items.length - 1, n = 0; i >= 0 && n < 32; i--, n++) {
+		const it = items[i];
+		if (it.role !== "assistant") continue;
+		if (t ? contentMatch(it.text, t) : contentMatch(it.thinking, k)) return true;
+	}
+	return false;
+}
+
 /** After persistence the live row keeps only still-unresolved tools; its text/thinking are cleared. */
 export function pruneLive(items: readonly Item[], live: Item | null): Item | null {
 	if (!live) return live;
