@@ -197,6 +197,29 @@ pub async fn image_contents_from_paths(paths: Vec<String>) -> Result<Vec<Value>,
     crate::rpc::image_blocks_from_paths(&paths)
 }
 
+/// Move the session's leaf to `entry_id` in the same conversation tree
+/// (upstream `navigate_tree`, no summarize in phase 1). Returns the upstream
+/// data (`{ cancelled, editorText? }`); `TREE_BUSY` when the session refuses
+/// while streaming/busy. Emits `tree:navigated` on success.
+#[tauri::command]
+pub async fn tree_navigate(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    entry_id: String,
+) -> Result<Value, String> {
+    crate::rpc::tree::navigate(&state, &session_id, &entry_id).await
+}
+
+/// Current conversation tree + leaf id of a live session (upstream `get_tree`,
+/// verbatim `{ tree, leafId }`).
+#[tauri::command]
+pub async fn tree_get(
+    _state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<Value, String> {
+    crate::rpc::tree::get_tree(&session_id).await
+}
+
 /// Contract C5: subagent sessions of a parent session file
 /// (`<parentFile without .jsonl>/<AgentId>.jsonl`).
 #[tauri::command]

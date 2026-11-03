@@ -216,6 +216,16 @@ export default defineMessages({
 			inputOutput: "输入 / 输出:",
 			cacheRead: "缓存读取:",
 		},
+		tree: {
+			busy: "当前正在回答，完成后可切换",
+			navigateFailed: "切换失败: {error}",
+			prevVersion: "查看上一个版本",
+			nextVersion: "查看下一个版本",
+			versionOf: "当前是第 {index} 个版本，共 {total} 个",
+			resendTitle: "将从这条消息重新开始",
+			resendHint: "下面的回答会保留为另一个版本，发送后从这里分出新的回答",
+			resendCancel: "取消",
+		},
 		sessionView: {
 			draftExpired: "这个草稿的后台会话已失效，已从列表移除",
 			refreshHistoryFailed: "刷新会话记录失败: {error}",
@@ -481,6 +491,16 @@ export default defineMessages({
 			cacheHitRate: "Cache Hit Rate:",
 			inputOutput: "Input / Output:",
 			cacheRead: "Cache Read:",
+		},
+		tree: {
+			busy: "Still answering — you can switch versions once it finishes",
+			navigateFailed: "Switch failed: {error}",
+			prevVersion: "Show the previous version",
+			nextVersion: "Show the next version",
+			versionOf: "Version {index} of {total}",
+			resendTitle: "Restarting from this message",
+			resendHint: "The current replies stay as another version; sending grows a new branch from here",
+			resendCancel: "Cancel",
 		},
 		sessionView: {
 			draftExpired: "The background session for this draft has expired and was removed from the list",

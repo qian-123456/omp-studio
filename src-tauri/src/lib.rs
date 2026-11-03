@@ -308,6 +308,8 @@ pub fn run() {
             rpc::commands::side_chat_ask,
             rpc::commands::image_contents_from_paths,
             rpc::commands::fork_session,
+            rpc::commands::tree_navigate,
+            rpc::commands::tree_get,
             rpc::commands::subagent_list,
             rpc::commands::subagent_transcript,
             // C — git + time machine

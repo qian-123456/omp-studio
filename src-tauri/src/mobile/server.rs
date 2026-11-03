@@ -673,6 +673,12 @@ pub fn sse_event(ev: &AppEvent) -> Option<Event> {
                 .event("touch")
                 .data(json!({ "sessionId": session_id }).to_string()),
         ),
+        // A leaf move must refetch the transcript on every paired device.
+        AppEvent::TreeNavigated { session_id } => Some(
+            Event::default()
+                .event("touch")
+                .data(json!({ "sessionId": session_id }).to_string()),
+        ),
         _ => None,
     }
 }

@@ -61,6 +61,12 @@ export const onSessionForked = (
 		cb(e.payload),
 	);
 
+/** { sessionId } — a `navigate_tree` moved the session's leaf; refetch. */
+export const onTreeNavigated = (
+	cb: (p: { sessionId: string }) => void,
+): Promise<UnlistenFn> =>
+	listen<{ sessionId: string }>("tree:navigated", (e) => cb(e.payload));
+
 export const onRpcFrame = (
 	cb: (payload: RpcFramePayload) => void,
 ): Promise<UnlistenFn> =>

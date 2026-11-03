@@ -100,6 +100,8 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
             post(prompt_ex::<B>).route_layer(DefaultBodyLimit::max(MAX_PROMPT_BODY)),
         )
         .route("/sessions/{id}/abort", post(abort::<B>))
+        .route("/sessions/{id}/navigate-tree", post(navigate_tree::<B>))
+        .route("/sessions/{id}/tree", get(session_tree::<B>))
         .route("/sessions/{id}/ui-respond-all", post(ui_respond_all::<B>))
         .route("/sessions/{id}/slash-commands", get(slash_commands::<B>))
         .route("/sessions/{id}/slash", post(slash::<B>))
@@ -814,6 +816,67 @@ async fn abort<B: Backend>(
         .map_err(bad_gateway)?;
     Ok(Json(
         json!({"aborted": true, "restoredTexts": restored_queue_texts(&resp)}),
+    ))
+}
+
+// ------------------------------------------------------- conversation tree
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NavigateTreeBody {
+    entry_id: String,
+}
+
+/// Map a `navigate_tree` / `get_tree` failure to a friendly HTTP error.
+fn tree_error(e: String) -> ApiError {
+    match e.as_str() {
+        crate::rpc::tree::ERR_BUSY => err(StatusCode::CONFLICT, "会话正在回答，完成后可切换版本"),
+        crate::rpc::tree::ERR_ENTRY_NOT_FOUND => {
+            err(StatusCode::NOT_FOUND, "会话记录里找不到这条消息")
+        }
+        "session is not live" => err(StatusCode::CONFLICT, "会话未在运行"),
+        _ => bad_gateway(e),
+    }
+}
+
+/// `POST /sessions/{id}/navigate-tree {entryId}` → upstream `navigate_tree`
+/// data (`{cancelled, editorText?}`): move the same-session leaf pointer.
+/// A user-message target rewinds past itself and returns its text for the
+/// composer. Success broadcasts to every client (SSE `touch` / desktop event).
+async fn navigate_tree<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<NavigateTreeBody>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    if !crate::rpc::is_live(&id) {
+        return Err(err(StatusCode::CONFLICT, "会话未在运行"));
+    }
+    let entry_id = body.entry_id.trim();
+    if entry_id.is_empty() {
+        return Err(bad_request("entryId 不能为空"));
+    }
+    let state = app(&ctx)?;
+    Ok(Json(
+        crate::rpc::tree::navigate(state, &id, entry_id)
+            .await
+            .map_err(tree_error)?,
+    ))
+}
+
+/// `GET /sessions/{id}/tree` → upstream `get_tree` data verbatim
+/// (`{tree, leafId}`), so clients can filter the transcript to the
+/// root→leaf path.
+async fn session_tree<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    if !crate::rpc::is_live(&id) {
+        return Err(err(StatusCode::CONFLICT, "会话未在运行"));
+    }
+    Ok(Json(
+        crate::rpc::tree::get_tree(&id).await.map_err(tree_error)?,
     ))
 }
 

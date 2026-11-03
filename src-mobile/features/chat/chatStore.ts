@@ -32,6 +32,7 @@ import {
 import { contentMatch, contentPersisted, livePersisted, pruneLive, reduceFrame, type StreamState } from "./lib/stream";
 import { EMPTY_TRANSCRIPT, mergePage, reconcileOptimistic, transcriptQuery, type OptimisticMsg, type TranscriptState } from "./lib/transcript";
 import { buildBlocks, reuseBlocks, type Block } from "./lib/turns";
+import { filterToLeafPath, treeVersions, type TreeVersions } from "./lib/tree";
 import { clearUnsent, loadUnsent } from "./lib/unsent";
 import type { Goal } from "./components/GoalSheet";
 
@@ -69,6 +70,14 @@ export interface ComposerState {
 export interface ForkFrom {
 	entryId: string;
 	preview: string;
+}
+
+/** Edit-&-resend draft state: the leaf was navigated before `entryId`; the
+ * next send grows a sibling branch there and the old path stays. */
+export interface TreeEdit {
+	entryId: string;
+	/** Leaf before the navigation — a cancelled edit walks back to it. */
+	prevLeafId: string | null;
 }
 
 interface PromptDeliveryState {
@@ -109,6 +118,10 @@ export interface ChatState {
 	cstate: ComposerState | null;
 	atts: Attachment[];
 	forkFrom: ForkFrom | null;
+	/** Current conversation-tree leaf (GET /tree); null = unknown (unfiltered view). */
+	leafId: string | null;
+	/** Active edit-&-resend draft: the leaf already sits before `entryId`. */
+	treeEdit: TreeEdit | null;
 	compacting: boolean;
 	delivery: PromptDeliveryState | null;
 	acceptedPlan: { turnId: string; content: string } | null;
@@ -219,6 +232,8 @@ export class ChatController {
 			cstate: null,
 			atts: (stash?.atts as Attachment[] | undefined) ?? [],
 			forkFrom: null,
+			leafId: null,
+			treeEdit: null,
 			compacting: false,
 			delivery: loadDelivery(id),
 			acceptedPlan: null,
@@ -306,7 +321,10 @@ export class ChatController {
 	/* ------------------------------------------------------------ transcript */
 
 	private rebuild(t: TranscriptState): Block[] {
-		return reuseBlocks(this.state.blocks, buildBlocks(t.items, t.stats));
+		// Only the root→leaf path is the live conversation; sibling branches
+		// (created by navigation / edit-&-resend) stay in the buffer but out
+		// of the view. Unknown leaf (offline, never fetched) renders as before.
+		return reuseBlocks(this.state.blocks, buildBlocks(filterToLeafPath(t.items, this.state.leafId), t.stats));
 	}
 
 	async fetchTranscript(): Promise<void> {
@@ -333,6 +351,9 @@ export class ChatController {
 				this.fetchAgain = false;
 				this.scheduleFetch(50);
 			}
+			// The leaf pointer can move without any byte appended
+			// (navigate_tree): re-read it whenever the conversation is idle.
+			if (!this.state.working) void this.fetchTree();
 		}
 	}
 
@@ -378,6 +399,21 @@ export class ChatController {
 	private scheduleFetch(ms: number): void {
 		clearTimeout(this.fetchTimer);
 		this.fetchTimer = setTimeout(() => void this.fetchTranscript(), ms);
+	}
+
+	/** Refresh the cached leaf pointer and re-filter the view when it moved. */
+	private async fetchTree(): Promise<void> {
+		if (isDraftId(this.id) || this.disposed || this.state.working) return;
+		try {
+			const r = await api<{ leafId?: string | null }>("GET", `/sessions/${this.id}/tree`);
+			if (this.disposed) return;
+			const leafId = r.leafId ?? null;
+			if (leafId === this.state.leafId) return;
+			this.set({ leafId });
+			this.set({ blocks: this.rebuild(this.state.transcript) });
+		} catch {
+			// Offline / busy: keep the previous leaf and its filtering.
+		}
 	}
 
 	/** Pull-to-refresh / resync: re-read everything from byte 0 and reconcile live state. */
@@ -775,6 +811,8 @@ export class ChatController {
 
 	/** Returns true when the text was consumed (composer should already have been cleared by the caller on true). */
 	async send(text: string, behavior: StreamBehavior): Promise<boolean> {
+		// A send after edit-&-resend creates the sibling branch; drop the banner.
+		if (this.state.treeEdit) this.set({ treeEdit: null });
 		const delivery = this.state.delivery;
 		if (delivery) {
 			// "sending" = dispatch still in flight: a double-tap lands here and must not alarm the user;
@@ -972,6 +1010,82 @@ export class ChatController {
 	}
 	cancelFork(): void {
 		this.set({ forkFrom: null });
+	}
+
+	/* ------------------------------------------------------------ conversation tree */
+
+	/** Sibling versions of an entry (for the long-press menu). */
+	versionsFor(entryId: string): TreeVersions | null {
+		return treeVersions(this.state.transcript.items, this.state.leafId, entryId);
+	}
+
+	/**
+	 * Edit & resend through the conversation tree: rewind past the user entry
+	 * (the server returns its original text), fill the composer and raise the
+	 * restart banner. The next send grows a sibling branch there.
+	 */
+	async editResendFromTree(entryId: string, fallbackText: string): Promise<void> {
+		if (this.state.working) {
+			toast("当前正在回答，完成后可切换");
+			return;
+		}
+		if (isDraftId(this.id)) {
+			// Drafts have no persisted tree yet: plain composer fill.
+			this.editResend(fallbackText);
+			return;
+		}
+		try {
+			const r = await api<{ cancelled?: boolean; editorText?: string }>(
+				"POST",
+				`/sessions/${this.id}/navigate-tree`,
+				{ entryId },
+			);
+			if (this.disposed) return;
+			const text = r.editorText?.trim() ? r.editorText : fallbackText;
+			// A user target rewinds past itself: the leaf lands on its parent.
+			// Set it now so the view refilters without waiting for /tree.
+			this.set({
+				treeEdit: { entryId, prevLeafId: this.state.leafId },
+				leafId: this.state.transcript.items.find((it) => it.id === entryId)?.parentId ?? null,
+			});
+			this.composer?.set(text, true);
+			this.scheduleFetch(150);
+		} catch (e) {
+			toast(errorMessage(e));
+		}
+	}
+
+	/** Move the leaf to another version of this entry (same file, no fork). */
+	async switchTreeVersion(entryId: string): Promise<void> {
+		if (this.state.working) {
+			toast("当前正在回答，完成后可切换");
+			return;
+		}
+		try {
+			await api("POST", `/sessions/${this.id}/navigate-tree`, { entryId });
+			if (this.disposed) return;
+			// The target entry becomes the leaf; fetchTree confirms afterwards.
+			this.set({ leafId: entryId, treeEdit: null });
+			this.scheduleFetch(150);
+		} catch (e) {
+			toast(errorMessage(e));
+		}
+	}
+
+	/** Cancel an edit-&-resend: walk the leaf back to where it was. */
+	async cancelTreeEdit(): Promise<void> {
+		const edit = this.state.treeEdit;
+		if (!edit) return;
+		this.set({ treeEdit: null });
+		if (edit.prevLeafId) {
+			try {
+				await api("POST", `/sessions/${this.id}/navigate-tree`, { entryId: edit.prevLeafId });
+				this.set({ leafId: edit.prevLeafId });
+				this.scheduleFetch(150);
+			} catch (e) {
+				toast(errorMessage(e));
+			}
+		}
 	}
 
 	/* ------------------------------------------------------------ attachments */

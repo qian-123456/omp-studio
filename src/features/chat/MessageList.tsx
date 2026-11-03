@@ -48,6 +48,9 @@ import { openContextWindowForModel } from "../settings/settingsTargets";
 import { AnswerFooter } from "./AnswerFooter";
 import { ClampedProse } from "./ClampedProse";
 import { isForkDraftId } from "../sessions/forkDraft";
+import { filterToLeafPath, versionsByItem, type TreeVersions } from "./treePath";
+import { startTreeResend } from "./treeNav";
+import { useTree } from "../../stores/tree";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
 import { useLineClampOverflow } from "../../lib/useLineClamp";
@@ -370,6 +373,16 @@ export const UserRow = React.memo(function UserRow({
 					<button
 						type="button"
 						onClick={() => {
+							// Live session: rewind past this message and hand its
+							// text to the composer — the next send creates a sibling
+							// branch and the old path is preserved. A busy live
+							// session refuses with a toast and changes nothing. Fork
+							// drafts and offline sessions keep the inline editor
+							// (there is no process to ask).
+							if (useLive.getState().sessions[sessionId]?.alive) {
+								void startTreeResend(sessionId, item.id, userText);
+								return;
+							}
 							updateDraft(userText);
 							setEditing(true);
 						}}
@@ -571,6 +584,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionWorking,
 	onTurnsChange,
 	highlightedId,
+	versions,
 }: {
 	sessionId: string;
 	/** One part of a turn (the whole turn when it is not split). */
@@ -584,6 +598,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionWorking?: boolean;
 	onTurnsChange?: () => void;
 	highlightedId?: string | null;
+	/** Sibling versions of this turn's answer (version switcher in the footer). */
+	versions?: TreeVersions;
 	/** A subagent this turn dispatched is still running after the parent finished. */
 	subagentsRunning?: boolean;
 	/** Latest end among the turn's finished subagents (epoch ms). */
@@ -788,6 +804,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 								sessionWorking={sessionWorking}
 								onDoneUndo={onTurnsChange}
 								answerItemId={block.answerItem.id}
+								versions={versions}
 							/>
 						)}
 					</div>
@@ -836,6 +853,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							onDoneUndo={onTurnsChange}
 							answerText={fullAnswerText}
 							answerItemId={block.answerItem.id}
+							versions={versions}
 						/>
 					)}
 				</div>
@@ -1366,9 +1384,22 @@ export function MessageList({
 	const { t } = useT();
 	// Narrow subscriptions — NOT subscribing to whole session object!
 	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
+	// The transcript file holds every sibling branch after a navigation; only
+	// the root→leaf path is the live conversation. Unknown leaf (offline
+	// session) → unfiltered, as before tree navigation existed.
+	const treeLeafId = useTree((s) => s.leaf[sessionId] ?? null);
+	// Sibling counts come from the raw (unfiltered) items: off-path branches
+	// are exactly what the version switcher counts.
+	const versions = useMemo(
+		() => versionsByItem(rawItems, treeLeafId),
+		[rawItems, treeLeafId],
+	);
 	// Side chats inherit the parent's history; show only their own turns.
 	const isSideChat = useSessions((s) => (s.sessions[sessionId]?.forkDepth ?? 0) > 0);
-	const items = useMemo(() => trimSideChatItems(rawItems, isSideChat), [rawItems, isSideChat]);
+	const items = useMemo(
+		() => trimSideChatItems(filterToLeafPath(rawItems, treeLeafId), isSideChat),
+		[rawItems, treeLeafId, isSideChat],
+	);
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
 	);
@@ -2141,6 +2172,7 @@ export function MessageList({
 												block={block}
 												isLatestTurn={block.turnId === lastTurnId}
 												toolResultsByCallId={toolResultsByCallId}
+												versions={block.answerItem ? versions.get(block.answerItem.id) : undefined}
 												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
 												turnCheckpoint={cp}

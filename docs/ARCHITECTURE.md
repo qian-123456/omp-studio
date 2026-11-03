@@ -78,6 +78,7 @@ src/
   stores/sessions.ts         SessionMeta map, loaded via list_sessions + events         [LEAD]
   stores/composer.ts         annotations (pills) per session + side-chat requests       [LEAD]
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
+  stores/tree.ts             per-session conversation-tree cache: leafId from get_tree + edit-&-resend banner state [B]
   stores/displayPrefs.ts    local display prefs: request-stats line + fields, thinking preview (localStorage, not the Rust Settings contract) [LEAD]
   stores/modelKinds.ts      shared all-kind OMP registry, exact runtime kinds, service-role eligibility, serialized refresh/invalidation after provider mutations [D]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
@@ -480,6 +481,7 @@ pub enum AppEvent {
   RpcProcess { session_id: String, running: bool, exit_code: Option<i32> },
   UiResponded { session_id: String, request_id: String },          // after a UI response was written
   PromptSent { session_id: String },                               // user sent prompt/steer/follow_up
+  TreeNavigated { session_id: String },                            // navigate_tree moved the leaf (same session)
   SessionAccepted { session_id: String },
   SessionStatusChanged { session_id: String, old: SessionStatus, new: SessionStatus },
   SessionsChanged { ids: Vec<String> },
@@ -496,6 +498,7 @@ Frontend events (`app.emit`), names are exact:
 | `sessions:updated` | `SessionMeta[]` (changed rows only) | A |
 | `sessions:removed` | `string[]` | A |
 | `rpc:frame` | `{ sessionId, frame }` | B |
+| `tree:navigated` | `{ sessionId }` — a `navigate_tree` moved the session's leaf; clients refetch the transcript and re-filter to the root→leaf path. Mobile clients receive the SSE `touch` event instead | B (`rpc/tree.rs`) |
 | `rpc:process` | `{ sessionId, running, exitCode }` | B |
 | `todos:changed` | `TodoCounts` | D |
 | `backlog:changed` | `null` | D |
@@ -621,6 +624,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`. Unknown, settled or already consumed request IDs are refused before writing; only an accepted current response can emit the event.
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
+- `tree_navigate(session_id, entry_id) -> Value` — same-session tree navigation: sends upstream `navigate_tree {entryId}` (no `summarize` in phase 1) to the live session and returns its data (`{cancelled, editorText?}`; a user-message target rewinds past itself and carries `editorText` for the composer). On success broadcasts `tree:navigated` + the mobile SSE `touch`. Recognizable errors: `TREE_BUSY` (upstream refuses while streaming/bash/compaction/retry — nothing changed), `TREE_ENTRY_NOT_FOUND`, `session is not live`
+- `tree_get(session_id) -> Value` — upstream `get_tree` verbatim (`{ tree: SessionTreeNode[], leafId: string | null }`); requires a live session. The frontend caches only `leafId` per session (`stores/tree.ts`) — siblings and parent chains are already in `TranscriptItem.parentId`; rendering filters to the root→leaf path (`treePath.ts`)
 - `rpc_stop(session_id)` — close stdin, wait ≤5s, then kill
 - `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
 
@@ -1346,6 +1351,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   - `GET /sessions/:id/composer-state` includes `contextTokens/contextWindow/contextPercent` (null for drafts / unknown), plus normalized desktop `PlanStatus|null` as `planStatus`; compatibility `planMode` is derived from the same snapshot. Resolution uses the live handle first, then the latest complete persisted custom `ompws-plan-state` record in a blocking worker, without waking an RPC session. `approved.status` (`executing|completed|failed|handoff`) is independent of `enabled`.
   - `GET /sessions/:id/plan` preserves `{text: string|null, streaming: boolean}` and adds the same `planStatus` snapshot. Text prefers `approved.content`, then status `content`; the latest assistant reply is a legacy fallback only when `planStatus === null`. Explicit off/empty plan state suppresses that old-reply fallback. A missing snapshot body may be read only from a bounded, canonical regular plan file inside the session directory. Reading the plan never enables planning or invokes a model.
   - `POST /sessions/:id/ui-respond-all {action: approve|deny, ids: string[]}` → `{handled, skipped, handledIds: string[]}`: answers only selected tool-approval requests from the displayed snapshot; missing IDs are refused, new unselected arrivals are untouched.
+  - `POST /sessions/:id/navigate-tree {entryId}` → upstream `navigate_tree` data (`{cancelled, editorText?}`): move the same-session leaf pointer. Errors are explicit: 409 `会话未在运行` (offline), 409 `会话正在回答，完成后可切换版本` (`session_busy`), 404 unknown entry; a refusal never changes state. Success reaches other devices through the SSE `touch` event.
+  - `GET /sessions/:id/tree` → upstream `get_tree` verbatim (`{tree, leafId}`); 409 when the session is not live. Clients filter their transcript to the root→leaf path (`src-mobile/features/chat/lib/tree.ts`).
   - `POST /presence {sessionId, visible}` records receipt time. Chat views send a 15-second foreground heartbeat and clear presence on hide/unmount; push suppression expires after 45 seconds. Approval notifications are deduplicated by request identity, not only session.
   - Before prompt dispatch, the client persists the original payload and attachment paths. Any ambiguous HTTP failure is shown as delivery-unknown, never automatically restored/retried as unsent; a deliberate risk confirmation is required to recover it. This is not a server exactly-once guarantee.
   - `GET /left/settings/desktop` → `{defaultApprovalMode, capsuleVisible}`; `POST /left/settings/approval-mode {mode: always-ask|write|yolo}`.
