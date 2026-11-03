@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PendingEntry } from "../../../core/types";
 import { countBatchApprovable, isBatchApprovable, showApproveAll } from "./approvals";
 import { createTitleFlasher } from "./attention";
-import { contextTone, formatContextDetail, formatContextPercent, resolveContextPercent } from "./context";
+import { contextTone, formatContextDetail, formatContextPercent, queueChipText, resolveContextPercent } from "./context";
 import { createDebounce, createDraftBook, draftActivityBody } from "./drafts";
 import { attachmentBlocker, buildPrompt, buildPromptBody, sendIntent } from "./prompt";
 import { cachedCommands, clearSlashCache, commandAction, detectSlashQuery, filterCommands, groupCommands, loadSlashCommands, parseSlashInput, type SlashCmd } from "./slash";
@@ -126,6 +126,16 @@ describe("context usage", () => {
 		expect(formatContextDetail({})).toBeNull();
 		expect(resolveContextPercent({ contextTokens: 50, contextWindow: 200 })).toBe(25);
 		expect(resolveContextPercent({ contextPercent: 12, contextTokens: 50, contextWindow: 200 })).toBe(12);
+	});
+	it("queue chip text shows the total and its composition", () => {
+		expect(queueChipText({ steering: ["a", "b"], followUp: ["c"], liveSteered: 1 })).toBe("排队 2 条 · 插话 1 · 后续 1");
+		expect(queueChipText({ steering: [], followUp: ["c", "d"] })).toBe("排队 2 条 · 后续 2");
+		expect(queueChipText({ steering: ["a"], followUp: [] })).toBe("排队 1 条 · 插话 1");
+		// liveSteered entries were already delivered, never counted.
+		expect(queueChipText({ steering: ["a"], followUp: [], liveSteered: 1 })).toBeNull();
+		expect(queueChipText({ steering: ["a", "b"], followUp: [], liveSteered: 5 })).toBeNull();
+		expect(queueChipText({})).toBeNull();
+		expect(queueChipText(null)).toBeNull();
 	});
 });
 

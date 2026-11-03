@@ -206,5 +206,7 @@ export interface RpcFrame {
 	args?: unknown;
 	isError?: boolean;
 	result?: { content?: { type?: string; text?: string }[] } | null;
+	/** `tool_execution_update`: the tool's partial output so far (same shape as `result`). */
+	partialResult?: { content?: { type?: string; text?: string }[] } | null;
 	[k: string]: unknown;
 }

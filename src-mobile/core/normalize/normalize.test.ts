@@ -93,6 +93,32 @@ describe("applyLiveFrame", () => {
 		expect(e.live?.tools[0]).toMatchObject({ status: "error", result: "bad" });
 		expect(e.refetch).toBe(true);
 	});
+	it("shows tool_execution_update partial output while the tool keeps running", () => {
+		const s = applyLiveFrame(null, frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash" }));
+		const u1 = applyLiveFrame(s.live, frame({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "part one" }] } }));
+		expect(u1.live?.tools[0]).toMatchObject({ id: "c1", status: "running", result: "part one" });
+		expect(u1.refetch).toBe(false);
+		const u2 = applyLiveFrame(u1.live, frame({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "part one\ntwo" }] } }));
+		expect(u2.live?.tools[0]).toMatchObject({ status: "running", result: "part one\ntwo" });
+		// The end frame then settles the tool (same cap and error flag as before).
+		const e = applyLiveFrame(u2.live, frame({ type: "tool_execution_end", toolCallId: "c1", isError: false, result: { content: [{ type: "text", text: "part one\ntwo\nfinal" }] } }));
+		expect(e.live?.tools[0]).toMatchObject({ status: "done", result: "part one\ntwo\nfinal" });
+		expect(e.refetch).toBe(true);
+	});
+	it("tool_execution_update ignores unknown tools, repeated output and missing live rows", () => {
+		const s = applyLiveFrame(null, frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash" }));
+		const same = applyLiveFrame(s.live, frame({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [] } }));
+		expect(same.live).toBe(s.live);
+		const other = applyLiveFrame(s.live, frame({ type: "tool_execution_update", toolCallId: "zz", partialResult: { content: [{ type: "text", text: "x" }] } }));
+		expect(other.live).toBe(s.live);
+		const noLive = applyLiveFrame(null, frame({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "x" }] } }));
+		expect(noLive).toMatchObject({ live: null, handled: true });
+	});
+	it("tool_execution_update caps partial output at 4000 characters", () => {
+		const s = applyLiveFrame(null, frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash" }));
+		const u = applyLiveFrame(s.live, frame({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "x".repeat(5000) }] } }));
+		expect(u.live?.tools[0].result).toHaveLength(4000);
+	});
 	it("clears the live row only on a terminal end", () => {
 		const live = newLiveItem();
 		expect(applyLiveFrame(live, frame({ type: "agent_end" }))).toMatchObject({ live: null, streaming: false, refetch: true });
@@ -113,5 +139,11 @@ describe("liveIsPersisted", () => {
 		expect(liveIsPersisted(tail, live)).toBe(true);
 		expect(liveIsPersisted(tail, { ...live, text: "other" })).toBe(false);
 		expect(liveIsPersisted(normalizeTranscript([t({ id: "u", kind: "user", text: "answer" })]), live)).toBe(false);
+	});
+	it("also matches a thinking-only live row by its persisted thinking", () => {
+		const live = { ...newLiveItem(), text: "", thinking: "quiet reasoning" };
+		const tail = normalizeTranscript([t({ id: "a", kind: "assistant", thinking: "quiet reasoning" })]);
+		expect(liveIsPersisted(tail, live)).toBe(true);
+		expect(liveIsPersisted(tail, { ...live, thinking: "other" })).toBe(false);
 	});
 });

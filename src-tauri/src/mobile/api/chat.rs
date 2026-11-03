@@ -37,7 +37,7 @@
 //!   thinking, fast, slow, status. 400 for desktop-only or malformed names.
 //! - `GET /sessions/{id}/composer-state` →
 //!   `{live, streaming, model, thinkingLevel, planMode, goal: {objective, status}|null,
-//!   fastMode, slowMode, state}`; `state` is the raw omp `get_state` data (null when
+//!   fastMode, slowMode, queue: {steering, followUp, liveSteered}, state}`; `state` is the raw omp `get_state` data (null when
 //!   the session process is not running — then `model` falls back to the catalog).
 //! - `POST /sessions/{id}/goal` `{objective}` (set; replaces an existing goal) or
 //!   `{op: "pause"|"resume"|"drop"}` → `{ok: true, goal}`. `DELETE /sessions/{id}/goal`
@@ -1720,6 +1720,24 @@ fn context_usage(state: Option<&Value>, snapshot_tokens: Option<u64>) -> Context
     }
 }
 
+/// omp's queued user messages from `get_state.queuedMessages`
+/// (`{steering, followUp, liveSteered}`), the same snapshot `queue_update`
+/// frames carry. Empty queues when there is no live process.
+fn queue_json(state: Option<&Value>) -> Value {
+    let q = state.and_then(|s| s.get("queuedMessages"));
+    let texts = |key: &str| -> Vec<&str> {
+        q.and_then(|q| q.get(key))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default()
+    };
+    json!({
+        "steering": texts("steering"),
+        "followUp": texts("followUp"),
+        "liveSteered": q.and_then(|q| q.get("liveSteered")).and_then(Value::as_u64).unwrap_or(0),
+    })
+}
+
 async fn composer_state<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
@@ -1785,6 +1803,7 @@ async fn composer_state<B: Backend>(
         "goal": st.as_ref().map_or(Value::Null, goal_json),
         "fastMode": st.as_ref().and_then(|s| s.get("fastModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
         "slowMode": st.as_ref().and_then(|s| s.get("slowModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
+        "queue": queue_json(st.as_ref()),
         "state": st,
     })))
 }
@@ -2347,5 +2366,29 @@ mod tests {
         assert!(extract_levels(None).is_empty());
         assert_eq!(split_model("a/b/c"), ("a".into(), "b/c".into()));
         assert_eq!(split_model(" m "), (String::new(), "m".into()));
+    }
+
+    #[test]
+    fn queue_json_reads_omp_queued_messages() {
+        let st = json!({"queuedMessages": {"steering": ["a", "b"], "followUp": ["c"], "liveSteered": 1}});
+        assert_eq!(
+            queue_json(Some(&st)),
+            json!({"steering": ["a", "b"], "followUp": ["c"], "liveSteered": 1})
+        );
+        // No live process / no queue field: empty snapshot, never null.
+        assert_eq!(
+            queue_json(Some(&json!({}))),
+            json!({"steering": [], "followUp": [], "liveSteered": 0})
+        );
+        assert_eq!(
+            queue_json(None),
+            json!({"steering": [], "followUp": [], "liveSteered": 0})
+        );
+        // Non-string queue entries are dropped, not echoed.
+        let odd = json!({"queuedMessages": {"steering": ["a", 3], "followUp": [null]}});
+        assert_eq!(
+            queue_json(Some(&odd)),
+            json!({"steering": ["a"], "followUp": [], "liveSteered": 0})
+        );
     }
 }

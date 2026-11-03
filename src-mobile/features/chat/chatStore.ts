@@ -52,6 +52,8 @@ export interface ComposerState {
 	contextTokens?: number | null;
 	contextWindow?: number | null;
 	contextPercent?: number | null;
+	/** omp's queued user messages (`queue` snapshot, refreshed by the composer-state poll). */
+	queue?: { steering?: string[]; followUp?: string[]; liveSteered?: number } | null;
 }
 
 export interface ForkFrom {

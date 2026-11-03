@@ -20,6 +20,7 @@ import { MessageList } from "./components/MessageList";
 import { ModelThinkingSheet } from "./components/ModelThinkingSheet";
 import { PendingCards } from "./components/PendingCards";
 import { StatCard } from "./components/StatLine";
+import { TurnNotices } from "./components/TurnNotices";
 import type { RequestStat } from "./lib/requestStats";
 import { useChat, useChatUi as useUi } from "./ChatContext";
 
@@ -121,6 +122,7 @@ export function ChatPage({ route }: PageProps) {
 				<MessageList sessionId={id} />
 				<PendingCards />
 				<ResumeBar sessionId={id} />
+				<TurnNotices sessionId={id} />
 				<Composer sessionId={id} />
 			</div>
 			<MessageActionsSheet target={target} onClose={() => setTarget(null)} controller={controller} />

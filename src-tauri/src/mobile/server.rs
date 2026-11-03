@@ -617,6 +617,33 @@ async fn transcript<B: Backend>(
     Ok(Json(json!(page)))
 }
 
+/// Frame types the phone page renders (omp wire events, payloads passed
+/// verbatim); everything else stays off the phone's event stream.
+pub fn rpc_frame_allowed(ty: &str) -> bool {
+    matches!(
+        ty,
+        "agent_start"
+            | "agent_end"
+            | "turn_start"
+            | "turn_end"
+            | "message_update"
+            | "message_end"
+            | "tool_execution_start"
+            | "tool_execution_update"
+            | "tool_execution_end"
+            // Auto-retry / fallback progress (payloads mirror omp's wire events).
+            | "auto_retry_start"
+            | "auto_retry_end"
+            | "retry_fallback_applied"
+            | "retry_fallback_succeeded"
+            // Context auto-compaction progress.
+            | "auto_compaction_start"
+            | "auto_compaction_end"
+            // Steering / follow-up queue snapshot.
+            | "queue_update"
+    )
+}
+
 /// Map bus events to SSE events the mobile page cares about.
 pub fn sse_event(ev: &AppEvent) -> Option<Event> {
     match ev {
@@ -632,17 +659,7 @@ pub fn sse_event(ev: &AppEvent) -> Option<Event> {
         ),
         AppEvent::RpcFrame { session_id, frame } => {
             let ty = frame.get("type").and_then(Value::as_str)?;
-            if !matches!(
-                ty,
-                "agent_start"
-                    | "agent_end"
-                    | "turn_start"
-                    | "turn_end"
-                    | "message_update"
-                    | "message_end"
-                    | "tool_execution_start"
-                    | "tool_execution_end"
-            ) {
+            if !rpc_frame_allowed(ty) {
                 return None;
             }
             Some(

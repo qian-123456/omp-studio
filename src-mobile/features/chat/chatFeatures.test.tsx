@@ -110,6 +110,26 @@ describe("Status bar above composer (Change 2)", () => {
 		expect(screen.getByText("上下文用量")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "压缩上下文" })).toBeTruthy();
 	});
+
+	it("shows a queue chip with the queued composition while messages wait in omp's queue", () => {
+		const c = new ChatController("s1");
+		c.store.setState({
+			cstate: {
+				model: "gpt-4o",
+				queue: { steering: ["插一条"], followUp: ["排队一", "排队二"], liveSteered: 0 },
+			},
+		});
+		render(wrap(c, <Composer sessionId="s1" />));
+		expect(screen.getByText("排队 3 条 · 插话 1 · 后续 2")).toBeTruthy();
+
+		// Delivered live steering and empty queues stay invisible.
+		act(() => {
+			c.store.setState({
+				cstate: { model: "gpt-4o", queue: { steering: ["已插话"], followUp: [], liveSteered: 1 } },
+			});
+		});
+		expect(screen.queryByText(/排队/)).toBeNull();
+	});
 });
 
 describe("Composer attachment actions", () => {
