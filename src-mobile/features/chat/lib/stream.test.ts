@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeTranscript } from "../../../core/normalize";
 import type { RpcFrame } from "../../../core/types";
-import { livePersisted, pruneLive, reduceFrame, type StreamState } from "./stream";
+import { contentMatch, contentPersisted, livePersisted, pruneLive, reduceFrame, type StreamState } from "./stream";
 
 const idle: StreamState = { live: null, working: false };
 const msg = (text: string): RpcFrame => ({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text }] } });
@@ -79,5 +79,37 @@ describe("pruneLive", () => {
 	it("returns the same object when nothing changes", () => {
 		const live = reduceFrame(idle, msg("still streaming")).state.live;
 		expect(pruneLive(persisted, live)).toBe(live);
+	});
+});
+
+describe("contentPersisted / contentMatch", () => {
+	const rows = normalizeTranscript([
+		{ id: "u", kind: "user", text: "q" },
+		{ id: "a", kind: "assistant", text: "final answer", thinking: "chain of thought" },
+	]);
+	it("matches equal and prefix-persisted text, and thinking-only rows", () => {
+		expect(contentPersisted(rows, "final answer", "")).toBe(true);
+		expect(contentPersisted(rows, "final ", "")).toBe(true);
+		expect(contentPersisted(rows, "", "")).toBe(false);
+		expect(contentPersisted(rows, "不同内容", "")).toBe(false);
+		expect(contentPersisted(rows, "", "不存在")).toBe(false);
+	});
+
+	it("dedups a retained segment against any recent assistant row, not only the tail", () => {
+		const items = normalizeTranscript([
+			{ id: "a1", kind: "assistant", text: "第一段" },
+			{ id: "a2", kind: "assistant", text: "第二段" },
+		]);
+		expect(contentPersisted(items, "第一段", "")).toBe(true);
+		expect(contentPersisted(items, "第三段", "")).toBe(false);
+	});
+
+	it("contentMatch is a two-way prefix containment on trimmed text", () => {
+		expect(contentMatch("abc", "abc")).toBe(true);
+		expect(contentMatch("abcdef", "abc")).toBe(true);
+		expect(contentMatch("abc", "abcdef")).toBe(true);
+		expect(contentMatch("xabc", "abc")).toBe(false);
+		expect(contentMatch("", "abc")).toBe(false);
+		expect(contentMatch("abd", "abc")).toBe(false);
 	});
 });

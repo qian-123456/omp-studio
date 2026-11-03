@@ -19,7 +19,17 @@ import { isBatchApprovable, showApproveAll } from "./lib/approvals";
 import { createDebounce, DRAFT_ACTIVITY_DEBOUNCE_MS, draftActivityBody, draftBook } from "./lib/drafts";
 import { attachmentBlocker, buildPrompt, buildPromptBody, sendIntent, type StreamBehavior } from "./lib/prompt";
 import { loadSlashCommands, parseSlashInput, type SlashCmd } from "./lib/slash";
-import { livePersisted, pruneLive, reduceFrame, type StreamState } from "./lib/stream";
+import {
+	clearLiveMain,
+	clearLiveStale,
+	LIVE_SNAPSHOT_THROTTLE_MS,
+	loadLiveEntry,
+	saveLiveMain,
+	snapshotToItem,
+	stashLiveStale,
+	type LiveSnapshotBody,
+} from "./lib/liveSnapshot";
+import { contentMatch, contentPersisted, livePersisted, pruneLive, reduceFrame, type StreamState } from "./lib/stream";
 import { EMPTY_TRANSCRIPT, mergePage, reconcileOptimistic, transcriptQuery, type OptimisticMsg, type TranscriptState } from "./lib/transcript";
 import { buildBlocks, reuseBlocks, type Block } from "./lib/turns";
 import { clearUnsent, loadUnsent } from "./lib/unsent";
@@ -75,6 +85,9 @@ function loadDelivery(id: string): PromptDeliveryState | null {
 	} catch { return null; }
 }
 
+/** Hard cap for retained in-turn segments; each lives only until the transcript carries it. */
+const MAX_SEGMENTS = 50;
+
 // Process restarts may reuse request IDs; a new arrival must not inherit an old tombstone.
 const pendingIdentity = (entry: PendingEntry): string => JSON.stringify([entry.request?.id ?? "", entry.receivedAt ?? ""]);
 
@@ -83,6 +96,10 @@ export interface ChatState {
 	transcript: TranscriptState;
 	blocks: Block[];
 	live: Item | null;
+	/** Completed in-turn segments (message_end → next fetch): kept on screen until the persisted row takes over. */
+	segments: Item[];
+	/** Restored half answer whose turn ended before persisting (中断前): shown with a marker until removed or deduped. */
+	interrupted: Item | null;
 	working: boolean;
 	optimistic: OptimisticMsg[];
 	localOut: LocalOut[];
@@ -146,7 +163,22 @@ export class ChatController {
 	private attSeq = 0;
 	private optSeq = 0;
 	private outSeq = 0;
-	private clearLiveAfterFetch = false;
+	/** Bumped whenever an rpc frame swaps the live row object: invalidates a pending stale-live drop. */
+	private liveSeq = 0;
+	/** liveSeq at the last resync/refresh that kept a live row; equal values mean the row was not refreshed since. */
+	private staleLiveSeq = 0;
+	/** Verdict of the last composer-state read: the server reports the turn is not streaming. */
+	private composerIdle = false;
+	/** Bounded retry counter for the fetch that should let persisted rows take over retained segments. */
+	private segRetry = 0;
+	private segSeq = 0;
+	/** Last mirrored snapshot signature / time, for the throttled half-answer persistence. */
+	private snapSig = "";
+	private snapAt = 0;
+	/** Half-answer mirrors read at construction, resolved once the first transcript + composer state land. */
+	private restoreMain: LiveSnapshotBody | null = null;
+	private restoreStale: LiveSnapshotBody | null = null;
+	private firstTranscript: Promise<void> | null = null;
 	private disposed = false;
 	/** First prompt carried over from a draft; re-registered if this page is torn down before it persisted (StrictMode, fast back). */
 	private handoffText: string | null = null;
@@ -157,6 +189,9 @@ export class ChatController {
 	private answered = new Set<string>();
 
 	constructor(readonly id: string) {
+		const snapEntry = loadLiveEntry(id);
+		this.restoreMain = snapEntry?.main ?? null;
+		this.restoreStale = snapEntry?.stale ?? null;
 		const handoff = draftBook.takeHandoff(id);
 		const stash = draftBook.restore(id);
 		const status = useSessions.getState().byId[id]?.status;
@@ -173,6 +208,8 @@ export class ChatController {
 			transcript: EMPTY_TRANSCRIPT,
 			blocks: [],
 			live: null,
+			segments: [],
+			interrupted: null,
 			working,
 			optimistic: opt,
 			localOut: [],
@@ -214,15 +251,16 @@ export class ChatController {
 				if (s.byId[this.id] !== prev.byId[this.id]) this.onSessionChanged();
 			}),
 		);
-		if (!draft) void this.fetchTranscript();
+		if (!draft) this.firstTranscript = this.fetchTranscript();
 		else this.set({ loaded: true });
 		void this.loadPendings();
-		void this.loadState();
+		const firstState = this.loadState();
 		void loadSlashCommands(this.id).catch(() => {});
 		this.stateTimer = setInterval(() => {
 			if (!document.hidden) void this.loadState();
 		}, 5000);
 		if (draft && this.draftMeaningful()) this.draftActivity(true);
+		void this.restoreAfterFirstLoad(firstState);
 	}
 
 	dispose(): void {
@@ -283,6 +321,10 @@ export class ChatController {
 		} catch (e) {
 			console.warn("[chat] transcript", e);
 			if (!this.state.loaded) this.set({ loaded: true });
+			if (this.state.segments.length && this.segRetry < 10) {
+				this.segRetry++;
+				this.scheduleFetch(1000);
+			}
 		} finally {
 			this.fetching = false;
 			if (this.fetchAgain) {
@@ -297,20 +339,37 @@ export class ChatController {
 		const r = mergePage(prev.transcript, page);
 		const optimistic = reconcileOptimistic(prev.optimistic, r.newUserTexts);
 		let live = this.stream.live;
-		if (this.clearLiveAfterFetch) {
-			this.clearLiveAfterFetch = false;
-			live = null;
-		} else {
-			live = pruneLive(r.state.items, live);
+		// The streamed copy is now on disk: stop mirroring it, the persisted row takes over.
+		if (livePersisted(r.state.items, live)) clearLiveMain(this.id);
+		live = pruneLive(r.state.items, live);
+		let segments = prev.segments;
+		if (segments.length) {
+			const kept = segments.filter((seg) => !contentPersisted(r.state.items, seg.text, seg.thinking));
+			if (kept.length !== segments.length) {
+				segments = kept;
+				this.segRetry = 0;
+			}
+		}
+		if (segments.length && this.segRetry < 10) {
+			// Segments not persisted yet: retry (bounded) so the persisted rows can take over.
+			this.segRetry++;
+			this.scheduleFetch(600);
+		}
+		const interrupted = prev.interrupted;
+		if (interrupted && contentPersisted(r.state.items, interrupted.text, interrupted.thinking)) {
+			// A data source now carries the interrupted content: dedup it away.
+			this.set({ interrupted: null });
+			clearLiveStale(this.id);
 		}
 		this.stream = { ...this.stream, live };
-		if (!r.changed && optimistic === prev.optimistic && live === prev.live && prev.loaded) return;
+		if (!r.changed && optimistic === prev.optimistic && live === prev.live && segments === prev.segments && prev.loaded) return;
 		this.set({
 			loaded: true,
 			transcript: r.state,
 			blocks: r.changed ? this.rebuild(r.state) : prev.blocks,
 			optimistic,
 			live,
+			segments,
 		});
 	}
 
@@ -321,18 +380,92 @@ export class ChatController {
 
 	/** Pull-to-refresh / resync: re-read everything from byte 0 and reconcile live state. */
 	async refresh(): Promise<void> {
-		this.stream = { ...this.stream, live: null };
-		this.set({ live: null, transcript: { ...this.state.transcript, offset: 0, tailId: null } });
+		this.keepLiveForResync();
+		this.set({ transcript: { ...this.state.transcript, offset: 0, tailId: null } });
 		await Promise.all([this.fetchTranscript(), this.loadState(), this.loadPendings(), useSessions.getState().refresh().catch(() => [])]);
 	}
 
 	/** SSE frames can be lost (suspended tab, server lag): rebuild live state from transcript + composer state. */
 	private resync(): void {
-		this.stream = { ...this.stream, live: null };
-		this.set({ live: null });
+		this.keepLiveForResync();
 		this.scheduleFetch(0);
 		void this.loadState();
 		void this.loadPendings();
+	}
+
+	/**
+	 * A half-streamed answer only persists at `message_end`, so the transcript refetch cannot restore it:
+	 * keep the live row rendered instead of clearing it first. The fetched transcript reconciles it
+	 * (`pruneLive` once the text is persisted); `dropStaleLive` retires it as a marked interrupted
+	 * answer when the composer proves the turn has ended.
+	 */
+	private keepLiveForResync(): void {
+		if (this.stream.live) this.staleLiveSeq = this.liveSeq;
+	}
+
+	/**
+	 * Drop a live row kept across a resync (or restored from the half-answer mirror) once the
+	 * composer state proves the turn ended without persisting it. The content is never simply
+	 * wiped: it becomes a marked interrupted answer until a data source carries it or the user
+	 * removes it.
+	 */
+	private dropStaleLive(): void {
+		if (!this.stream.live || this.liveSeq !== this.staleLiveSeq) return;
+		this.staleLiveSeq = 0;
+		const stale = this.stream.live;
+		this.stream = { live: null, working: false };
+		this.scheduleFlush();
+		if (stale.text.trim() || stale.thinking.trim()) {
+			stashLiveStale(this.id, { text: stale.text, thinking: stale.thinking, tools: stale.tools, at: Date.now() });
+			this.set({ interrupted: { ...stale, streaming: false } });
+		}
+	}
+
+	/**
+	 * 断流续传: decide what to do with the half-answer mirrors saved before the page died. Runs
+	 * once the first transcript page and composer state are in, so the decision uses real data
+	 * sources instead of guessing. Restored rows carry no invented timestamps/model/usage.
+	 */
+	private async restoreAfterFirstLoad(firstState: Promise<void>): Promise<void> {
+		const main = this.restoreMain;
+		const stale = this.restoreStale;
+		this.restoreMain = null;
+		this.restoreStale = null;
+		if (this.disposed || isDraftId(this.id) || (!main && !stale)) return;
+		await Promise.all([firstState.catch(() => {}), (this.firstTranscript ?? Promise.resolve()).catch(() => {})]);
+		if (this.disposed) return;
+		const items = this.state.transcript.items;
+		if (stale) {
+			if (contentPersisted(items, stale.text, stale.thinking)) clearLiveStale(this.id);
+			else this.set({ interrupted: snapshotToItem(stale, false) });
+		}
+		if (!main) return;
+		if (contentPersisted(items, main.text, main.thinking)) {
+			// The message did persist: nothing was lost, drop the mirror.
+			clearLiveMain(this.id);
+			return;
+		}
+		if (this.stream.live) return; // frames already took over; the ongoing stream keeps saving snapshots
+		if (this.state.cstate?.streaming === true) {
+			// The backend is still streaming this very message: continue as the live row. Incoming
+			// full-snapshot frames overwrite the restored text in place (same source, no merge).
+			this.stream = { live: snapshotToItem(main, true), working: true };
+			this.liveSeq++;
+			this.staleLiveSeq = this.liveSeq; // stale unless a frame confirms the stream
+			this.snapSig = "";
+			this.scheduleFlush();
+			return;
+		}
+		// Backend idle and no data source carries the content: show it as an interrupted answer and
+		// move the mirror to the stale slot so reloads keep offering it until it is removed or persisted.
+		stashLiveStale(this.id, main);
+		if (!this.state.interrupted) this.set({ interrupted: snapshotToItem(main, false) });
+	}
+
+	/** 一键移除 the restored interrupted answer, including its local mirror. */
+	dismissInterrupted(): void {
+		this.set({ interrupted: null });
+		clearLiveStale(this.id);
 	}
 
 	/* ------------------------------------------------------------ live stream */
@@ -343,12 +476,29 @@ export class ChatController {
 		const step = reduceFrame(this.stream, frame);
 		if (!step.handled) return;
 		let live = step.state.live;
-		if (step.dropped) {
-			// Terminal end: keep the streamed answer visible until the persisted row arrives.
-			live = step.dropped;
-			this.clearLiveAfterFetch = true;
+		let segments = this.state.segments;
+		if (frame.type === "message_end" && live && (live.text.trim() || live.thinking.trim())) {
+			// Segment finished: retain it as a completed segment instead of leaving it as the live
+			// row, so the next segment's first snapshot frame cannot overwrite it wholesale (the
+			// transcript only carries it after the debounced fetch lands).
+			segments = [...segments, { ...live, id: `__seg${++this.segSeq}` }].slice(-MAX_SEGMENTS);
+			live = null;
+			this.segRetry = 0;
+			this.snapSig = "";
 		}
+		if (step.dropped) {
+			// Terminal end dropped a row that never saw message_end: retain it the same way.
+			segments = [...segments, { ...step.dropped, id: `__seg${++this.segSeq}` }].slice(-MAX_SEGMENTS);
+			live = null;
+			this.segRetry = 0;
+		}
+		// Normal turn end: the final message persisted at message_end, drop the mirror. A terminal
+		// end that dropped an unfinished row is not one: its segment is not persisted yet, so the
+		// mirror must survive until the transcript proves the takeover.
+		if (step.turnEnded && !step.dropped) clearLiveMain(this.id);
+		if (live !== this.stream.live) this.liveSeq++;
 		this.stream = { live, working: step.state.working };
+		if (segments !== this.state.segments) this.set({ segments });
 		if (step.refetch) this.scheduleFetch(250);
 		if (step.reloadState) setTimeout(() => void this.loadState(), 300);
 		if (step.turnEnded) attention("done");
@@ -364,9 +514,28 @@ export class ChatController {
 			const { live, working } = this.stream;
 			const s = this.state;
 			if (s.live !== live || s.working !== working) this.set({ live, working });
+			if (live) {
+				// A later data source carrying the interrupted content dedups it away.
+				if (s.interrupted && live.text.trim() && contentMatch(live.text, s.interrupted.text)) {
+					this.set({ interrupted: null });
+					clearLiveStale(this.id);
+				}
+				this.maybeSaveSnapshot(live);
+			}
 		};
 		if (typeof document !== "undefined" && document.hidden) run();
 		else this.rafId = requestAnimationFrame(run);
+	}
+
+	/** Mirror the streaming half answer to local storage (throttled, content-capped, best-effort). */
+	private maybeSaveSnapshot(live: Item): void {
+		const sig = `${live.text.length}|${live.thinking.length}|${live.tools.length}`;
+		if (sig === this.snapSig) return;
+		const now = Date.now();
+		if (now - this.snapAt < LIVE_SNAPSHOT_THROTTLE_MS) return;
+		this.snapAt = now;
+		this.snapSig = sig;
+		saveLiveMain(this.id, { text: live.text, thinking: live.thinking, tools: live.tools, at: now });
 	}
 
 	private setWorking(working: boolean): void {
@@ -397,6 +566,10 @@ export class ChatController {
 				const s = useSessions.getState().byId[this.id];
 				if (!s || s.status !== "working") this.setWorking(false);
 			}
+			// A resync-kept or restored live row is stale once the server proves the turn is over
+			// (explicit `streaming: false`) without any frame refreshing it in between.
+			this.composerIdle = st.streaming === false;
+			if (this.composerIdle) this.dropStaleLive();
 		} catch (e) {
 			console.warn("[chat] composer-state", e);
 		}
@@ -590,8 +763,11 @@ export class ChatController {
 
 	/** Returns true when the text was consumed (composer should already have been cleared by the caller on true). */
 	async send(text: string, behavior: StreamBehavior): Promise<boolean> {
-		if (this.state.delivery) {
-			toast("上一条消息送达状态待确认，请先核对记录或恢复输入，勿直接重发", { kind: "error" });
+		const delivery = this.state.delivery;
+		if (delivery) {
+			// "sending" = dispatch still in flight: a double-tap lands here and must not alarm the user;
+			// only an unknown outcome (HTTP failure) needs manual confirmation before resending.
+			if (delivery.phase === "unknown") toast("上一条消息送达状态待确认，请先核对记录或恢复输入，勿直接重发", { kind: "error" });
 			return false;
 		}
 		const s = this.state;
