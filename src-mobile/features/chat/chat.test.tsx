@@ -17,6 +17,7 @@ import { MessageList, WINDOW_STEP } from "./components/MessageList";
 import { PendingCards } from "./components/PendingCards";
 import { clearSlashCache, loadSlashCommands } from "./lib/slash";
 import { buildBlocks } from "./lib/turns";
+import { ToastHost } from "../../ui/Toast";
 
 class RO {
 	observe() {}
@@ -194,6 +195,32 @@ describe("controller send", () => {
 		const next = new ChatController("real-1");
 		expect(next.state.optimistic.map((o) => o.text)).toEqual(["first"]);
 		expect(next.state.working).toBe(true);
+	});
+});
+
+describe("controller stop", () => {
+	it("restores withdrawn queue texts after the draft and counts them in the toast", async () => {
+		const c = new ChatController("s1");
+		let draft = "已有草稿";
+		const set = vi.fn((v: string) => { draft = v; });
+		c.composer = { get: () => draft, set };
+		apiMock.mockResolvedValueOnce({ aborted: true, restoredTexts: ["排队的追问", "排队的后续"] });
+		render(<ToastHost />);
+		await act(async () => { await c.stop(); });
+		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/s1/abort");
+		expect(set).toHaveBeenLastCalledWith("已有草稿\n\n排队的追问\n\n排队的后续");
+		expect(screen.getByText("已停止，撤回 2 条排队消息")).toBeTruthy();
+	});
+
+	it("keeps the plain stop toast and touches no composer when nothing was queued", async () => {
+		const c = new ChatController("s1");
+		const set = vi.fn();
+		c.composer = { get: () => "", set };
+		apiMock.mockResolvedValueOnce({ aborted: true, restoredTexts: [] });
+		render(<ToastHost />);
+		await act(async () => { await c.stop(); });
+		expect(screen.getByText("已发送停止请求")).toBeTruthy();
+		expect(set).not.toHaveBeenCalled();
 	});
 });
 

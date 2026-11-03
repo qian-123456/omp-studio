@@ -753,8 +753,18 @@ export class ChatController {
 
 	async stop(): Promise<void> {
 		try {
-			await api("POST", `/sessions/${this.id}/abort`);
-			toast("已发送停止请求");
+			// Stop like Esc in omp's TUI: queued steer/follow-up inputs are
+			// withdrawn and handed back instead of running after the abort.
+			const r = await api<{ aborted?: boolean; restoredTexts?: string[] }>("POST", `/sessions/${this.id}/abort`);
+			const restored = (r.restoredTexts ?? []).map((t) => t.trim()).filter(Boolean);
+			if (restored.length) {
+				// Withdrawn texts go back after the existing draft (desktop `restoreTextsToDraft` order).
+				const cur = this.composer?.get() ?? this.lastText ?? "";
+				this.composer?.set([...(cur.trim() ? [cur] : []), ...restored].join("\n\n"));
+				toast(`已停止，撤回 ${restored.length} 条排队消息`, { kind: "success" });
+			} else {
+				toast("已发送停止请求");
+			}
 		} catch (e) {
 			toast(`停止失败：${errorMessage(e)}`, { kind: "error" });
 		}
