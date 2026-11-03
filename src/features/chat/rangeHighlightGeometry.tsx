@@ -7,100 +7,82 @@ export interface HighlightRect {
 	height: number;
 }
 
-const LINE_EPSILON = 2;
 const INLINE_GAP = 12;
 
-/** Merge glyph/padding rectangles into only the selected visual line segments. */
+/** Merge glyph/padding rectangles into non-overlapping selected visual line segments. */
 export function mergeHighlightRects(rects: readonly HighlightRect[]): HighlightRect[] {
 	const sorted = rects
-		.filter((r) => r.width > 0 && r.height > 0)
-		.slice()
+		.filter((rect) => rect.width > 0 && rect.height > 0)
 		.sort((a, b) => a.top - b.top || a.left - b.left);
-	const out: HighlightRect[] = [];
+	const lines: HighlightRect[][] = [];
 	for (const rect of sorted) {
-		const previous = out[out.length - 1];
-		if (
-			previous &&
-			Math.abs(previous.top - rect.top) <= LINE_EPSILON &&
-			rect.left <= previous.left + previous.width + INLINE_GAP
-		) {
-			const right = Math.max(previous.left + previous.width, rect.left + rect.width);
-			const bottom = Math.max(previous.top + previous.height, rect.top + rect.height);
-			previous.left = Math.min(previous.left, rect.left);
-			previous.top = Math.min(previous.top, rect.top);
-			previous.width = right - previous.left;
-			previous.height = bottom - previous.top;
-		} else {
-			out.push({ ...rect });
+		const line = lines[lines.length - 1];
+		const anchor = line?.[0];
+		const overlap = anchor
+			? Math.min(anchor.top + anchor.height, rect.top + rect.height) - Math.max(anchor.top, rect.top)
+			: 0;
+		if (anchor && overlap >= Math.min(anchor.height, rect.height) / 2) line.push(rect);
+		else lines.push([rect]);
+	}
+	const out: HighlightRect[] = [];
+	for (const line of lines) {
+		line.sort((a, b) => a.left - b.left);
+		let previous: HighlightRect | undefined;
+		for (const rect of line) {
+			if (previous && rect.left <= previous.left + previous.width + INLINE_GAP) {
+				const right = Math.max(previous.left + previous.width, rect.left + rect.width);
+				const bottom = Math.max(previous.top + previous.height, rect.top + rect.height);
+				previous.top = Math.min(previous.top, rect.top);
+				previous.width = right - previous.left;
+				previous.height = bottom - previous.top;
+			} else {
+				previous = { ...rect };
+				out.push(previous);
+			}
 		}
 	}
 	return out;
 }
 
-function boundaryPadding(node: Node, offset: number, side: "left" | "right"): number {
-	if (node.nodeType !== Node.TEXT_NODE) return 0;
-	const text = node as Text;
-	if (side === "left" ? offset !== 0 : offset !== text.data.length) return 0;
-	const parent = text.parentElement;
-	if (!parent || !parent.matches("a,code,strong")) return 0;
-	const style = getComputedStyle(parent);
-	return Number.parseFloat(side === "left" ? style.paddingLeft : style.paddingRight) || 0;
-}
-
-function selectedInlinePaddingRects(range: Range, root: HTMLElement): HighlightRect[] {
-    const ancestor = range.commonAncestorContainer instanceof Element
-        ? range.commonAncestorContainer
-        : range.commonAncestorContainer.parentElement;
-    if (!ancestor) return [];
-    const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
-    const out: HighlightRect[] = [];
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const text = node as Text;
-        if (!range.intersectsNode(text)) continue;
-        const start = range.startContainer === text ? range.startOffset : 0;
-        const end = range.endContainer === text ? range.endOffset : text.data.length;
-        const parent = text.parentElement;
-        if (start !== 0 || end !== text.data.length || !parent?.matches("a,code,strong")) continue;
-        const style = getComputedStyle(parent);
-        const left = Number.parseFloat(style.paddingLeft) || 0;
-        const right = Number.parseFloat(style.paddingRight) || 0;
-        if (left === 0 && right === 0) continue;
-        const textRange = document.createRange();
-        textRange.selectNodeContents(text);
-        for (const rect of Array.from(textRange.getClientRects())) {
-            const rootRect = root.getBoundingClientRect();
-            out.push({
-                left: rect.left - rootRect.left + root.scrollLeft - left,
-                top: rect.top - rootRect.top + root.scrollTop,
-                width: rect.width + left + right,
-                height: rect.height,
-            });
-        }
-    }
-    return out;
-}
-
-/** Convert a DOM range to root-relative rects, including selected inline padding only. */
+/** Element range rects include full-width paragraphs/lists; measure clipped text runs instead. */
 export function rangeHighlightRects(range: Range, root: HTMLElement): HighlightRect[] {
-    const rootRect = root.getBoundingClientRect();
-    const raw = Array.from(range.getClientRects())
-        .filter((rect) => rect.width > 0 && rect.height > 0)
-        .map((rect) => ({
-            left: rect.left - rootRect.left + root.scrollLeft,
-            top: rect.top - rootRect.top + root.scrollTop,
-            width: rect.width,
-            height: rect.height,
-        }));
-    raw.push(...selectedInlinePaddingRects(range, root));
-    if (raw.length === 0) return [];
-    const left = boundaryPadding(range.startContainer, range.startOffset, "left");
-    const right = boundaryPadding(range.endContainer, range.endOffset, "right");
-    if (left > 0) {
-        raw[0].left -= left;
-        raw[0].width += left;
-    }
-    if (right > 0) raw[raw.length - 1].width += right;
-    return mergeHighlightRects(raw);
+	const ancestor = range.commonAncestorContainer;
+	if (range.collapsed || !root.contains(ancestor)) return [];
+	const rootRect = root.getBoundingClientRect();
+	const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
+	const raw: HighlightRect[] = [];
+	for (
+		let node = ancestor.nodeType === Node.TEXT_NODE ? ancestor : walker.nextNode();
+		node;
+		node = walker.nextNode()
+	) {
+		const text = node as Text;
+		if (!range.intersectsNode(text)) continue;
+		const start = range.startContainer === text ? range.startOffset : 0;
+		const end = range.endContainer === text ? range.endOffset : text.length;
+		if (end <= start) continue;
+		const textRange = document.createRange();
+		textRange.setStart(text, start);
+		textRange.setEnd(text, end);
+		const fragments = Array.from(textRange.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+		const parent = text.parentElement;
+		const style = parent?.matches("a,code,strong") ? getComputedStyle(parent) : null;
+		const leftPadding = start === 0 && style ? Number.parseFloat(style.paddingLeft) || 0 : 0;
+		const rightPadding = end === text.length && style ? Number.parseFloat(style.paddingRight) || 0 : 0;
+		const fullText = start === 0 && end === text.length;
+		for (let index = 0; index < fragments.length; index++) {
+			const rect = fragments[index];
+			const left = fullText || index === 0 ? leftPadding : 0;
+			const right = fullText || index === fragments.length - 1 ? rightPadding : 0;
+			raw.push({
+				left: rect.left - rootRect.left + root.scrollLeft - left,
+				top: rect.top - rootRect.top + root.scrollTop,
+				width: rect.width + left + right,
+				height: rect.height,
+			});
+		}
+	}
+	return mergeHighlightRects(raw);
 }
 
 export function RangeHighlightOverlay({

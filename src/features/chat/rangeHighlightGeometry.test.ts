@@ -55,4 +55,61 @@ describe("range highlight geometry", () => {
 			root.remove();
 		}
 	});
+	it("merges same-line fragments with different font heights without overlapping fills", () => {
+		expect(
+			mergeHighlightRects([
+				{ left: 0, top: 10, width: 30, height: 20 },
+				{ left: 25, top: 14, width: 30, height: 14 },
+				{ left: 60, top: 10, width: 30, height: 20 },
+			]),
+		).toEqual([{ left: 0, top: 10, width: 90, height: 20 }]);
+	});
+
+	it("paints only selected text rows, not fully selected list block boxes", () => {
+		const root = document.createElement("div");
+		root.innerHTML = "<p>unselected before</p><ol><li>first row</li><li>second row</li></ol><p>unselected after</p>";
+		document.body.append(root);
+		const first = root.querySelectorAll("li")[0].firstChild as Text;
+		const second = root.querySelectorAll("li")[1].firstChild as Text;
+		const selected = document.createRange();
+		selected.setStart(first, 0);
+		selected.setEnd(second, second.length);
+		const originalRects = Range.prototype.getClientRects;
+		Range.prototype.getClientRects = function () {
+			if (this === selected) {
+				return [rect(0, 0, 500, 56), rect(10, 2, 80, 16), rect(10, 30, 100, 16)] as unknown as DOMRectList;
+			}
+			return [this.startContainer === first ? rect(10, 2, 80, 16) : rect(10, 30, 100, 16)] as unknown as DOMRectList;
+		};
+		try {
+			expect(rangeHighlightRects(selected, root)).toEqual([
+				{ left: 10, top: 2, width: 80, height: 16 },
+				{ left: 10, top: 30, width: 100, height: 16 },
+			]);
+		} finally {
+			Range.prototype.getClientRects = originalRects;
+			root.remove();
+		}
+	});
+
+	it("keeps the exact partial text boundary and native copy text", () => {
+		const root = document.createElement("div");
+		root.textContent = "before picked after";
+		document.body.append(root);
+		const text = root.firstChild as Text;
+		const selected = document.createRange();
+		selected.setStart(text, 7);
+		selected.setEnd(text, 13);
+		const originalRects = Range.prototype.getClientRects;
+		Range.prototype.getClientRects = function () {
+			return [rect(this.startOffset * 10, 0, (this.endOffset - this.startOffset) * 10, 16)] as unknown as DOMRectList;
+		};
+		try {
+			expect(rangeHighlightRects(selected, root)).toEqual([{ left: 70, top: 0, width: 60, height: 16 }]);
+			expect(selected.toString()).toBe("picked");
+		} finally {
+			Range.prototype.getClientRects = originalRects;
+			root.remove();
+		}
+	});
 });
