@@ -21,7 +21,10 @@
 //!   (default `followUp`). `text` or ≥1 image required; body ≤ 30 MiB; images must
 //!   be png/jpeg/gif/webp. When plan mode is on (see below) and `text` is not a
 //!   `/command`, the desktop plan prefix is prepended.
-//! - `POST /sessions/{id}/abort` → `{ok: true}`; 409 when the session is not live.
+//! - `POST /sessions/{id}/abort` →
+//!   `{aborted: true, restoredTexts: string[]}` — texts of the queued
+//!   steer/follow-up inputs withdrawn by `abort_and_restore_queue` (steering
+//!   first); 409 when the session is not live.
 //! - `GET /sessions/{id}/slash-commands` →
 //!   `[{name, title, description, argHint?, group, kind: "native"|"forward"|"custom", needsArg: bool}]`.
 //!   Curated list: session commands that run remotely, commands forwarded to omp as
@@ -768,6 +771,35 @@ async fn prompt_ex<B: Backend>(
     Ok(Json(out))
 }
 
+/// Stop like Esc in omp's TUI: the queued steer/follow-up inputs are withdrawn
+/// and returned instead of running after the abort (desktop uses the same
+/// command in `src/features/chat/send.ts`).
+fn abort_command() -> Value {
+    json!({"type": "abort_and_restore_queue"})
+}
+
+/// Texts of omp's `abort_and_restore_queue` result `{steering, followUp}`
+/// (entries `{text}`), steering first; mirrors desktop `restoredQueueTexts`.
+fn restored_queue_texts(resp: &Value) -> Vec<String> {
+    let data = data_of(resp);
+    let pick = |list: Option<&Value>| -> Vec<String> {
+        list.and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| {
+                        let t = x
+                            .as_str()
+                            .map(str::to_string)
+                            .or_else(|| x.get("text").and_then(Value::as_str).map(str::to_string));
+                        t.filter(|t| !t.trim().is_empty())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    [pick(data.get("steering")), pick(data.get("followUp"))].concat()
+}
+
 async fn abort<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     Path(id): Path<String>,
@@ -777,10 +809,12 @@ async fn abort<B: Backend>(
     if !crate::rpc::is_live(&id) {
         return Err(err(StatusCode::CONFLICT, "会话未在运行"));
     }
-    rpc_cmd(state, &id, json!({"type": "abort"}))
+    let resp = rpc_cmd(state, &id, abort_command())
         .await
         .map_err(bad_gateway)?;
-    Ok(Json(json!({"ok": true})))
+    Ok(Json(
+        json!({"aborted": true, "restoredTexts": restored_queue_texts(&resp)}),
+    ))
 }
 
 // ------------------------------------------------------- batch approval
@@ -2347,5 +2381,31 @@ mod tests {
         assert!(extract_levels(None).is_empty());
         assert_eq!(split_model("a/b/c"), ("a".into(), "b/c".into()));
         assert_eq!(split_model(" m "), (String::new(), "m".into()));
+    }
+
+    #[test]
+    fn abort_uses_restore_queue_command_and_parses_withdrawn_texts() {
+        // Stop must withdraw the queue, not leave stranded steer/follow-up
+        // inputs to drain after the abort.
+        assert_eq!(abort_command()["type"], "abort_and_restore_queue");
+        // Response shapes omp returns: the RPC frame with `data`, entries
+        // `{text}` (desktop `restoredQueueTexts` also accepts bare strings),
+        // steering first; blank texts are dropped.
+        let frame = json!({"type": "abort_and_restore_queue", "data": {
+            "steering": [{"text": "排队的追问"}, {"text": "  "}],
+            "followUp": [{"text": "排队的后续"}, "裸字符串"],
+        }});
+        assert_eq!(
+            restored_queue_texts(&frame),
+            vec![
+                "排队的追问".to_string(),
+                "排队的后续".to_string(),
+                "裸字符串".to_string()
+            ]
+        );
+        let bare = json!({"steering": [{"text": "只有 steer"}]});
+        assert_eq!(restored_queue_texts(&bare), vec!["只有 steer".to_string()]);
+        assert!(restored_queue_texts(&json!({})).is_empty());
+        assert!(restored_queue_texts(&json!({"data": {"steering": []}})).is_empty());
     }
 }
