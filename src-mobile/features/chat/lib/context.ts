@@ -47,3 +47,24 @@ export function resolveContextPercent(u: ContextUsage): number | null {
 	if (num(u.contextTokens) && num(u.contextWindow) && u.contextWindow > 0) return (u.contextTokens / u.contextWindow) * 100;
 	return null;
 }
+
+/** omp's queued user messages (`composer-state.queue`, from `get_state.queuedMessages`). */
+export interface QueueSnapshot {
+	steering?: string[];
+	followUp?: string[];
+	/** Leading steering entries omp already sent into the streaming response. */
+	liveSteered?: number;
+}
+
+/** Chip text for the queued messages: 「排队 3 条 · 插话 1 · 后续 2」; non-zero parts only. */
+export function queueChipText(q: QueueSnapshot | null | undefined): string | null {
+	const liveSteered = q?.liveSteered;
+	const steering = Math.max(0, (q?.steering?.length ?? 0) - (num(liveSteered) ? liveSteered : 0));
+	const followUp = q?.followUp?.length ?? 0;
+	const total = steering + followUp;
+	if (total <= 0) return null;
+	const parts = [`排队 ${total} 条`];
+	if (steering > 0) parts.push(`插话 ${steering}`);
+	if (followUp > 0) parts.push(`后续 ${followUp}`);
+	return parts.join(" · ");
+}

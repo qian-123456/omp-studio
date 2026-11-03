@@ -1,6 +1,9 @@
 /** Live streaming reducer: wraps core `applyLiveFrame` with the working flag and persisted-row pruning. */
-import { applyLiveFrame } from "../../../core/normalize";
+import { applyLiveFrame, liveIsPersisted } from "../../../core/normalize";
 import type { Item, RpcFrame } from "../../../core/types";
+
+/** The single persistence check lives in core normalize; `livePersisted` is its chat-facing name. */
+export { liveIsPersisted as livePersisted };
 
 export interface StreamState {
 	live: Item | null;
@@ -34,21 +37,6 @@ export function reduceFrame(prev: StreamState, frame: RpcFrame, now?: string): S
 	};
 }
 
-/**
- * True once the persisted tail already contains the streamed message, so the live copy must stop rendering
- * (text equal / suffix, or a thinking-only message whose thinking is persisted).
- */
-export function livePersisted(items: readonly Item[], live: Item | null): boolean {
-	if (!live) return false;
-	const tail = items[items.length - 1];
-	if (!tail || tail.role !== "assistant") return false;
-	const lt = live.text.trim();
-	const tt = tail.text.trim();
-	if (lt) return !!tt && (tt === lt || tt.endsWith(lt));
-	const lk = live.thinking.trim();
-	return !!lk && tail.thinking.trim() === lk;
-}
-
 /** Prefix containment either way: a snapshot is a prefix of the message, the persisted row its full text. */
 export function contentMatch(a: string, b: string): boolean {
 	const x = a.trim();
@@ -79,7 +67,7 @@ export function pruneLive(items: readonly Item[], live: Item | null): Item | nul
 		if (items[i].role === "user") break;
 	}
 	let next = live;
-	if (livePersisted(items, live)) next = { ...next, text: "", thinking: "" };
+	if (liveIsPersisted(items, live)) next = { ...next, text: "", thinking: "" };
 	const tools = next.tools.filter((t) => !resolved.has(t.id));
 	if (tools.length !== next.tools.length) next = { ...next, tools };
 	return next === live ? live : next;

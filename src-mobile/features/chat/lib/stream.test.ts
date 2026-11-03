@@ -55,6 +55,16 @@ describe("reduceFrame", () => {
 		expect(e.state.live?.tools[0]).toMatchObject({ status: "done", result: "a\nb" });
 		expect(e.refetch).toBe(true);
 	});
+
+	it("streams tool_execution_update partial output into the running tool card", () => {
+		const s = reduceFrame(idle, { type: "tool_execution_start", toolCallId: "c1", toolName: "bash" }).state;
+		const u = reduceFrame(s, { type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "loading…" }] } });
+		expect(u.state.live?.tools[0]).toMatchObject({ status: "running", result: "loading…" });
+		expect(u.handled).toBe(true);
+		expect(u.refetch).toBe(false);
+		// An update frame never flips the working flag on its own.
+		expect(u.state.working).toBe(s.working);
+	});
 });
 
 describe("pruneLive", () => {

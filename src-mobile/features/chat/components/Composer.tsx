@@ -6,7 +6,7 @@ import { usePref } from "../../../core/stores/prefs";
 import { useSession } from "../../../core/stores/sessions";
 import { BottomSheet, Chip, IconButton, MenuRow, Spinner, Switch, toast } from "../../../ui";
 import { useChat, useChatUi } from "../ChatContext";
-import { contextTone, formatContextPercent, resolveContextPercent } from "../lib/context";
+import { contextTone, formatContextPercent, queueChipText, resolveContextPercent } from "../lib/context";
 import { takeComposerAction } from "../lib/drafts";
 import { BEHAVIOR_HINT, BEHAVIOR_LABEL, type StreamBehavior } from "../lib/prompt";
 import { commandAction, commandInput, detectSlashQuery, type SlashCmd } from "../lib/slash";
@@ -122,6 +122,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	const tone = contextTone(pct);
 	const goal = cstate?.goal && cstate.goal.objective ? cstate.goal : null;
 	const planOn = !!cstate?.planMode;
+	const queued = queueChipText(cstate?.queue);
 	const close = () => setSheet(null);
 
 	const attachments =
@@ -196,6 +197,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
 						<Chip tone="accent" icon={<Lightbulb size={14} />} onClick={() => void togglePlan()} className="shrink-0 pr-2">
 							规划模式
 							<X size={14} aria-hidden />
+						</Chip>
+					)}
+					{queued && (
+						<Chip tone="accent" className="shrink-0">
+							{queued}
 						</Chip>
 					)}
 					{goal && (

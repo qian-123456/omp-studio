@@ -171,6 +171,16 @@ export interface LiveUpdate {
 	handled: boolean;
 }
 
+/** Text parts of a tool `result` / `partialResult` block, joined and capped like the transcript API. */
+function resultText(r: { content?: { type?: string; text?: string }[] } | null | undefined): string {
+	const content = r && Array.isArray(r.content) ? r.content : [];
+	return content
+		.filter((p) => p && p.type === "text" && typeof p.text === "string")
+		.map((p) => p.text as string)
+		.join("\n")
+		.slice(0, 4000);
+}
+
 /**
  * Apply one `rpc` frame to the live row. Pure: never mutates `live`.
  * `agent_end` with `isTerminal === false` (scheduled continuation or
@@ -209,14 +219,22 @@ export function applyLiveFrame(live: Item | null, frame: RpcFrame, now?: string)
 				: [...base.tools, tool];
 			return { live: { ...base, tools }, streaming: null, refetch: false, handled: true };
 		}
+		case "tool_execution_update": {
+			if (!live) return keep(null);
+			const result = resultText(frame.partialResult);
+			let changed = false;
+			const tools = live.tools.map((t) => {
+				if (t.id !== frame.toolCallId) return t;
+				if (t.result === result) return t;
+				changed = true;
+				return { ...t, result };
+			});
+			if (!changed) return keep(null);
+			return { live: { ...live, tools }, streaming: null, refetch: false, handled: true };
+		}
 		case "tool_execution_end": {
 			if (!live) return keep(null, true);
-			const content = frame.result && Array.isArray(frame.result.content) ? frame.result.content : [];
-			const result = content
-				.filter((p) => p && p.type === "text" && typeof p.text === "string")
-				.map((p) => p.text as string)
-				.join("\n")
-				.slice(0, 4000);
+			const result = resultText(frame.result);
 			const status = frame.isError === true ? ("error" as const) : ("done" as const);
 			const tools = live.tools.map((t) => (t.id === frame.toolCallId ? { ...t, status, result } : t));
 			return { live: { ...live, tools }, streaming: null, refetch: true, handled: true };
@@ -237,13 +255,19 @@ export function applyLiveFrame(live: Item | null, frame: RpcFrame, now?: string)
 
 /**
  * The persisted transcript eventually contains the streamed message; keep the live row
- * only until the tail reaches a newer assistant row with the same text.
+ * only until the tail reaches a newer assistant row with the same text — or, for a
+ * thinking-only message, the same thinking. Single source of truth shared with the
+ * chat feature (re-exported there as `livePersisted`).
  */
 export function liveIsPersisted(items: readonly Item[], live: Item | null): boolean {
 	if (!live) return false;
 	const tail = items[items.length - 1];
 	if (!tail || tail.role !== "assistant") return false;
 	const liveText = live.text.trim();
-	const tailText = tail.text.trim();
-	return !!liveText && !!tailText && (tailText === liveText || tailText.endsWith(liveText));
+	if (liveText) {
+		const tailText = tail.text.trim();
+		return !!tailText && (tailText === liveText || tailText.endsWith(liveText));
+	}
+	const liveThinking = live.thinking.trim();
+	return !!liveThinking && tail.thinking.trim() === liveThinking;
 }

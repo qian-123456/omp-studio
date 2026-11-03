@@ -541,6 +541,43 @@ async fn sse_streams_bus_events_until_shutdown() {
     assert!(end.is_ok(), "stream ends on shutdown");
 }
 
+/// The phone page only receives the rpc frame types it renders; the whitelist
+/// is the exact set of frame types the phone UI consumes.
+#[test]
+fn sse_rpc_whitelist_covers_every_consumed_frame_type() {
+    let forwarded = [
+        "agent_start",
+        "agent_end",
+        "turn_start",
+        "turn_end",
+        "message_update",
+        "message_end",
+        "tool_execution_start",
+        "tool_execution_update",
+        "tool_execution_end",
+        "auto_retry_start",
+        "auto_retry_end",
+        "retry_fallback_applied",
+        "retry_fallback_succeeded",
+        "auto_compaction_start",
+        "auto_compaction_end",
+        "queue_update",
+    ];
+    for ty in forwarded {
+        assert!(server::rpc_frame_allowed(ty), "{ty} must be forwarded");
+    }
+    // Unlisted frames stay off the phone.
+    for ty in ["command_output", "message_start", "tool_stream_update", ""] {
+        assert!(!server::rpc_frame_allowed(ty), "{ty} must be dropped");
+    }
+    // Frames without a type never reach the wire either.
+    let untyped = AppEvent::RpcFrame {
+        session_id: "a".into(),
+        frame: json!({"noType": true}),
+    };
+    assert!(server::sse_event(&untyped).is_none());
+}
+
 /// Real TCP server exercised with curl: pair → cookie jar → /api.
 #[tokio::test]
 async fn curl_end_to_end() {
