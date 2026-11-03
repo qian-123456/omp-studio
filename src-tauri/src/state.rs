@@ -27,6 +27,12 @@ pub enum AppEvent {
     PromptSent {
         session_id: String,
     },
+    /// A `navigate_tree` moved the session's leaf; clients refetch the
+    /// transcript and re-filter to the new root→leaf path. Desktop receives
+    /// the `tree:navigated` Tauri event, mobile the SSE `touch` event.
+    TreeNavigated {
+        session_id: String,
+    },
     SessionAccepted {
         session_id: String,
     },

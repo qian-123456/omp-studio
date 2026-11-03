@@ -3,7 +3,7 @@
  * time on hover right after the icons; details in tooltips — no inline meta text,
  * no colored pills. */
 
-import { Copy, FileDiff, GitCommitHorizontal, RotateCcw, Share } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, FileDiff, GitCommitHorizontal, RotateCcw, Share } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -14,6 +14,8 @@ import { useUi } from "../../stores/ui";
 import { startFork } from "../sessions/forkDraft";
 import { canUndoTurn, undoCascade } from "./turnChips";
 import { tNow } from "../../stores/language";
+import { navigateTree } from "./treeNav";
+import type { TreeVersions } from "./treePath";
 
 /** Tiny status letters in the changed-files list; color only on the letter. */
 const STATUS_LETTER_STYLE: Record<string, string> = {
@@ -106,6 +108,7 @@ export function AnswerFooter({
 	answerText,
 	answerTime,
 	answerItemId,
+	versions,
 	compact,
 }: {
 	sessionId: string;
@@ -127,6 +130,9 @@ export function AnswerFooter({
 	answerTime?: string;
 	/** Id of the answer transcript item; enables the share-as-image button. */
 	answerItemId?: string;
+	/** Sibling branches of this answer (same parent entry): shows the
+	 * 「‹n/N›」 version switcher when there is more than one. */
+	versions?: TreeVersions;
 	/** Only the undo / changed-files / commit / fork controls (no copy or share);
 	 * used under a stopped turn that has no answer text. */
 	compact?: boolean;
@@ -163,6 +169,45 @@ export function AnswerFooter({
 				{turnCheckpoint?.undone && (
 					<span className="mr-1.5 shrink-0 self-center px-1 leading-5" title={tNow("chat.undo.undoneTitle")}>
 						{tNow("chat.undo.undoneBadge")}
+					</span>
+				)}
+				{/* Sibling versions of this answer: bordered pill, current version
+				    highlighted; a click moves the session leaf (same file, no fork). */}
+				{versions && versions.total > 1 && (
+					<span className="mr-1.5 flex h-5 shrink-0 items-center gap-0.5 self-center rounded-full border border-[var(--line)] px-1">
+						<button
+							type="button"
+							onClick={() => {
+								const prev = versions.ids[(versions.index - 1 + versions.total) % versions.total];
+								void navigateTree(sessionId, prev);
+							}}
+							className="flex h-4 w-4 items-center justify-center rounded-full text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							title={tNow("chatView.tree.prevVersion")}
+							aria-label={tNow("chatView.tree.prevVersion")}
+						>
+							<ChevronLeft size={11} />
+						</button>
+						<span
+							className="px-0.5 text-[10px] leading-4 tabular-nums text-[var(--text)]"
+							title={tNow("chatView.tree.versionOf", {
+								index: versions.index + 1,
+								total: versions.total,
+							})}
+						>
+							{versions.index + 1}/{versions.total}
+						</span>
+						<button
+							type="button"
+							onClick={() => {
+								const next = versions.ids[(versions.index + 1) % versions.total];
+								void navigateTree(sessionId, next);
+							}}
+							className="flex h-4 w-4 items-center justify-center rounded-full text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							title={tNow("chatView.tree.nextVersion")}
+							aria-label={tNow("chatView.tree.nextVersion")}
+						>
+							<ChevronRight size={11} />
+						</button>
 					</span>
 				)}
 				<div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100">

@@ -14,6 +14,7 @@ mod privacy_ext;
 mod process;
 pub(crate) mod sidechat;
 pub(crate) mod subagents;
+pub mod tree;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;

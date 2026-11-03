@@ -16,6 +16,9 @@ import {
 	rpcPendingUi,
 	rpcSend,
 } from "../../lib/ipc";
+import { onTreeNavigated } from "../../lib/events";
+import { useTree } from "../../stores/tree";
+import { TreeResendBanner } from "./TreeResendBanner";
 import { holdTranscript, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -179,6 +182,28 @@ export function SessionView({
 		};
 	}, [sessionId, setItems, setPendingUi]);
 
+	// Leaf pointer + cross-window tree navigation sync. A navigation from this
+	// window already refetched; the other windows land here.
+	useEffect(() => {
+		let cancelled = false;
+		void useTree.getState().refreshLeaf(sessionId);
+		const off = onTreeNavigated((p) => {
+			if (cancelled || p.sessionId !== sessionId) return;
+			void useTree.getState().refreshLeaf(sessionId);
+			getTranscript(sessionId)
+				.then((page) => {
+					if (!cancelled) {
+						setItems(sessionId, page.items, page.nextOffset, page.tailId);
+					}
+				})
+				.catch(() => {});
+		});
+		return () => {
+			cancelled = true;
+			void off.then((fn) => fn());
+		};
+	}, [sessionId, setItems]);
+
 	// Incremental transcript refresh and usage update when a turn finishes.
 	const wasStreaming = useRef(false);
 	useEffect(() => {
@@ -225,7 +250,10 @@ export function SessionView({
 			})
 			.catch((err) => console.warn("[session] external transcript refresh failed", err))
 			.finally(() => {
-				if (!cancelled) loadTurns();
+				if (!cancelled) {
+					loadTurns();
+					void useTree.getState().refreshLeaf(sessionId);
+				}
 			});
 		return () => {
 			cancelled = true;
@@ -386,6 +414,7 @@ export function SessionView({
 							<ShareSelectionBar sessionId={sessionId} />
 						) : (
 							<div className={askActive ? "hidden" : centered ? "start-rise" : undefined}>
+								<TreeResendBanner sessionId={sessionId} />
 								<Composer
 									key={sessionId}
 									sessionId={sessionId}

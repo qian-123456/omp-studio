@@ -275,6 +275,22 @@ export const forkSession = (parentId: string, entryId?: string, model?: string) 
 		model: model ?? null,
 	});
 
+/**
+ * Same-session tree navigation: move the leaf pointer to `entryId`
+ * (upstream `navigate_tree`, no summarize). A user-message target rewinds
+ * past itself and returns `{ cancelled, editorText? }`. Errors: `TREE_BUSY`
+ * while streaming/busy, `TREE_ENTRY_NOT_FOUND` for an unknown entry.
+ */
+export const treeNavigate = (sessionId: string, entryId: string) =>
+	invoke<{ cancelled: boolean; editorText?: string }>("tree_navigate", {
+		sessionId,
+		entryId,
+	});
+
+/** Conversation tree + current leaf id of a live session (upstream `get_tree`). */
+export const treeGet = (sessionId: string) =>
+	invoke<{ tree: unknown[]; leafId: string | null }>("tree_get", { sessionId });
+
 /** Contract C5: subagent sessions spawned by a parent session file. */
 export const subagentList = (parentFile: string) =>
 	invoke<SubagentSummary[]>("subagent_list", { parentFile });

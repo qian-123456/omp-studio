@@ -46,6 +46,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 	const atts = useChat((s) => s.atts);
 	const cstate = useChat((s) => s.cstate);
 	const forkFrom = useChat((s) => s.forkFrom);
+	const treeEdit = useChat((s) => s.treeEdit);
 	const compacting = useChat((s) => s.compacting);
 	const [behavior, setBehavior] = usePref<StreamBehavior>("chat.streamBehavior", "followUp");
 	const [slashQuery, setSlashQuery] = useState<string | null>(null);
@@ -169,6 +170,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
 				</div>
 			)}
 
+			{treeEdit && (
+				<div className="mb-2 flex items-start gap-3 rounded-m-lg bg-m-surface py-2 pr-1 pl-4">
+					<PenLine size={18} className="mt-2.5 shrink-0 text-m-accent" />
+					<div className="min-w-0 flex-1 py-2">
+						<div className="text-m-sm font-medium">将从这条消息重新开始</div>
+						<div className="text-m-xs break-words text-m-text-2">下面的回答会保留为另一个版本，发送后从这里分出新的回答</div>
+					</div>
+					<IconButton icon={<X size={18} />} label="取消" onClick={() => void controller.cancelTreeEdit()} />
+				</div>
+			)}
+
 			{/* One stable row: horizontally scrollable status controls, pinned context usage. */}
 			<div className="flex h-11 min-w-0 items-center gap-1 text-m-xs">
 				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap">
@@ -217,7 +229,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 			<ComposerCapsule
 				apiRef={apiRef}
 				initialText={controller.initialText}
-				placeholder={forkFrom ? "输入分支后的第一条消息" : "问问 OMP"}
+				placeholder={forkFrom ? "输入分支后的第一条消息" : treeEdit ? "编辑这条消息后发送" : "问问 OMP"}
 				working={working}
 				hasExtra={atts.length > 0}
 				top={attachments}

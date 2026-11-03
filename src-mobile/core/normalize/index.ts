@@ -6,8 +6,8 @@
  */
 import type { ImageRef, Item, ItemRole, RawImage, RpcFrame, ToolItem, TranscriptItem } from "../types";
 
-export function emptyItem(id: string, role: ItemRole, kind: string): Item {
-	return { id, role, kind, text: "", thinking: "", tools: [], images: [], ts: null, streaming: false };
+export function emptyItem(id: string, role: ItemRole, kind: string, parentId: string | null = null): Item {
+	return { id, role, kind, parentId, text: "", thinking: "", tools: [], images: [], ts: null, streaming: false };
 }
 
 function findTool(list: readonly Item[], callId: string | undefined): ToolItem | null {
@@ -48,13 +48,13 @@ export function normalizeTranscript(raw: readonly (TranscriptItem | null | undef
 		if (!it || it.hidden) continue;
 		const kind = it.kind || "unknown";
 		if (kind === "user") {
-			const item = emptyItem(it.id, "user", kind);
+			const item = emptyItem(it.id, "user", kind, it.parentId ?? null);
 			item.text = it.text || "";
 			item.images = transcriptImages(it.images);
 			item.ts = it.ts || null;
 			out.push(item);
 		} else if (kind === "assistant") {
-			const item = emptyItem(it.id, "assistant", kind);
+			const item = emptyItem(it.id, "assistant", kind, it.parentId ?? null);
 			item.text = it.text || "";
 			item.thinking = it.thinking || "";
 			item.ts = it.ts || null;
@@ -96,14 +96,14 @@ export function normalizeTranscript(raw: readonly (TranscriptItem | null | undef
 				out.push(item);
 			}
 		} else if (kind === "bash") {
-			const item = emptyItem(it.id, "assistant", kind);
+			const item = emptyItem(it.id, "assistant", kind, it.parentId ?? null);
 			item.text = it.text || "";
 			item.ts = it.ts || null;
 			item.tools = [{ id: it.id, name: "bash", args: null, status: "done", result: it.text || "" }];
 			out.push(item);
 		} else {
 			// compaction, branch_summary, model_change, custom, system, unknown
-			const item = emptyItem(it.id, "system", kind);
+			const item = emptyItem(it.id, "system", kind, it.parentId ?? null);
 			item.text = it.text || "";
 			item.ts = it.ts || null;
 			out.push(item);
