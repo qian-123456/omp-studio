@@ -197,6 +197,7 @@ import { useSessions } from "../../stores/sessions";
 import { mergeHeldItems, useHeldQueue } from "./heldQueue";
 import { releaseReadyHeldBatch, restoreReadyHeldBatch, takeReadyHeldBatch, type ReadyHeldBatch } from "./QueuedBar";
 import { abortTurn, interruptAndWait, linkSentSecrets, sendPrompt, useAbortState } from "./send";
+import { useStopHint } from "./stopHint";
 import {
 	type FollowUpAction,
 	FOLLOW_UP_LABEL,
@@ -1715,6 +1716,9 @@ export function Composer({
 			} else {
 				pushHeld(sessionId, message, imageAttachments);
 				toast.error(t("composer.interruptTimeout"));
+				// Same persistent banner as a stop-button timeout: the interrupt
+				// never got acknowledged either.
+				useStopHint.getState().show(sessionId);
 				releaseComposer();
 			}
 			pushHistory(raw.trim());

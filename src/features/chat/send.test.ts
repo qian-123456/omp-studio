@@ -44,6 +44,7 @@ import { useComposer } from "../../stores/composer";
 import { abortTurn, interruptAndWait, sendPrompt, useAbortState } from "./send";
 import { heldQueueItems, isHeldAutoSendPaused, resumeHeldAutoSend, useHeldQueue } from "./heldQueue";
 import { drainNext } from "./QueuedBar";
+import { useStopHint } from "./stopHint";
 
 const SID = "s1";
 const echoes = () => useLive.getState().sessions[SID]?.pendingUserEchoes ?? [];
@@ -92,6 +93,29 @@ describe("sendPrompt rollback", () => {
 });
 
 describe("abortTurn", () => {
+	it("shows the persistent stop-timeout hint after 10s without an answer, and retires it when a later stop answers", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.stubGlobal("window", globalThis);
+			const HINT_SID = "stop-hint-sid";
+			useLive.setState({ sessions: { [HINT_SID]: { ...emptySessionLive(), alive: true, streaming: true } } });
+			useStopHint.setState({ timedOut: {} });
+			// The stop request never gets an answer.
+			rpcSend.mockImplementationOnce(() => new Promise(() => {}));
+			void abortTurn(HINT_SID);
+			await vi.advanceTimersByTimeAsync(9_999);
+			expect(useStopHint.getState().timedOut[HINT_SID]).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(useStopHint.getState().timedOut[HINT_SID]).toBe(true);
+			// A later attempt is answered: the hint retires itself.
+			rpcSend.mockResolvedValueOnce({});
+			await abortTurn(HINT_SID);
+			expect(useStopHint.getState().timedOut[HINT_SID]).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not let an earlier prompt acknowledgement clear a newer stop", async () => {
 		vi.stubGlobal("window", globalThis);
 		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true, streaming: true } } });

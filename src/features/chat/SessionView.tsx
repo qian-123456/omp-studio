@@ -28,6 +28,7 @@ import { ChatTrace } from "./ChatTrace";
 import { AnnotationMarkers } from "./AnnotationMarkers";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
+import { StopTimeoutBanner } from "./StopTimeoutBanner";
 import { useQueueAutoSend } from "./QueuedBar";
 import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
@@ -379,6 +380,7 @@ export function SessionView({
 						{/* Queued messages are grey "排队中" bubbles in the thread (QueuedBubbles).
 						    Post-turn manual bar: edit/merge/reorder; with auto-send on the queue is
 						    already drained (a failed send restores its item here). */}
+						<StopTimeoutBanner sessionId={sessionId} />
 						{!streaming && <HeldQueueBar sessionId={sessionId} streaming={false} />}
 						{sharing ? (
 							<ShareSelectionBar sessionId={sessionId} />

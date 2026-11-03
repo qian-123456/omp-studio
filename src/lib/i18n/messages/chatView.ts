@@ -176,6 +176,13 @@ export default defineMessages({
 			takeoverConfirm: "当前会话正在外部终端运行，发送消息将接管该会话，确认接管？",
 			takeoverAction: "接管",
 			stopTimeout: "停止请求超时，未收到后端响应，请重试或检查进程状态",
+			stopTimeoutTitle: "停止请求未响应，后端可能已卡死",
+			stopTimeoutDetail:
+				"停止请求已发出但后端一直没有应答。可以再次尝试停止；也可以重启会话，历史记录会保留。",
+			stopRetryAction: "再次尝试停止",
+			stopRestartAction: "重启会话",
+			stopRestarted: "会话已重启，历史记录已保留",
+			stopRestartFailed: "重启会话失败: {error}",
 			actionSend: "发送消息",
 			actionSteer: "引导当前回合",
 			actionQueue: "本回合结束后发送",
@@ -184,6 +191,12 @@ export default defineMessages({
 		shell: {
 			commandFailed: "命令执行失败",
 			exitCode: "退出码 {code}",
+		},
+		streamRestore: {
+			unfinishedBadge: "未完成回答（上次中断）",
+			unfinishedRemove: "移除",
+			unfinishedThinking: "思考过程",
+			unfinishedTools: "包含 {count} 个工具调用",
 		},
 		sessionStats: {
 			durationZero: "0秒",
@@ -429,6 +442,13 @@ export default defineMessages({
 			takeoverConfirm: "Current session is running in an external terminal. Sending a message will take over this session. Confirm takeover?",
 			takeoverAction: "Take over",
 			stopTimeout: "Stop request timed out without backend response. Please retry or check process state",
+			stopTimeoutTitle: "Stop request not answered, the backend may be stuck",
+			stopTimeoutDetail:
+				"The stop request was sent but the backend never answered. You can try stopping again, or restart the session — the history is preserved.",
+			stopRetryAction: "Try stopping again",
+			stopRestartAction: "Restart session",
+			stopRestarted: "Session restarted, history preserved",
+			stopRestartFailed: "Failed to restart session: {error}",
 			actionSend: "Send message",
 			actionSteer: "Steer current turn",
 			actionQueue: "Send when turn ends",
@@ -437,6 +457,12 @@ export default defineMessages({
 		shell: {
 			commandFailed: "Command execution failed",
 			exitCode: "Exit code {code}",
+		},
+		streamRestore: {
+			unfinishedBadge: "Unfinished answer (interrupted last time)",
+			unfinishedRemove: "Remove",
+			unfinishedThinking: "Thinking",
+			unfinishedTools: "{count} tool calls included",
 		},
 		sessionStats: {
 			durationZero: "0s",

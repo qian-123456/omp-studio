@@ -78,6 +78,7 @@ import {
 	filterVisibleItems,
 } from "./messageTrace";
 import { abortTurn, sendPrompt } from "./send";
+import { UnfinishedAnswerRow } from "./UnfinishedAnswerRow";
 import { CommandOutputRow } from "./slash/CommandOutputRow";
 import { RetryEpisodeRow, RetryNoticeList } from "./RetryNoticeList";
 import type { RetryNotice } from "../../stores/retryNotice";
@@ -1502,6 +1503,10 @@ export function MessageList({
 	const commandOutputs = useLive((s) => s.sessions[sessionId]?.commandOutputs);
 	const hydrateLocalRows = useLive((s) => s.hydrateLocalRows);
 	useEffect(() => hydrateLocalRows(sessionId), [hydrateLocalRows, sessionId]);
+	// Restored half-answer of an interrupted run (crash / app restart), if any.
+	const hydrateStreamSnapshot = useLive((s) => s.hydrateStreamSnapshot);
+	useEffect(() => hydrateStreamSnapshot(sessionId), [hydrateStreamSnapshot, sessionId]);
+	const hasUnfinished = useLive((s) => s.sessions[sessionId]?.restoredUnfinished != null);
 	const withNotices = useMemo(
 		() =>
 			withLocalRows(
@@ -1558,7 +1563,7 @@ export function MessageList({
 	}, [turns]);
 
 	const hasContent =
-		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
+		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive || hasUnfinished;
 	const isEmptyState = !isLoadingTranscript && !transcriptError && !hasContent;
 	useEffect(() => {
 		onEmptyChange?.(isEmptyState);
@@ -2154,6 +2159,11 @@ export function MessageList({
 							})}
 						</div>
 					)}
+
+					{/* Restored half-answer of an interrupted run. Only while idle:
+						during streaming (and the live→committed hold) the frames own
+						the thread, so the row must not duplicate the live turn. */}
+					{!liveVisible && <UnfinishedAnswerRow sessionId={sessionId} />}
 
 					{/* In-flight / pending user bubbles */}
 					{bottomEchoes.length > 0 && (
