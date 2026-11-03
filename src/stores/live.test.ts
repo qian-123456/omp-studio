@@ -158,12 +158,28 @@ describe("live reducer — streaming lifecycle", () => {
 		}
 	});
 
-	it("turnStartedAt is unknown when the turn was already running on attach", () => {
+	it("get_state on attach approximates turnStartedAt when the start was missed", () => {
 		frame({ type: "agent_start" });
 		frame({ type: "agent_end", isTerminal: true });
 		frame({ type: "response", command: "get_state", success: true, data: { isStreaming: true } });
 		expect(live().streaming).toBe(true);
-		expect(live().turnStartedAt).toBeNull();
+		// The exact start is unknown, but a stamp is required so the settled-turn
+		// guard refuses late replays of this turn once it ends.
+		expect(live().turnStartedAt).not.toBeNull();
+	});
+
+	it("a running get_state keeps an existing turnStartedAt instead of restamping", () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(1_000);
+			frame({ type: "agent_start" });
+			frame({ type: "turn_start" });
+			vi.setSystemTime(6_000);
+			frame({ type: "response", command: "get_state", success: true, data: { isStreaming: true } });
+			expect(live().turnStartedAt).toBe(1_000);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("message_update stores the in-flight snapshot; message_end clears it", () => {

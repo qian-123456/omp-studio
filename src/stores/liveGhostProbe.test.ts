@@ -25,11 +25,12 @@ describe("probe: mid-flight attach replay window (DesktopTurn GhostFree)", () =>
 		expect(live().streamingMessage).toBeNull();
 	});
 
-	it("reattach via get_state(isStreaming) leaves turnStartedAt null → late replay after end resurrects the bubble", () => {
-		// Mid-flight attach: the app never saw agent_start (live.ts:1497-1506).
+	it("reattach via get_state(isStreaming) stamps turnStartedAt → late replay after end is refused", () => {
+		// Mid-flight attach: the app never saw agent_start (live.ts:1497-1506),
+		// but the get_state snapshot approximates the turn's start.
 		frame({ type: "response", command: "get_state", success: true, data: { isStreaming: true } });
 		expect(live().streaming).toBe(true);
-		expect(live().turnStartedAt ?? null).toBeNull();
+		expect(live().turnStartedAt ?? null).not.toBeNull();
 		frame({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "hello" }] } });
 		expect(live().streamingMessage).not.toBeNull();
 		frame({ type: "agent_end", isTerminal: true });
@@ -37,12 +38,12 @@ describe("probe: mid-flight attach replay window (DesktopTurn GhostFree)", () =>
 		expect(live().streamingMessage).toBeNull();
 		// A late replayed snapshot after the settled turn:
 		frame({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "hello!" }] } });
-		// GHOST: the settled turn's bubble is back on screen.
-		expect(live().streamingMessage).not.toBeNull();
-		// ...and the window stays open across the post-turn transcript refetch.
+		// turnSettled() is true here: the late snapshot is refused, no ghost.
+		expect(live().streamingMessage).toBeNull();
+		// ...and the window stays closed across the post-turn transcript refetch.
 		frame({ type: "response", command: "get_state", success: true, data: { isStreaming: false } });
 		frame({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "hello!!" }] } });
-		expect(live().streamingMessage).not.toBeNull();
+		expect(live().streamingMessage).toBeNull();
 		// It closes only when the NEXT turn starts (stampTurnStart): that turn
 		// runs normally, and once IT ends, late replays are refused again.
 		frame({ type: "agent_start" });
