@@ -5,7 +5,6 @@ import { confirmDialog } from "../../lib/dialogs";
 import { ensureLive, ResumeCancelledError } from "../../lib/ensureLive";
 import { imageContentsFromPaths, privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
-import { toast } from "../../lib/toast";
 import { dropEchoesForTexts, restoreTextsToDraft, useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import { createSession } from "../../lib/createSession";
@@ -18,6 +17,7 @@ import { sendFromDraft } from "../sessions/draftSession";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { tNow } from "../../stores/language";
 import { heldAutoSendStopToken, pauseHeldAutoSend, resumeHeldAutoSend } from "./heldQueue";
+import { useStopHint } from "./stopHint";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -228,7 +228,9 @@ async function abortAndRestoreQueue(sessionId: string): Promise<void> {
 		abortTimers.delete(sessionId);
 		if (useAbortState.getState().aborting[sessionId]) {
 			useAbortState.getState().setAborting(sessionId, false);
-			toast.error(tNow("chatView.send.stopTimeout"));
+			// No transient toast: a persistent banner explains the situation and
+			// offers 「再次尝试停止」 / 「重启会话」 until the turn really ends.
+			useStopHint.getState().show(sessionId);
 		}
 	}, 10_000);
 	abortTimers.set(sessionId, timer);
@@ -245,6 +247,8 @@ async function abortAndRestoreQueue(sessionId: string): Promise<void> {
 		// Backend acknowledged: no Composer may be mounted to clear the flag, so do it here.
 		clearAbortTimer(sessionId);
 		useAbortState.getState().setAborting(sessionId, false);
+		// A later attempt answered: retire the timeout banner.
+		useStopHint.getState().clear(sessionId);
 	} catch (err) {
 		clearAbortTimer(sessionId);
 		useAbortState.getState().setAborting(sessionId, false);

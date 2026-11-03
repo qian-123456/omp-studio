@@ -29,6 +29,16 @@ import {
 	parseLocalRows,
 	serializeLocalRows,
 } from "../features/chat/localRows";
+import {
+	type StreamSnapshot,
+	clearSnapshot,
+	loadSnapshot,
+	mergeSnapshotIntoLive,
+	saveSnapshot,
+	snapshotFromLive,
+	snapshotInItems,
+	snapshotContinues,
+} from "../features/chat/streamSnapshot";
 import { tNow } from "./language";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
@@ -251,6 +261,9 @@ export interface SessionLive {
 	ompQueue: OmpQueue;
 	/** Plan-mode state from the plan extension's setStatus frames; absent until one arrives. */
 	plan?: PlanStatus;
+	/** Retained half-answer of an interrupted run (crash / restart), restored
+	 * as an "未完成回答" row until removed or a real source carries it. */
+	restoredUnfinished?: StreamSnapshot | null;
 }
 export const emptySessionLive = (): SessionLive => ({
 	streaming: false,
@@ -1538,6 +1551,11 @@ export interface LiveState {
 	hydrateRetryHistory(sessionId: string): void;
 	/** Load this session's persisted local rows (once). */
 	hydrateLocalRows(sessionId: string): void;
+	/** Restore the retained half-answer snapshot, if any (once): into the live
+	 * state when the session is still streaming, else as an "未完成回答" row. */
+	hydrateStreamSnapshot(sessionId: string): void;
+	/** Drop the restored "未完成回答" row (user action) and its retention. */
+	removeUnfinishedAnswer(sessionId: string): void;
 	/** Mark a fallback as undone everywhere it is shown. */
 	markFallbackUndone(sessionId: string, fallbackId: string): void;
 }
@@ -1927,6 +1945,56 @@ export const useLive = create<LiveState>((set) => ({
 	hydrateLocalRows: (sessionId) => {
 		if (!useLive.getState().sessions[sessionId]?.localRowsLoaded) loadLocalRows(sessionId);
 	},
+	hydrateStreamSnapshot: (sessionId) => {
+		if (streamSnapshotsHydrated.has(sessionId)) return;
+		streamSnapshotsHydrated.add(sessionId);
+		const snap = loadSnapshot(sessionId);
+		if (!snap) return;
+		const live = useLive.getState().sessions[sessionId];
+		if (live?.streaming) {
+			// Still streaming (get_state confirmed): merge the snapshot into the
+			// live state — same source, incoming frames overwrite it. The
+			// in-flight half sentence shows again until the next message_update.
+			useLive.setState((s) => {
+				const cur = s.sessions[sessionId];
+				if (!cur?.streaming) return s;
+				return {
+					sessions: {
+						...s.sessions,
+						[sessionId]: {
+							...cur,
+							...mergeSnapshotIntoLive(cur, snap),
+							streamingMessage: cur.streamingMessage ?? snap.streamingMessage,
+						},
+					},
+				};
+			});
+			return;
+		}
+		useLive.setState((s) => {
+			const cur = s.sessions[sessionId] ?? emptySessionLive();
+			if (cur.streaming || cur.restoredUnfinished) return s;
+			// The transcript may already carry the content (omp finished writing
+			// before the process died): dedupe instead of showing a stale row.
+			if (snapshotInItems(snap, cur.items)) {
+				clearSnapshot(sessionId);
+				return s;
+			}
+			return {
+				sessions: { ...s.sessions, [sessionId]: { ...cur, restoredUnfinished: snap } },
+			};
+		});
+	},
+	removeUnfinishedAnswer: (sessionId) => {
+		clearSnapshot(sessionId);
+		useLive.setState((s) => {
+			const cur = s.sessions[sessionId];
+			if (!cur?.restoredUnfinished) return s;
+			return {
+				sessions: { ...s.sessions, [sessionId]: { ...cur, restoredUnfinished: null } },
+			};
+		});
+	},
 	hydrateRetryHistory: (sessionId) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
@@ -1969,6 +2037,86 @@ useLive.subscribe((s, prev) => {
 	for (const [sid, live] of Object.entries(s.sessions)) {
 		if (live.retryHistory && live.retryHistory !== prev.sessions[sid]?.retryHistory) {
 			saveRetryHistory(sid, live.retryHistory);
+		}
+	}
+});
+
+// ---- Streaming snapshot retention (未完成半句恢复) ----
+
+/** Sessions whose snapshot was already restored this app run. */
+const streamSnapshotsHydrated = new Set<string>();
+const snapshotTimers = new Map<string, Parameters<typeof clearTimeout>[0]>();
+const SNAPSHOT_SAVE_THROTTLE_MS = 1_000;
+
+useLive.subscribe((s, prev) => {
+	for (const [sid, live] of Object.entries(s.sessions)) {
+		const before = prev.sessions[sid];
+		// Stream in progress: keep the latest snapshot, throttled per session.
+		if (live.streaming) {
+			if (
+				live.streamingMessage === before?.streamingMessage &&
+				live.tools === before?.tools &&
+				live.liveRequests === before?.liveRequests
+			) {
+				continue;
+			}
+			if (!snapshotTimers.has(sid)) {
+				snapshotTimers.set(
+					sid,
+					setTimeout(() => {
+						snapshotTimers.delete(sid);
+						const cur = useLive.getState().sessions[sid];
+						if (!cur?.streaming) return;
+						const snap = snapshotFromLive(cur, Date.now());
+						if (snap) saveSnapshot(sid, snap);
+					}, SNAPSHOT_SAVE_THROTTLE_MS),
+				);
+			}
+			continue;
+		}
+		if (before?.streaming === true) {
+			// The turn is over: stop tracking. A normal end commits the content
+			// to the transcript, so the retention is cleared; a dead process
+			// (crash / app kill / restart) keeps it — the half answer may exist
+			// nowhere else and the restore path dedupes if it does.
+			clearTimeout(snapshotTimers.get(sid));
+			snapshotTimers.delete(sid);
+			if (!live.processExited) clearSnapshot(sid);
+		}
+		// Frames took over from a reattached stream: merge the snapshot back in
+		// so the turn's earlier requests and tools are not lost. Only when the
+		// in-flight text continues the snapshot's (same answer, not a new turn);
+		// the row then yields — it is hidden while streaming anyway, and its
+		// retention is cleared by the turn-end branch below.
+		if (live.streaming && live.restoredUnfinished && live.streamingMessage) {
+			const snap = live.restoredUnfinished;
+			if (snapshotContinues(snap, live.streamingMessage)) {
+				useLive.setState((st) => {
+					const cur = st.sessions[sid];
+					if (!cur?.streaming || !cur.restoredUnfinished) return st;
+					return {
+						sessions: {
+							...st.sessions,
+							[sid]: { ...cur, ...mergeSnapshotIntoLive(cur, snap), restoredUnfinished: null },
+						},
+					};
+				});
+			}
+		}
+		// A restored "未完成回答" row must disappear as soon as a real source
+		// carries its content (the transcript page that just landed).
+		if (live.restoredUnfinished && live.items !== before?.items) {
+			const snap = live.restoredUnfinished;
+			if (snapshotInItems(snap, live.items)) {
+				clearSnapshot(sid);
+				useLive.setState((st) => {
+					const cur = st.sessions[sid];
+					if (!cur?.restoredUnfinished) return st;
+					return {
+						sessions: { ...st.sessions, [sid]: { ...cur, restoredUnfinished: null } },
+					};
+				});
+			}
 		}
 	}
 });
@@ -2049,6 +2197,10 @@ export function pruneRemovedSessions(ids: readonly string[]): void {
 	const gone = new Set(ids);
 	leftTranscripts = leftTranscripts.filter((id) => !gone.has(id));
 	for (const id of gone) {
+		streamSnapshotsHydrated.delete(id);
+		clearSnapshot(id);
+		clearTimeout(snapshotTimers.get(id));
+		snapshotTimers.delete(id);
 		localRowsLoading.delete(id);
 		localRowsReadOnly.delete(id);
 		localRowsSavedJson.delete(id);
