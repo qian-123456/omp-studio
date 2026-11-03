@@ -11,6 +11,7 @@ vi.mock("../../lib/toast", () => ({ toast: { success: mocks.success, error: mock
 vi.mock("../../stores/turnNav", () => ({ useTurnNav: { getState: () => ({ showCommit: vi.fn() }) } }));
 vi.mock("../../stores/ui", () => ({ useUi: { getState: () => ({ openModal: vi.fn() }) } }));
 vi.mock("../sessions/forkDraft", () => ({ startFork: vi.fn() }));
+vi.mock("./treeNav", () => ({ navigateTree: vi.fn() }));
 
 import { AnswerFooter } from "./AnswerFooter";
 
