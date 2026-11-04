@@ -55,7 +55,7 @@ It works **alongside** the `omp` CLI rather than replacing it: terminal sessions
 
 #### 5. ⏰ Automation, Inbox & Backlog
 - **Scheduled Tasks (Cron)**: Automate daily standup summaries, dependency security audits, or TODO sweeps; runs safely in dedicated isolated worktrees.
-- **Smart Inbox**: Centralized dashboard for pending approvals, agent questions, and session errors.
+- **Session Attention Inbox**: Centralized hub (the bell icon) aggregating all sessions needing your attention (tool approvals, questions, runtime errors, interrupted sessions, and unread reviews).
 - **Idea Backlog**: Global shortcut to quickly jot down inspirations and bugs, with one-click agent dispatching.
 
 #### 6. 🧠 Model Governance & Agent Settings
@@ -147,7 +147,7 @@ pnpm build:app
 
 #### 5. ⏰ 自动化巡检、收件箱与想法收集
 - **周期定时任务（Cron）**：支持每日晨会准备、依赖安全巡检、TODO 盘点等模板，支持在独立 Worktree 中全自动或受控运行。
-- **智能待办收件箱**：将全项目待人工审批的事项、智能体提问、异常报错统一收纳，批量处理。
+- **会话通知中心（Inbox）**：点击左侧栏顶部的铃铛图标，跨项目聚合所有需要人工介入的会话动态（待审批、智能体提问、运行报错、异常中断与待验收完成），支持键盘极速穿梭直达目标会话。
 - **随手想法收集箱（Backlog）**：全局快捷键随时唤出捕获灵感与缺陷，支持带截图与上下文一键派发给 Agent。
 
 #### 6. 🧠 模型治理与智能体体系
