@@ -29,7 +29,6 @@ export function ModeSwitch({ onChange }: { onChange?: () => void }) {
 				onClick={() => setOpen((v) => !v)} className="flex min-h-11 min-w-11 items-center px-1">
 				<span className="relative inline-flex h-9 items-center gap-1.5 rounded-m-md border border-m-border bg-m-surface px-2 text-m-sm font-medium whitespace-nowrap text-m-text-2">
 					<Icon size={16} strokeWidth={1.75} />{modeLabel(mode)}
-					{sessions !== null && <span className="text-m-xs tabular-nums text-m-text-3">{sessions.length}</span>}
 					<ChevronDown size={16} className="text-m-text-3" />
 					{busyCount > 0 && <span aria-label="当前空间有运行中或待回复的会话" className="size-2 shrink-0 rounded-m-pill bg-m-accent m-pulse" />}
 				</span>
