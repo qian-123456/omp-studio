@@ -16,6 +16,7 @@ import { usePendingSession } from "../sessions/pendingSession";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { resolveNewSessionTargetWorkspace } from "../sessions/modes";
 import { startNewSession, startSessionInDir } from "../sessions/newSession";
+import { CalendarHeatmap } from "./CalendarHeatmap";
 
 /** Auto-launch tries per failure streak before the launcher shows a retry button. */
 const MAX_AUTO_ATTEMPTS = 2;
@@ -174,6 +175,9 @@ export function StartPage() {
 			<StartGlow />
 			<div className="relative flex w-full max-w-[880px] flex-col items-center">
 				<StartHero />
+				<div className="mb-6 w-full">
+					<CalendarHeatmap />
+				</div>
 				{loadState === "loading" ? (
 					<div
 						role="status"

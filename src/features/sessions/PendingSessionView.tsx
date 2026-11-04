@@ -3,6 +3,7 @@ import { StartGlow, StartHero } from "../../components/StartHero";
 import { useT } from "../../stores/language";
 import { Composer } from "../chat/Composer";
 import { usePendingSession } from "./pendingSession";
+import { CalendarHeatmap } from "../home/CalendarHeatmap";
 
 export function PendingSessionView() {
 	const { t } = useT();
@@ -13,7 +14,9 @@ export function PendingSessionView() {
 		<div className="relative @container flex h-full flex-col justify-center pb-[6vh]">
 			<StartGlow />
 			<StartHero />
-			<div aria-hidden className="pb-8" />
+			<div className="mx-auto mb-6 w-full max-w-[880px] px-6">
+				<CalendarHeatmap />
+			</div>
 			<div className="mx-auto w-full max-w-[880px] px-6">
 				<div className="start-rise">
 					<Composer key={id} sessionId={id} />
