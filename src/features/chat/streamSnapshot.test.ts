@@ -224,6 +224,23 @@ describe("snapshotInItems (dedup against the transcript)", () => {
 			snapshotInItems(withText, [item({ toolCalls: [{ id: "call-77", name: "edit", args: {}, intent: null }] })]),
 		).toBe(false);
 	});
+
+	it("uses exact completion identity even when the transcript entry has a later timestamp", () => {
+		const text = "A response that has now completed and been committed.";
+		const snap = { answerText: text, toolIds: [], streamingMessage: {
+			role: "assistant", content: [], timestamp: NOW - 1000, completedAt: NOW,
+		} };
+		expect(snapshotInItems(snap, [item({ text, ts: new Date(NOW + 1000).toISOString(), completedAt: NOW })], true)).toBe(true);
+		expect(snapshotInItems(snap, [item({ text, completedAt: NOW + 1 })], true)).toBe(false);
+	});
+
+	it("does not use an eighty-character opening as proof that a longer active reply is committed", () => {
+		const opening = "This is a shared introductory sentence in two distinct responses. ".repeat(2);
+		const snap = { answerText: `${opening}The current response continues differently.`, toolIds: [], streamingMessage: {
+			role: "assistant", content: [], timestamp: NOW,
+		} };
+		expect(snapshotInItems(snap, [item({ text: `${opening}The previous response ended here.` })], true)).toBe(false);
+	});
 });
 
 describe("snapshotContinues / mergeSnapshotIntoLive (live reattach)", () => {

@@ -14,7 +14,7 @@ import { importImageFile, saveClipboardImage } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { type ModelOption, resolveCurrentModel, resolveThinkingLevels, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
-import { type Annotation, type ComposerImage, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { type Annotation, type ComposerImage, annotationImageAttachments, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -26,10 +26,8 @@ import { SessionView } from "../chat/SessionView";
 import { COMPOSER_TEXT_METRICS_CLASS, COMPOSER_TEXT_METRICS_STYLE, renderHighlightedText } from "../chat/Composer";
 import { AnnotationChip } from "../chat/AnnotationChip";
 import { AddMenuPopover } from "../chat/AddMenuPopover";
-const SketchPad = lazy(() =>
-	import("../chat/sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
-);
 import { AttachmentThumb } from "../chat/ImageChips";
+import { UserRow } from "../chat/MessageList";
 import { textAnnotationsOf } from "../chat/annotations";
 import { moveToMain } from "./annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "./depth";
@@ -49,11 +47,13 @@ import {
 	isSideChatImagePath,
 	insertSideChatImageMarker,
 	removeSideChatImageToken,
-	sideChatPreviewText,
+	sideChatImageAttachments,
 } from "./sideChatAttachments";
+const SketchPad = lazy(() =>
+	import("../chat/sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
+);
 
 
- 
 const EMPTY_IMAGES: ComposerImage[] = [];
 const NO_MODELS: ModelOption[] = [];
 const EMPTY_ANNS: Annotation[] = [];
@@ -432,6 +432,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const annKey = selectedId ? sideChatAnnKey(selectedId) : "";
 	const stagedAll = useComposer((s) => s.annotations[annKey]) ?? EMPTY_ANNS;
 	const stagedAnns = useMemo(() => textAnnotationsOf(stagedAll), [stagedAll]);
+	const pendingImages = useMemo(() => {
+		const attachments = sideChatImageAttachments(images);
+		return [...attachments, ...annotationImageAttachments(stagedAll, attachments)];
+	}, [images, stagedAll]);
 	// SelectionToolbar bumps this nonce each time it stages into our key.
 	const stagedFocusNonce = useComposer((s) => (annKey ? s.focusNonce[annKey] : 0));
 
@@ -501,27 +505,30 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 		(question.trim().length > 0 || stagedAnns.length > 0 || images.length > 0);
 
 	return (
-		<div data-session-view={tabId} className="flex h-full flex-col">
-			<div className="min-h-0 flex-1 overflow-y-auto p-2">
+		<div data-session-view={tabId} className="@container flex h-full flex-col">
+			<div className="min-h-0 flex-1 overflow-y-auto">
 				{pendingQuestion ? (
-					<div className="mb-2 ml-auto flex max-w-[85%] flex-col items-end gap-1">
-						<div className="whitespace-pre-wrap rounded-2xl bg-[var(--bg-hover)] px-3 py-2 text-[13px] text-[var(--text)]">
-							{sideChatPreviewText(pendingQuestion) || pendingQuestion}
-						</div>
-						{images.length > 0 && (
-							<div className="flex flex-wrap justify-end gap-1.5">
-								{images.map((image, index) => (
-									<AttachmentThumb
-									key={image.id || `${index + 1}-${image.path}`}
-									path={image.path}
-									index={index + 1}
-									showIndex
-									variant="bubble"
-								/>
-								))}
-							</div>
-						)}
-						<div className="flex items-center gap-1 text-[10px] text-[var(--text-40)]">
+					<div className="relative mx-auto w-full px-3 py-1 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
+						<UserRow
+							sessionId={tabId}
+							pending
+							item={{
+								id: `pending-${tabId}`,
+								kind: "user",
+								parentId: null,
+								thinking: null,
+								toolCalls: [],
+								toolResult: null,
+								usage: null,
+								model: null,
+								stopReason: null,
+								hidden: false,
+								text: pendingQuestion,
+								ts: "",
+								images: pendingImages,
+							}}
+						/>
+						<div role="status" className="flex items-center justify-end gap-1 whitespace-nowrap text-[10px] text-[var(--text-40)]">
 							<Loader2 size={10} className="animate-spin" />
 							{t("sidechat.creatingSideChat")}
 						</div>

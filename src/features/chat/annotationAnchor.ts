@@ -194,34 +194,49 @@ export function segmentEndpoints<T>(
 const SKIPPED_ANCESTOR = "script, style, .katex-mathml";
 
 /**
- * Concatenates the visible text nodes under `root` in document order. Returns
- * the joined text together with the per-node segments needed by
- * `segmentEndpoints`.
+ * Concatenates visible text in document order, separating rendered blocks and
+ * table cells with whitespace, just as a browser selection does. Inline markup
+ * stays contiguous; segment offsets include the synthetic separators.
  */
 export function collectTextSegments(root: Element): {
 	text: string;
 	segments: TextSegment<Text>[];
 } {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
 		acceptNode(node) {
-			const parent = node.parentElement;
-			if (parent?.closest(SKIPPED_ANCESTOR)) return NodeFilter.FILTER_REJECT;
+			if (node.parentElement?.closest(SKIPPED_ANCESTOR)) return NodeFilter.FILTER_REJECT;
+			if (node.nodeType === Node.ELEMENT_NODE) {
+				return (node as Element).tagName === "BR" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+			}
 			return NodeFilter.FILTER_ACCEPT;
 		},
 	});
 	const segments: TextSegment<Text>[] = [];
 	const parts: string[] = [];
 	let offset = 0;
+	let lastBlock: Element | null = null;
 	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			parts.push("\n");
+			offset += 1;
+			continue;
+		}
 		const data = (node as Text).data;
 		if (data.length === 0) continue;
+		const block = node.parentElement?.closest(
+			"p, li, td, th, pre, blockquote, h1, h2, h3, h4, h5, h6, div",
+		) ?? null;
+		if (lastBlock !== null && block !== lastBlock) {
+			parts.push("\n");
+			offset += 1;
+		}
 		segments.push({ node: node as Text, start: offset, length: data.length });
 		parts.push(data);
 		offset += data.length;
+		lastBlock = block;
 	}
 	return { text: parts.join(""), segments };
 }
-
 /** DOM Range covering a raw `[start, end)` match, or null if it cannot be built. */
 export function segmentRange<T extends Node>(
 	segments: readonly TextSegment<T>[],

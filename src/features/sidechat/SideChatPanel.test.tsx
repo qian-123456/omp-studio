@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { StrictMode } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Ipc from "../../lib/ipc";
+import type * as Events from "../../lib/events";
 import type { SessionMeta } from "../../lib/contracts";
 import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
@@ -22,8 +23,13 @@ vi.mock("../../lib/ipc", async (importOriginal) => ({
 	sideChatAsk: h.sideChatAsk,
 	getTranscript: vi.fn(async () => ({ items: [] })),
 	acceptSession: vi.fn(async () => undefined),
+	privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "ok", nativeError: null })),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: vi.fn() }));
+vi.mock("../../lib/events", async (importOriginal) => ({
+	...(await importOriginal<typeof Events>()),
+	onPrivacyChanged: vi.fn(async () => () => {}),
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/api/webview", () => ({
 	getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
@@ -175,6 +181,7 @@ describe("SideChatPanel blank new chat", () => {
 		// The message is visible before the backend answers; the input is empty.
 		expect(screen.getByText(/解释一下/)).toBeTruthy();
 		expect((input() as HTMLTextAreaElement).value).toBe("");
+		expect(screen.queryByRole("button", { name: /重新发送|复制消息|编辑消息/ })).toBeNull();
 		expect(h.createSideChat).toHaveBeenCalledWith("p1", undefined);
 		expect(h.sideChatAsk).not.toHaveBeenCalled();
 		expect(h.addUserEcho).not.toHaveBeenCalled();

@@ -36,27 +36,21 @@ function fallbackTurn() {
 	r({ type: "config_update", model: "m/mimo" });
 }
 
-it("keeps rows after the retry succeeds", () => {
+it("removes recovered failures from the live tail but keeps their full details expandable", () => {
 	render(<RetryNoticeList sessionId={SID} />);
 	fallbackTurn();
-	r({ type: "retry_fallback_succeeded", model: "m/mimo" });
 	expect(screen.getByText(/自动重试/)).toBeTruthy();
-	expect(screen.getByText(/已切换到备用模型 m\/mimo/)).toBeTruthy();
-	expect(screen.getByText(/备用模型 m\/mimo 请求成功/)).toBeTruthy();
-});
-
-it("keeps the history after the turn ends as one expandable entry", () => {
-	fallbackTurn();
 	r({ type: "retry_fallback_succeeded", model: "m/mimo" });
-	r({ type: "agent_end", timestamp: 5000 });
-	const episodes = useLive.getState().sessions[SID].retryHistory ?? [];
-	render(<RetryEpisodeRow sessionId={SID} episode={episodes[0]} />);
-	expect(screen.getByText("本轮重试 1 次 · 已切换备用模型")).toBeTruthy();
 	expect(screen.queryByText(/自动重试/)).toBeNull();
+	const episode = useLive.getState().sessions[SID].retryHistory![0];
+	render(<RetryEpisodeRow sessionId={SID} episode={episode} />);
+	expect(screen.queryByText(/备用模型 m\/mimo 请求成功/)).toBeNull();
+	expect(screen.getByRole("button", { name: "切回原模型" })).toBeTruthy();
 	fireEvent.click(screen.getByRole("button", { name: /本轮重试/ }));
 	expect(screen.getByText(/自动重试/)).toBeTruthy();
 	expect(screen.getByText(/备用模型 m\/mimo 请求成功/)).toBeTruthy();
 });
+
 
 it("splices the entry into the thread at the turn's position", () => {
 	fallbackTurn();

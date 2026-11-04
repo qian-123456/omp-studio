@@ -10,6 +10,7 @@ import { useComposer } from "../../stores/composer";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { fillIdeasIntoComposer, resetPendingFills } from "./fillComposer";
 import { useToasts } from "../../lib/toast";
+import { usePendingSession } from "../sessions/pendingSession";
 
 const item = (id: string, text: string): BacklogItem =>
 	({ id, text, kind: "idea", status: "inbox", refs: [], deletedAt: null }) as unknown as BacklogItem;
@@ -44,6 +45,26 @@ describe("fillIdeasIntoComposer", () => {
 		await flush();
 		expect(backlogUpdate).toHaveBeenCalledWith("a", { status: "dispatched", targetSessionId: "s1" });
 		expect(load).toHaveBeenCalled();
+	});
+
+	it("keeps delivery tracking when a local draft becomes a real session", async () => {
+		const localId = usePendingSession.getState().open({ cwd: "/project", mode: "code" });
+		useComposer.getState().setDraft(localId, "Existing draft");
+		fillIdeasIntoComposer(localId, [item("local-idea", "Keep the reading position")]);
+		const sent = useComposer.getState().drafts[localId];
+		expect(sent).toContain("Existing draft");
+		expect(backlogUpdate).not.toHaveBeenCalled();
+		usePendingSession.getState().attach(localId, "materialized");
+		useComposer.getState().setDraft("materialized", sent);
+		useComposer.getState().pruneSessions([localId]);
+		usePendingSession.getState().discard(localId);
+		emitPromptSend("echoed", "materialized", sent);
+		useComposer.getState().clearDraft("materialized");
+		emitPromptSend("sent", "materialized", sent);
+		await flush();
+		expect(backlogUpdate).toHaveBeenCalledWith("local-idea", {
+			status: "dispatched", targetSessionId: "materialized",
+		});
 	});
 
 	it("ignores a send from another session or without the body", async () => {

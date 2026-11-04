@@ -85,6 +85,7 @@ Click `+` in the composer:
 Highlight any text in messages, code blocks, diffs, or terminal output to display the floating toolbar:
 - Write an annotation and press `Enter`. Choose **Main Chat** or **Side Chat** as the target.
 - Annotations dock as structured chips above the composer, ensuring the agent receives precise line references.
+- **Table selections**: Text selected across cells remains anchored to that table, even when a later paragraph contains the same words.
 
 ## Side Chats
 
@@ -92,11 +93,15 @@ Side chats act as disposable branches of the main conversation:
 - Click `+` ▸ **New side chat** in the right panel, or type `/btw your question`.
 - Fully inherits existing context without adding clutter to the main timeline.
 - Supports nested side chats (up to 3 levels). Click **Hand back to parent session** to summarize findings and insert them into the main composer.
+- **First message**: During session creation, text, quotations, and images use the same presentation as committed user messages. Session actions such as resend and edit become available only after creation.
 
 ## Tool Execution and Approvals
 
 - **Step Cards**: Tool executions display as dynamic cards (Reading → Read, Writing → Saved). Multi-step sequences fold neatly.
 - **Approvals**: Press `y` to approve for this turn only, or `n` to reject. Click "Always allow in this session" or "Permanently allow" for trusted tools.
+- When reading history, opening, closing, or resizing a sidebar preserves the text near the viewport midpoint. Live-tail following continues to follow new output.
+- Replies and request errors already committed to history do not repeat in the live area. Successful automatic retry or fallback recovery immediately folds its status into an expandable historical entry; new failures remain visible.
+- When reopening a session, cached messages without timing metadata are retained conservatively, so a shared opening cannot discard the current unfinished response.
 - **Git Checkpoints & One-Click Undo**: When enabled in **Settings ▸ Sessions ▸ Checkpoints**, Git snapshots are taken before each turn. If code is modified incorrectly, click **Undo this turn** to restore files instantly.
 
 ## Context Window and Compression

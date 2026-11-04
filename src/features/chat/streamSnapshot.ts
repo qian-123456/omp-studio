@@ -262,10 +262,13 @@ const MIN_PREFIX_LEN = 16;
  * True when `items` (a transcript page) already carries the snapshot's
  * content: the in-flight text appears in some assistant item, or (when the
  * message had no text yet) one of its tool calls was committed.
+ * Active reconciliation additionally requires temporal evidence and the full
+ * saved prefix; uncertain active prose is retained rather than discarded.
  */
 export function snapshotInItems(
-	snap: Pick<StreamSnapshot, "answerText" | "toolIds">,
+	snap: Pick<StreamSnapshot, "answerText" | "toolIds"> & Partial<Pick<StreamSnapshot, "streamingMessage">>,
 	items: readonly TranscriptItem[],
+	active = false,
 ): boolean {
 	const prefix = norm(snap.answerText);
 	if (prefix) {
@@ -275,12 +278,28 @@ export function snapshotInItems(
 			if (item.kind !== "assistant") continue;
 			const text = norm(item.text ?? "");
 			if (!text) continue;
+			if (active) {
+				// Entry IDs/timestamps are not message identities. An older answer
+				// sharing this opening must never discard a newer in-flight reply.
+				const completedAt = snap.streamingMessage?.completedAt;
+				if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
+					if (item.completedAt !== completedAt) continue;
+				} else {
+					const startedAt = snap.streamingMessage?.timestamp;
+					if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) continue;
+					const itemTime = typeof item.completedAt === "number" && Number.isFinite(item.completedAt)
+						? item.completedAt : Date.parse(item.ts);
+					if (!Number.isFinite(itemTime) || itemTime < startedAt) continue;
+				}
+				if (text.startsWith(prefix)) return true;
+				continue;
+			}
 			if (loose ? text.includes(probe) || probe.includes(text) : text === prefix) {
 				return true;
 			}
 		}
 	}
-	if (!prefix && snap.toolIds.length > 0) {
+	if ((!prefix || active) && snap.toolIds.length > 0) {
 		const ids = new Set(snap.toolIds);
 		for (const item of items) {
 			for (const call of item.toolCalls ?? []) {

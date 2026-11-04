@@ -37,7 +37,7 @@ const snapOf = (text: string, savedAt = NOW): StreamSnapshot =>
 		{
 			...empty(),
 			streaming: true,
-			streamingMessage: { role: "assistant", content: [{ type: "text", text }] },
+			streamingMessage: { role: "assistant", timestamp: savedAt, content: [{ type: "text", text }] },
 		} as SessionLive,
 		savedAt,
 	)!;
@@ -98,7 +98,7 @@ describe("restore while the session is still streaming", () => {
 		// No live rows existed: the snapshot fills the gap (streamingMessage
 		// itself is the same source the frames overwrite, requests/tools fill).
 		expect(live.streaming).toBe(true);
-		expect(live.restoredUnfinished ?? null).toBeNull();
+		expect(live.streamingMessage?.content).toEqual([{ type: "text", text: "第一段已完成，第二段正在" }]);
 		// A frame for the same answer confirms and keeps flowing; the turn end
 		// then clears the retention (content committed).
 		frame(SID, {
@@ -125,6 +125,84 @@ describe("restore while the session is still streaming", () => {
 		});
 		useLive.getState().hydrateStreamSnapshot(SID);
 		expect(useLive.getState().sessions[SID].liveRequests.length).toBe(0);
+	});
+
+	it("does not seed a completed old answer under a newer running request", () => {
+		const SID = "restore-streaming-committed-old";
+		const text = "A completed historical answer must not become the current response again.";
+		saveSnapshot(SID, snapOf(text));
+		useLive.setState((s) => ({
+			sessions: {
+				...s.sessions,
+				[SID]: { ...empty(), streaming: true, items: [item("old-answer", text)] },
+			},
+		}));
+		useLive.getState().hydrateStreamSnapshot(SID);
+		expect(useLive.getState().sessions[SID].streamingMessage).toBeNull();
+		frame(SID, {
+			type: "message_update",
+			message: { role: "assistant", content: [{ type: "text", text: "The current answer remains visible." }] },
+		});
+		expect(useLive.getState().sessions[SID].streamingMessage?.content).toEqual([
+			{ type: "text", text: "The current answer remains visible." },
+		]);
+	});
+
+	it("removes only seeded prose when the transcript arrives after hydration", () => {
+		const SID = "restore-delayed-transcript";
+		const text = "This saved response has already finished before the view was reopened.";
+		saveSnapshot(SID, snapOf(text));
+		useLive.setState({ sessions: { [SID]: { ...empty(), streaming: true } } });
+		useLive.getState().hydrateStreamSnapshot(SID);
+		expect(useLive.getState().sessions[SID].streamingMessage?.content).toEqual([{ type: "text", text }]);
+		frame(SID, { type: "tool_execution_start", toolCallId: "current-tool", toolName: "read", args: {} });
+		useLive.getState().setItems(SID, [item("committed-old", text)], 10);
+		const live = useLive.getState().sessions[SID];
+		expect(live.streamingMessage).toBeNull();
+		expect(live.tools["current-tool"].status).toBe("running");
+	});
+
+	it("preserves a newer response while clearing a committed saved response", () => {
+		const SID = "restore-newer-frame";
+		const text = "The historical saved response is committed.";
+		saveSnapshot(SID, snapOf(text));
+		useLive.setState({ sessions: { [SID]: { ...empty(), streaming: true } } });
+		useLive.getState().hydrateStreamSnapshot(SID);
+		frame(SID, {
+			type: "message_update",
+			message: { role: "assistant", content: [{ type: "text", text: "A different current response" }] },
+		});
+		useLive.getState().setItems(SID, [item("committed-old", text)], 10);
+		expect(useLive.getState().sessions[SID].streamingMessage?.content).toEqual([
+			{ type: "text", text: "A different current response" },
+		]);
+	});
+
+	it("retains a new unfinished response that repeats an earlier answer's opening", () => {
+		const SID = "restore-repeated-opening";
+		const text = "I will inspect the requested files before making changes.";
+		saveSnapshot(SID, snapOf(text));
+		useLive.setState({ sessions: {
+			[SID]: { ...empty(), streaming: true, items: [{
+				...item("earlier-answer", `${text} These were the previous findings.`),
+				ts: new Date(NOW - 1000).toISOString(),
+			}] },
+		} });
+		useLive.getState().hydrateStreamSnapshot(SID);
+		expect(useLive.getState().sessions[SID].streamingMessage?.content).toEqual([{ type: "text", text }]);
+	});
+
+	it("retains active prose when its saved message has no timestamp to establish chronology", () => {
+		const SID = "restore-missing-message-time";
+		const text = "A repeated response cannot be identified by its opening alone.";
+		const snap = snapOf(text);
+		snap.streamingMessage!.timestamp = undefined;
+		saveSnapshot(SID, snap);
+		useLive.setState({ sessions: {
+			[SID]: { ...empty(), streaming: true, items: [item("earlier-answer", text)] },
+		} });
+		useLive.getState().hydrateStreamSnapshot(SID);
+		expect(useLive.getState().sessions[SID].streamingMessage?.content).toEqual([{ type: "text", text }]);
 	});
 });
 

@@ -8,6 +8,7 @@ import { appendToDraft, buildBatchFillText } from "./ideasLogic";
 import { errMsg } from "../../lib/dialogs";
 import { useToasts } from "../../lib/toast";
 import { tNow } from "../../stores/language";
+import { usePendingSession } from "../sessions/pendingSession";
 
 /**
  * 「放进输入框」: filling never changes an item's status. A pending fill (in memory only, so a
@@ -106,7 +107,17 @@ function attach(): void {
 			const before = prev;
 			prev = drafts;
 			for (const sessionId of pending.keys()) {
-				if (drafts[sessionId] !== before[sessionId]) onDraftsChanged(sessionId, drafts[sessionId] ?? "");
+				if (drafts[sessionId] === before[sessionId]) continue;
+				// A local draft hands its composer to the materialized session
+				// before the first send. Keep delivery tracking on that same target.
+				const realId = usePendingSession.getState().drafts[sessionId]?.sessionId;
+				if (drafts[sessionId] === undefined && realId && drafts[realId] === before[sessionId]) {
+					const list = pending.get(sessionId) ?? [];
+					pending.delete(sessionId);
+					pending.set(realId, [...(pending.get(realId) ?? []), ...list]);
+				} else {
+					onDraftsChanged(sessionId, drafts[sessionId] ?? "");
+				}
 			}
 		}),
 	];

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { emptySessionLive, useLive } from "./live";
-import { retryNoticeFromFrame, retrySummary } from "./retryNotice";
+import type { RetryNotice } from "./retryNotice";
 
 const SID = "s1";
 const frame = (f: Record<string, unknown>) =>
@@ -9,30 +9,19 @@ const notices = () => useLive.getState().sessions[SID].retryNotices ?? [];
 
 beforeEach(() => useLive.setState({ sessions: {} }));
 
-describe("retryNoticeFromFrame", () => {
-	it("maps retry start/end", () => {
-		const s = retryNoticeFromFrame({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "429 rate limit" });
-		expect(s?.text).toBe("请求失败（429 rate limit），2 秒后自动重试（第 1/3 次）");
-		expect(retryNoticeFromFrame({ type: "auto_retry_end", success: true, attempt: 2 })?.tone).toBe("ok");
-		expect(retryNoticeFromFrame({ type: "auto_retry_end", success: false, attempt: 3, finalError: "boom" })?.text).toBe("重试失败（共 3 次）：boom");
-	});
-	it("maps fallback events and ignores others", () => {
-		expect(retryNoticeFromFrame({ type: "retry_fallback_applied", from: "a/x", to: { provider: "b", id: "y" } })?.text).toBe("a/x 请求失败，已切换到备用模型 b/y");
-		expect(retryNoticeFromFrame({ type: "retry_fallback_succeeded", model: "b/y" })?.text).toBe("备用模型 b/y 请求成功");
-		expect(retryNoticeFromFrame({ type: "turn_end" })).toBeNull();
-	});
-});
 
 describe("live reducer retry notices", () => {
-	it("keeps rows after a retry/fallback success", () => {
+	it("moves fallback recovery out of the live tail while preserving its history and undo metadata", () => {
 		frame({ type: "auto_retry_start", attempt: 1 });
 		frame({ type: "retry_fallback_applied", from: "a/x", to: "b/y" });
 		frame({ type: "retry_fallback_succeeded", model: "b/y" });
-		expect(notices()).toHaveLength(3);
-		expect(notices()[2].tone).toBe("ok");
+		expect(notices()).toEqual([]);
+		const episode = useLive.getState().sessions[SID].retryHistory?.[0];
+		expect(episode?.notices.some((notice: RetryNotice) => notice.tone === "ok")).toBe(true);
+		expect(episode?.fallback).toMatchObject({ from: "a/x", to: "b/y" });
 	});
 
-	it("collapses the turn's rows into one history episode at turn end", () => {
+	it("does not archive a recovered episode twice when the turn ends", () => {
 		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "x".repeat(300) });
 		frame({ type: "retry_fallback_applied", from: "a/x", to: "b/y" });
 		frame({ type: "retry_fallback_succeeded", model: "b/y" });
@@ -43,7 +32,6 @@ describe("live reducer retry notices", () => {
 		expect(hist[0].notices).toHaveLength(3);
 		expect(hist[0].notices[0].text).toContain("x".repeat(300));
 		expect(hist[0].fallback).toMatchObject({ from: "a/x", to: "b/y" });
-		expect(retrySummary(hist[0].notices, hist[0].fallback)).toBe("本轮重试 1 次 · 已切换备用模型");
 		// A following turn adds its own entry; the old one stays.
 		frame({ type: "auto_retry_end", success: false, attempt: 3, finalError: "boom" });
 		useLive.getState().addUserEcho(SID, "hi");
@@ -66,7 +54,7 @@ describe("live reducer retry notices", () => {
 			sessions: { [SID]: { ...useLive.getState().sessions[SID], liveRequests: [done(1), done(2)] } },
 		});
 		frame({ type: "auto_retry_end", success: true, attempt: 1 });
-		expect(notices().map((n) => n.anchor)).toEqual([0, 2]);
+		expect(useLive.getState().sessions[SID].retryHistory?.[0].notices.map((n) => n.anchor)).toEqual([0, 2]);
 	});
 
 	it.each([

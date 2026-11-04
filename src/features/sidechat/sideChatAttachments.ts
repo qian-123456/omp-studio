@@ -19,11 +19,6 @@ export function insertSideChatImageMarker(
 	return { text: `${before}${inserted}${after}`, cursor: before.length + inserted.length };
 }
 
-/** Hide inline image markers in the blank-tab pending preview; thumbnails show them instead. */
-export function sideChatPreviewText(text: string): string {
-	return text.replace(/\s*🖼️\s*#\d+/gu, "").trim();
-}
-
 /** Drop an attachment token and renumber later tokens after its image is removed. */
 export function removeSideChatImageToken(text: string, removedIndex: number): string {
 	return text

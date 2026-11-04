@@ -49,6 +49,7 @@ Click the lightbulb icon in the center header to open the backlog.
 - **Dual Classification**: Tag items as **Idea** or **Bug**.
 - **Context Attachment**: Link the current session context and attach screenshots directly.
 - **Global Shortcut**: Press the system-wide shortcut (default `⌘⇧I`) from any app to pop up the capture box. Press `⌘Enter` to submit.
+- **Fill composer**: Append selected ideas and images to the current session or new-session draft without replacing existing input, sending a message, or starting a background session just to fill it. Items are marked dispatched only after the content is successfully sent.
 - **Dispatch to Agent**: Select items and click **Dispatch** to append them to an existing session or start a new session.
 
 ## Skills and Extensions Overview

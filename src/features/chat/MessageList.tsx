@@ -132,6 +132,7 @@ import {
 	turnSubagentSpan,
 } from "./turnSubagents";
 import { useAnswerStarted } from "./useAnswerStarted";
+import { useScrollRetention } from "./useScrollRetention";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 /** Viewport height assumed before the scroll element has been measured. */
@@ -182,9 +183,12 @@ const USER_ACTION_BTN =
 export const UserRow = React.memo(function UserRow({
 	sessionId,
 	item,
+	pending = false,
 }: {
 	sessionId: string;
 	item: TranscriptItem;
+	/** Session creation is pending; replay/edit actions have no real target yet. */
+	pending?: boolean;
 }) {
 	const { t } = useT();
 	const rawText = item.text ?? "";
@@ -360,7 +364,7 @@ export const UserRow = React.memo(function UserRow({
 					)}
 				</div>
 			) : null}
-			<div className="flex items-center justify-end gap-1">
+			{!pending && <div className="flex items-center justify-end gap-1">
 				<div
 					className={clsx(
 						"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
@@ -431,7 +435,7 @@ export const UserRow = React.memo(function UserRow({
 				{messageTime && (
 					<span className="px-1 text-[11px] leading-5 tabular-nums text-[var(--text-30)]">{messageTime}</span>
 				)}
-			</div>
+			</div>}
 		</div>
 	);
 });
@@ -882,6 +886,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	showTimer,
 	holding,
 	persistedCallIds,
+	persistedRequestTimes,
 }: {
 	sessionId: string;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
@@ -893,6 +898,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	holding: boolean;
 	/** Tool-call ids the committed latest turn already shows (dedupe). */
 	persistedCallIds: ReadonlySet<string>;
+	/** Completed request identities already present in the visible transcript. */
+	persistedRequestTimes: ReadonlySet<number>;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -1148,10 +1155,13 @@ const StreamingRow = React.memo(function StreamingRow({
 	// rows (and stats lines) would repeat those steps, so they are dropped.
 	const liveVisible = useMemo(() => {
 		const plan = liveRequests.length > 0 ? statsPlan : undefined;
-		if (persistedCallIds.size === 0) return { visibleSteps: steps, visiblePlan: plan };
+		if (persistedCallIds.size === 0 && persistedRequestTimes.size === 0) return { visibleSteps: steps, visiblePlan: plan };
 		const covered = new Set(
 			liveRequests
-				.filter((r) => r.toolCallIds.some((id) => persistedCallIds.has(id)))
+				.filter((r) =>
+					r.toolCallIds.some((id) => persistedCallIds.has(id)) ||
+					(r.stat.completedAt !== null && persistedRequestTimes.has(r.stat.completedAt)),
+				)
 				.map((r) => r.id),
 		);
 		const visibleSteps = steps.filter((s) => {
@@ -1162,7 +1172,7 @@ const StreamingRow = React.memo(function StreamingRow({
 			? { ...plan, requests: plan.requests.filter((r) => !covered.has(r.id)) }
 			: undefined;
 		return { visibleSteps, visiblePlan };
-	}, [steps, statsPlan, persistedCallIds, liveRequests]);
+	}, [steps, statsPlan, persistedCallIds, persistedRequestTimes, liveRequests]);
 
 	// While `holding` (the stream ended, the transcript has not caught up) the
 	// store is already cleared: keep painting the last live snapshot (already
@@ -1444,6 +1454,7 @@ export function MessageList({
 	const scrollTimerRef = useRef(0);
 	const lastHandledScrollReq = useRef<number>(0);
 	const containerRef = useRef<HTMLDivElement>(null);
+	useScrollRetention(scrollRef, sessionId, () => !shouldFollow(followRef.current));
 
 	// Throttled scroll to bottom. Deliberately NOT requestAnimationFrame: an
 	// off-screen/occluded WKWebView suspends rAF indefinitely, and a single
@@ -1678,6 +1689,15 @@ export function MessageList({
 		if (!holding) frozenDisclosureLive.current = latestDisclosureLiveNow;
 	});
 	const latestDisclosureLive = holding ? frozenDisclosureLive.current : latestDisclosureLiveNow;
+
+	const persistedRequestTimes = useMemo(() => {
+		const times = new Set<number>();
+		for (const item of visible) {
+			const completedAt = requestStatFromItem(item)?.completedAt;
+			if (completedAt !== null && completedAt !== undefined) times.add(completedAt);
+		}
+		return times;
+	}, [visible]);
 
 	// Tool-call ids the committed latest turn already renders. While that turn
 	// shows its own live disclosure, StreamingRow drops whatever these cover.
@@ -2199,6 +2219,7 @@ export function MessageList({
 								showTimer={!latestDisclosureLive}
 								holding={holding}
 								persistedCallIds={persistedCallIds}
+								persistedRequestTimes={persistedRequestTimes}
 							/>
 						</div>
 					)}

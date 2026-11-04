@@ -1142,7 +1142,8 @@ describe("live reducer — retry event sequence", () => {
 			attempt: 1,
 			success: true,
 		});
-		expect(live().retryNotices).toHaveLength(2);
+		expect(live().retryNotices).toEqual([]);
+		expect(live().retryHistory?.[0].notices.some((notice) => notice.tone === "ok")).toBe(true);
 
 		frame({
 			type: "message_end",
@@ -1156,10 +1157,21 @@ describe("live reducer — retry event sequence", () => {
 		expect(live().liveRequests).toHaveLength(2);
 		expect(live().liveRequests[1].stat.error).toBeNull();
 
-		// On turn end, retry notices archive into retryHistory
+		// Finishing the turn must not archive the recovered episode a second time.
 		frame({ type: "agent_end", isTerminal: true });
 		expect(live().retryNotices).toEqual([]);
 		expect(live().retryHistory).toHaveLength(1);
+	});
+
+	it("keeps a later failed retry live without reopening a recovered episode", () => {
+		frame({ type: "turn_start" });
+		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "old network failure" });
+		frame({ type: "auto_retry_end", attempt: 1, success: true });
+		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "new network failure" });
+		frame({ type: "auto_retry_end", attempt: 1, success: false, finalError: "new network failure" });
+		expect(live().retryNotices?.some((notice) => notice.text.includes("old network failure"))).toBe(false);
+		expect(live().retryNotices?.some((notice) => notice.tone === "error" && notice.text.includes("new network failure"))).toBe(true);
+		expect(live().retryHistory?.[0].notices.some((notice) => notice.text.includes("old network failure"))).toBe(true);
 	});
 });
 

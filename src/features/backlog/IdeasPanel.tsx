@@ -9,6 +9,7 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useT } from "../../stores/language";
+import { usePendingSession } from "../sessions/pendingSession";
 import { useBacklog } from "./backlogStore";
 import { bufferDoc } from "./IdeaEditBox";
 import { fillIdeasIntoComposer } from "./fillComposer";
@@ -56,6 +57,8 @@ export function IdeasPanel({
 	const { t } = useT();
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
+	const pendingDraftId = usePendingSession((s) => s.selectedId);
+	const composerId = selectedSessionId ?? pendingDraftId;
 	const sessions = useSessions((s) => s.sessions);
 	const editBuffer = useBacklog((s) => s.editBuffer);
 	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
@@ -168,8 +171,8 @@ export function IdeasPanel({
 
 	// Put items into the current session's composer; they turn dispatched only once that text is sent.
 	const fill = (targets: BacklogItem[]) => {
-		if (!selectedSessionId || targets.length === 0) return;
-		fillIdeasIntoComposer(selectedSessionId, targets);
+		if (!composerId || targets.length === 0) return;
+		fillIdeasIntoComposer(composerId, targets);
 		setSelected((prev) => prev.filter((id) => !targets.some((t) => t.id === id)));
 		toast.success(targets.length === 1 ? t("backlog.filledSingle") : t("backlog.filledMultiple", { count: targets.length }));
 	};
@@ -214,7 +217,7 @@ export function IdeasPanel({
 			editing={editBuffer?.id === item.id}
 			editingKind={editingKind}
 			editingProject={editingProject ?? item.projectDir ?? ""}
-			canFill={!!selectedSessionId}
+			canFill={!!composerId}
 			onToggle={(shift) => toggleChecked(item.id, shift)}
 			onEditKindChange={setEditingKind}
 			onEditProjectChange={setEditingProject}
@@ -315,7 +318,7 @@ export function IdeasPanel({
 					phase={activePhase}
 					count={selected.length}
 					allSelected={allSelected}
-					canFill={!!selectedSessionId}
+					canFill={!!composerId}
 					onToggleAll={toggleAll}
 					onClear={clearSelection}
 					onDelete={() => void afterBatch(() => deleteIdeas(selectedIds))}

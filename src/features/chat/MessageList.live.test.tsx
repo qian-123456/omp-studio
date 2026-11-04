@@ -106,6 +106,39 @@ describe("MessageList live turn", () => {
 		expect(screen.queryByText(/已处理/)).toBeNull();
 	});
 
+	it("does not replay committed prose or request errors below newer tool activity", () => {
+		const SID = "committed-live-requests";
+		const reduce = (frame: Record<string, unknown>) => useLive.getState().reduceFrame({ sessionId: SID, frame });
+		reduce({ type: "agent_start" });
+		reduce({
+			type: "message_end",
+			message: { role: "assistant", id: "old-prose", completedAt: 1000, content: [{ type: "text", text: "Earlier completed prose" }] },
+		});
+		reduce({
+			type: "message_end",
+			message: { role: "assistant", id: "old-error", completedAt: 2000, content: [], stopReason: "error", errorMessage: "Old 429 request failure" },
+		});
+		const history = [
+			item({ id: "user", kind: "user", text: "continue", ts: new Date(0).toISOString() }),
+			item({ id: "committed-prose", kind: "assistant", text: "Earlier completed prose", completedAt: 1000 }),
+			item({ id: "committed-error", kind: "assistant", text: "Old 429 request failure", stopReason: "error", completedAt: 2000 }),
+			...persisted().slice(1),
+		];
+		useLive.getState().setItems(SID, history, 50);
+		reduce({ type: "tool_execution_start", toolCallId: "new-call", toolName: "read", args: {}, intent: "Current tool activity" });
+		const { container } = mount(SID);
+		expect(screen.getAllByText("Earlier completed prose")).toHaveLength(1);
+		expect(container.querySelector("#msg-live")?.textContent).not.toContain("Old 429 request failure");
+		expect(container.querySelector("#msg-live")?.textContent).not.toContain("Earlier completed prose");
+		act(() => {
+			reduce({
+				type: "message_end",
+				message: { role: "assistant", id: "new-error", completedAt: 3000, content: [], stopReason: "error", errorMessage: "Current request failure" },
+			});
+		});
+		expect(container.querySelector("#msg-live")?.textContent).toContain("Current request failure");
+	});
+
 	it("drops the previous session's live frame on switch", () => {
 		useLive.setState({
 			sessions: {
