@@ -187,6 +187,7 @@ export function MobilePanel() {
 	const [showLanGuide, setShowLanGuide] = useState(false);
 	const [showIpv6Guide, setShowIpv6Guide] = useState(false);
 	const [showTunnelGuide, setShowTunnelGuide] = useState(false);
+	const [showZeroTrustGuide, setShowZeroTrustGuide] = useState(false);
 	const [devicesOpen, setDevicesOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [ddnsTokenDraft, setDdnsTokenDraft] = useState("");
@@ -920,15 +921,12 @@ export function MobilePanel() {
 
 					{tunnelMode === "named" && (
 						<div className="space-y-3 border-t border-[var(--border-divider)] pt-3">
-							{status?.cloudflaredLoggedIn ? (
-								<div>
-									<Chip tone="success">{t("mobile.cfLoginSuccess")}</Chip>
-								</div>
-							) : (
+							{!status?.cloudflaredLoggedIn && (
 								<Notice
 									tone="info"
 									action={
 										<Button
+											size="sm"
 											loading={busy === "cfLogin"}
 											disabled={busy !== null || cloudflaredMissing}
 											onClick={() =>
@@ -945,8 +943,27 @@ export function MobilePanel() {
 									{t("mobile.cfLoginNotice")}
 								</Notice>
 							)}
-							<Notice tone="info">{t("mobile.domainPrefixTip")}</Notice>
-							<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+
+							<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+								<label className="space-y-1 text-xs text-[var(--text-muted)]">
+									<div className="flex items-center justify-between">
+										<span>{t("mobile.tunnelHostLabel")}</span>
+										{status?.cloudflaredLoggedIn && (
+											<span className="text-[11px] font-medium text-emerald-500">
+												✓ {t("mobile.cfLoginSuccess")}
+											</span>
+										)}
+									</div>
+									<input
+										className={INPUT_CLASS}
+										placeholder={t("mobile.tunnelHostPlaceholder")}
+										value={tunnelHost}
+										onChange={(e) => setTunnelHost(e.target.value)}
+									/>
+									<span className="block text-[11px] text-[var(--text-dim)]">
+										{t("mobile.domainPrefixTip")}
+									</span>
+								</label>
 								<label className="space-y-1 text-xs text-[var(--text-muted)]">
 									<span>{t("mobile.tunnelNameLabel")}</span>
 									<input
@@ -956,27 +973,41 @@ export function MobilePanel() {
 										onChange={(e) => setTunnelName(e.target.value)}
 									/>
 								</label>
-								<label className="space-y-1 text-xs text-[var(--text-muted)]">
-									<span>{t("mobile.tunnelHostLabel")}</span>
-									<input
-										className={INPUT_CLASS}
-										placeholder={t("mobile.tunnelHostPlaceholder")}
-										value={tunnelHost}
-										onChange={(e) => setTunnelHost(e.target.value)}
-									/>
-								</label>
 							</div>
-							<div className="space-y-2 rounded-lg border border-[var(--border-divider)] p-3 text-xs text-[var(--text-muted)]">
-								<div className="flex flex-wrap items-center gap-2 text-[var(--text-primary)]">
-									<ShieldAlert className="h-4 w-4" />
-									<span className="font-medium whitespace-nowrap">{t("mobile.zeroTrustTitle")}</span>
-									<Chip tone="success">{t("mobile.zeroTrustBadge")}</Chip>
+
+							<div className="rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-2.5 text-xs text-[var(--text-muted)]">
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="flex items-center gap-1.5">
+										<ShieldAlert className="h-3.5 w-3.5 text-emerald-500" />
+										<span className="font-medium text-[var(--text)]">{t("mobile.zeroTrustTitle")}</span>
+										<span className="text-[11px] text-[var(--text-dim)]">（{t("mobile.zeroTrustBadge")}）</span>
+									</div>
+									<div className="flex items-center gap-1.5">
+										<button
+											type="button"
+											className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-divider)] bg-[var(--card-bg)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+											onClick={() => setShowZeroTrustGuide((v) => !v)}
+											title={t("mobile.zeroTrustTitle")}
+											aria-label={t("mobile.zeroTrustTitle")}
+										>
+											<Info className="h-3 w-3" />
+										</button>
+										<Button
+											size="sm"
+											variant="secondary"
+											onClick={() => void openUrl("https://one.dash.cloudflare.com/").catch((error) => { setError(errMsg(error)); })}
+										>
+											{t("mobile.zeroTrustOpenDash")}
+										</Button>
+									</div>
 								</div>
-								<p>{t("mobile.zeroTrustDesc")}</p>
-								<p>{t("mobile.zeroTrustGuide")}</p>
-								<Button onClick={() => void openUrl("https://one.dash.cloudflare.com/").catch((error) => { setError(errMsg(error)); })}>
-									{t("mobile.zeroTrustOpenDash")}
-								</Button>
+
+								{showZeroTrustGuide && (
+									<div className="mt-2 space-y-1 border-t border-[var(--border-divider)] pt-2 text-[11px] leading-relaxed text-[var(--text-dim)]">
+										<p>{t("mobile.zeroTrustDesc")}</p>
+										<p>{t("mobile.zeroTrustGuide")}</p>
+									</div>
+								)}
 							</div>
 						</div>
 					)}

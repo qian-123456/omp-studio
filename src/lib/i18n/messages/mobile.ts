@@ -16,8 +16,7 @@ export default defineMessages({
 		tunnelModeQuickExplain:
 			"不需要任何配置，自动分配一个 trycloudflare.com 的随机网址，出门在外也能访问；每次启动网址都会变，适合临时使用。",
 		tunnelModeNamed: "固定域名",
-		tunnelModeNamedExplain:
-			"使用你在 Cloudflare 上已经建好的隧道和自己的域名，网址固定不变。需要先用 cloudflared 创建隧道，建议同时配置 Cloudflare Access 保护。",
+		tunnelModeNamedExplain: "绑定你在 Cloudflare 托管的自有域名，网址固定不变，适合长期稳定访问。",
 		statusDetecting: "检测中",
 		statusRunning: "运行中",
 		statusNoIpv6: "没有公网 IPv6",
@@ -224,8 +223,7 @@ export default defineMessages({
 		tunnelModeQuickExplain:
 			"Zero configuration needed. Automatically allocates a random trycloudflare.com URL accessible on the go. URL changes on restart; ideal for temporary use.",
 		tunnelModeNamed: "Custom domain",
-		tunnelModeNamedExplain:
-			"Use an existing Cloudflare tunnel and your own domain. URL stays fixed. Requires creating a tunnel with cloudflared first; Cloudflare Access protection recommended.",
+		tunnelModeNamedExplain: "Bind your own domain hosted on Cloudflare with a persistent URL for stable remote access.",
 		statusDetecting: "Detecting",
 		statusRunning: "Running",
 		statusNoIpv6: "No public IPv6",
