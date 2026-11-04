@@ -8,7 +8,10 @@ import { toast } from "../lib/toast";
 import { tNow } from "./language";
 
 const APP_UPDATE_LAST_CHECK_KEY = "ompws:app-update-last-check";
-
+const APP_UPDATE_AUTO_CHECK_KEY = "ompws:app-update-auto-check";
+const APP_UPDATE_INTERVAL_KEY = "ompws:app-update-check-interval-hours";
+const DEFAULT_APP_CHECK_INTERVAL_HOURS = 24;
+const UPDATE_CHECK_TICK_MS = 60 * 1000;
 export interface AppUpdateInfo {
 	version: string;
 	currentVersion: string;
@@ -33,6 +36,11 @@ interface AppUpdateState {
 	error: string | null;
 	updateHandle: Update | null;
 
+	autoCheck: boolean;
+	checkIntervalHours: number;
+	setAutoCheck: (enabled: boolean) => void;
+	setCheckIntervalHours: (hours: number) => void;
+	checkOnStartup: () => Promise<void>;
 	loadVersion: () => Promise<void>;
 	check: (silent?: boolean) => Promise<void>;
 	downloadAndInstall: () => Promise<void>;
@@ -45,6 +53,17 @@ function storedLastCheck(): number | null {
 	const n = Number(localStorage.getItem(APP_UPDATE_LAST_CHECK_KEY));
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
+function storedAutoCheck(): boolean {
+	if (typeof localStorage === "undefined") return true;
+	const val = localStorage.getItem(APP_UPDATE_AUTO_CHECK_KEY);
+	return val === null ? true : val === "true";
+}
+
+function storedIntervalHours(): number {
+	if (typeof localStorage === "undefined") return DEFAULT_APP_CHECK_INTERVAL_HOURS;
+	const n = Number(localStorage.getItem(APP_UPDATE_INTERVAL_KEY));
+	return Number.isFinite(n) && n >= 1 && n <= 720 ? n : DEFAULT_APP_CHECK_INTERVAL_HOURS;
+}
 
 export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	appVersion: null,
@@ -56,6 +75,30 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	lastCheckedAt: storedLastCheck(),
 	error: null,
 	updateHandle: null,
+	autoCheck: storedAutoCheck(),
+	checkIntervalHours: storedIntervalHours(),
+	setAutoCheck: (enabled: boolean) => {
+		if (typeof localStorage !== "undefined") {
+			localStorage.setItem(APP_UPDATE_AUTO_CHECK_KEY, String(enabled));
+		}
+		set({ autoCheck: enabled });
+	},
+	setCheckIntervalHours: (hours: number) => {
+		const rounded = Math.round(hours);
+		const clamped = Number.isFinite(rounded) && rounded > 0 ? Math.min(720, Math.max(1, rounded)) : DEFAULT_APP_CHECK_INTERVAL_HOURS;
+		if (typeof localStorage !== "undefined") {
+			localStorage.setItem(APP_UPDATE_INTERVAL_KEY, String(clamped));
+		}
+		set({ checkIntervalHours: clamped });
+	},
+	checkOnStartup: async () => {
+		const { autoCheck, checkIntervalHours, check } = get();
+		if (!autoCheck) return;
+		const last = storedLastCheck();
+		const now = Date.now();
+		const due = last === null || now < last || now - last >= checkIntervalHours * 3600 * 1000;
+		if (due) await check(true);
+	},
 
 	loadVersion: async () => {
 		try {
@@ -178,3 +221,16 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 		set({ updateInfo: null, updateHandle: null, downloadProgress: null, readyToRestart: false });
 	},
 }));
+
+/** App-lifetime watcher: every minute, runs a silent app check once the configured interval has elapsed. Returns a disposer. */
+export function watchAppUpdateChecks(): () => void {
+	const timer = setInterval(() => {
+		const s = useAppUpdate.getState();
+		if (!s.autoCheck || s.checking || s.downloading) return;
+		const last = s.lastCheckedAt;
+		const now = Date.now();
+		const due = last === null || now < last || now - last >= s.checkIntervalHours * 3600 * 1000;
+		if (due) void s.check(true);
+	}, UPDATE_CHECK_TICK_MS);
+	return () => clearInterval(timer);
+}

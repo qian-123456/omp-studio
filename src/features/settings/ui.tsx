@@ -19,6 +19,7 @@ import {
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { Switch } from "./Switch";
+export { Switch } from "./Switch";
 
 // ── Header / card / row ──────────────────────────────────────────────
 

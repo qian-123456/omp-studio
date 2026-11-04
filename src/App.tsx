@@ -30,6 +30,7 @@ import { tNow, useT } from "./stores/language";
 import { OmpInstallDialog } from "./features/omp-install/OmpInstallDialog";
 import { useOmpInstall } from "./stores/ompInstall";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
+import { useAppUpdate, watchAppUpdateChecks } from "./stores/appUpdate";
 import { useStartupImageGc } from "./features/settings/useStartupImageGc";
 import {
 	MAX_SIDEBAR_WIDTH,
@@ -285,11 +286,14 @@ export default function App() {
 			.getState()
 			.checkOnStartup()
 			.then(() => useOmpInstall.getState().checkOnStartup());
+		void useAppUpdate.getState().checkOnStartup();
+		const stopAppChecks = watchAppUpdateChecks();
 		const stopChecks = watchOmpUpdateChecks();
 		const stopStaleness = watchOmpStaleness();
 		return () => {
 			stopChecks();
 			stopStaleness();
+			stopAppChecks();
 		};
 	}, []);
 

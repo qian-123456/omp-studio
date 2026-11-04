@@ -21,8 +21,9 @@ import {
 	SectionHeader,
 	SettingRow,
 	SettingsCard,
-	ToggleRow,
+	Switch,
 	normalizeHours,
+	useSaveStatus,
 } from "../ui";
 
 function nameOf(id: string): string {
@@ -45,6 +46,10 @@ export function AboutSection() {
 		readyToRestart,
 		lastCheckedAt: appLastCheckedAt,
 		error: appError,
+		autoCheck: appAutoCheck,
+		checkIntervalHours: appIntervalHours,
+		setAutoCheck: setAppAutoCheck,
+		setCheckIntervalHours: setAppIntervalHours,
 		loadVersion: loadAppVersion,
 		check: checkAppUpdate,
 		downloadAndInstall: downloadAppUpdate,
@@ -54,6 +59,8 @@ export function AboutSection() {
 	const [switching, setSwitching] = useState(false);
 	const { settings, save } = useAppSettings();
 	const pendingIds = useOmpUpdateSessions((s) => s.pendingSessionIds);
+	const ompSave = useSaveStatus();
+	const appSave = useSaveStatus();
 	useSessions((s) => s.sessions);
 
 	useEffect(() => {
@@ -221,16 +228,24 @@ export function AboutSection() {
 			<SectionHeader title={t("settingsSections.about.title")} description={t("settingsSections.about.description")} />
 
 			<SectionJumpBar />
-			<SettingsCard jump={t("settingsSections.about.jumpVersion")} title={t("settingsSections.about.titleVersion")}>
+			{/* 1. 本产品 (omp-workspace) */}
+			<SettingsCard jump={t("settingsSections.about.titleApp")} title={t("settingsSections.about.titleApp")}>
 				<SettingRow
 					label={t("settingsSections.about.thisProduct")}
-					description={t("settingsSections.about.thisProductDesc")}
-					control={<span className="font-mono text-xs text-[var(--text-muted)]">omp-workspace v{desktopAppVersion ?? appVersion ?? t("settingsSections.about.unknown")}</span>}
-				/>
-				<SettingRow
-					label={t("settingsSections.about.appUpdateRow")}
-					description={appUpdateHint}
-					control={appUpdateControl}
+					description={
+						<div className="space-y-1">
+							<div className="text-xs text-[var(--text-muted)]">{t("settingsSections.about.thisProductDesc")}</div>
+							<div className="text-[11px] font-mono text-[var(--text-dim)]">
+								omp-workspace v{desktopAppVersion ?? appVersion ?? t("settingsSections.about.unknown")}
+							</div>
+						</div>
+					}
+					control={
+						<div className="flex items-center gap-3">
+							{appUpdateHint}
+							{appUpdateControl}
+						</div>
+					}
 				>
 					{appUpdateInfo?.notes ? (
 						<div className="mt-2 rounded-md bg-[var(--well-bg)] p-3 text-xs text-[var(--text-muted)]">
@@ -249,22 +264,67 @@ export function AboutSection() {
 					) : null}
 				</SettingRow>
 				<SettingRow
-					label={t("settingsSections.about.ompVersion")}
-					description={info?.found ? <span className="font-mono">{info.resolvedPath}</span> : t("settingsSections.about.ompNotFoundDesc")}
+					label={t("settingsSections.about.appAutoUpdateLabel")}
+					description={t("settingsSections.about.appAutoUpdateDesc")}
+					hint={appAutoCheck ? t("settingsSections.about.appCheckIntervalHint") : undefined}
+					status={appSave.status}
+					statusError={appSave.error}
+					onActivate={() => void appSave.run(() => setAppAutoCheck(!appAutoCheck))}
+					control={
+						<div className="flex items-center gap-3">
+							{appAutoCheck ? (
+								<div className="flex items-center gap-1.5 pr-1 border-r border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+									<span className="text-xs text-[var(--text-dim)]">{t("settingsSections.about.every")}</span>
+									<CommitInput
+										type="number"
+										min={1}
+										max={720}
+										className="w-16"
+										aria-label={t("settingsSections.about.appCheckIntervalAria")}
+										value={String(appIntervalHours)}
+										normalize={normalizeHours}
+										onCommit={(v) => void appSave.run(() => setAppIntervalHours(Number(v)))}
+									/>
+									<span className="text-xs text-[var(--text-dim)]">{t("settingsSections.about.hours")}</span>
+								</div>
+							) : null}
+							<Switch
+								checked={appAutoCheck}
+								onChange={(checked) => void appSave.run(() => setAppAutoCheck(checked))}
+							/>
+						</div>
+					}
+				/>
+			</SettingsCard>
+
+			{/* 2. omp 命令行 */}
+			<SettingsCard jump={t("settingsSections.about.titleOmp")} title={t("settingsSections.about.titleOmp")}>
+				<SettingRow
+					label={t("settingsSections.about.ompUpdateRow")}
+					description={
+						<div className="space-y-1">
+							{info?.found ? (
+								<div className="font-mono text-[11px] text-[var(--text-dim)] break-all">{info.resolvedPath}</div>
+							) : (
+								<div className="text-xs text-[var(--text-muted)]">{t("settingsSections.about.ompNotFoundDesc")}</div>
+							)}
+							<div className="text-xs font-mono text-[var(--text-muted)]">
+								{ompVersion ? `v${ompVersion}` : t("settingsSections.about.unknown")}
+							</div>
+						</div>
+					}
 					control={
 						info?.found === false ? (
 							<Button icon={Download} onClick={() => void useOmpInstall.getState().openAndInstall()}>
 								{t("settingsSections.about.installOmp")}
 							</Button>
 						) : (
-							<span className="font-mono text-xs text-[var(--text-muted)]">{ompVersion ?? t("settingsSections.about.unknown")}</span>
+							<div className="flex items-center gap-3">
+								{latestHint}
+								{latestControl}
+							</div>
 						)
 					}
-				/>
-				<SettingRow
-					label={t("settingsSections.about.ompUpdateRow")}
-					description={latestHint}
-					control={latestControl}
 				>
 					{error && !checking && !updating && detailsOpen ? (
 						<div className="relative mt-2">
@@ -292,31 +352,35 @@ export function AboutSection() {
 						}
 					/>
 				) : null}
-				<ToggleRow
-					fieldId="ompAutoUpdate"
+				<SettingRow
 					label={t("settingsSections.about.autoUpdateLabel")}
 					description={t("settingsSections.about.autoUpdateDesc")}
-					checked={settings?.ompAutoUpdate === true}
-					onChange={(v) => save({ ompAutoUpdate: v })}
-				/>
-				<SettingRow
-					fieldId="ompCheckIntervalHours"
-					label={t("settingsSections.about.checkIntervalLabel")}
-					description={t("settingsSections.about.checkIntervalDesc")}
-					hint={t("settingsSections.about.checkIntervalHint")}
+					hint={settings?.ompAutoUpdate === true ? t("settingsSections.about.checkIntervalHint") : undefined}
+					status={ompSave.status}
+					statusError={ompSave.error}
+					onActivate={() => void ompSave.run(() => save({ ompAutoUpdate: !settings?.ompAutoUpdate }))}
 					control={
-						<div className="flex items-center gap-1.5">
-							<CommitInput
-								type="number"
-								min={1}
-								max={720}
-								className="w-24"
-								aria-label={t("settingsSections.about.checkIntervalAria")}
-								value={String(settings?.ompCheckIntervalHours ?? 24)}
-								normalize={normalizeHours}
-								onCommit={(v) => save({ ompCheckIntervalHours: Number(v) })}
+						<div className="flex items-center gap-3">
+							{settings?.ompAutoUpdate === true ? (
+								<div className="flex items-center gap-1.5 pr-1 border-r border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+									<span className="text-xs text-[var(--text-dim)]">{t("settingsSections.about.every")}</span>
+									<CommitInput
+										type="number"
+										min={1}
+										max={720}
+										className="w-16"
+										aria-label={t("settingsSections.about.checkIntervalAria")}
+										value={String(settings?.ompCheckIntervalHours ?? 24)}
+										normalize={normalizeHours}
+										onCommit={(v) => void ompSave.run(() => save({ ompCheckIntervalHours: Number(v) }))}
+									/>
+									<span className="text-xs text-[var(--text-dim)]">{t("settingsSections.about.hours")}</span>
+								</div>
+							) : null}
+							<Switch
+								checked={settings?.ompAutoUpdate === true}
+								onChange={(checked) => void ompSave.run(() => save({ ompAutoUpdate: checked }))}
 							/>
-							<span className="text-xs text-[var(--text-dim)]">{t("settingsSections.about.hours")}</span>
 						</div>
 					}
 				/>
