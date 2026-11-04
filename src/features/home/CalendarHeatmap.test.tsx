@@ -51,7 +51,7 @@ describe("CalendarHeatmap component & i18n", () => {
 	it("renders Chinese activity metadata and month axis", () => {
 		useLanguageStore.getState().setLocale("zh-CN");
 		const { container } = render(<CalendarHeatmap />);
-		expect(screen.getByText("Activity")).toBeTruthy();
+		expect(screen.getByText("活动")).toBeTruthy();
 		expect(screen.getByText(/tokens/i)).toBeTruthy();
 		expect(screen.getByText(/次会话/i)).toBeTruthy();
 		expect(screen.getByText(/过去 52 周/i)).toBeTruthy();
@@ -73,14 +73,12 @@ describe("CalendarHeatmap component & i18n", () => {
 	it("displays rich popover on mouseEnter with formatted details", () => {
 		useLanguageStore.getState().setLocale("zh-CN");
 		const { container } = render(<CalendarHeatmap />);
-		// 找到任意一个方格触发悬停
 		const anyRect = container.querySelector("rect");
 		expect(anyRect).toBeTruthy();
 
 		if (anyRect) {
 			fireEvent.mouseEnter(anyRect);
-			// 无论是活跃天还是无活动天，均能弹出包含日期的浮层
-			expect(screen.getByText(/2026年|无模型调用|消耗总量/i)).toBeTruthy();
+			expect(screen.getByText(/2026年|无模型调用|会话数量/i)).toBeTruthy();
 		}
 	});
 });

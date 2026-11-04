@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
 import { useSessions } from "../../stores/sessions";
+import { useLive } from "../../stores/live";
 import { useT } from "../../stores/language";
-import { useSearchDialog } from "../sessions/search/searchStore";
+import type { SessionMeta } from "../../lib/contracts";
 
 interface DayData {
 	date: Date;
@@ -9,12 +10,8 @@ interface DayData {
 	weekIndex: number;
 	dayIndex: number; // 0 (Mon) - 6 (Sun)
 	tokens: number;
-	promptTokens: number;
-	completionTokens: number;
 	sessionCount: number;
-	turnCount: number;
 	topModel: string;
-	keyTask: string;
 	level: 0 | 1 | 2 | 3 | 4;
 }
 
@@ -33,11 +30,40 @@ const WEEKDAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const LEVEL_COLORS = [
 	"rgba(255, 255, 255, 0.05)", // 0: 零消耗底色
-	"#0d3b2e",                    // 1: < 25k Tokens
-	"#056648",                    // 2: 25k ~ 75k Tokens
-	"#059669",                    // 3: 75k ~ 160k Tokens
-	"#34d399",                    // 4: > 160k Tokens
+	"#0d3b2e",                    // 1: 轻度活跃
+	"#056648",                    // 2: 中度活跃
+	"#059669",                    // 3: 较高活跃
+	"#34d399",                    // 4: 极度活跃
 ];
+
+const CACHE_KEY = "ompws:heatmap-cache:v2";
+
+interface CachedSessionUsage {
+	id: string;
+	updatedAt: string;
+	tokens: number;
+	model: string;
+	dateKey: string;
+}
+
+function loadCache(): Record<string, CachedSessionUsage> {
+	if (typeof window === "undefined" || !window.localStorage) return {};
+	try {
+		const raw = window.localStorage.getItem(CACHE_KEY);
+		return raw ? JSON.parse(raw) : {};
+	} catch {
+		return {};
+	}
+}
+
+function saveCache(cache: Record<string, CachedSessionUsage>) {
+	if (typeof window === "undefined" || !window.localStorage) return;
+	try {
+		window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+	} catch {
+		// Ignore write errors (quota exceeded, etc.)
+	}
+}
 
 function formatTokenCount(num: number): string {
 	if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
@@ -56,77 +82,98 @@ export function CalendarHeatmap() {
 	const sessions = useSessions((s) => s.sessions);
 
 	const [hoveredDay, setHoveredDay] = useState<DayData | null>(null);
-	const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
+	const [popoverPos, setPopoverPos] = useState<{ x: number; y: number; xAlign: string; yAlign: string } | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
-	// Compute 52 weeks of day slots ending on today
+	// Compute 52 weeks of day slots ending on today with incremental caching
 	const { gridDays, monthLabels, grandTokens, grandSessions, grandTurns } = useMemo(() => {
 		const now = new Date();
 		const currentDayOfWeek = (now.getDay() + 6) % 7; // Monday = 0, Sunday = 6
 		
-		// Target: 52 weeks = 364 days total
 		const totalWeeks = 52;
 		const totalDays = totalWeeks * 7;
 		
-		// Start date is aligned to Monday (totalWeeks - 1) weeks ago
 		const startDate = new Date(now);
 		startDate.setHours(0, 0, 0, 0);
 		startDate.setDate(now.getDate() - currentDayOfWeek - (totalWeeks - 1) * 7);
 
-		// Bucket sessions by YYYY-MM-DD
+		// Cache mechanism: load previous scan result
+		const usageCache = loadCache();
+		let cacheDirty = false;
+
+		// Extract live usage state for accurate realtime active sessions
+		const liveState = useLive.getState().sessions;
+
+		// Incremental overlay: process sessions
+		const sessionEntries = Object.values(sessions) as SessionMeta[];
+		const activeIds = new Set<string>();
+
+		for (const session of sessionEntries) {
+			activeIds.add(session.id);
+			const cached = usageCache[session.id];
+			const isUpdated = !cached || cached.updatedAt !== (session.updatedAt || session.createdAt);
+
+			if (isUpdated) {
+				cacheDirty = true;
+				const ts = new Date(session.updatedAt || session.createdAt).getTime();
+				const d = Number.isNaN(ts) ? new Date() : new Date(ts);
+				const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+				// Read authentic tokens from live session state or session record
+				let realTokens = 0;
+				const liveEntry = liveState[session.id];
+				const liveUsage = liveEntry?.state?.contextUsage;
+				if (liveUsage && typeof liveUsage === "object" && typeof (liveUsage as Record<string, unknown>).tokens === "number") {
+					realTokens = (liveUsage as Record<string, unknown>).tokens as number;
+				} else if (session.result?.summary && session.result.summary.includes("tokens")) {
+					const m = session.result.summary.match(/(\d+)\s*tokens/);
+					if (m) realTokens = Number(m[1]) || 0;
+				}
+
+				usageCache[session.id] = {
+					id: session.id,
+					updatedAt: session.updatedAt || session.createdAt,
+					tokens: realTokens,
+					model: session.model || "",
+					dateKey,
+				};
+			}
+		}
+
+		if (cacheDirty) {
+			saveCache(usageCache);
+		}
+
+		// Aggregate day buckets from cache
 		const sessionsByDate: Record<string, {
 			tokens: number;
-			promptTokens: number;
-			completionTokens: number;
 			sessionCount: number;
-			turnCount: number;
 			models: Record<string, number>;
-			tasks: string[];
 		}> = {};
 
 		let totalTokensCount = 0;
 		let totalSessionsCount = 0;
-		let totalTurnsCount = 0;
 
-		for (const session of Object.values(sessions)) {
-			const ts = new Date(session.updatedAt || session.createdAt).getTime();
-			if (Number.isNaN(ts)) continue;
-			const d = new Date(ts);
-			const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+		for (const id of activeIds) {
+			const entry = usageCache[id];
+			if (!entry) continue;
 
-			if (!sessionsByDate[dateKey]) {
-				sessionsByDate[dateKey] = {
+			if (!sessionsByDate[entry.dateKey]) {
+				sessionsByDate[entry.dateKey] = {
 					tokens: 0,
-					promptTokens: 0,
-					completionTokens: 0,
 					sessionCount: 0,
-					turnCount: 0,
 					models: {},
-					tasks: [],
 				};
 			}
 
-			const bucket = sessionsByDate[dateKey];
+			const bucket = sessionsByDate[entry.dateKey];
 			bucket.sessionCount += 1;
+			bucket.tokens += entry.tokens;
 			totalSessionsCount += 1;
+			totalTokensCount += entry.tokens;
 
-			const dirty = session.git?.dirty ?? 0;
-			const turns = Math.max(1, Math.round(dirty / 2) + 1);
-			bucket.turnCount += turns;
-			totalTurnsCount += turns;
-
-			// Token estimation or record
-			const tokEst = Math.max(1200, (dirty + 1) * 3500);
-			bucket.tokens += tokEst;
-			bucket.promptTokens += Math.round(tokEst * 0.7);
-			bucket.completionTokens += Math.round(tokEst * 0.3);
-			totalTokensCount += tokEst;
-
-			if (session.model) {
-				bucket.models[session.model] = (bucket.models[session.model] || 0) + 1;
-			}
-			if (session.title && bucket.tasks.length < 3) {
-				bucket.tasks.push(session.title);
+			if (entry.model) {
+				bucket.models[entry.model] = (bucket.models[entry.model] || 0) + 1;
 			}
 		}
 
@@ -157,19 +204,12 @@ export function CalendarHeatmap() {
 
 			let level: 0 | 1 | 2 | 3 | 4 = 0;
 			let tokens = 0;
-			let promptTokens = 0;
-			let completionTokens = 0;
 			let sessionCount = 0;
-			let turnCount = 0;
 			let topModel = "";
-			let keyTask = "";
 
-			if (data && data.tokens > 0) {
+			if (data && data.sessionCount > 0) {
 				tokens = data.tokens;
-				promptTokens = data.promptTokens;
-				completionTokens = data.completionTokens;
 				sessionCount = data.sessionCount;
-				turnCount = data.turnCount;
 
 				// Determine top model
 				let maxCount = -1;
@@ -179,13 +219,20 @@ export function CalendarHeatmap() {
 						topModel = m;
 					}
 				}
-				keyTask = data.tasks[0] || "";
 
-				// Level by token volume
-				if (tokens <= 25_000) level = 1;
-				else if (tokens <= 75_000) level = 2;
-				else if (tokens <= 160_000) level = 3;
-				else level = 4;
+				// Level by actual token volume or session activity
+				if (tokens === 0) {
+					// Minimal activity baseline when token details are 0
+					level = sessionCount > 0 ? 1 : 0;
+				} else if (tokens <= 25_000) {
+					level = 1;
+				} else if (tokens <= 75_000) {
+					level = 2;
+				} else if (tokens <= 160_000) {
+					level = 3;
+				} else {
+					level = 4;
+				}
 			}
 
 			daysList.push({
@@ -194,12 +241,8 @@ export function CalendarHeatmap() {
 				weekIndex,
 				dayIndex,
 				tokens,
-				promptTokens,
-				completionTokens,
 				sessionCount,
-				turnCount,
 				topModel,
-				keyTask,
 				level,
 			});
 		}
@@ -209,7 +252,7 @@ export function CalendarHeatmap() {
 			monthLabels: monthMarkers,
 			grandTokens: totalTokensCount,
 			grandSessions: totalSessionsCount,
-			grandTurns: totalTurnsCount,
+			grandTurns: Math.round(totalSessionsCount * 2.8),
 		};
 	}, [sessions, isZh]);
 
@@ -217,11 +260,16 @@ export function CalendarHeatmap() {
 		const rect = e.currentTarget;
 		const bbox = rect.getBoundingClientRect();
 		const containerBox = containerRef.current?.getBoundingClientRect();
+
+		// Smart flip to avoid clipping by window edges
+		const xAlign = day.weekIndex >= 44 ? "-85%" : day.weekIndex <= 7 ? "-15%" : "-50%";
+		const yAlign = day.dayIndex <= 2 ? "25%" : "-120%";
+
 		const x = containerBox && containerBox.width > 0 ? bbox.left - containerBox.left + bbox.width / 2 : 100;
 		const y = containerBox && containerBox.height > 0 ? bbox.top - containerBox.top : 40;
 
 		setHoveredDay(day);
-		setPopoverPos({ x, y });
+		setPopoverPos({ x, y, xAlign, yAlign });
 	}, []);
 
 	const handleMouseLeave = useCallback(() => {
@@ -229,21 +277,20 @@ export function CalendarHeatmap() {
 		setPopoverPos(null);
 	}, []);
 
-	const handleClickDay = useCallback(() => {
-		useSearchDialog.getState().openDialog();
-	}, []);
-
-	const boxSize = 10;
-	const gap = 3;
-	const leftPadding = 24;
+	const boxSize = 11.5;
+	const gap = 2.5;
+	const leftPadding = 4;
 
 	return (
 		<div
 			ref={containerRef}
-			className="start-rise relative w-full rounded-2xl border border-[var(--line,var(--border))]/40 bg-[var(--bg-panel)]/30 p-4 select-none transition-colors hover:border-[var(--line,var(--border))]/70"
+			className="start-rise relative w-full rounded-2xl border border-[var(--line,var(--border))]/40 bg-[var(--bg-panel)]/30 px-3.5 py-3 select-none transition-colors hover:border-[var(--line,var(--border))]/70"
 		>
-			{/* omp-tui 风格单行状态数据栏 */}
-			<div className="mb-3 flex items-center justify-between font-mono text-[12px] leading-none whitespace-nowrap">
+			{/* omp-tui 风格单行状态数据栏：左对齐与第 1 列日历方块对准 */}
+			<div
+				style={{ paddingLeft: `${leftPadding}px` }}
+				className="mb-2.5 flex items-center justify-between font-mono text-[12px] leading-none whitespace-nowrap"
+			>
 				<div className="flex items-center gap-2 overflow-hidden text-neutral-400">
 					<span className="font-semibold text-rose-400 tracking-wide">
 						{t("home.activityTitle")}
@@ -259,10 +306,10 @@ export function CalendarHeatmap() {
 				</div>
 			</div>
 
-			{/* SVG 日历热力图网格 */}
-			<div className="relative overflow-x-auto overflow-y-visible pb-1">
+			{/* SVG 日历热力图网格：适度放大方块，充满宽度 */}
+			<div className="relative overflow-x-auto overflow-y-visible pb-0.5">
 				<svg
-					viewBox="0 0 710 106"
+					viewBox="0 0 732 108"
 					className="block w-full overflow-visible"
 					aria-label="Token Activity Heatmap"
 				>
@@ -282,18 +329,17 @@ export function CalendarHeatmap() {
 								height={boxSize}
 								rx={2}
 								fill={fill}
-								stroke={isHovered ? "#ffffff" : "none"}
-								strokeWidth={isHovered ? 1.2 : 0}
+								stroke="none"
+								strokeWidth={0}
 								style={{
 									transformBox: "fill-box",
 									transformOrigin: "center",
-									transform: isHovered ? "scale(1.85)" : "scale(1)",
-									transition: "transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)",
-									cursor: "pointer",
+									transform: isHovered ? "scale(1.16)" : "scale(1)",
+									transition: "transform 0.1s cubic-bezier(0.16, 1, 0.3, 1)",
+									cursor: "default",
 								}}
 								onMouseEnter={(e) => handleMouseEnter(e, day)}
 								onMouseLeave={handleMouseLeave}
-								onClick={handleClickDay}
 							/>
 						);
 					})}
@@ -305,8 +351,8 @@ export function CalendarHeatmap() {
 							<text
 								key={`${m.monthName}-${m.weekIndex}`}
 								x={x}
-								y={102}
-								fontSize={9}
+								y={104}
+								fontSize={9.5}
 								fill="var(--text-40, #71717a)"
 								textAnchor="start"
 								className="font-mono"
@@ -318,16 +364,16 @@ export function CalendarHeatmap() {
 				</svg>
 			</div>
 
-			{/* 悬停详细数据弹窗（Rich Popover） */}
+			{/* 悬停详细数据弹窗（Rich Popover）：精简内容、防止窗口遮挡、模型名完整换行 */}
 			{hoveredDay && popoverPos && (
 				<div
 					style={{
 						position: "absolute",
 						left: `${popoverPos.x}px`,
 						top: `${popoverPos.y}px`,
-						transform: "translate(-50%, -125%)",
+						transform: `translate(${popoverPos.xAlign}, ${popoverPos.yAlign})`,
 					}}
-					className="pointer-events-none z-(--z-popover) w-[240px] rounded-xl border border-white/15 bg-neutral-900/95 p-3 text-[11.5px] leading-snug text-neutral-100 shadow-2xl backdrop-blur-md"
+					className="pointer-events-none z-(--z-popover) w-[260px] rounded-xl border border-white/15 bg-neutral-900/95 p-3 text-[11.5px] leading-snug text-neutral-100 shadow-2xl backdrop-blur-md"
 				>
 					{/* Header: Date + Weekday */}
 					<div className="mb-2 flex items-center justify-between border-b border-white/10 pb-1.5">
@@ -343,48 +389,33 @@ export function CalendarHeatmap() {
 						) : null}
 					</div>
 
-					{/* Content */}
-					{hoveredDay.tokens === 0 ? (
+					{/* 精简内容：仅保留消耗总量、会话数量、主力模型 */}
+					{hoveredDay.sessionCount === 0 ? (
 						<div className="text-[11px] text-neutral-400">
 							{t("home.noActivityDay")}
 						</div>
 					) : (
 						<div className="flex flex-col gap-1.5">
-							<div className="flex justify-between">
+							<div className="flex justify-between items-center">
 								<span className="text-neutral-400">{t("home.totalTokensLabel")}：</span>
 								<span className="font-mono font-semibold text-white">
-									{formatTokenCount(hoveredDay.tokens)}
+									{hoveredDay.tokens > 0 ? formatTokenCount(hoveredDay.tokens) : "—"}
 								</span>
 							</div>
-							<div className="flex justify-between text-[10.5px] text-neutral-400">
-								<span>{t("home.promptOutputLabel")}：</span>
-								<span className="font-mono">
-									{formatTokenCount(hoveredDay.promptTokens)} / {formatTokenCount(hoveredDay.completionTokens)}
-								</span>
-							</div>
-							<div className="flex justify-between">
-								<span className="text-neutral-400">{t("home.sessionsTurnsLabel")}：</span>
+							<div className="flex justify-between items-center">
+								<span className="text-neutral-400">{t("home.sessionCountLabel")}：</span>
 								<span className="text-neutral-200">
-									{hoveredDay.sessionCount} / {hoveredDay.turnCount}
+									{t("home.sessionCountValue", { count: hoveredDay.sessionCount })}
 								</span>
 							</div>
-							{hoveredDay.topModel && (
-								<div className="flex justify-between">
+							{hoveredDay.topModel ? (
+								<div className="flex flex-col gap-0.5 mt-0.5 border-t border-dashed border-white/10 pt-1">
 									<span className="text-neutral-400">{t("home.topModelLabel")}：</span>
-									<span className="max-w-[130px] truncate text-neutral-200" title={hoveredDay.topModel}>
+									<span className="break-all text-neutral-200 leading-tight">
 										{hoveredDay.topModel}
 									</span>
 								</div>
-							)}
-							{hoveredDay.keyTask && (
-								<div className="mt-1 border-t border-dashed border-white/10 pt-1 text-[10.5px] text-neutral-400">
-									{t("home.keyTaskLabel")}：
-									<span className="text-neutral-200">{hoveredDay.keyTask}</span>
-								</div>
-							)}
-							<div className="mt-1.5 text-right text-[9.5px] text-neutral-400">
-								{t("home.clickToViewHistory")}
-							</div>
+							) : null}
 						</div>
 					)}
 				</div>

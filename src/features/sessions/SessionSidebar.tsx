@@ -34,7 +34,7 @@ import {
 	Pencil,
 	Pin,
 	Plus,
-	PlusCircle,
+	SquarePen,
 	Search,
 	Settings as SettingsIcon,
 	Tag,
@@ -1119,13 +1119,13 @@ export function SessionSidebar() {
 						className="group relative flex h-9.5 w-full items-center justify-center gap-2 rounded-lg border border-white/[0.12] bg-white/[0.07] px-3 text-[13.5px] font-medium text-neutral-100 shadow-xs transition-all hover:border-white/[0.22] hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] active:scale-[0.985]"
 						title={`${t("sidebar.newSession")} (⌘N)`}
 					>
-						<PlusCircle
+						<SquarePen
 							size={16}
 							strokeWidth={1.8}
 							className="shrink-0 text-neutral-300 transition-colors group-hover:text-white"
 						/>
 						<span className="truncate whitespace-nowrap">{t("sidebar.newSession")}</span>
-						<span className="ml-auto shrink-0 select-none font-mono text-[11px] text-neutral-400 group-hover:text-neutral-200 @max-[220px]:hidden">
+						<span className="absolute right-3 select-none font-mono text-[11px] text-neutral-400 group-hover:text-neutral-200 @max-[220px]:hidden">
 							⌘N
 						</span>
 					</button>
