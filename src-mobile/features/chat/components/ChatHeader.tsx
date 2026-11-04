@@ -1,30 +1,65 @@
-import { ChevronDown, Menu, MoreHorizontal, SquarePen } from "lucide-react";
+import { Menu, MoreHorizontal, SquarePen } from "lucide-react";
 import { IconButton, TopBar } from "../../../ui";
 import { shortModel, thinkLabel } from "../lib/models";
 
-/** Shared home/chat chrome; the picker exposes the complete model name. */
-export function ChatHeader({ model, thinking, onMenu, onModel, onNew, onTools }: {
-	model?: string | null;
-	thinking?: string | null;
+/**
+ * Shared home/chat top chrome:
+ * - Left & right: liquid glass style buttons
+ * - Center: Session Name (primary) + File Path (secondary, smaller/dimmer below)
+ */
+export function ChatHeader({
+	title,
+	subtitle,
+	onTitleClick,
+	ariaLabel,
+	onMenu,
+	onNew,
+	onTools,
+	model,
+	thinking,
+	onModel,
+}: {
+	title?: string;
+	subtitle?: string | null;
+	onTitleClick?: () => void;
+	ariaLabel?: string;
 	onMenu: () => void;
-	onModel: () => void;
 	onNew: () => void;
 	onTools?: () => void;
+	model?: string | null;
+	thinking?: string | null;
+	onModel?: () => void;
 }) {
+	const displayTitle = title ?? (model ? shortModel(model) : "新对话");
+	const displaySubtitle = subtitle ?? (title ? null : thinkLabel(thinking));
+
 	return (
 		<TopBar
-			left={<IconButton variant="filled" icon={<Menu size={22} />} label="菜单" onClick={onMenu} />}
+			left={<IconButton variant="glass" icon={<Menu size={22} />} label="菜单" onClick={onMenu} />}
 			center={
-				<button type="button" aria-label="选择模型和思考等级" onClick={onModel} className="flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-m-pill px-2 text-m-md text-m-text active:bg-m-surface-hover">
-					<span className="min-w-0 truncate">{shortModel(model ?? "") || "默认模型"}</span>
-					<span className="shrink-0 whitespace-nowrap text-m-xs text-m-text-3">{thinkLabel(thinking)}</span>
-					<ChevronDown size={15} className="shrink-0 text-m-text-3" aria-hidden />
+				<button
+					type="button"
+					aria-label={ariaLabel ?? (displaySubtitle ? `${displayTitle}，${displaySubtitle}` : displayTitle)}
+					onClick={onTitleClick ?? onModel}
+					disabled={!onTitleClick && !onModel}
+					className="flex min-w-0 max-w-full flex-col items-center justify-center px-2 py-0.5 text-center active:opacity-75 disabled:cursor-default"
+				>
+					<span className="min-w-0 max-w-full truncate text-m-sm font-semibold whitespace-nowrap text-m-text">
+						{displayTitle}
+					</span>
+					{displaySubtitle ? (
+						<span className="min-w-0 max-w-full truncate text-[11px] leading-tight whitespace-nowrap text-m-text-3">
+							{displaySubtitle}
+						</span>
+					) : null}
 				</button>
 			}
-			right={<>
-				<IconButton variant="filled" icon={<SquarePen size={20} />} label="新建对话" onClick={onNew} />
-				{onTools && <IconButton variant="filled" icon={<MoreHorizontal size={22} />} label="工具菜单" onClick={onTools} />}
-			</>}
+			right={
+				<>
+					<IconButton variant="glass" icon={<SquarePen size={20} />} label="新建对话" onClick={onNew} />
+					{onTools && <IconButton variant="glass" icon={<MoreHorizontal size={22} />} label="工具菜单" onClick={onTools} />}
+				</>
+			}
 		/>
 	);
 }

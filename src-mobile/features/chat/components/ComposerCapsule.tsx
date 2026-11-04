@@ -17,7 +17,7 @@ export interface ComposerApi {
 const LINE_PX = 44;
 const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 
-const roundBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
+const roundBtn = "m-glass-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
 
 /**
  * Gemini capsule `[+] text [mic] [send/stop]` (docs/MOBILE_DESIGN.md §4.4). The textarea is
@@ -39,6 +39,7 @@ export function ComposerCapsule({
 	onInput,
 	onSync,
 	onUnmount,
+	onFocusChange,
 }: {
 	apiRef?: RefObject<ComposerApi | null>;
 	initialText?: string;
@@ -60,6 +61,7 @@ export function ComposerCapsule({
 	onSync?: (value: string) => void;
 	/** Final text when the capsule unmounts (save the unsent draft). */
 	onUnmount?: (value: string) => void;
+	onFocusChange?: (focused: boolean) => void;
 }) {
 	const capsule = useRef<HTMLDivElement>(null);
 	const actions = useRef<HTMLDivElement>(null);
@@ -198,7 +200,7 @@ export function ComposerCapsule({
 	return (
 		<div
 			ref={capsule}
-			className="grid items-end gap-x-1 rounded-(--m-composer-radius) bg-m-composer-bg p-2 shadow-m-composer"
+			className="grid items-end gap-x-1 rounded-(--m-composer-radius) border border-white/12 bg-m-composer-bg/80 backdrop-blur-xl p-2 shadow-m-composer"
 			style={{
 				gridTemplateColumns: "44px minmax(0, 1fr) auto",
 				gridTemplateAreas: stacked ? '"top top top" "text text text" "plus . actions"' : '"plus text actions"',
@@ -210,7 +212,7 @@ export function ComposerCapsule({
 				aria-label="添加"
 				onClick={onPlus}
 				style={{ gridArea: "plus" }}
-				className={`${roundBtn} text-m-text-2 active:bg-m-surface-hover`}
+				className={`${roundBtn} text-m-text`}
 			>
 				<Plus size={24} strokeWidth={1.75} />
 			</button>
@@ -220,6 +222,8 @@ export function ComposerCapsule({
 				enterKeyHint="enter"
 				placeholder={placeholder}
 				aria-label="消息输入框"
+				onFocus={() => onFocusChange?.(true)}
+				onBlur={() => onFocusChange?.(false)}
 				onInput={() => {
 					if (!composing.current) {
 						onInput?.();
@@ -253,7 +257,7 @@ export function ComposerCapsule({
 					aria-pressed={recording}
 					disabled={transcribing}
 					onClick={() => void toggleRecording()}
-					className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text-2 active:bg-m-surface-hover"}`}
+					className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text"}`}
 				>
 					{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
 				</button>
@@ -268,7 +272,7 @@ export function ComposerCapsule({
 					aria-label="发送"
 					disabled={!canSend}
 					onClick={submit}
-					className={`${roundBtn} ${canSend ? "bg-m-accent-soft text-m-accent-soft-text active:opacity-80" : "bg-m-surface-2 text-m-text-3"}`}
+					className={`${roundBtn} ${canSend ? "bg-m-accent-soft/80 text-m-accent-soft-text border-m-accent/30 active:opacity-80" : "opacity-40 text-m-text-3"}`}
 				>
 					{busy ? <Spinner size={18} /> : <ArrowUp size={22} strokeWidth={2} />}
 				</button>

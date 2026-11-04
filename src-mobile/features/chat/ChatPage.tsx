@@ -13,6 +13,8 @@ import { ChatController, isDeadStatus } from "./chatStore";
 import { Composer } from "./components/Composer";
 import { HeaderMenu } from "./components/HeaderMenu";
 import { ChatHeader } from "./components/ChatHeader";
+import { PathSheet } from "./components/PathSheet";
+import { abbreviateHomePath } from "../sessions/NewSessionSheet";
 import { sessionModelSource } from "./components/useModelFacts";
 import { takeFirstSend } from "./lib/drafts";
 import { MessageActionsSheet } from "./components/MessageActions";
@@ -24,9 +26,38 @@ import { TurnNotices } from "./components/TurnNotices";
 import type { RequestStat } from "./lib/requestStats";
 import { useChat, useChatUi as useUi } from "./ChatContext";
 
-function Header({ onOpenMenu, onOpenPicker, onNew, onToolMenu }: { onOpenMenu: () => void; onOpenPicker: () => void; onNew: () => void; onToolMenu: () => void }) {
+function Header({
+	sessionId,
+	onOpenMenu,
+	onOpenPicker,
+	onNew,
+	onToolMenu,
+	onOpenPath,
+}: {
+	sessionId: string;
+	onOpenMenu: () => void;
+	onOpenPicker: () => void;
+	onNew: () => void;
+	onToolMenu: () => void;
+	onOpenPath?: () => void;
+}) {
+	const session = useSession(sessionId);
 	const cstate = useChat((s) => s.cstate);
-	return <ChatHeader model={cstate?.model} thinking={cstate?.thinkingLevel} onMenu={onOpenMenu} onModel={onOpenPicker} onNew={onNew} onTools={onToolMenu} />;
+	const title = session?.customName || session?.title || session?.label || "对话";
+	const subtitle = session?.cwd ? abbreviateHomePath(session.cwd) : null;
+	return (
+		<ChatHeader
+			title={title}
+			subtitle={subtitle}
+			onTitleClick={onOpenPath}
+			onMenu={onOpenMenu}
+			onNew={onNew}
+			onTools={onToolMenu}
+			model={cstate?.model}
+			thinking={cstate?.thinkingLevel}
+			onModel={onOpenPicker}
+		/>
+	);
 }
 
 function ResumeBar({ sessionId }: { sessionId: string }) {
@@ -78,6 +109,7 @@ export function ChatPage({ route }: PageProps) {
 	const [newOpen, setNewOpen] = useState(false);
 	const session = useSession(id);
 
+	const [pathOpen, setPathOpen] = useState(false);
 	const modelSource = useMemo(() => sessionModelSource(id), [id]);
 
 	useEffect(() => {
@@ -114,16 +146,18 @@ export function ChatPage({ route }: PageProps) {
 		<ChatCtx.Provider value={ui}>
 			<div className="flex min-h-0 flex-1 flex-col bg-m-bg">
 				<Header
+					sessionId={id}
 					onOpenMenu={() => setMenuSheet(true)}
 					onOpenPicker={() => setPickerOpen(true)}
 					onNew={() => setNewOpen(true)}
 					onToolMenu={() => setToolMenu(true)}
+					onOpenPath={() => setPathOpen(true)}
 				/>
 				<MessageList sessionId={id} />
 				<PendingCards />
 				<ResumeBar sessionId={id} />
 				<TurnNotices sessionId={id} />
-				<Composer sessionId={id} />
+				<Composer sessionId={id} onOpenPicker={() => setPickerOpen(true)} />
 			</div>
 			<MessageActionsSheet target={target} onClose={() => setTarget(null)} controller={controller} />
 			<StatCard stat={stat} onClose={() => setStat(null)} />
@@ -137,6 +171,7 @@ export function ChatPage({ route }: PageProps) {
 				currentLevel={controller.state.cstate?.thinkingLevel ?? null}
 				onFacts={(f) => controller.patchState({ ...(f.model ? { model: f.model } : {}), thinkingLevel: f.thinkingLevel })}
 			/>
+			<PathSheet open={pathOpen} onClose={() => setPathOpen(false)} cwd={session?.cwd} sessionId={id} />
 		</ChatCtx.Provider>
 	);
 }

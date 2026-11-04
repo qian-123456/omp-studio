@@ -1,4 +1,4 @@
-import { Camera, ChevronDown, FolderOpen, ImagePlus, Lightbulb, Monitor, Paperclip, PenLine, Target } from "lucide-react";
+import { Camera, FolderOpen, ImagePlus, Lightbulb, Monitor, Paperclip, PenLine, Target } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "../../core/api";
 import { nav, paths, type PageProps } from "../../core/nav";
@@ -7,12 +7,13 @@ import { AppMark, BottomSheet, MenuRow, Switch, toast } from "../../ui";
 import { ChatHeader } from "../chat/components/ChatHeader";
 import { ActionTile } from "../chat/components/Composer";
 import { ComposerCapsule, type ComposerApi } from "../chat/components/ComposerCapsule";
+import { ComposerToolbar, useKeyboardOpen } from "../chat/components/ComposerToolbar";
 import { ModelThinkingSheet } from "../chat/components/ModelThinkingSheet";
 import type { ModelSource } from "../chat/components/useModelFacts";
 import { draftBook, queueComposerAction, queueFirstSend, type ComposerAction } from "../chat/lib/drafts";
 import { parseModelRef, type ModelFacts, type ModelOpt } from "../chat/lib/models";
 import { MenuSheet } from "./MenuSheet";
-import { abbreviateHomePath, NewSessionSheet } from "./NewSessionSheet";
+import { abbreviateHomePath, NewSessionSheet, setCachedHomeDir } from "./NewSessionSheet";
 import { startTodosSync } from "./todos";
 import { startTreeSync, useTree } from "./treeStore";
 import type { DirEntry } from "./tree";
@@ -32,6 +33,8 @@ export function HomePage(_props: PageProps) {
 	const appliedPlan = useRef(false);
 	const submitting = useRef(false);
 	const [facts, setFacts] = useState<ModelFacts>({ current: null, thinkingLevel: null, liveThinking: [] });
+	const [inputFocused, setInputFocused] = useState(false);
+	const keyboardOpen = useKeyboardOpen(inputFocused);
 	const selection = useRef<ModelOpt | null>(null);
 	const factsRef = useRef(facts);
 	factsRef.current = facts;
@@ -84,6 +87,7 @@ export function HomePage(_props: PageProps) {
 			if (controller.signal.aborted) return;
 			const dirs = response.dirs ?? [];
 			setHomeDir(response.homeDir ?? null);
+			setCachedHomeDir(response.homeDir ?? null);
 			setDirectory((current) => dirs.find((d) => d.path === current?.path && (!d.mode || d.mode === mode)) ?? dirs.find((d) => d.kind === "workspace" && d.mode === mode) ?? dirs.find((d) => d.mode === mode) ?? dirs[0] ?? null);
 		}).catch((error) => { if (!controller.signal.aborted) setDirectoryError(errorMessage(error)); });
 		return () => controller.abort();
@@ -154,20 +158,35 @@ export function HomePage(_props: PageProps) {
 	return (
 		<div className="relative flex min-h-0 flex-1 flex-col bg-m-bg">
 			<div className="pointer-events-none absolute inset-0" style={{ background: "var(--m-glow)" }} aria-hidden />
-			<ChatHeader model={facts.current?.id} thinking={facts.thinkingLevel} onMenu={() => setMenuOpen(true)} onModel={() => setModelOpen(true)} onNew={() => setNewOpen(true)} />
+			<ChatHeader
+				title="新对话"
+				subtitle={directory ? abbreviateHomePath(directory.path, homeDir) : directoryError ? "目录加载失败，点击重试" : "选择当前目录"}
+				ariaLabel={directory ? `当前目录：${directory.path}，点击切换` : "选择当前目录"}
+				onTitleClick={() => setDirectoryOpen(true)}
+				onMenu={() => setMenuOpen(true)}
+				onNew={() => setNewOpen(true)}
+			/>
 			<div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 pb-12 text-center">
 				<AppMark size={40} />
 				<h1 className="text-m-display font-normal text-m-text">今天想做点什么？</h1>
 			</div>
 			<div className="relative shrink-0 px-4" style={{ paddingBottom: "max(12px, var(--m-safe-bottom))" }}>
-				<div className="flex justify-center pb-2">
-					<button type="button" disabled={sending} onClick={() => setDirectoryOpen(true)} aria-label={directory ? `当前目录：${directory.path}，点击切换` : "选择当前目录"} className="flex min-h-11 max-w-full items-center gap-2 rounded-m-pill bg-m-surface px-4 py-2 text-m-xs text-m-text-2 active:bg-m-surface-2 disabled:opacity-50">
-						<FolderOpen size={16} className="shrink-0" />
-						<span className="min-w-0 break-all text-left">{directory ? abbreviateHomePath(directory.path, homeDir) : directoryError ? "目录加载失败，点击重试" : "选择当前目录"}</span>
-						<ChevronDown size={16} className="shrink-0" />
-					</button>
-				</div>
-				<ComposerCapsule apiRef={apiRef} placeholder="今天想做点什么？" busy={sending} onPlus={() => setPlusOpen(true)} onSend={(text) => void handleSend(text)} />
+				<ComposerCapsule
+					apiRef={apiRef}
+					placeholder="今天想做点什么？"
+					busy={sending}
+					onPlus={() => setPlusOpen(true)}
+					onSend={(text) => void handleSend(text)}
+					onFocusChange={setInputFocused}
+				/>
+				<ComposerToolbar
+					model={facts.current?.id}
+					thinking={facts.thinkingLevel}
+					onModel={() => setModelOpen(true)}
+					onThinking={() => setModelOpen(true)}
+					contextText="0%"
+					hidden={keyboardOpen}
+				/>
 			</div>
 			<input ref={fileRef} type="file" multiple hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void openAction(undefined, files); }} />
 			<input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void openAction(undefined, files); }} />

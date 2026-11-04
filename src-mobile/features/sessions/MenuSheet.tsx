@@ -1,11 +1,11 @@
-import { Bell, Clock, Gauge, Lightbulb, Search, Settings, SquarePen, X } from "lucide-react";
+import { Bell, Check, Clock, Filter, Gauge, Lightbulb, Search, Settings, SquarePen, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, TouchEvent as ReactTouchEvent } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../core/api";
 import { events } from "../../core/sse";
 import { nav, paths } from "../../core/nav";
-import { AppMark, IconButton, Segmented } from "../../ui";
+import { AppMark, IconButton } from "../../ui";
 import { useOverlay, usePresence } from "../../ui/overlay";
 import { useSessionActions } from "./ActionSheets";
 import { ChronologicalView } from "./ChronologicalView";
@@ -22,6 +22,84 @@ const VIEW_OPTIONS = [
 	{ value: "project", label: "按项目" },
 	{ value: "time", label: "按时间" },
 ] as const;
+
+function ViewModeFilter({
+	value,
+	onChange,
+}: {
+	value: LeftNavViewMode;
+	onChange: (v: LeftNavViewMode) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const ref = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!open) return;
+		const dismiss = (e: PointerEvent) => {
+			if (!ref.current?.contains(e.target as Node)) setOpen(false);
+		};
+		const key = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				e.stopImmediatePropagation();
+				setOpen(false);
+				ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
+			}
+		};
+		document.addEventListener("pointerdown", dismiss);
+		document.addEventListener("keydown", key, true);
+		return () => {
+			document.removeEventListener("pointerdown", dismiss);
+			document.removeEventListener("keydown", key, true);
+		};
+	}, [open]);
+
+	const currentLabel = value === "project" ? "按项目" : "按时间";
+
+	return (
+		<div ref={ref} className="relative ml-auto shrink-0">
+			<button
+				type="button"
+				aria-haspopup="menu"
+				aria-expanded={open}
+				aria-label={`视图筛选，当前：${currentLabel}，点击切换`}
+				title={`视图：${currentLabel}`}
+				onClick={() => setOpen((v) => !v)}
+				className="flex min-h-11 min-w-11 items-center justify-center px-1"
+			>
+				<span className="m-glass-btn flex h-9 w-9 items-center justify-center rounded-m-pill text-m-text">
+					<Filter size={17} strokeWidth={1.75} />
+				</span>
+			</button>
+			{open && (
+				<div
+					role="menu"
+					aria-label="切换视图"
+					className="absolute right-1 top-full z-(--z-banner) mt-1 w-36 rounded-m-lg border border-m-border bg-m-bg/95 backdrop-blur-xl p-1.5 shadow-lg"
+				>
+					<div className="px-2 py-1 text-m-xs text-m-text-3">切换视图</div>
+					{VIEW_OPTIONS.map((opt) => (
+						<button
+							key={opt.value}
+							type="button"
+							role="menuitemradio"
+							aria-checked={value === opt.value}
+							onClick={() => {
+								onChange(opt.value);
+								setOpen(false);
+							}}
+							className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-m-md px-2.5 text-left text-m-sm whitespace-nowrap active:bg-m-surface-hover ${
+								value === opt.value ? "bg-m-surface font-medium text-m-accent" : "text-m-text-2"
+							}`}
+						>
+							<span>{opt.label}</span>
+							{value === opt.value && <Check size={16} className="text-m-accent" />}
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
 
 const ANIM_MS = 300;
 /** Horizontal swipe distance (px) or flick velocity (px/ms) that closes the drawer. */
@@ -227,7 +305,7 @@ export function MenuSheet({
 
 					<div className="flex flex-wrap items-center gap-x-2 px-3 py-1">
 						<ModeSwitch />
-						<Segmented label="视图" className="min-w-fit ml-auto whitespace-nowrap [&]:p-0.5 [&>button]:px-2 [&>button]:shadow-none" value={viewMode} options={VIEW_OPTIONS} onChange={setViewMode} />
+						<ViewModeFilter value={viewMode} onChange={setViewMode} />
 					</div>
 				</div>
 				<div className="m-noscrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">

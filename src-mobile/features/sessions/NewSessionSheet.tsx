@@ -18,9 +18,18 @@ const KIND_ICON: Record<string, ReactNode> = {
 	global: <MessageSquare size={22} strokeWidth={1.75} />,
 };
 
+let cachedHomeDir: string | null = null;
+export function setCachedHomeDir(dir: string | null): void {
+	if (dir) cachedHomeDir = dir;
+}
+export function getCachedHomeDir(): string | null {
+	return cachedHomeDir;
+}
+
 /** Abbreviate only the exact home directory supplied by the server, never a guessed username. */
 export function abbreviateHomePath(path: string, homeDir?: string | null): string {
-	const home = homeDir?.replace(new RegExp("/+$"), "");
+	const effective = homeDir ?? cachedHomeDir;
+	const home = effective?.replace(new RegExp("/+$"), "");
 	if (!home) return path;
 	return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
@@ -164,6 +173,7 @@ export function NewSessionSheet({ open, onClose, defaultCwd, onSelectDirectory }
 				const data = r.dirs ?? [];
 				setDirs({ data, error: null, loading: false });
 				setHomeDir(r.homeDir ?? null);
+				setCachedHomeDir(r.homeDir ?? null);
 				const cwd = preselectCwd(data, defaultCwdRef.current);
 				if (cwd) dispatch({ type: "pickDir", cwd });
 			})

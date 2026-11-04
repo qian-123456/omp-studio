@@ -72,15 +72,20 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		fireEvent.click(screen.getByRole("button", { name: "灵感收件箱" }));
 		expect(pushMock).toHaveBeenCalledWith("/ideas");
 
-		// 2. Middle section: Space selector & "按项目 / 按时间" view toggle
-		const projectTab = screen.getByRole("radio", { name: "按项目" });
-		const timeTab = screen.getByRole("radio", { name: "按时间" });
+		// 2. Middle section: Space selector & "按项目 / 按时间" funnel view filter
+		const filterBtn = screen.getByRole("button", { name: /视图筛选/i });
+		expect(filterBtn).not.toBeNull();
+		fireEvent.click(filterBtn);
+
+		const projectTab = screen.getByRole("menuitemradio", { name: "按项目" });
+		const timeTab = screen.getByRole("menuitemradio", { name: "按时间" });
 		expect(projectTab.getAttribute("aria-checked")).toBe("true");
 
 		// Toggle view mode
 		fireEvent.click(timeTab);
-		expect(timeTab.getAttribute("aria-checked")).toBe("true");
-
+		expect(screen.getByRole("button", { name: /视图筛选，当前：按时间/i })).not.toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /视图筛选/i }));
+		expect(screen.getByRole("menuitemradio", { name: "按时间" }).getAttribute("aria-checked")).toBe("true");
 		// 3. Bottom section
 		const inboxBtn = screen.getByRole("button", { name: "收件箱" });
 		expect(inboxBtn).not.toBeNull();

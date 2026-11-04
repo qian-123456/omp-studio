@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 
-export type IconButtonVariant = "filled" | "plain" | "tinted";
+export type IconButtonVariant = "filled" | "plain" | "tinted" | "glass";
 
 const VARIANTS: Record<IconButtonVariant, string> = {
 	filled: "bg-m-surface text-m-text group-active/icon-button:bg-m-surface-2",
 	plain: "text-m-text group-active/icon-button:bg-m-surface-hover",
 	tinted: "bg-m-accent-soft text-m-accent-soft-text group-active/icon-button:opacity-80",
+	glass: "m-glass-btn text-m-text",
 };
 
 /**

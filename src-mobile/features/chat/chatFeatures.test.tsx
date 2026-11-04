@@ -47,20 +47,21 @@ const wrap = (c: ChatController, node: React.ReactNode) => (
 );
 
 describe("Top Bar (Change 1)", () => {
-	it("renders Menu (left), model+thinking pill, 新建对话, and tool menu", async () => {
+	it("renders Menu (left), session header, 新建对话, and tool menu, while model picker is in composer", async () => {
 		apiMock.mockImplementation(async (_method: string, path: string) => path.endsWith("/models") ? { models: [{ provider: "openai", id: "gpt-test", thinking: ["low", "high"] }], current: { provider: "openai", id: "gpt-test" }, thinkingLevel: "low", liveThinking: ["low", "high"] } : {});
 		render(<ChatPage route={{ name: "chat", path: "/s/s1", params: { id: "s1" }, query: {} }} />);
 		// Left: Menu
 		expect(screen.getByRole("button", { name: "菜单" })).toBeTruthy();
-		// Middle-left: Model + Thinking level pill
-		const pill = screen.getByRole("button", { name: "选择模型和思考等级" });
-		expect(pill).toBeTruthy();
 		// Right: 新建对话 icon and 工具菜单 icon
 		expect(screen.getByRole("button", { name: "新建对话" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "工具菜单" })).toBeTruthy();
 
-		// Tapping the pill opens the model/thinking bottom sheet picker
-		await act(async () => { fireEvent.click(pill); });
+		// Composer toolbar below composer input contains Model & Thinking level
+		const modelBtn = screen.getByRole("button", { name: /当前模型/ });
+		expect(modelBtn).toBeTruthy();
+
+		// Tapping the model button in composer opens the model/thinking bottom sheet picker
+		await act(async () => { fireEvent.click(modelBtn); });
 		expect(screen.getByRole("dialog", { name: "模型" })).toBeTruthy();
 		expect(screen.getByRole("radiogroup", { name: "思考强度" })).toBeTruthy();
 		expect(screen.getAllByText("gpt-test").length).toBeGreaterThan(0);
@@ -76,8 +77,8 @@ describe("Top Bar (Change 1)", () => {
 	});
 });
 
-describe("Status bar above composer (Change 2)", () => {
-	it("renders current directory on the left and context usage on the right", async () => {
+describe("Toolbar below composer (Change 2)", () => {
+	it("renders model, thinking and context usage in the composer toolbar", async () => {
 		const c = new ChatController("s1");
 		c.store.setState({
 			cstate: {
@@ -93,17 +94,13 @@ describe("Status bar above composer (Change 2)", () => {
 
 		render(wrap(c, <Composer sessionId="s1" />));
 
-		const dirBtn = screen.getByRole("button", { name: "当前工作目录" });
-		expect(dirBtn).toBeTruthy();
+		const modelBtn = screen.getByRole("button", { name: /当前模型/ });
+		expect(modelBtn).toBeTruthy();
+		expect(modelBtn.textContent).toContain("gpt-4o");
 
-		const ctxBtn = screen.getByRole("button", { name: "上下文用量" });
+		const ctxBtn = screen.getByRole("button", { name: /上下文用量/ });
 		expect(ctxBtn).toBeTruthy();
 		expect(ctxBtn.textContent).toContain("上下文");
-
-		// Tapping directory opens PathSheet
-		fireEvent.click(dirBtn);
-		expect(screen.getByText("当前工作目录")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "复制路径" })).toBeTruthy();
 
 		// Tapping context opens ContextSheet with compaction action
 		fireEvent.click(ctxBtn);
@@ -375,7 +372,7 @@ describe("Chat UI at 390x844 viewport", () => {
 
 		// Verify key elements are mounted
 		expect(screen.getByRole("button", { name: "菜单" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "选择模型和思考等级" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /当前模型/ })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "新建对话" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "工具菜单" })).toBeTruthy();
 		expect(screen.getByLabelText("消息输入框")).toBeTruthy();
