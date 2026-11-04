@@ -178,13 +178,15 @@ export const SessionRow = memo(function SessionRow({ s, depth = 0, current, with
 				{gesture.offset > 0 && <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1 px-3 text-m-xs whitespace-nowrap text-m-accent">
 					{s.unread ? <Check size={16} /> : <Mail size={16} />}{s.unread ? "已读" : "未读"}
 				</span>}
-				{gesture.revealed && !gesture.dragging && <button type="button" onClick={() => { gesture.close(); void swipe(false); }}
-					className="absolute inset-y-0 right-0 flex min-h-11 w-24 items-center justify-center gap-1 rounded-m-pill bg-m-danger/15 px-2 text-m-xs whitespace-nowrap text-m-danger">
-					<Archive size={16} />{s.archived ? "取消归档" : "归档"}
-				</button>}
+				{gesture.revealed && !gesture.dragging && (
+					<button type="button" data-action="archive" aria-label={s.archived ? "取消归档" : "归档"} onClick={() => { gesture.close(); void swipe(false); }}
+						className="absolute inset-y-0 right-0 flex min-h-11 w-24 items-center justify-center gap-1 rounded-m-pill bg-m-danger/15 px-2 text-m-xs font-medium whitespace-nowrap text-m-danger">
+						<Archive size={16} className="shrink-0" />{s.archived ? "取消归档" : "归档"}
+					</button>
+				)}
 				<button type="button" title={name} aria-current={current || undefined} aria-busy={pending || undefined}
 					aria-label={line ? `${name}，${line}` : name}
-					aria-description={[!isDraftId(s.id) ? "右滑切换已读，左滑显示归档操作" : null, onMore ? "长按或按 Shift+F10 查看完整标题和会话操作" : null].filter(Boolean).join("；") || undefined}
+					aria-description={[!isDraftId(s.id) ? "左滑显示归档按钮，右滑切换已读状态" : null, onMore ? "长按或按 Shift+F10 查看完整标题和会话操作" : null].filter(Boolean).join("；") || undefined}
 					onKeyDown={(e) => { if (onMore && (e.key === "ContextMenu" || e.shiftKey && e.key === "F10")) { e.preventDefault(); onMore(s); } }}
 					onClick={(e) => { if (e.detail > 0 && gesture.consumed() || busy.current) return; if (gesture.revealed) { gesture.close(); return; } if (onOpen) onOpen(s); else nav.push(paths.chat(s.id)); }}
 					{...gesture.handlers}
