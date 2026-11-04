@@ -59,7 +59,27 @@ jobs:
         with:
           tagName: ${{ github.event.inputs.tag_name || github.ref_name }}
           releaseName: 'omp-workspace ${{ github.event.inputs.tag_name || github.ref_name }}'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseBody: |
+            ### 下载与架构选择 / Download & Architecture
+            - **Apple Silicon (M1/M2/M3/M4/M5)**: 下载 `*aarch64.dmg`（推荐大多数用户）
+            - **Intel Mac**: 下载 `*x64.dmg`
+            - 自动更新文件（`.app.tar.gz` / `.sig`）由应用内置更新器使用，日常使用直接下载 `.dmg` 即可。
+
+            ---
+
+            ### ⚠️ 重要安全提示：macOS 绕过未签名与隔离提示
+            由于开源社区版未购买苹果商业开发者证书，首次在 macOS 打开可能提示 **“omp-workspace 已损坏，无法打开。你应该将它移到废纸篓”**。
+            **软件并非损坏**，只需打开 macOS「终端（Terminal）」并运行以下命令清除隔离属性：
+            ```bash
+            xattr -cr /Applications/omp-workspace.app
+            ```
+            *备选方式*：在访达「应用程序」中按住 `Control` 键点按应用选择「打开」，或在系统「系统设置 ▸ 隐私与安全性」中点击「仍要打开」。
+
+            ---
+
+            ### 运行环境 / Requirements
+            - 需要本地已安装或自动安装 [`omp`](https://github.com/can1357/oh-my-pi) CLI（首次启动未检测到会自动安装）。
+            - 准备至少一个模型供应商凭据（支持 API Key 或 OAuth 订阅）。
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
