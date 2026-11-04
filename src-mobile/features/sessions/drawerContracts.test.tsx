@@ -17,6 +17,7 @@ import { PullToRefresh } from "../../ui/PullToRefresh";
 import { SearchPage } from "./SearchPage";
 import { useSessionActions } from "./ActionSheets";
 import { SessionRow } from "./SessionRow";
+import { patchSession } from "./actions";
 import { TreeView } from "./TreeView";
 import { useTree } from "./treeStore";
 import { InboxPage } from "./InboxPage";
@@ -120,6 +121,54 @@ describe("drawer session contracts", () => {
 		await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.stringContaining("操作失败"), { kind: "error" }));
 		expect(screen.getByLabelText("未读")).toBeTruthy();
 		expect(apiMock).not.toHaveBeenCalledWith("GET", expect.anything());
+	});
+
+	it.each([false, true])("reveals and explicitly toggles archive from %s", async (archived) => {
+		const item = { ...session, status: "idle" as const, archived };
+		const open = vi.fn();
+		render(<SessionRow s={item} onOpen={open} />);
+		const row = screen.getByRole("button", { name: new RegExp(session.title) });
+		swipeRow(row, -300, 22);
+		fireEvent.click(row, { detail: 1 });
+		expect(open).not.toHaveBeenCalled();
+		expect(patchSession).not.toHaveBeenCalled();
+		expect(apiMock).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: archived ? "取消归档" : "归档" }));
+		await waitFor(() => expect(patchSession).toHaveBeenCalledWith(item, { archived: !archived }, archived ? "已取消归档" : "已归档"));
+		expect(screen.queryByRole("button", { name: archived ? "取消归档" : "归档" })).toBeNull();
+	});
+
+	it.each(["right swipe", "tap"])("closes a revealed row on %s without mutation or navigation", (action) => {
+		const open = vi.fn();
+		render(<SessionRow s={{ ...session, status: "idle" }} onOpen={open} />);
+		const row = screen.getByRole("button", { name: new RegExp(session.title) });
+		swipeRow(row, -100, 20);
+		if (action === "right swipe") {
+			swipeRow(row, 100, 20);
+			fireEvent.click(row, { detail: 1 });
+		} else {
+			rowPointer(row, "pointerdown", 20, 20);
+			rowPointer(row, "pointerup", 20, 20);
+			fireEvent.click(row, { detail: 1 });
+		}
+		expect(screen.queryByRole("button", { name: "归档" })).toBeNull();
+		expect(open).not.toHaveBeenCalled();
+		expect(patchSession).not.toHaveBeenCalled();
+		expect(apiMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["short", "vertical", "cancel"])("keeps %s gestures safe", (action) => {
+		const open = vi.fn();
+		render(<SessionRow s={{ ...session, status: "idle" }} onOpen={open} />);
+		const row = screen.getByRole("button", { name: new RegExp(session.title) });
+		rowPointer(row, "pointerdown", 20, 20);
+		rowPointer(row, "pointermove", action === "short" ? -20 : action === "vertical" ? 15 : -100, action === "vertical" ? 130 : 20);
+		rowPointer(row, action === "cancel" ? "pointercancel" : "pointerup", action === "short" ? -20 : action === "vertical" ? 15 : -100, action === "vertical" ? 130 : 20);
+		fireEvent.click(row, { detail: 1 });
+		expect(screen.queryByRole("button", { name: "归档" })).toBeNull();
+		expect(open).not.toHaveBeenCalled();
+		expect(patchSession).not.toHaveBeenCalled();
+		expect(apiMock).not.toHaveBeenCalled();
 	});
 
 	it("leaves vertical scrolling to its container without mutation or accidental open", () => {

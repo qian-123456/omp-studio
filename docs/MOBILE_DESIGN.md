@@ -159,8 +159,10 @@ must not be mistaken for a close gesture; a cancelled horizontal swipe springs b
   `╰─` final elbow beneath an open project/subgroup. The selected row is a rounded highlight;
   side chats/forks have distinct icons, with an unread dot and tabular relative time.
   A faded single-line title must still be available in full through the long-press actions.
-  Right swipe toggles the real read/unread state; left swipe archives. Drafts do not offer
-  the read toggle. Expansion uses quiet hairline 「+ 展开 N 条」 / 「收起」 dividers with reduced
+  Right swipe toggles the real read/unread state. Left swipe only reveals an archive/unarchive
+  button, even for a full swipe; only tapping that button changes archive state. Tapping the
+  revealed row or swiping it right closes the action without opening the session or changing
+  read state. Drafts do not offer swipe actions. Expansion uses quiet hairline 「+ 展开 N 条」 / 「收起」 dividers with reduced
   vertical spacing, alongside compact project/subgroup gaps; all interactive targets remain ≥44×44px.
 - 按时间 groups recent sessions by date, then older sessions by 「YYYY年M月」 with sticky,
   softly blurred headers rather than one unbounded 「更早」 group.
