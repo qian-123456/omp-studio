@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback } from "react";
+import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { useSessions } from "../../stores/sessions";
 import { useLive } from "../../stores/live";
 import { useT } from "../../stores/language";
@@ -50,7 +50,9 @@ function loadCache(): Record<string, CachedSessionUsage> {
 	if (typeof window === "undefined" || !window.localStorage) return {};
 	try {
 		const raw = window.localStorage.getItem(CACHE_KEY);
-		return raw ? JSON.parse(raw) : {};
+		if (!raw) return {};
+		const parsed = JSON.parse(raw);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 	} catch {
 		return {};
 	}
@@ -76,14 +78,30 @@ function formatTurnsCount(num: number): string {
 	return String(num);
 }
 
-export function CalendarHeatmap() {
+class HeatmapErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+	state = { hasError: false };
+	static getDerivedStateFromError() {
+		return { hasError: true };
+	}
+	componentDidCatch(err: unknown) {
+		console.warn("CalendarHeatmap error caught gracefully:", err);
+	}
+	render() {
+		if (this.state.hasError) return null;
+		return this.props.children;
+	}
+}
+
+function HeatmapContent() {
 	const { t, locale } = useT();
-	const isZh = locale.startsWith("zh");
+	const isZh = locale?.startsWith("zh") ?? true;
 	const sessions = useSessions((s) => s.sessions);
 
 	const [hoveredDay, setHoveredDay] = useState<DayData | null>(null);
 	const [popoverPos, setPopoverPos] = useState<{ x: number; y: number; xAlign: string; yAlign: string } | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
+	const pendingCacheRef = useRef<Record<string, CachedSessionUsage> | null>(null);
+	const cacheDirtyRef = useRef(false);
 
 	// Compute 52 weeks of day slots ending on today with incremental caching
 	const { gridDays, monthLabels, grandTokens, grandSessions, grandTurns } = useMemo(() => {
@@ -97,25 +115,26 @@ export function CalendarHeatmap() {
 		startDate.setHours(0, 0, 0, 0);
 		startDate.setDate(now.getDate() - currentDayOfWeek - (totalWeeks - 1) * 7);
 
-		// Cache mechanism: load previous scan result
+		// Cache mechanism: load previous scan result safely
 		const usageCache = loadCache();
-		let cacheDirty = false;
+		let dirty = false;
 
-		// Extract live usage state for accurate realtime active sessions
-		const liveState = useLive.getState().sessions;
+		// Extract live usage state safely
+		const liveState = useLive.getState()?.sessions ?? {};
 
 		// Incremental overlay: process sessions
-		const sessionEntries = Object.values(sessions) as SessionMeta[];
+		const sessionEntries = (sessions && typeof sessions === "object") ? (Object.values(sessions) as SessionMeta[]) : [];
 		const activeIds = new Set<string>();
 
 		for (const session of sessionEntries) {
+			if (!session || !session.id) continue;
 			activeIds.add(session.id);
 			const cached = usageCache[session.id];
 			const isUpdated = !cached || cached.updatedAt !== (session.updatedAt || session.createdAt);
 
 			if (isUpdated) {
-				cacheDirty = true;
-				const ts = new Date(session.updatedAt || session.createdAt).getTime();
+				dirty = true;
+				const ts = new Date(session.updatedAt || session.createdAt || "").getTime();
 				const d = Number.isNaN(ts) ? new Date() : new Date(ts);
 				const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -132,7 +151,7 @@ export function CalendarHeatmap() {
 
 				usageCache[session.id] = {
 					id: session.id,
-					updatedAt: session.updatedAt || session.createdAt,
+					updatedAt: session.updatedAt || session.createdAt || "",
 					tokens: realTokens,
 					model: session.model || "",
 					dateKey,
@@ -140,8 +159,9 @@ export function CalendarHeatmap() {
 			}
 		}
 
-		if (cacheDirty) {
-			saveCache(usageCache);
+		if (dirty) {
+			pendingCacheRef.current = usageCache;
+			cacheDirtyRef.current = true;
 		}
 
 		// Aggregate day buckets from cache
@@ -156,7 +176,7 @@ export function CalendarHeatmap() {
 
 		for (const id of activeIds) {
 			const entry = usageCache[id];
-			if (!entry) continue;
+			if (!entry || !entry.dateKey) continue;
 
 			if (!sessionsByDate[entry.dateKey]) {
 				sessionsByDate[entry.dateKey] = {
@@ -194,7 +214,7 @@ export function CalendarHeatmap() {
 				const names = isZh ? MONTH_NAMES_ZH : MONTH_NAMES_EN;
 				monthMarkers.push({
 					weekIndex,
-					monthName: names[month],
+					monthName: names[month] || "",
 				});
 				lastMonth = month;
 			}
@@ -211,7 +231,6 @@ export function CalendarHeatmap() {
 				tokens = data.tokens;
 				sessionCount = data.sessionCount;
 
-				// Determine top model
 				let maxCount = -1;
 				for (const [m, c] of Object.entries(data.models)) {
 					if (c > maxCount) {
@@ -220,9 +239,7 @@ export function CalendarHeatmap() {
 					}
 				}
 
-				// Level by actual token volume or session activity
 				if (tokens === 0) {
-					// Minimal activity baseline when token details are 0
 					level = sessionCount > 0 ? 1 : 0;
 				} else if (tokens <= 25_000) {
 					level = 1;
@@ -255,6 +272,14 @@ export function CalendarHeatmap() {
 			grandTurns: Math.round(totalSessionsCount * 2.8),
 		};
 	}, [sessions, isZh]);
+
+	// Persist cache outside render cycle safely
+	useEffect(() => {
+		if (cacheDirtyRef.current && pendingCacheRef.current) {
+			saveCache(pendingCacheRef.current);
+			cacheDirtyRef.current = false;
+		}
+	}, [gridDays]);
 
 	const handleMouseEnter = useCallback((e: React.MouseEvent<SVGRectElement>, day: DayData) => {
 		const rect = e.currentTarget;
@@ -306,7 +331,7 @@ export function CalendarHeatmap() {
 				</div>
 			</div>
 
-			{/* SVG 日历热力图网格：适度放大方块，充满宽度 */}
+			{/* SVG 日历热力图网格 */}
 			<div className="relative overflow-x-auto overflow-y-visible pb-0.5">
 				<svg
 					viewBox="0 0 706 112"
@@ -364,7 +389,7 @@ export function CalendarHeatmap() {
 				</svg>
 			</div>
 
-			{/* 悬停详细数据弹窗（Rich Popover）：精简内容、防止窗口遮挡、模型名完整换行 */}
+			{/* 悬停详细数据弹窗（Rich Popover） */}
 			{hoveredDay && popoverPos && (
 				<div
 					style={{
@@ -389,7 +414,7 @@ export function CalendarHeatmap() {
 						) : null}
 					</div>
 
-					{/* 精简内容：仅保留消耗总量、会话数量、主力模型 */}
+					{/* Content */}
 					{hoveredDay.sessionCount === 0 ? (
 						<div className="text-[11px] text-neutral-400">
 							{t("home.noActivityDay")}
@@ -421,5 +446,13 @@ export function CalendarHeatmap() {
 				</div>
 			)}
 		</div>
+	);
+}
+
+export function CalendarHeatmap() {
+	return (
+		<HeatmapErrorBoundary>
+			<HeatmapContent />
+		</HeatmapErrorBoundary>
 	);
 }
