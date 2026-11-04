@@ -29,11 +29,11 @@ const WEEKDAY_NAMES_ZH = ["周一", "周二", "周三", "周四", "周五", "周
 const WEEKDAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const LEVEL_COLORS = [
-	"rgba(255, 255, 255, 0.05)", // 0: 零消耗底色
-	"#0d3b2e",                    // 1: 轻度活跃
-	"#056648",                    // 2: 中度活跃
-	"#059669",                    // 3: 较高活跃
-	"#34d399",                    // 4: 极度活跃
+	"rgba(255, 255, 255, 0.035)", // 0: 零消耗底色
+	"#0d3b2e",                     // 1: 轻度活跃
+	"#056648",                     // 2: 中度活跃
+	"#059669",                     // 3: 较高活跃
+	"#34d399",                     // 4: 极度活跃
 ];
 
 const CACHE_KEY = "ompws:heatmap-cache:v2";
@@ -277,9 +277,9 @@ export function CalendarHeatmap() {
 		setPopoverPos(null);
 	}, []);
 
-	const boxSize = 11.5;
-	const gap = 2.5;
-	const leftPadding = 4;
+	const boxSize = 10;
+	const gap = 3;
+	const leftPadding = 12;
 
 	return (
 		<div
@@ -309,7 +309,7 @@ export function CalendarHeatmap() {
 			{/* SVG 日历热力图网格：适度放大方块，充满宽度 */}
 			<div className="relative overflow-x-auto overflow-y-visible pb-0.5">
 				<svg
-					viewBox="0 0 732 108"
+					viewBox="0 0 706 112"
 					className="block w-full overflow-visible"
 					aria-label="Token Activity Heatmap"
 				>
@@ -327,14 +327,14 @@ export function CalendarHeatmap() {
 								y={y}
 								width={boxSize}
 								height={boxSize}
-								rx={2}
+								rx={2.6}
 								fill={fill}
 								stroke="none"
 								strokeWidth={0}
 								style={{
 									transformBox: "fill-box",
 									transformOrigin: "center",
-									transform: isHovered ? "scale(1.16)" : "scale(1)",
+									transform: isHovered ? "scale(1.18)" : "scale(1)",
 									transition: "transform 0.1s cubic-bezier(0.16, 1, 0.3, 1)",
 									cursor: "default",
 								}}
@@ -351,8 +351,8 @@ export function CalendarHeatmap() {
 							<text
 								key={`${m.monthName}-${m.weekIndex}`}
 								x={x}
-								y={104}
-								fontSize={9.5}
+								y={105}
+								fontSize={9}
 								fill="var(--text-40, #71717a)"
 								textAnchor="start"
 								className="font-mono"

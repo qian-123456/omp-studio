@@ -1125,9 +1125,6 @@ export function SessionSidebar() {
 							className="shrink-0 text-neutral-300 transition-colors group-hover:text-white"
 						/>
 						<span className="truncate whitespace-nowrap">{t("sidebar.newSession")}</span>
-						<span className="absolute right-3 select-none font-mono text-[11px] text-neutral-400 group-hover:text-neutral-200 @max-[220px]:hidden">
-							⌘N
-						</span>
 					</button>
 
 					{/* 3. 定时任务 */}
