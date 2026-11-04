@@ -41,6 +41,11 @@ cargo fmt                    # format (CI expects fmt-clean)
 
 ## Git worktrees
 
+- **「打开 X 工作树」/「打开 Main」/「打开 XX 分支」= 启动该工作树的开发版窗口**（不是应用内会话/面板，也不是 Finder/VS Code）：
+  `node scripts/open-worktree.mjs <main|分支名|目录名|绝对路径>`。同一个工作树只保留一个实例，
+  再次调用只报告已有端口/窗口；`--close` 停止，`--dry-run` 只看解析结果。
+  端口从 1425 起（main 固定 1425，工作树按目录名散列），数据目录隔离（main → `~/.omp-workspace-dev`，
+  工作树 → `~/.omp-workspace-dev-<目录名>`）；脚本会等到窗口真的出现再回报窗口标题。
 - **Naming**: Use clear, task-specific path and branch names (e.g. `.worktrees/<slug>` on `omp/<slug>`), never generic names.
 - **Port & window isolation**: Run dev instances on distinct ports (e.g. `pnpm dev:preview`), and confirm the inspected window matches target worktree.
 - **Stage isolation & cleanup**: Stage only modified files for current task (`git add <paths>`, never `git add -A`). Remove finished worktrees promptly.
