@@ -566,9 +566,13 @@ export function MobilePanel() {
 					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
 						<div>
 							<span className="block text-[11px] text-[var(--text-muted)]">{t("mobile.lanUrlLabel")}</span>
-							<span className="font-mono text-sm font-semibold text-[var(--text)]">
-								{status?.lanUrl ?? `http://...:${settings?.mobilePort ?? 7788}`}
-							</span>
+							{status?.lanUrl ? (
+								<span className="font-mono text-sm font-semibold text-[var(--text)]">
+									{status.lanUrl}
+								</span>
+							) : (
+								<span className="font-mono text-sm text-[var(--text-muted)]">—</span>
+							)}
 						</div>
 						<div className="hidden h-7 w-[1px] bg-[var(--border-divider)] sm:block" />
 						<PortEditor
