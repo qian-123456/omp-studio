@@ -7,7 +7,6 @@ import { AppMark, BottomSheet, MenuRow, Switch, toast } from "../../ui";
 import { ChatHeader } from "../chat/components/ChatHeader";
 import { ActionTile } from "../chat/components/Composer";
 import { ComposerCapsule, type ComposerApi } from "../chat/components/ComposerCapsule";
-import { ComposerToolbar, useKeyboardOpen } from "../chat/components/ComposerToolbar";
 import { ModelThinkingSheet } from "../chat/components/ModelThinkingSheet";
 import type { ModelSource } from "../chat/components/useModelFacts";
 import { draftBook, queueComposerAction, queueFirstSend, type ComposerAction } from "../chat/lib/drafts";
@@ -33,8 +32,6 @@ export function HomePage(_props: PageProps) {
 	const appliedPlan = useRef(false);
 	const submitting = useRef(false);
 	const [facts, setFacts] = useState<ModelFacts>({ current: null, thinkingLevel: null, liveThinking: [] });
-	const [inputFocused, setInputFocused] = useState(false);
-	const keyboardOpen = useKeyboardOpen(inputFocused);
 	const selection = useRef<ModelOpt | null>(null);
 	const factsRef = useRef(facts);
 	factsRef.current = facts;
@@ -177,15 +174,11 @@ export function HomePage(_props: PageProps) {
 					busy={sending}
 					onPlus={() => setPlusOpen(true)}
 					onSend={(text) => void handleSend(text)}
-					onFocusChange={setInputFocused}
-				/>
-				<ComposerToolbar
 					model={facts.current?.id}
 					thinking={facts.thinkingLevel}
 					onModel={() => setModelOpen(true)}
 					onThinking={() => setModelOpen(true)}
 					contextText="0%"
-					hidden={keyboardOpen}
 				/>
 			</div>
 			<input ref={fileRef} type="file" multiple hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void openAction(undefined, files); }} />

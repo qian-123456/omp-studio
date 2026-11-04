@@ -267,3 +267,31 @@ html[data-scheme="light"] .m-glass-btn:active {
 		-webkit-backdrop-filter: none;
 	}
 }
+
+.m-glass-panel {
+	isolation: isolate;
+	background-color: color-mix(in oklab, var(--m-composer-bg) 75%, transparent);
+	background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 42%, transparent 62%, rgba(255, 255, 255, 0.04) 100%);
+	backdrop-filter: blur(20px) saturate(180%);
+	-webkit-backdrop-filter: blur(20px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	box-shadow:
+		inset 1px 1px 0.5px 0 rgba(255, 255, 255, 0.35),
+		0 8px 32px -4px rgba(0, 0, 0, 0.4);
+}
+html[data-scheme="light"] .m-glass-panel {
+	background-color: color-mix(in oklab, var(--m-card) 85%, transparent);
+	background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 42%, transparent 62%, rgba(255, 255, 255, 0.5) 100%);
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	box-shadow:
+		inset 1px 1px 0.5px 0 rgba(255, 255, 255, 0.9),
+		0 8px 24px -4px rgba(0, 0, 0, 0.08);
+}
+@media (prefers-reduced-transparency: reduce) {
+	.m-glass-panel {
+		background-color: var(--m-composer-bg);
+		background-image: none;
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+}

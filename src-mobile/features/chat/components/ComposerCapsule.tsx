@@ -1,6 +1,8 @@
-import { ArrowUp, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Mic, Plus, Square } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Spinner } from "../../../ui";
+import { shortModel, thinkLabel } from "../lib/models";
+import { useKeyboardOpen } from "./ComposerToolbar";
 import { useVoiceInput } from "./useVoiceInput";
 
 /** Imperative handle of the uncontrolled textarea. */
@@ -20,10 +22,9 @@ const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 const roundBtn = "m-glass-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
 
 /**
- * Gemini capsule `[+] text [mic] [send/stop]` (docs/MOBILE_DESIGN.md §4.4). The textarea is
- * uncontrolled: input only schedules one frame-coalesced pass, and nothing runs during IME
- * composition (docs/MOBILE_PRD.md §5.1). When the text wraps the capsule grows and the buttons
- * move to their own bottom row.
+ * Desktop-parity mobile composer card:
+ * Textarea on top, toolbar on bottom (Plus, Model, Thinking, Extra chips, Context, Mic, Send).
+ * When virtual keyboard opens, model, thinking, and context size are hidden to keep the composer compact.
  */
 export function ComposerCapsule({
 	apiRef,
@@ -40,6 +41,14 @@ export function ComposerCapsule({
 	onSync,
 	onUnmount,
 	onFocusChange,
+	model,
+	thinking,
+	onModel,
+	onThinking,
+	contextText,
+	contextToneClass = "text-m-text-3",
+	onContext,
+	extraLeft,
 }: {
 	apiRef?: RefObject<ComposerApi | null>;
 	initialText?: string;
@@ -62,32 +71,30 @@ export function ComposerCapsule({
 	/** Final text when the capsule unmounts (save the unsent draft). */
 	onUnmount?: (value: string) => void;
 	onFocusChange?: (focused: boolean) => void;
+	model?: string | null;
+	thinking?: string | null;
+	onModel?: () => void;
+	onThinking?: () => void;
+	contextText?: string | null;
+	contextToneClass?: string;
+	onContext?: () => void;
+	extraLeft?: ReactNode;
 }) {
 	const capsule = useRef<HTMLDivElement>(null);
-	const actions = useRef<HTMLDivElement>(null);
 	const ta = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
 	const raf = useRef(0);
 	const [hasText, setHasText] = useState(() => initialText.trim() !== "");
-	const [multi, setMulti] = useState(false);
 	// Latest callbacks without re-creating the imperative api on every render.
 	const cb = useRef({ onSync, onInput, onUnmount });
 	cb.current = { onSync, onInput, onUnmount };
 
-	/** Measure the real textarea at its inline width, then size it at its displayed width. */
+	/** Size textarea at its displayed width. */
 	const measure = useCallback(() => {
 		const el = ta.current;
 		const box = capsule.current;
-		const buttons = actions.current;
-		if (!el || !box || !buttons || composing.current) return;
-		const style = getComputedStyle(box);
-		const inlineWidth = Math.max(1, box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 44 - buttons.offsetWidth - 2 * (parseFloat(style.columnGap) || 0));
+		if (!el || !box || composing.current) return;
 		const scrollTop = el.scrollTop;
-		el.style.width = `${inlineWidth}px`;
-		el.style.height = "0px";
-		const wraps = el.value !== "" && el.scrollHeight > LINE_PX;
-		setMulti(wraps);
-		el.style.width = "100%";
 		el.style.height = "0px";
 		el.style.height = `${Math.max(LINE_PX, el.scrollHeight)}px`;
 		el.scrollTop = scrollTop;
@@ -132,7 +139,7 @@ export function ComposerCapsule({
 		});
 		observer.observe(box);
 		return () => observer.disconnect();
-	}, [measure, multi, working, top]);
+	}, [measure, working, top]);
 
 	const insert = useCallback(
 		(text: string) => {
@@ -187,7 +194,8 @@ export function ComposerCapsule({
 	}, [apiRef, flush, insert]);
 
 	const { recording, transcribing, toggleRecording } = useVoiceInput({ onTranscribed: insert });
-
+	const [focused, setFocused] = useState(false);
+	const keyboardOpen = useKeyboardOpen(focused);
 	const canSend = (hasText || hasExtra) && !busy;
 	const showStop = working && onStop != null;
 	const submit = () => {
@@ -195,35 +203,27 @@ export function ComposerCapsule({
 		// A stale second click on Send must never become an implicit Stop request.
 		if (!busy && (text.trim() !== "" || hasExtra)) onSend(text);
 	};
-	const stacked = multi || top != null;
 
 	return (
 		<div
 			ref={capsule}
-			className="grid items-end gap-x-1 rounded-(--m-composer-radius) border border-white/12 bg-m-composer-bg/80 backdrop-blur-xl p-2 shadow-m-composer"
-			style={{
-				gridTemplateColumns: "44px minmax(0, 1fr) auto",
-				gridTemplateAreas: stacked ? '"top top top" "text text text" "plus . actions"' : '"plus text actions"',
-			}}
+			className="m-glass-panel relative flex flex-col rounded-[22px] p-2 shadow-m-composer"
 		>
-			{top != null && <div style={{ gridArea: "top" }}>{top}</div>}
-			<button
-				type="button"
-				aria-label="添加"
-				onClick={onPlus}
-				style={{ gridArea: "plus" }}
-				className={`${roundBtn} text-m-text`}
-			>
-				<Plus size={24} strokeWidth={1.75} />
-			</button>
+			{top != null && <div className="mb-1.5">{top}</div>}
 			<textarea
 				ref={ta}
 				rows={1}
 				enterKeyHint="enter"
 				placeholder={placeholder}
 				aria-label="消息输入框"
-				onFocus={() => onFocusChange?.(true)}
-				onBlur={() => onFocusChange?.(false)}
+				onFocus={() => {
+					setFocused(true);
+					onFocusChange?.(true);
+				}}
+				onBlur={() => {
+					setFocused(false);
+					onFocusChange?.(false);
+				}}
 				onInput={() => {
 					if (!composing.current) {
 						onInput?.();
@@ -247,35 +247,91 @@ export function ComposerCapsule({
 					e.preventDefault();
 					if (!e.repeat) submit();
 				}}
-				style={{ gridArea: "text", maxHeight: MAX_INPUT }}
-				className="m-selectable min-h-11 w-full min-w-0 resize-none self-center overflow-y-auto bg-transparent px-1 py-1.5 text-m-md leading-7 text-m-text outline-none placeholder:text-m-text-3"
+				style={{ maxHeight: MAX_INPUT }}
+				className="m-selectable min-h-[44px] w-full resize-none bg-transparent px-2.5 pt-1.5 pb-2 text-m-md leading-6 text-m-text outline-none placeholder:text-m-text-3"
 			/>
-			<div ref={actions} className="grid grid-flow-col auto-cols-[44px] items-end gap-1" style={{ gridArea: "actions" }}>
-				<button
-					type="button"
-					aria-label={recording ? "停止录音" : "语音输入"}
-					aria-pressed={recording}
-					disabled={transcribing}
-					onClick={() => void toggleRecording()}
-					className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text"}`}
-				>
-					{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
-				</button>
-				{showStop && (
-					<button key="stop" type="button" aria-label="停止" onClick={onStop} className={`${roundBtn} bg-m-text text-m-bg active:opacity-80`}>
-						<Square size={14} fill="currentColor" />
+			<div className="flex min-w-0 items-center justify-between gap-1.5 pt-1">
+				{/* Left: [+] [Model ⌵] [Thinking ⌵] [extra chips] */}
+				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+					<button
+						type="button"
+						aria-label="添加"
+						onClick={onPlus}
+						className={`${roundBtn} text-m-text`}
+					>
+						<Plus size={22} strokeWidth={1.75} />
 					</button>
-				)}
-				<button
-					key="send"
-					type="button"
-					aria-label="发送"
-					disabled={!canSend}
-					onClick={submit}
-					className={`${roundBtn} ${canSend ? "bg-m-accent-soft/80 text-m-accent-soft-text border-m-accent/30 active:opacity-80" : "opacity-40 text-m-text-3"}`}
-				>
-					{busy ? <Spinner size={18} /> : <ArrowUp size={22} strokeWidth={2} />}
-				</button>
+					{!keyboardOpen && (onModel || model != null) && (
+						<button
+							type="button"
+							aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
+							onClick={onModel}
+							disabled={!onModel}
+							className="m-glass-btn flex min-h-11 shrink-0 items-center gap-1 rounded-m-pill px-3 text-m-xs font-medium whitespace-nowrap text-m-text disabled:cursor-default"
+						>
+							<span className="max-w-[130px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
+							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+						</button>
+					)}
+					{!keyboardOpen && (onThinking || thinking != null) && (
+						<button
+							type="button"
+							aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
+							onClick={onThinking ?? onModel}
+							disabled={!onThinking && !onModel}
+							className="m-glass-btn flex min-h-11 shrink-0 items-center gap-1 rounded-m-pill px-2.5 text-m-xs whitespace-nowrap text-m-text-2 disabled:cursor-default"
+						>
+							<span>{thinkLabel(thinking)}</span>
+							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+						</button>
+					)}
+					{extraLeft}
+				</div>
+
+				{/* Right: [上下文 %] [🎙️] [↑] */}
+				<div className="flex shrink-0 items-center gap-1.5">
+					{!keyboardOpen && contextText && (
+						<button
+							type="button"
+							aria-label={`上下文用量：${contextText}`}
+							onClick={onContext}
+							disabled={!onContext}
+							className={`m-glass-btn flex min-h-11 shrink-0 items-center rounded-m-pill px-3 text-m-xs whitespace-nowrap disabled:opacity-60 ${contextToneClass}`}
+						>
+							<span>上下文 {contextText}</span>
+						</button>
+					)}
+					<button
+						type="button"
+						aria-label={recording ? "停止录音" : "语音输入"}
+						aria-pressed={recording}
+						disabled={transcribing}
+						onClick={() => void toggleRecording()}
+						className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text"}`}
+					>
+						{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
+					</button>
+					{showStop && (
+						<button
+							type="button"
+							aria-label="停止"
+							onClick={onStop}
+							className={`${roundBtn} bg-m-text text-m-bg active:opacity-80`}
+						>
+							<Square size={14} fill="currentColor" />
+						</button>
+					)}
+					<button
+						key="send"
+						type="button"
+						aria-label="发送"
+						disabled={!canSend}
+						onClick={submit}
+						className={`${roundBtn} ${canSend ? "bg-m-accent-soft/80 text-m-accent-soft-text border-m-accent/30 active:opacity-80" : "opacity-40 text-m-text-3"}`}
+					>
+						{busy ? <Spinner size={18} /> : <ArrowUp size={22} strokeWidth={2} />}
+					</button>
+				</div>
 			</div>
 		</div>
 	);
