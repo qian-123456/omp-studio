@@ -24,6 +24,9 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		rpcSend: vi.fn(async () => ({})),
 	};
 });
+vi.mock("../../lib/events", () => ({
+	onTreeNavigated: async () => () => {},
+}));
 vi.mock("./ChatTrace", () => ({ ChatTrace: () => null }));
 vi.mock("./AnnotationMarkers", () => ({ AnnotationMarkers: () => null }));
 vi.mock("./Composer", () => ({ Composer: () => null }));

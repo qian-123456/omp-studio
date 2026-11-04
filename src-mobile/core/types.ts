@@ -79,6 +79,8 @@ export interface RawToolResult {
 /** `TranscriptItem` as served by `GET /sessions/{id}/transcript`. `kind` is snake_case. */
 export interface TranscriptItem {
 	id: string;
+	/** Parent entry id: the conversation tree this row hangs from. */
+	parentId?: string | null;
 	kind: string;
 	text?: string;
 	thinking?: string;
@@ -125,6 +127,8 @@ export interface ImageRef {
 export interface Item {
 	id: string;
 	role: ItemRole;
+	/** Parent entry id (conversation tree); undefined = root or unknown. */
+	parentId?: string | null;
 	kind: string;
 	text: string;
 	thinking: string;

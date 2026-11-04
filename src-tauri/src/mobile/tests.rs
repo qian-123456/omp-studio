@@ -1401,3 +1401,65 @@ async fn presence_and_quota_and_voice_endpoints() {
         "{s}: {body}"
     );
 }
+
+#[tokio::test]
+async fn tree_endpoints_refuse_offline_sessions() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    // No live omp process in the mock harness: both endpoints say so clearly
+    // and never touch state.
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/a/navigate-tree",
+            &cookie,
+            json!({"entryId": "e1"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("会话未在运行"), "{body}");
+    let (s, _, body) = call(&h, get("/api/sessions/a/tree", Some(&cookie))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("会话未在运行"), "{body}");
+    // Unknown session id: 404 from the shared loader, before the live check.
+    let (s, _, body) = call(
+        &h,
+        post(
+            "/api/sessions/nope/navigate-tree",
+            &cookie,
+            json!({"entryId": "e1"}),
+        ),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{body}");
+    assert!(body.contains("会话不存在"), "{body}");
+}
+
+#[tokio::test]
+async fn sse_tree_navigated_maps_to_touch() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    let res = server::router(h.ctx.clone())
+        .oneshot(get("/api/events", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let mut body = res.into_body();
+    let _ = h.ctx.backend.bus.send(AppEvent::TreeNavigated {
+        session_id: "a".into(),
+    });
+    let mut text = String::new();
+    while !text.contains("event: touch") {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), body.frame())
+            .await
+            .expect("sse frame")
+            .unwrap()
+            .unwrap();
+        if let Ok(data) = frame.into_data() {
+            text.push_str(&String::from_utf8_lossy(&data));
+        }
+    }
+    assert!(text.contains("\"sessionId\":\"a\""));
+    h.shutdown.send(true).unwrap();
+}

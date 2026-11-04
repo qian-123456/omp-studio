@@ -652,11 +652,18 @@ pub async fn send_command(
     match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(resp)) => {
             if resp.get("success").and_then(Value::as_bool) == Some(false) {
-                let err = resp
+                let msg = resp
                     .get("error")
                     .and_then(Value::as_str)
                     .unwrap_or("command failed");
-                return Err(err.to_string());
+                // Upstream refusal codes (e.g. `session_busy` for navigate_tree)
+                // arrive as a top-level `code`; surface them so callers can map
+                // them to friendly errors.
+                let err = match resp.get("code").and_then(Value::as_str) {
+                    Some(code) => format!("{code}: {msg}"),
+                    None => msg.to_string(),
+                };
+                return Err(err);
             }
             Ok(resp)
         }
@@ -1434,6 +1441,30 @@ mod tests {
             .unwrap_err();
         writer.await.unwrap();
         assert_eq!(err, "nope");
+    }
+
+    #[tokio::test]
+    async fn send_command_surfaces_upstream_refusal_code() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let h = Arc::new(SessionHandle {
+            stdin_tx: tx,
+            ..SessionHandle::for_test()
+        });
+        let h3 = h.clone();
+        let writer = tokio::spawn(async move {
+            let line = rx.recv().await.expect("stdin line");
+            let sent: Value = serde_json::from_str(&line).unwrap();
+            let id = sent["id"].as_str().unwrap().to_string();
+            h3.pending.resolve(
+                &id,
+                json!({"id": id, "type":"response","success":false,"error":"nope","code":"session_busy"}),
+            );
+        });
+        let err = send_command(&h, json!({"type":"navigate_tree"}))
+            .await
+            .unwrap_err();
+        writer.await.unwrap();
+        assert_eq!(err, "session_busy: nope");
     }
 
     #[test]
