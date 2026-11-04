@@ -37,6 +37,11 @@ impl Backend for Mock {
             pending: Some(PendingKind::Question),
             archived,
             file: self.file.clone(),
+            cwd: std::path::Path::new(&self.file)
+                .parent()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
             ..Default::default()
         };
         vec![
@@ -490,6 +495,281 @@ async fn paired_device_uses_api() {
         .unwrap();
     assert_eq!(call(&h, req).await.0, StatusCode::OK);
     auth::revoke_all(&h.ctx.db.lock()).unwrap();
+    assert_eq!(
+        call(&h, get("/api/todos", Some(&cookie))).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn device_name_and_revocation_affect_only_the_authenticated_device() {
+    let h = harness();
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let req = Request::post("/pair")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::USER_AGENT, "same browser")
+        .body(Body::from(
+            json!({"code": code, "name": "My phone"}).to_string(),
+        ))
+        .unwrap();
+    let (status, headers, _) = call(&h, req).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let other = pair(&h).await;
+    let token = cookie.split_once('=').unwrap().1;
+    let id = auth::device_id_for_token(&h.ctx.db.lock(), token).unwrap();
+    let device = auth::list_devices(&h.ctx.db.lock())
+        .unwrap()
+        .into_iter()
+        .find(|d| d.id == id)
+        .unwrap();
+    assert_eq!(device.name, "My phone");
+    assert_eq!(device.user_agent.as_deref(), Some("same browser"));
+    let (status, _, current) = call(&h, get("/api/device", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK);
+    let current: Value = serde_json::from_str(&current).unwrap();
+    assert_eq!(current["id"], id);
+    assert_eq!(current["userAgent"], "same browser");
+    assert_eq!(
+        call(&h, post("/api/device/name", &cookie, json!({"name":"New"})))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        auth::list_devices(&h.ctx.db.lock())
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+            .unwrap()
+            .name,
+        "New"
+    );
+    assert_eq!(
+        call(&h, post("/api/device/name", &cookie, json!({"name":"  "})))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        auth::device_for_token(&h.ctx.db.lock(), token)
+            .unwrap()
+            .unwrap()
+            .name,
+        "浏览器"
+    );
+    assert_eq!(
+        call(&h, post("/api/device/name", "", json!({"name":"X"})))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let hash = auth::revoke_device(&h.ctx.db.lock(), &id).unwrap().unwrap();
+    auth::notify_revoked(&hash);
+    assert_eq!(
+        call(&h, get("/api/todos", Some(&cookie))).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&h, get("/api/todos", Some(&other))).await.0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn unnamed_pairing_keeps_raw_agent_and_empty_rename_restores_default() {
+    let h = harness();
+    let (code, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let req = Request::post("/pair")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::USER_AGENT, "Mozilla/5.0 (Linux; Android 14)")
+        .body(Body::from(json!({"code": code, "name": "  "}).to_string()))
+        .unwrap();
+    let (status, headers, _) = call(&h, req).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let token = cookie.split_once('=').unwrap().1;
+    let device = auth::device_for_token(&h.ctx.db.lock(), token)
+        .unwrap()
+        .unwrap();
+    let default_name = device.name;
+    assert_eq!(
+        device.user_agent.as_deref(),
+        Some("Mozilla/5.0 (Linux; Android 14)")
+    );
+    assert_eq!(
+        call(
+            &h,
+            post("/api/device/name", cookie, json!({"name":"Travel phone"}))
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        auth::device_for_token(&h.ctx.db.lock(), token)
+            .unwrap()
+            .unwrap()
+            .name,
+        "Travel phone"
+    );
+    assert_eq!(
+        call(&h, post("/api/device/name", cookie, json!({"name":""})))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        auth::device_for_token(&h.ctx.db.lock(), token)
+            .unwrap()
+            .unwrap()
+            .name,
+        default_name
+    );
+}
+
+#[tokio::test]
+async fn device_revocation_closes_only_its_event_stream_and_clears_presence() {
+    let h = harness();
+    let first = pair(&h).await;
+    let second = pair(&h).await;
+    let first_token = first.split_once('=').unwrap().1;
+    let hash = auth::hash_token(first_token);
+    let mut first_body = server::router(h.ctx.clone())
+        .oneshot(get("/api/events", Some(&first)))
+        .await
+        .unwrap()
+        .into_body();
+    let mut second_body = server::router(h.ctx.clone())
+        .oneshot(get("/api/events", Some(&second)))
+        .await
+        .unwrap()
+        .into_body();
+    first_body.frame().await.unwrap().unwrap();
+    second_body.frame().await.unwrap().unwrap();
+    super::push::update_presence(&hash, Some("a".into()), true);
+    let id = auth::device_id_for_token(&h.ctx.db.lock(), first_token).unwrap();
+    assert_eq!(
+        auth::revoke_device(&h.ctx.db.lock(), &id).unwrap(),
+        Some(hash.clone())
+    );
+    auth::notify_revoked(&hash);
+    assert!(super::push::get_presence(&hash).is_none());
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), first_body.frame())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let _ = h.ctx.backend.bus.send(AppEvent::TodosChanged);
+    let next = tokio::time::timeout(std::time::Duration::from_secs(1), second_body.frame())
+        .await
+        .unwrap();
+    assert!(next.is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn revoking_terminal_owner_closes_its_stream_but_not_an_identical_agent() {
+    let h = harness();
+    // Both pairing requests omit User-Agent and therefore receive the same default.
+    let first = pair(&h).await;
+    let second = pair(&h).await;
+    let first_token = first.split_once('=').unwrap().1;
+    let second_token = second.split_once('=').unwrap().1;
+    let first_device = auth::device_for_token(&h.ctx.db.lock(), first_token)
+        .unwrap()
+        .unwrap();
+    let second_device = auth::device_for_token(&h.ctx.db.lock(), second_token)
+        .unwrap()
+        .unwrap();
+    assert_eq!(first_device.user_agent, second_device.user_agent);
+    assert_ne!(first_device.id, second_device.id);
+
+    let (status, _, body) = call(&h, post("/api/terminal", &first, json!({"sessionId":"a"}))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let opened: Value = serde_json::from_str(&body).unwrap();
+    let term_id = opened["termId"].as_str().unwrap();
+    let terminal_path = format!("/api/terminal/{term_id}/stream");
+    let terminal = server::router(h.ctx.clone())
+        .oneshot(get(&terminal_path, Some(&first)))
+        .await
+        .unwrap();
+    assert_eq!(terminal.status(), StatusCode::OK);
+    let mut terminal_body = terminal.into_body();
+    let mut other_body = server::router(h.ctx.clone())
+        .oneshot(get("/api/events", Some(&second)))
+        .await
+        .unwrap()
+        .into_body();
+    other_body.frame().await.unwrap().unwrap();
+
+    let hash = auth::revoke_device(&h.ctx.db.lock(), &first_device.id)
+        .unwrap()
+        .unwrap();
+    super::work::device_revoked(&first_device.id);
+    auth::notify_revoked(&hash);
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while let Some(frame) = terminal_body.frame().await {
+            frame.unwrap();
+        }
+    })
+    .await
+    .expect("revoked terminal stream closes");
+    assert_eq!(
+        call(&h, get(&terminal_path, Some(&first))).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let _ = h.ctx.backend.bus.send(AppEvent::TodosChanged);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(2), other_body.frame())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let close = Request::delete(format!("/api/terminal/{term_id}"))
+        .header(header::COOKIE, &second)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(call(&h, close).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn revoke_all_clears_pairing_subscriptions_and_presence() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    let token = cookie.split_once('=').unwrap().1;
+    let hash = auth::hash_token(token);
+    super::push::update_presence(&hash, Some("a".into()), true);
+    {
+        let db = h.ctx.db.lock();
+        db.execute(
+            "INSERT INTO push_subscriptions VALUES ('endpoint', 'p', 'a', ?1, 't')",
+            [&hash],
+        )
+        .unwrap();
+        auth::create_pairing(&db, chrono::Utc::now()).unwrap();
+        auth::revoke_all(&db).unwrap();
+        let subscriptions: i64 = db
+            .query_row("SELECT COUNT(*) FROM push_subscriptions", [], |r| r.get(0))
+            .unwrap();
+        let codes: i64 = db
+            .query_row("SELECT COUNT(*) FROM pairing_codes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!((subscriptions, codes), (0, 0));
+    }
+    assert!(super::push::get_presence(&hash).is_none());
     assert_eq!(
         call(&h, get("/api/todos", Some(&cookie))).await.0,
         StatusCode::UNAUTHORIZED

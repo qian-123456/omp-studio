@@ -47,7 +47,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{delete, get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use futures_util::stream::{self, Stream};
 use parking_lot::Mutex;
@@ -55,6 +55,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, watch};
 
+use crate::mobile::auth;
 use crate::mobile::backend::Backend;
 use crate::mobile::server::{ApiError, Ctx};
 use crate::state::AppState;
@@ -347,6 +348,9 @@ struct TermEntry {
     subs: AtomicUsize,
     closed: AtomicBool,
     pty_id: Mutex<Option<String>>,
+    owner: Option<String>,
+    title: String,
+    preserve_on_detach: AtomicBool,
 }
 
 impl TermEntry {
@@ -401,10 +405,27 @@ fn remove_term(id: &str) {
 fn reap_if_unattached(id: String, entry: Arc<TermEntry>, grace: Duration) {
     tokio::spawn(async move {
         tokio::time::sleep(grace).await;
-        if entry.subs.load(Ordering::SeqCst) == 0 {
-            remove_term(&id);
-        }
+        reap_unattached_now(&id, &entry);
     });
+}
+
+fn reap_unattached_now(id: &str, entry: &TermEntry) {
+    let removed = {
+        let mut registry = terms().lock();
+        if entry.subs.load(Ordering::SeqCst) == 0
+            && !entry.preserve_on_detach.load(Ordering::SeqCst)
+            && registry
+                .get(id)
+                .is_some_and(|current| std::ptr::eq(Arc::as_ptr(current), entry))
+        {
+            registry.remove(id)
+        } else {
+            None
+        }
+    };
+    if let Some(entry) = removed {
+        entry.shutdown();
+    }
 }
 
 /// Open a PTY at `cwd` (argv empty → agent-aware login shell) and register it.
@@ -415,6 +436,7 @@ fn open_term(
     rows: u16,
     grace: Duration,
     session_file: Option<&str>,
+    owner: Option<String>,
 ) -> Result<String, ApiError> {
     if terms().lock().len() >= MAX_TERMINALS {
         return Err(ApiError(
@@ -434,6 +456,9 @@ fn open_term(
         subs: AtomicUsize::new(0),
         closed: AtomicBool::new(false),
         pty_id: Mutex::new(None),
+        owner,
+        title: cwd.to_string(),
+        preserve_on_detach: AtomicBool::new(false),
     });
     let sink_entry = entry.clone();
     let sink: pty::Sink = Arc::new(move |_id: &str, ev| sink_entry.push(ev));
@@ -456,6 +481,7 @@ struct TermOpenBody {
 
 async fn term_open<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
+    Extension(auth::Token(token)): Extension<auth::Token>,
     Json(body): Json<TermOpenBody>,
 ) -> ApiResult<Value> {
     valid_id(&body.session_id)?;
@@ -465,12 +491,28 @@ async fn term_open<B: Backend>(
     let cwd = meta.cwd;
     let session_file = meta.file;
     let (cols, rows) = (body.cols.unwrap_or(80), body.rows.unwrap_or(24));
+    let owner = auth::device_id_for_token(&ctx.db.lock(), &token)
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "设备已移除".into()))?;
     let cwd2 = cwd.clone();
     let id = tokio::task::spawn_blocking(move || {
-        open_term(&cwd2, vec![], cols, rows, DETACH_GRACE, Some(&session_file))
+        open_term(
+            &cwd2,
+            vec![],
+            cols,
+            rows,
+            DETACH_GRACE,
+            Some(&session_file),
+            Some(owner),
+        )
     })
     .await
     .map_err(gateway)??;
+    if !auth::is_valid(&ctx.db.lock(), &token) {
+        if let Ok(entry) = get_term(&id) {
+            entry.preserve_on_detach.store(true, Ordering::SeqCst);
+        }
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "设备已移除".into()));
+    }
     Ok(Json(json!({ "termId": id, "cwd": cwd })))
 }
 
@@ -548,10 +590,32 @@ fn attach_stream(id: String, entry: Arc<TermEntry>, shutdown: watch::Receiver<bo
 
 async fn term_stream<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
+    Extension(auth::Token(token)): Extension<auth::Token>,
     Path(id): Path<String>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    use futures_util::StreamExt as _;
+    let mut revoked = auth::subscribe_revocations();
+    let hash = auth::hash_token(&token);
+    if !auth::is_valid(&ctx.db.lock(), &token) {
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "设备已移除".into()));
+    }
     let entry = get_term(&id)?;
-    let s = attach_stream(id, entry, ctx.shutdown.clone());
+    let db = ctx.db.clone();
+    let invalidated = async move {
+        loop {
+            match revoked.recv().await {
+                Ok(id) if id == hash => break,
+                Ok(_) => {}
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    if !auth::is_valid(&db.lock(), &token) {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+    let s = attach_stream(id, entry, ctx.shutdown.clone()).take_until(invalidated);
     Ok(Sse::new(s).keep_alive(KeepAlive::default()))
 }
 
@@ -591,10 +655,94 @@ async fn term_close(Path(id): Path<String>) -> ApiResult<Value> {
     Ok(ok())
 }
 
+pub(crate) fn device_work(device: &str) -> Vec<crate::contracts::MobileDeviceWork> {
+    terms()
+        .lock()
+        .iter()
+        .filter(|(_, entry)| {
+            entry.owner.as_deref() == Some(device)
+                && !entry.closed.load(Ordering::SeqCst)
+                && entry.backlog.lock().exit.is_none()
+        })
+        .map(|(id, entry)| crate::contracts::MobileDeviceWork {
+            id: id.clone(),
+            kind: crate::contracts::MobileDeviceWorkKind::Terminal,
+            title: entry.title.clone(),
+        })
+        .collect()
+}
+
+pub(crate) fn cancel_device_work(device: &str, id: &str) -> bool {
+    let entry = {
+        let mut terms = terms().lock();
+        if terms
+            .get(id)
+            .is_some_and(|entry| entry.owner.as_deref() == Some(device))
+        {
+            terms.remove(id)
+        } else {
+            None
+        }
+    };
+    if let Some(entry) = entry {
+        entry.shutdown();
+        true
+    } else {
+        false
+    }
+}
+
+pub(crate) fn preserve_device_work(device: &str) {
+    for entry in terms().lock().values() {
+        if entry.owner.as_deref() == Some(device) {
+            entry.preserve_on_detach.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use futures_util::StreamExt as _;
+
+    #[test]
+    fn device_terminal_cancellation_is_exact_and_continue_survives_detach() {
+        fn insert(owner: &str) -> (String, Arc<TermEntry>) {
+            let (tx, _) = broadcast::channel(4);
+            let entry = Arc::new(TermEntry {
+                backlog: Mutex::new(Backlog {
+                    buf: VecDeque::new(),
+                    exit: None,
+                }),
+                tx,
+                subs: AtomicUsize::new(0),
+                closed: AtomicBool::new(false),
+                pty_id: Mutex::new(None),
+                owner: Some(owner.to_owned()),
+                title: "terminal".into(),
+                preserve_on_detach: AtomicBool::new(false),
+            });
+            let id = uuid::Uuid::new_v4().to_string();
+            terms().lock().insert(id.clone(), entry.clone());
+            (id, entry)
+        }
+        let owner = uuid::Uuid::new_v4().to_string();
+        let other = uuid::Uuid::new_v4().to_string();
+        let (first, first_entry) = insert(&owner);
+        let (second, second_entry) = insert(&owner);
+        let (foreign, foreign_entry) = insert(&other);
+        assert!(!cancel_device_work(&owner, &foreign));
+        assert!(cancel_device_work(&owner, &first));
+        assert!(first_entry.closed.load(Ordering::SeqCst));
+        assert!(!second_entry.closed.load(Ordering::SeqCst));
+        assert!(!foreign_entry.closed.load(Ordering::SeqCst));
+        preserve_device_work(&owner);
+        reap_unattached_now(&second, &second_entry);
+        assert!(get_term(&second).is_ok());
+        assert!(!second_entry.closed.load(Ordering::SeqCst));
+        remove_term(&second);
+        remove_term(&foreign);
+    }
 
     #[test]
     fn plan_text_prefers_snapshot_and_only_uses_legacy_without_state() {
@@ -640,6 +788,7 @@ mod tests {
             80,
             24,
             Duration::from_secs(60),
+            None,
             None,
         )
         .expect("open");

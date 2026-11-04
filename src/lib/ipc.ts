@@ -25,6 +25,8 @@ import type {
 	McpScope,
 	McpServerPatch,
 	MergePreview,
+	MobileDevice,
+	MobileDeviceWork,
 	MobileStatus,
 	Model,
 	ModelContextWindowEdit,
@@ -851,6 +853,17 @@ export const mobileCreatePairing = (target: PairingTarget = "lan") =>
 	invoke<PairingInfo>("mobile_create_pairing", { target });
 
 export const mobileRevokeAll = () => invoke<void>("mobile_revoke_all");
+
+export const mobileListDevices = () => invoke<MobileDevice[]>("mobile_list_devices");
+
+export const mobileRenameDevice = (deviceId: string, name: string) =>
+	invoke<void>("mobile_rename_device", { deviceId, name });
+
+export const mobileDeviceWork = (deviceId: string) =>
+	invoke<MobileDeviceWork[]>("mobile_device_work", { deviceId });
+
+export const mobileRevokeDevice = (deviceId: string, stopWorkIds: string[]) =>
+	invoke<void>("mobile_revoke_device", { deviceId, stopWorkIds });
 
 export const mobileIpv6Start = () => invoke<MobileStatus>("mobile_ipv6_start");
 

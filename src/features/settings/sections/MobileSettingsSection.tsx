@@ -6,7 +6,7 @@ import { useT } from "../../../stores/language";
 export function MobileSettingsSection() {
 	const { t } = useT();
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<SectionHeader
 				title={t("settingsSections.mobile.title")}
 				description={t("settingsSections.mobile.description")}

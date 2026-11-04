@@ -854,6 +854,31 @@ pub struct DdnsStatus {
     pub halted: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileDevice {
+    pub id: String,
+    pub name: String,
+    pub user_agent: Option<String>,
+    pub created_at: String,
+    pub last_seen_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MobileDeviceWorkKind {
+    Session,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileDeviceWork {
+    pub id: String,
+    pub kind: MobileDeviceWorkKind,
+    pub title: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileStatus {

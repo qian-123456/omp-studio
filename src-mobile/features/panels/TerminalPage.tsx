@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ApiError, api, apiUrl, errorMessage } from "../../core/api";
 import type { PageProps } from "../../core/nav";
+import { isUnauthorized, useConnection } from "../../core/stores/connection";
 import { Button, EmptyState, IconButton, PageHeader, confirm, toast } from "../../ui";
 import {
 	InputQueue,
@@ -89,6 +90,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 	const retryTimer = useRef(0);
 	const exited = useRef(false);
 	const alive = useRef(true);
+	const authGeneration = useRef(0);
 	const lastSize = useRef("");
 	const queue = useRef<InputQueue | null>(null);
 	const ctrlRef = useRef(false);
@@ -115,11 +117,12 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 
 	const attach = useCallback(() => {
 		const id = termId.current;
-		if (!id || !alive.current) return;
+		if (!id || !alive.current || isUnauthorized()) return;
 		source.current?.close();
 		const es = new EventSource(apiUrl(`/terminal/${id}/stream`));
 		source.current = es;
 		es.onopen = () => {
+			if (source.current !== es || isUnauthorized()) return;
 			retries.current = 0;
 			// The server replays its backlog on every (re)attach: start from a clean screen.
 			term.current?.reset();
@@ -127,6 +130,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 			setDetail("");
 		};
 		es.addEventListener("data", (ev) => {
+			if (source.current !== es || isUnauthorized()) return;
 			try {
 				term.current?.write(decodeChunk((ev as MessageEvent<string>).data));
 			} catch (err) {
@@ -134,6 +138,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 			}
 		});
 		es.addEventListener("exit", (ev) => {
+			if (source.current !== es || isUnauthorized()) return;
 			exited.current = true;
 			es.close();
 			if (source.current === es) source.current = null;
@@ -142,6 +147,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 			setDetail(code !== null ? `退出码 ${code}` : "");
 		});
 		es.onerror = () => {
+			if (source.current !== es || isUnauthorized()) return;
 			if (exited.current || !alive.current) return;
 			es.close();
 			if (source.current === es) source.current = null;
@@ -170,8 +176,10 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 	}, []);
 
 	const open = useCallback(async () => {
+		if (isUnauthorized()) return;
 		const t = term.current;
 		if (!t || !alive.current) return;
+		const generation = authGeneration.current;
 		exited.current = false;
 		retries.current = 0;
 		setPhase("connecting");
@@ -183,6 +191,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 		}
 		try {
 			const res = await api<{ termId: string }>("POST", "/terminal", { sessionId, cols: t.cols, rows: t.rows });
+			if (isUnauthorized() || generation !== authGeneration.current) return;
 			if (!alive.current) {
 				api("DELETE", `/terminal/${res.termId}`).catch(() => {});
 				return;
@@ -191,7 +200,7 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 			lastSize.current = `${t.cols}x${t.rows}`;
 			attach();
 		} catch (e) {
-			if (!alive.current) return;
+			if (!alive.current || generation !== authGeneration.current) return;
 			const msg = errorMessage(e, "打开失败");
 			setPhase("error");
 			setDetail(isTerminalLimit(msg) ? "终端数量已达上限（最多 4 个），请先关闭多余终端后点“新终端”" : msg);
@@ -239,6 +248,24 @@ function TerminalPane({ sessionId, tabId, active, onClosed }: { sessionId: strin
 		retries.current = 0;
 		attach();
 	}, [attach, openNew]);
+
+	// Revocation detaches the browser only; it must not stop the computer's process.
+	useEffect(() => {
+		const detach = () => {
+			if (!isUnauthorized()) return;
+			authGeneration.current += 1;
+			window.clearTimeout(retryTimer.current);
+			source.current?.close();
+			source.current = null;
+			queue.current?.clear();
+			termId.current = null;
+			setPhase("dropped");
+			setDetail("配对已失效或被撤销，请重新配对。");
+		};
+		const unsubscribe = useConnection.subscribe(detach);
+		detach();
+		return unsubscribe;
+	}, []);
 
 	// Mount: lazy-load xterm (separate chunk), wire input, open the PTY.
 	useEffect(() => {

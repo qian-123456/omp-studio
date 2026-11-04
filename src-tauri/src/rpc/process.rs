@@ -256,6 +256,7 @@ pub(crate) fn apply_frame(handle: &SessionHandle, frame: &Value) {
     if ty != "response" && !handle.alive.load(Ordering::SeqCst) {
         return;
     }
+    crate::mobile::work::frame(handle, frame);
     // Responses to the reaper's own probes do not represent session activity.
     if ty != "response" {
         handle.touch();
@@ -636,6 +637,7 @@ pub async fn send_command(
             .stdin_tx
             .send(command.to_string())
             .map_err(|_| "session stdin closed".to_string())?;
+        crate::mobile::work::dispatched(handle, &command);
         if !matches!(
             command.get("type").and_then(Value::as_str),
             Some("get_state" | "get_subagents")
@@ -1057,6 +1059,7 @@ async fn monitor(
         Err(err) => format!("failed to wait for process: {err}"),
     });
     handle.alive.store(false, Ordering::SeqCst);
+    crate::mobile::work::process_exited(&handle);
     // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
     let _ = handle.shutdown.send(true);
     let code = status.ok().and_then(|s| s.code());

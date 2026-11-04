@@ -317,6 +317,10 @@ pub struct PerfBreakdown { pub app: PerfBucket /* this instance only; phys_footp
   pub total_bytes: Option<u64>, pub used_bytes: Option<u64>, pub free_bytes: Option<u64>, pub instances: Vec<AppInstance>, pub generated_at: u64 }
 pub struct PairingInfo { pub url: String, pub qr_svg: String, pub expires_at: String }
 pub enum PairingTarget { Lan, Tunnel, Ipv6 }   // snake_case; default Lan
+pub struct MobileDevice { pub id: String /* opaque, never the credential hash */, pub name: String,
+  pub user_agent: Option<String>, pub created_at: String, pub last_seen_at: Option<String> }
+pub enum MobileDeviceWorkKind { Session, Terminal } // lowercase serde
+pub struct MobileDeviceWork { pub id: String /* runtime work instance */, pub kind: MobileDeviceWorkKind, pub title: String }
 pub struct DdnsStatus { pub enabled: bool, pub token_set: bool, pub hostname: Option<String>, pub last_ip: Option<String>,
   pub last_sync_at: Option<String>, pub last_error: Option<String>, pub halted: bool /* 401/403/429 or 3 failures; manual sync clears */ }
 pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<String>, pub tunnel_url: Option<String>, pub cloudflared_installed: bool,
@@ -541,6 +545,9 @@ CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL
 CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
+-- v24 adds id TEXT (unique random public identifier) and user_agent TEXT to mobile_devices;
+-- existing token hashes/timestamps remain valid; legacy name values are preserved as user_agent.
+-- migrated names become readable platform defaults; re-entering v24 preserves IDs and later custom names.
 CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, token_hash TEXT NOT NULL, created_at TEXT NOT NULL); -- v21
 CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);
   -- v3: scheduled tasks (schedules and schedule_runs tables)
@@ -694,6 +701,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **E — mobile / terminal:**
 - `mobile_start() -> MobileStatus`, `mobile_stop()` (also stops the IPv6 listener and persists `mobile_ipv6_enabled=false`), `mobile_status() -> MobileStatus`,
   `mobile_create_pairing(target: Option<PairingTarget>) -> PairingInfo` (default `lan`), `mobile_revoke_all()`
+- `mobile_list_devices() -> Vec<MobileDevice>`, `mobile_rename_device(device_id, name)` (empty resets the platform-derived default),
+  `mobile_device_work(device_id) -> Vec<MobileDeviceWork>`, `mobile_revoke_device(device_id, stop_work_ids: Vec<String>)`.
+  Removing a device invalidates only that authorization; an empty selection leaves computer work running.
+  Exact owned terminal work can be stopped. Session-turn selections are rejected before removal or any terminal stop:
+  upstream RPC has no atomic conditional abort, so the UI directs users to stop those tasks in the session itself.
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
 - `mobile_ipv6_start() -> MobileStatus` (persists `mobile_ipv6_enabled=true`), `mobile_ipv6_stop()` (persists false)
 - `mobile_ddns_set_token(token) -> DdnsStatus` (verifies, stores in vault), `mobile_ddns_clear_token() -> DdnsStatus`, `mobile_ddns_sync() -> DdnsStatus`
@@ -900,6 +912,10 @@ pub async fn todos::summary(state: &AppState, session_id: &str, ensure: bool) ->
 pub fn todos::init(state: AppState); pub fn notify::init(state: AppState); pub fn backlog::init(state: AppState);
 // mobile/terminal (E)
 pub fn mobile::init(state: AppState);    // autostart when settings.mobile_enabled
+pub(crate) fn mobile::work::dispatched(handle: &Arc<rpc::SessionHandle>, command: &serde_json::Value); // RPC: after successful stdin enqueue, under dispatch lock
+pub(crate) fn mobile::work::frame(handle: &rpc::SessionHandle, frame: &serde_json::Value); // correlated prompt completion/settlement
+pub(crate) fn mobile::work::process_exited(handle: &rpc::SessionHandle); // clear only matching process instance
+// Attribution is runtime-only and conservative: another prompt/steer makes ownership ambiguous; never infer ownership from viewing presence.
 // schedules (E)
 pub fn schedules::init(state: AppState);    // start background scheduler & startup catch-up
 // todos (D helpers)
@@ -1333,9 +1349,15 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
   (5 min, one-time) → URL `http://<lan-ip>:<port>/pair?code=…`, QR as SVG (`qrcode` crate). GET/HEAD display a non-consuming confirmation page
   with `Referrer-Policy: same-origin`, preserving the form POST's same-origin `Origin` without leaking the pairing URL cross-origin.
-  CSRF-checked POST `/pair` exchanges the code for a random device token (stored hashed in `mobile_devices`) and sets an HttpOnly cookie; JSON `{code}` returns 204, form submission redirects to `/`.
+  CSRF-checked POST `/pair` exchanges the code for a random device token (stored hashed in `mobile_devices`) and sets an HttpOnly cookie; JSON `{code, name?}` returns 204, form submission redirects to `/`. Omitted names use a readable platform hint; automatic React pairing adds no mandatory naming step. A nonblocking success notice offers optional renaming.
   Rejected origins (including `null`) do not consume the code: browser forms receive a UTF-8 HTML error page, while JSON requests retain the JSON error/status.
   Invalid/expired/used codes return 403 even if an old cookie is valid. All `/api/*` require the cookie or `Authorization: Bearer`.
+  Authenticated `GET /api/device` returns the current `MobileDevice`; `POST /api/device/name {name}` renames only that credential's record (204; empty restores the default).
+  Both device DTO read paths normalize blank or known legacy autogenerated UA names to compact platform hints without rewriting credentials or custom names, including databases already at v24.
+  Display names and browser descriptions are not identities: identical names/agents remain independently paired and revocable.
+  Revocation closes that authorization's main/terminal SSE streams, denies subsequent API calls and clears its subscriptions/presence without stopping PTYs by default.
+  Pending push snapshots are revalidated before sending and outstanding sends observe revocation; bytes already handed to a remote service cannot be recalled.
+  Work attribution records newly initiated mobile work only, never a merely viewed session. Old/mixed-origin work is not guessed; session auto-stop is unavailable without an upstream atomic task guard.
   API: `GET /api/sessions` (id,label,title,status,pending,updatedAt,cwd), `GET /api/todos`, `POST /api/todos/:id/act {action}`,
   `GET /api/sessions/:id/pending-ui`, `POST /api/sessions/:id/ui-respond {response}`, `POST /api/sessions/:id/prompt {text}`,
   `POST /api/sessions/:id/resume`, `GET /api/sessions/:id/last` (last assistant text), `GET /api/events` (SSE: todos changed, session status changed).
@@ -1372,7 +1394,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Subagent detail reuses the shared SSE bus and incremental `fromByte` cursor, with single-flight plus one trailing refresh and approximately 600ms coalescing. Its 5s fallback is active only while mounted, visible and running; hide/unmount clears owned scheduling and aborts requests. Initial/reset reads may be full reads, and terminal transitions flush the final tail: this bounds request overhead rather than eliminating it. The confirmed stop action aborts the parent session's current turn, not an individual child.
 - Tunnel: `tunnel_start`: `quick` → spawn `cloudflared tunnel --url http://localhost:<port>` and parse the `https://*.trycloudflare.com` URL from
   stderr; `named` → `cloudflared tunnel run --url http://localhost:<port> <tunnel_name>` with public URL `https://<tunnel_hostname>`.
-  If `cloudflared` is missing, return an error explaining `brew install cloudflared`. `MobilePanel` puts manual QR pairing (LAN, IPv6 or public URL) in the first hero section, before device/revocation and advanced controls; mounting never generates a code automatically, and revocation keeps confirmation. IPv6 / DDNS and public tunnel / Zero Trust have independent native collapsible sections with mounted contents/drafts and status summaries; folding them has no connectivity side effects. LAN/IPv6 port edits explicitly save, then stop→start only after save succeeds for a running service; a stopped service saves without starting, and rejection never restarts it. URLs/fingerprints/errors remain readable in full. These are UI changes only: pairing/authentication, secrets and network APIs are unchanged, and native zero-scroll/touch geometry still requires rendered acceptance.
+  If `cloudflared` is missing, return an error explaining `brew install cloudflared`. `MobilePanel` is connection-first: LAN / remote tabs, with directly visible IPv6 / Cloudflare Tunnel choices inside remote. The current transport's compact state/actions/address and manually generated QR share one area; detailed connection settings remain mounted in native disclosures. View changes never start/stop connections or discard drafts. QR instructions/countdown/full link stay with the generating transport; mounting never creates a code. LAN/IPv6 port edits explicitly save before restarting a running service; rejected saves never restart it. Device rows follow connection controls and expose readable names, pairing/last-access timestamps, rename and confirmed per-device removal; global removal is lower emphasis. Removal defaults to continuing computer work; only exact terminal work is selectable for stopping, with session-task limitations explained before confirmation. URLs/fingerprints/errors wrap in full and short labels stay on one line. Native acceptance still requires observation of the actual window, not browser fixtures.
 - IPv6 direct: second listener on `[::]:<mobile_ipv6_port>` (IPV6_V6ONLY, no SO_REUSEPORT), same router over TLS with a self-signed cert persisted
   under `data_dir()/mobile-tls/` (dir 0700, key created 0600; SANs `localhost` + `ddns_hostname`; regenerated only in `mobile_ipv6_start`;
   `cert_sha256` is the fingerprint of the cert being served); pairing cookie is `Secure` over TLS. Public-facing hardening, shared by

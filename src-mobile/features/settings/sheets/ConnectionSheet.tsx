@@ -1,8 +1,9 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { api, errorMessage } from "../../../core/api";
 import { copyText } from "../../../core/lib/format";
-import { Chip, IconButton, ListGroup, ListRow, toast } from "../../../ui";
-import { SettingsSheet } from "../rows";
+import { Button, Chip, IconButton, ListGroup, ListRow, toast } from "../../../ui";
+import { GroupBlock, SettingsSheet } from "../rows";
 
 /** `GET /left/settings` → `mobile`: state of the phone service on the desktop. */
 export interface MobileInfo {
@@ -52,9 +53,35 @@ export function ConnectionSheet({
 	mobile?: MobileInfo;
 	appVersion?: string | null;
 }) {
+	const [name, setName] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [nameError, setNameError] = useState<string | null>(null);
+	const saveName = async () => {
+		if (saving) return;
+		setSaving(true);
+		setNameError(null);
+		try {
+			await api("POST", "/device/name", { name: name.trim() });
+			toast("设备名称已保存", { kind: "success" });
+		} catch (e) {
+			setNameError(errorMessage(e, "保存失败"));
+		} finally {
+			setSaving(false);
+		}
+	};
 	const here = typeof location === "undefined" ? "" : location.origin;
 	return (
 		<SettingsSheet open={open} onClose={onClose} title="连接与设备">
+			<ListGroup title="当前设备" note="名称仅用于区分配对记录，不影响连接。留空可使用默认名称。">
+				<GroupBlock>
+					<form onSubmit={(event) => { event.preventDefault(); void saveName(); }} className="flex flex-col gap-3">
+						<label htmlFor="device-name" className="text-m-sm text-m-text">设备名称（可选）</label>
+						<input id="device-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={120} placeholder="使用默认名称" className="w-full rounded-m-md bg-m-surface px-3 py-2 text-m-md text-m-text" />
+						{nameError && <p role="alert" className="text-m-sm break-words text-m-danger">{nameError}</p>}
+						<Button type="submit" disabled={saving}>{saving ? "保存中…" : "保存名称"}</Button>
+					</form>
+				</GroupBlock>
+			</ListGroup>
 			<ListGroup title="手机服务">
 				<ListRow title="服务状态" right={<Chip tone={mobile.running ? "success" : "warn"}>{mobile.running ? "运行中" : "未运行"}</Chip>} />
 				{mobile.port != null && <ListRow title="端口" right={<span className="font-m-mono">{mobile.port}</span>} />}

@@ -593,6 +593,20 @@ export interface PairingInfo {
 
 export type PairingTarget = "lan" | "tunnel" | "ipv6";
 
+export interface MobileDevice {
+	id: string;
+	name: string;
+	userAgent: string | null;
+	createdAt: string;
+	lastSeenAt: string | null;
+}
+
+export interface MobileDeviceWork {
+	id: string;
+	kind: "session" | "terminal";
+	title: string;
+}
+
 export interface DdnsStatus {
 	enabled: boolean;
 	/** API token present in the vault (value never leaves the backend). */

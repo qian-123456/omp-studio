@@ -375,6 +375,28 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             Ok(())
         })?;
     }
+    if version < 24 {
+        step_with(conn, 24, |tx| {
+            let has_id: bool = tx.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('mobile_devices') WHERE name = 'id'",
+                [],
+                |r| r.get(0),
+            )?;
+            if !has_id {
+                tx.execute_batch("ALTER TABLE mobile_devices ADD COLUMN id TEXT;
+                    ALTER TABLE mobile_devices ADD COLUMN user_agent TEXT;
+                    UPDATE mobile_devices SET id = lower(hex(randomblob(16))), user_agent = COALESCE(name, 'unknown'),
+                        name = CASE
+                            WHEN lower(name) LIKE '%iphone%' THEN 'iPhone'
+                            WHEN lower(name) LIKE '%ipad%' THEN 'iPad'
+                            WHEN lower(name) LIKE '%ipod%' THEN 'iPod'
+                            WHEN lower(name) LIKE '%android%' THEN 'Android'
+                            ELSE '浏览器' END;
+                    CREATE UNIQUE INDEX idx_mobile_devices_id ON mobile_devices(id);")?;
+            }
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 
@@ -439,6 +461,75 @@ pub fn ensure_global_workspace(conn: &Connection) -> rusqlite::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn migrate_v24_preserves_distinct_legacy_device_credentials() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE mobile_devices(
+                token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL,
+                last_seen_at TEXT
+             );
+             INSERT INTO mobile_devices VALUES
+                ('credential-a', 'Same browser', '2026-01-01', '2026-01-02'),
+                ('credential-b', 'Same browser', '2026-02-01', NULL),
+                ('credential-c', 'Mozilla/5.0 (Linux; Android 14)', '2026-03-01', NULL),
+                ('credential-d', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', '2026-04-01', NULL);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 23).unwrap();
+        migrate(&conn).unwrap();
+
+        let read_devices = || {
+            let mut statement = conn
+                .prepare(
+                    "SELECT id, token_hash, user_agent, created_at, last_seen_at, name
+                     FROM mobile_devices ORDER BY token_hash",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        let devices = read_devices();
+        assert_ne!(devices[0].0, devices[1].0);
+        assert_ne!(devices[0].0, "credential-a");
+        assert_ne!(devices[1].0, "credential-b");
+        assert_eq!(devices[0].1, "credential-a");
+        assert_eq!(devices[1].1, "credential-b");
+        assert_eq!(devices[0].2.as_deref(), Some("Same browser"));
+        assert_eq!(devices[1].2.as_deref(), Some("Same browser"));
+        assert_eq!(devices[0].3, "2026-01-01");
+        assert_eq!(devices[1].3, "2026-02-01");
+        assert_eq!(devices[0].4.as_deref(), Some("2026-01-02"));
+        assert_eq!(devices[1].4, None);
+        assert_eq!(devices[0].5, "浏览器");
+        assert_eq!(devices[1].5, "浏览器");
+        assert_eq!(devices[2].5, "Android");
+        assert_eq!(devices[3].5, "iPhone");
+        conn.execute(
+            "UPDATE mobile_devices SET name = 'My phone' WHERE token_hash = 'credential-a'",
+            [],
+        )
+        .unwrap();
+        let renamed_devices = read_devices();
+
+        // A version rewind must not replace the stable device IDs or metadata.
+        conn.pragma_update(None, "user_version", 23).unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(read_devices(), renamed_devices);
+    }
+
     /// The schedule tables present in every valid v9–v22 database.
     fn create_v9_schedule_fixture(conn: &Connection) {
         conn.execute_batch(
@@ -478,7 +569,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 23);
+        assert_eq!(version, 24);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -501,7 +592,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 23);
+        assert_eq!(v3, 24);
     }
 
     #[test]
@@ -511,7 +602,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -538,7 +629,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -613,7 +704,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -714,7 +805,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -775,7 +866,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         let schedule_mode: String = conn
             .query_row("SELECT mode FROM schedules WHERE id='scheduled'", [], |r| {
                 r.get(0)
@@ -926,7 +1017,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, 24);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -966,10 +1057,6 @@ mod tests {
     fn migrate_creates_scoped_model_switch_tables() {
         let conn = Connection::open_in_memory().unwrap();
         migrate(&conn).unwrap();
-        let v: u32 = conn
-            .pragma_query_value(None, "user_version", |r| r.get(0))
-            .unwrap();
-        assert_eq!(v, 23);
         let columns = |table: &str| -> Vec<String> {
             conn.prepare(&format!("PRAGMA table_info({table})"))
                 .unwrap()
@@ -1037,6 +1124,7 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE session_meta(session_id TEXT PRIMARY KEY, parent_session_id TEXT);
              CREATE TABLE backlog(id TEXT PRIMARY KEY, kind TEXT NOT NULL);
+             CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
              CREATE TABLE model_templates(
                id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
                is_bottom_line INTEGER NOT NULL DEFAULT 0,
@@ -1117,11 +1205,14 @@ mod atomic_step_tests {
     fn migrate_is_idempotent() {
         let conn = Connection::open_in_memory().unwrap();
         migrate(&conn).unwrap();
+        let before: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         migrate(&conn).unwrap();
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 23);
+        assert_eq!(v, before);
     }
 }
 
@@ -1159,10 +1250,6 @@ mod backlog_v19_tests {
         };
         assert_eq!(kind("a"), "idea");
         assert_eq!(kind("b"), "bug");
-        let v: u32 = conn
-            .pragma_query_value(None, "user_version", |r| r.get(0))
-            .unwrap();
-        assert_eq!(v, 23);
     }
 
     #[test]
@@ -1181,9 +1268,5 @@ mod backlog_v19_tests {
             )
             .unwrap();
         assert_eq!(restored.as_deref(), Some("restored time"));
-        let version: u32 = conn
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .unwrap();
-        assert_eq!(version, 23);
     }
 }

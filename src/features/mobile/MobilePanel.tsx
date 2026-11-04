@@ -2,14 +2,18 @@
  * [E] Pairing / tunnel panel (rendered inside Settings ▸ 手机访问, §11 E).
  * LAN server controls, QR pairing, cloudflared tunnel, device revocation.
  */
-import { ChevronDown, Copy, Globe, Power, QrCode, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
+import { Copy, Globe, Info, Power, QrCode, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Segmented } from "../../components/Segmented";
-import type { MobileStatus, PairingInfo, PairingTarget } from "../../lib/contracts";
+import type { MobileDevice, MobileDeviceWork, MobileStatus, PairingInfo, PairingTarget } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import {
 	mobileCreatePairing,
+	mobileDeviceWork,
+	mobileListDevices,
+	mobileRenameDevice,
+	mobileRevokeDevice,
 	mobileDdnsClearToken,
 	mobileDdnsSetToken,
 	mobileDdnsSync,
@@ -27,6 +31,7 @@ import { Switch } from "../settings/Switch";
 import { toast } from "../../lib/toast";
 import { tNow, useT } from "../../stores/language";
 import { Notice } from "../../components/Notice";
+import { Modal } from "../../components/Modal";
 import {
 	Button,
 	Chip,
@@ -35,7 +40,6 @@ import {
 	IconButton,
 	SaveIndicator,
 	SettingRow,
-	SettingsCard,
 	useSaveStatus,
 } from "../settings/ui";
 import { useAppSettings } from "../settings/useAppSettings";
@@ -133,7 +137,7 @@ function PortEditor({ value, activePort, running, disabled, busy, label, onSave 
 	useEffect(() => { setDraft(String(value)); setInvalid(null); }, [value]);
 	const dirty = draft.trim() !== String(value) || (running && Number(draft) !== activePort);
 	return (
-		<form className="flex w-full flex-col gap-2" onSubmit={(event) => {
+		<form className="flex items-center gap-2" onSubmit={(event) => {
 			event.preventDefault();
 			if (disabled || busy || !dirty) return;
 			const next = draft.trim();
@@ -141,17 +145,26 @@ function PortEditor({ value, activePort, running, disabled, busy, label, onSave 
 			setInvalid(error);
 			if (!error) void onSave(Number(next));
 		}}>
-			<label className="space-y-1">
-				<span className="text-xs whitespace-nowrap text-[var(--text-muted)]">{label}</span>
-				<input type="text" inputMode="numeric" className={`${INPUT_CLASS} w-full font-mono tabular-nums`}
-					value={draft} aria-invalid={invalid ? true : undefined} disabled={disabled || busy}
+			<label className="flex items-center gap-2">
+				{label && <span className="text-xs whitespace-nowrap text-[var(--text-muted)]">{label}:</span>}
+				<input
+					type="text"
+					inputMode="numeric"
+					className={`${INPUT_CLASS} w-20 text-center font-mono tabular-nums`}
+					value={draft}
+					aria-label={label || t("mobile.portLabel")}
+					aria-invalid={invalid ? true : undefined}
+					disabled={disabled || busy}
 					onChange={(event) => { setDraft(event.target.value); setInvalid(null); }}
-					onBlur={() => setInvalid(validatePort(draft.trim()))} />
+					onBlur={() => setInvalid(validatePort(draft.trim()))}
+				/>
 			</label>
+			{dirty && (
+				<Button size="sm" type="submit" icon={RotateCcw} loading={busy} disabled={disabled}>
+					{running ? t("mobile.btnSaveRestart") : t("common.save")}
+				</Button>
+			)}
 			{invalid && <p role="alert" className="text-xs text-[var(--status-error)] [overflow-wrap:anywhere]">{invalid}</p>}
-			<Button type="submit" icon={RotateCcw} loading={busy} disabled={disabled || !dirty}>
-				{running ? t("mobile.btnSaveRestart") : t("common.save")}
-			</Button>
 		</form>
 	);
 }
@@ -163,6 +176,21 @@ export function MobilePanel() {
 	const [pairing, setPairing] = useState<PairingInfo | null>(null);
 	const [pairTarget, setPairTarget] = useState<PairingTarget>("lan");
 	const [busy, setBusy] = useState<Busy | null>(null);
+	const [view, setView] = useState<"lan" | "remote">("lan");
+	const [remote, setRemote] = useState<"ipv6" | "tunnel">("ipv6");
+	const [devices, setDevices] = useState<MobileDevice[] | null>(null);
+	const [deviceListError, setDeviceListError] = useState<string | null>(null);
+	const [deviceDialog, setDeviceDialog] = useState<{ type: "rename" | "remove"; device: MobileDevice } | null>(null);
+	const [deviceName, setDeviceName] = useState("");
+	const [deviceWork, setDeviceWork] = useState<MobileDeviceWork[] | null>(null);
+	const [workError, setWorkError] = useState<string | null>(null);
+	const [stopWork, setStopWork] = useState(false);
+	const [selectedWork, setSelectedWork] = useState<string[]>([]);
+	const [deviceBusy, setDeviceBusy] = useState(false);
+	const [showLanGuide, setShowLanGuide] = useState(false);
+	const [showIpv6Guide, setShowIpv6Guide] = useState(false);
+	const [showTunnelGuide, setShowTunnelGuide] = useState(false);
+	const [devicesOpen, setDevicesOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [ddnsTokenDraft, setDdnsTokenDraft] = useState("");
 	const savedMode = asMode(settings?.tunnelMode);
@@ -209,6 +237,28 @@ export function MobilePanel() {
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
+
+	const refreshDevices = useCallback(async () => {
+		try { setDevices(await mobileListDevices()); setDeviceListError(null); }
+		catch (e) { setDeviceListError(errMsg(e)); }
+	}, []);
+	useEffect(() => { void refreshDevices(); }, [refreshDevices]);
+
+	const openRemove = (device: MobileDevice) => {
+		setDeviceDialog({ type: "remove", device });
+		setDeviceWork(null);
+		setWorkError(null);
+		setStopWork(false);
+		setSelectedWork([]);
+	};
+	useEffect(() => {
+		if (deviceDialog?.type !== "remove") return;
+		let active = true;
+		void mobileDeviceWork(deviceDialog.device.id).then((work) => {
+			if (active) setDeviceWork(work);
+		}).catch((e) => { if (active) setWorkError(errMsg(e)); });
+		return () => { active = false; };
+	}, [deviceDialog]);
 
 	// Countdown for the one-time pairing code; keep the card (greyed) once expired.
 	useEffect(() => {
@@ -368,6 +418,7 @@ export function MobilePanel() {
 			if (!confirmed) return;
 			await mobileRevokeAll();
 			setPairing(null);
+			await refreshDevices();
 			toast.success(t("mobile.toastRevoked"));
 		});
 
@@ -378,7 +429,7 @@ export function MobilePanel() {
 	const tunnelButtonLabel =
 		tunnelMode === "off" ? (status?.tunnelUrl ? t("mobile.btnCloseTunnel") : t("common.save")) : status?.tunnelUrl ? t("mobile.btnSaveAndReconnect") : t("mobile.btnSaveAndStartTunnel");
 	return (
-		<div className="min-w-0 space-y-4 [overflow-wrap:anywhere] [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:whitespace-nowrap [&_input]:min-h-11 [&_input]:min-w-0 [&_input]:max-w-full [&_input]:text-base">
+		<div className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
 			{error && (
 				<Notice
 					tone="danger"
@@ -387,238 +438,230 @@ export function MobilePanel() {
 					<span role="alert" className="whitespace-pre-wrap [overflow-wrap:anywhere]">{error}</span>
 				</Notice>
 			)}
-
-			{/* Primary pairing flow stays before all network configuration. */}
-			<SettingsCard title={t("mobile.pairHeroTitle")} fieldId="mobilePairing">
-				<div className="space-y-3 p-4">
-					<div className="flex flex-wrap items-center justify-between gap-2">
-						<div className="whitespace-nowrap"><RunChip status={status == null ? "unknown" : running ? "running" : "stopped"} /></div>
-						<Button variant={running ? "danger" : "secondary"} icon={Power}
-							loading={busy === "server"} disabled={busy !== null || status == null} onClick={toggleServer}>
-							{busy === "server" ? (running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : running ? t("mobile.btnStop") : t("mobile.btnStart")}
-						</Button>
+			{/* Top Unified Action Bar */}
+			<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-3.5 shadow-sm">
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-[var(--text)]">{t("mobile.rowMobileLanLabel")}</span>
+						<RunChip status={status == null ? "unknown" : running ? "running" : "stopped"} />
 					</div>
-					{!pairing && <p className="text-sm text-[var(--text-muted)]">{running ? t("mobile.pairHeroHelp") : t("mobile.rowMobileLanDescStopped")}</p>}
-					<div className="flex flex-wrap gap-2">
-						<Button className="flex-1" variant="primary" icon={QrCode} loading={busy === "pair"}
-							disabled={busy !== null || !running} title={running ? undefined : t("mobile.pairLanTitleStopped")}
-							onClick={() => makePairing("lan")}>
-							{t("mobile.btnGenerateQr")}
-						</Button>
-						<IconButton icon={RefreshCw} label={t("mobile.btnRefreshStatus")} disabled={busy !== null} onClick={() => run("refresh", refresh)} />
-					</div>
-				</div>
-			{/* Pairing QR */}
-			{pairing && (
-				<div
-					className="flex flex-col items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card"
-				>
-					<div className="flex w-full items-start justify-between gap-2 border-b border-[var(--border-divider)] pb-2">
-						<span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs font-medium text-[var(--text)]">
-							{t("mobile.qrTitle", { target: targetLabels[pairTarget] })}
-							{expired ? (
-								<span className="whitespace-nowrap text-[var(--status-error)]">{t("mobile.qrExpired")}</span>
-							) : (
-								<span className={`whitespace-nowrap font-mono tabular-nums ${expiresIn <= 30 ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}>
-									{t("mobile.qrExpiresIn", { mm, ss })}
-								</span>
-							)}
-						</span>
-						<IconButton icon={X} label={t("mobile.closeQrAria")} onClick={() => setPairing(null)} />
-					</div>
-					<div className="relative">
-						<div
-							className={`rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44 ${expired ? "opacity-20 blur-[2px]" : ""}`}
-							// Backend-generated SVG QR (qrcode crate), not user content.
-							dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
-						/>
-						{expired && (
-							<div className="absolute inset-0 flex items-center justify-center">
-								<Button
-									variant="primary"
-									icon={RefreshCw}
-									disabled={busy !== null}
-									onClick={() => makePairing(pairTarget)}
-								>
-									{t("mobile.btnRegenerate")}
-								</Button>
-							</div>
-						)}
-					</div>
-					<p className="text-center text-xs text-[var(--text-muted)]">
-						{expired
-							? t("mobile.qrExpiredHelp")
-							: t("mobile.qrScanHelp")}
+					<p className="mt-0.5 text-xs text-[var(--text-muted)]">
+						{running ? t("mobile.rowMobileLanDescRunning") : t("mobile.rowMobileLanDescStopped")}
 					</p>
-					{!expired && (
-						<div className="flex w-full min-w-0 flex-col gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2 sm:flex-row sm:items-center">
-							<code className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] text-[var(--text)]">{pairing.url}</code>
-							<Button
-								icon={Copy}
-								title={t("mobile.copyPairUrlTitle")}
-								onClick={async () => {
-									await copyText(pairing.url);
-									toast.success(t("mobile.toastPairUrlCopied"));
-								}}
-							>
-								{t("mobile.btnCopyLink")}
-							</Button>
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<Button
+						variant={running ? "secondary" : "primary"}
+						icon={Power}
+						loading={busy === "server"}
+						disabled={busy !== null || status == null}
+						onClick={toggleServer}
+					>
+						{busy === "server" ? (running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : running ? t("mobile.btnStop") : t("mobile.btnStart")}
+					</Button>
+					<Button
+						variant="secondary"
+						icon={QrCode}
+						loading={busy === "pair"}
+						disabled={busy !== null || !running || (view === "remote" && remote === "ipv6" && !status?.ipv6Url) || (view === "remote" && remote === "tunnel" && !status?.tunnelUrl)}
+						title={running ? undefined : t("mobile.pairLanTitleStopped")}
+						onClick={() => makePairing(view === "lan" ? "lan" : remote)}
+					>
+						{t("mobile.btnGenerateQr")}
+					</Button>
+					<IconButton icon={RefreshCw} label={t("mobile.btnRefreshStatus")} disabled={busy !== null} onClick={() => run("refresh", refresh)} />
+				</div>
+			</div>
+
+			{/* Active QR Code Card */}
+			{pairing && (
+				<div data-field-id="mobileQr" className="rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-4 shadow-sm">
+					<div className="flex min-w-0 flex-wrap items-start gap-4">
+						<div className="relative shrink-0">
+							<div
+								className={`rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44 ${expired ? "opacity-20 blur-[2px]" : ""}`}
+								dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
+							/>
+							{expired && (
+								<div className="absolute inset-0 flex items-center justify-center">
+									<Button variant="primary" icon={RefreshCw} disabled={busy !== null} onClick={() => makePairing(view === "lan" ? "lan" : remote)}>
+										{t("mobile.btnRegenerate")}
+									</Button>
+								</div>
+							)}
 						</div>
-					)}
+						<div className="min-w-[min(100%,16rem)] flex-1 space-y-3">
+							<div className="flex items-start justify-between gap-2">
+								<span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs font-medium text-[var(--text)]">
+									{t("mobile.qrTitle", { target: targetLabels[pairTarget] })}
+									{expired ? (
+										<span className="whitespace-nowrap text-[var(--status-error)]">{t("mobile.qrExpired")}</span>
+									) : (
+										<span className={`whitespace-nowrap font-mono tabular-nums ${expiresIn <= 30 ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}>
+											{t("mobile.qrExpiresIn", { mm, ss })}
+										</span>
+									)}
+								</span>
+								<IconButton icon={X} label={t("mobile.closeQrAria")} onClick={() => setPairing(null)} />
+							</div>
+							<p className="text-xs text-[var(--text-muted)]">
+								{expired ? t("mobile.qrExpiredHelp") : t("mobile.qrScanHelp")}
+							</p>
+							{!expired && (
+								<div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2">
+									<code className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] text-[var(--text)]">{pairing.url}</code>
+									<Button
+										className="shrink-0"
+										icon={Copy}
+										title={t("mobile.copyPairUrlTitle")}
+										onClick={async () => {
+											await copyText(pairing.url);
+											toast.success(t("mobile.toastPairUrlCopied"));
+										}}
+									>
+										{t("mobile.btnCopyLink")}
+									</Button>
+								</div>
+							)}
+						</div>
+					</div>
 				</div>
 			)}
-			</SettingsCard>
-			{/* Paired devices */}
-			<SettingsCard title={t("mobile.cardDevicesTitle")} fieldId="mobileDevices">
-				<SettingRow
-					stacked
-					danger
-					label={t("mobile.rowRevokeLabel")}
-					description={t("mobile.rowRevokeDesc")}
-					control={
-						<Button variant="danger" icon={ShieldAlert} loading={busy === "revoke"} disabled={busy !== null} onClick={revokeAll}>
-							{t("mobile.btnRevokeAll")}
-						</Button>
-					}
-				/>
-			</SettingsCard>
 
-			{/* Native disclosure keeps drafts mounted and never changes connectivity. */}
-			<details className="group/advanced min-w-0 rounded-xl border border-[var(--border-divider)] p-4">
-				<summary className="flex min-h-11 cursor-pointer list-none flex-col justify-center gap-2 [&::-webkit-details-marker]:hidden">
-					<span className="flex items-center justify-between gap-3 font-medium whitespace-nowrap text-[var(--text)]">
-						{t("mobile.advancedTitle")}
-						<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/advanced:rotate-180" />
-					</span>
-					<span className="text-xs text-[var(--text-muted)]">{t("mobile.advancedHelp")}</span>
-					{(ipv6Running || status?.tunnelUrl || status?.ddns?.lastError || status?.ddns?.halted) && (
-						<span className="flex flex-wrap gap-2 whitespace-nowrap">
-							{ipv6Running && <Chip tone="success">IPv6 · {t("mobile.statusRunning")}</Chip>}
-							{status?.tunnelUrl && <Chip tone="success">{t("mobile.tunnelConnectedChip")}</Chip>}
-							{(status?.ddns?.lastError || status?.ddns?.halted) && <Chip tone="warning">DDNS · {t(status?.ddns?.halted ? "mobile.ddnsStatusHalted" : "mobile.ddnsStatusError")}</Chip>}
-						</span>
-					)}
-				</summary>
-				<div className="mt-4 min-w-0 space-y-6">
-					<SettingsCard title={t("mobile.cardLanTitle")} fieldId="mobileLan">
-						<div className="space-y-3 p-4">
-							<PortEditor value={settings?.mobilePort ?? 7788} activePort={status?.port} running={running}
-								disabled={busy !== null || !settings || !status} busy={busy === "restart"}
-								label={t("mobile.portLabel")} onSave={savePort} />
-							<p className="text-xs text-[var(--text-muted)]">{t("mobile.portHint")}</p>
-							{running && status?.lanUrl && <UrlLine label={t("mobile.lanUrlLabel")} url={status.lanUrl} />}
+			<Segmented aria-label={t("settingsSections.mobile.title")} value={view} onChange={setView}
+				options={[{ value: "lan", label: t("mobile.tabLan") }, { value: "remote", label: t("mobile.tabRemote") }]} />
+			{view === "remote" && (
+				<fieldset className="flex flex-wrap gap-5 text-sm text-[var(--text)]">
+					<label className="flex items-center gap-2 whitespace-nowrap"><input type="radio" name="remote-transport" checked={remote === "ipv6"} onChange={() => setRemote("ipv6")} />{t("mobile.remoteIpv6")}</label>
+					<label className="flex items-center gap-2 whitespace-nowrap"><input type="radio" name="remote-transport" checked={remote === "tunnel"} onChange={() => setRemote("tunnel")} />{t("mobile.remoteTunnel")}</label>
+				</fieldset>
+			)}
+
+			{/* LAN Panel */}
+			<div hidden={view !== "lan"} className="space-y-3" data-field-id="mobileLan">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-1.5">
+						<span className="text-[13px] font-medium text-[var(--text)]">{t("mobile.lanConnection")}</span>
+						<button
+							type="button"
+							className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-divider)] bg-[var(--well-bg)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+							onClick={() => setShowLanGuide((v) => !v)}
+							title={t("mobile.usageTipsTitle")}
+							aria-label={t("mobile.usageTipsTitle")}
+						>
+							<Info className="h-3 w-3" />
+						</button>
+					</div>
+					<span className="text-xs text-[var(--text-muted)]">{t("mobile.tunnelModeOffExplain")}</span>
+				</div>
+
+				{showLanGuide && (
+					<div className="rounded-lg border-l-2 border-[#0969da] bg-[var(--well-bg)] p-3 text-xs text-[var(--text-muted)]">
+						<p>{t("mobile.pairHeroHelp")}</p>
+					</div>
+				)}
+
+				{/* Plan B Flat Card */}
+				<div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-3.5">
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
+						<div>
+							<span className="block text-[11px] text-[var(--text-muted)]">{t("mobile.lanUrlLabel")}</span>
+							<span className="font-mono text-sm font-semibold text-[var(--text)]">
+								{status?.lanUrl ?? `http://...:${settings?.mobilePort ?? 7788}`}
+							</span>
 						</div>
-					</SettingsCard>
+						<div className="hidden h-7 w-[1px] bg-[var(--border-divider)] sm:block" />
+						<PortEditor
+							value={settings?.mobilePort ?? 7788}
+							activePort={status?.port}
+							running={running}
+							disabled={busy !== null || !settings || !status}
+							busy={busy === "restart"}
+							label={t("mobile.portLabel")}
+							onSave={savePort}
+						/>
+					</div>
+					{status?.lanUrl && (
+						<Button
+							size="sm"
+							variant="secondary"
+							icon={Copy}
+							onClick={async () => {
+								await copyText(status.lanUrl!);
+								toast.success(t("mobile.toastAddressCopied"));
+							}}
+						>
+							{t("mobile.btnCopyLink")}
+						</Button>
+					)}
+				</div>
+			</div>
 
 			{/* IPv6 direct */}
-			<details className="group/ipv6 min-w-0 rounded-xl border border-[var(--border-divider)]">
-				<summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 p-4 text-sm font-medium text-[var(--text)] [&::-webkit-details-marker]:hidden">
-					<span className="min-w-0 flex-1">{t("mobile.cardIpv6Title")} / DDNS</span>
-					<RunChip status={status == null ? "unknown" : ipv6Running ? "running" : !status.ipv6Address ? "noIpv6" : "stopped"} />
-					{settings?.ddnsEnabled && <Chip tone={status?.ddns?.lastError || status?.ddns?.halted ? "warning" : status?.ddns?.lastIp ? "success" : "neutral"}>DDNS · {t(status?.ddns?.halted ? "mobile.ddnsStatusHalted" : status?.ddns?.lastError ? "mobile.ddnsStatusError" : status?.ddns?.lastIp ? "mobile.ddnsStatusSynced" : "mobile.ddnsStatusUnsynced")}</Chip>}
-					<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/ipv6:rotate-180" />
-				</summary>
-			<SettingsCard
-				title={t("mobile.cardIpv6Title")}
-				fieldId="mobileIpv6"
-				footer={t("mobile.cardIpv6Footer")}
-			>
-				<SettingRow
-					label={
-						<span className="flex items-center gap-2">
-							{t("mobile.ipv6DirectLabel")}
-							<RunChip
-								status={
-									status == null
-										? "unknown"
-										: ipv6Running
-											? "running"
-											: !status.ipv6Address
-												? "noIpv6"
-												: "stopped"
-								}
-							/>
-						</span>
-					}
-					description={
-						ipv6Running
-							? t("mobile.ipv6DirectDescRunning")
-							: t("mobile.ipv6DirectDescStopped")
-					}
-					control={
-						<Button
-							variant={ipv6Running ? "danger" : "primary"}
-							icon={Power}
-							loading={busy === "ipv6Server"}
-							disabled={busy !== null || status == null}
-							onClick={toggleIpv6}
+			<div hidden={view !== "remote" || remote !== "ipv6"} className="space-y-3" data-field-id="mobileIpv6">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-1.5">
+						<span className="text-[13px] font-medium text-[var(--text)]">{t("mobile.ipv6Connection")}</span>
+						<button
+							type="button"
+							className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-divider)] bg-[var(--well-bg)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+							onClick={() => setShowIpv6Guide((v) => !v)}
+							title={t("mobile.usageTipsTitle")}
+							aria-label={t("mobile.usageTipsTitle")}
 						>
+							<Info className="h-3 w-3" />
+						</button>
+					</div>
+					<div className="flex items-center gap-2">
+						<RunChip status={status == null ? "unknown" : ipv6Running ? "running" : !status.ipv6Address ? "noIpv6" : "stopped"} />
+						<Button size="sm" variant="secondary" icon={Power} loading={busy === "ipv6Server"} disabled={busy !== null || status == null} onClick={toggleIpv6}>
 							{busy === "ipv6Server" ? (ipv6Running ? t("mobile.btnStopping") : t("mobile.btnStarting")) : ipv6Running ? t("mobile.btnStop") : t("mobile.btnStart")}
 						</Button>
-					}
-				>
-					<div className="space-y-2">
-						{status?.ipv6Address ? (
-							<CopyLine
-								label={t("mobile.ipv6AddrLabel")}
-								value={status.ipv6Address}
-								toastText={t("mobile.ipv6AddrCopied")}
-								copyLabel={t("mobile.ipv6AddrCopyAria")}
-							/>
-						) : (
-							<Notice tone="warning">{t("mobile.noticeNoIpv6")}</Notice>
-						)}
-						{ipv6Running && status?.ipv6Url && <UrlLine label={t("mobile.ipv6UrlLabel")} url={status.ipv6Url} />}
-						{status?.certSha256 && (
-							<CopyLine
-								label={t("mobile.certShaLabel")}
-								value={status.certSha256}
-								toastText={t("mobile.certShaCopied")}
-								copyLabel={t("mobile.certShaCopyAria")}
-							/>
-						)}
 					</div>
-				</SettingRow>
-				<div className="p-4">
-					<PortEditor value={settings?.mobileIpv6Port ?? 7789} activePort={status?.ipv6Port} running={ipv6Running}
-						disabled={busy !== null || !settings || !status} busy={busy === "ipv6Restart"}
-						label={t("mobile.ipv6PortLabel")} onSave={saveIpv6Port} />
-					<p className="mt-2 text-xs text-[var(--text-muted)]">{t("mobile.ipv6PortHint")}</p>
 				</div>
-				<SettingRow
-					label={t("mobile.pairIpv6Label")}
-					description={
-						ipv6Running
-							? t("mobile.pairIpv6DescRunning")
-							: t("mobile.pairIpv6DescStopped")
-					}
-					control={
-						<Button
-							icon={QrCode}
-							loading={busy === "pair" && pairTarget === "ipv6"}
-							disabled={busy !== null || !ipv6Running || !status?.ipv6Url}
-							title={
-								!ipv6Running
-									? t("mobile.pairIpv6TitleStopped")
-									: !status?.ipv6Url
-										? t("mobile.pairIpv6TitleNoUrl")
-										: undefined
-							}
-							onClick={() => makePairing("ipv6")}
-						>
-							{t("mobile.btnGenerateIpv6Qr")}
-						</Button>
-					}
-				/>
-				<div className="space-y-1.5 px-4 py-3 text-xs leading-relaxed text-[var(--text-muted)]">
-					<div className="font-medium text-[var(--text)]">{t("mobile.usageTipsTitle")}</div>
-					<ul className="list-inside list-disc space-y-1">
-						<li>{t("mobile.tip1")}</li>
-						<li>{t("mobile.tip2")}</li>
-						<li>{t("mobile.tip3")}</li>
-						<li>{t("mobile.tip4")}</li>
-					</ul>
+
+				{showIpv6Guide && (
+					<div className="space-y-1.5 rounded-lg border-l-2 border-[#0969da] bg-[var(--well-bg)] p-3 text-xs text-[var(--text-muted)]">
+						<div className="font-medium text-[var(--text)]">{t("mobile.usageTipsTitle")}</div>
+						<ul className="list-inside list-disc space-y-1">
+							<li>{t("mobile.tip1")}</li>
+							<li>{t("mobile.tip2")}</li>
+							<li>{t("mobile.tip3")}</li>
+							<li>{t("mobile.tip4")}</li>
+						</ul>
+					</div>
+				)}
+
+				{ipv6Running && status?.ipv6Url && <UrlLine label={t("mobile.ipv6UrlLabel")} url={status.ipv6Url} />}
+				{status && !status.ipv6Address && <Notice tone="warning">{t("mobile.noticeNoIpv6")}</Notice>}
+
+				{/* Plan B: IPv6 address, Cert fingerprint, and Port 7789 */}
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+					<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-3">
+						<span className="block text-[11px] text-[var(--text-muted)]">{t("mobile.ipv6AddrLabel")}</span>
+						<span className="font-mono text-xs font-semibold text-[var(--text)] [overflow-wrap:anywhere]">
+							{status?.ipv6Address ?? "—"}
+						</span>
+					</div>
+					<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-3">
+						<span className="block text-[11px] text-[var(--text-muted)]">{t("mobile.certShaLabel")}</span>
+						<span className="font-mono text-xs font-semibold text-[var(--text)] [overflow-wrap:anywhere]">
+							{status?.certSha256 ?? "—"}
+						</span>
+					</div>
+					<div className="flex items-center rounded-xl border border-[var(--border-divider)] bg-[var(--card-bg)] p-3">
+						<PortEditor
+							value={settings?.mobileIpv6Port ?? 7789}
+							activePort={status?.ipv6Port}
+							running={ipv6Running}
+							disabled={busy !== null || !settings || !status}
+							busy={busy === "ipv6Restart"}
+							label={t("mobile.ipv6PortLabel")}
+							onSave={saveIpv6Port}
+						/>
+					</div>
 				</div>
+
 				{/* DDNS subsection */}
 				<SettingRow
 					label={
@@ -770,34 +813,42 @@ export function MobilePanel() {
 						</div>
 					)}
 				</SettingRow>
-			</SettingsCard>
-			</details>
+			</div>
 
 			{/* Tunnel */}
-			<details className="group/tunnel min-w-0 rounded-xl border border-[var(--border-divider)]">
-				<summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 p-4 text-sm font-medium text-[var(--text)] [&::-webkit-details-marker]:hidden">
-					<span className="min-w-0 flex-1">{t("mobile.cardTunnelTitle")} / Zero Trust</span>
-					<Chip tone={status?.tunnelUrl ? "success" : "neutral"}>{t(status?.tunnelUrl ? "mobile.tunnelConnectedChip" : "mobile.tunnelDisconnectedChip")}</Chip>
-					{tunnelDirty && <Chip tone="warning">{t("mobile.unsavedChangesChip")}</Chip>}
-					<ChevronDown aria-hidden className="h-4 w-4 shrink-0 transition-transform group-open/tunnel:rotate-180" />
-				</summary>
-			<SettingsCard
-				title={t("mobile.cardTunnelTitle")}
-				fieldId="mobileTunnel"
-				footer={t("mobile.cardTunnelFooter")}
-			>
+			<div hidden={view !== "remote" || remote !== "tunnel"} className="space-y-3" data-field-id="mobileTunnel">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-1.5">
+						<span className="text-[13px] font-medium text-[var(--text)]">{t("mobile.remoteTunnel")}</span>
+						<button
+							type="button"
+							className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-divider)] bg-[var(--well-bg)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+							onClick={() => setShowTunnelGuide((v) => !v)}
+							title={t("mobile.usageTipsTitle")}
+							aria-label={t("mobile.usageTipsTitle")}
+						>
+							<Info className="h-3 w-3" />
+						</button>
+					</div>
+					<div className="flex items-center gap-2">
+						<Chip tone={status?.tunnelUrl ? "success" : "neutral"}>{t(status?.tunnelUrl ? "mobile.tunnelConnectedChip" : "mobile.tunnelDisconnectedChip")}</Chip>
+						<Button variant={tunnelMode === "off" ? "secondary" : "primary"} icon={Globe} loading={busy === "tunnel"}
+							disabled={busy !== null || namedMissing || (tunnelMode !== "off" && cloudflaredMissing) || (!tunnelDirty && tunnelMode === "off" && !status?.tunnelUrl)}
+							title={namedMissing ? t("mobile.errorNamedMissing") : undefined} onClick={applyTunnel}>
+							{busy === "tunnel" ? t("mobile.btnTunnelProcessing") : tunnelButtonLabel}
+						</Button>
+					</div>
+				</div>
+
+				{showTunnelGuide && (
+					<div className="rounded-lg border-l-2 border-[#0969da] bg-[var(--well-bg)] p-3 text-xs text-[var(--text-muted)]">
+						<p>{t("mobile.cardTunnelFooter")}</p>
+					</div>
+				)}
+				{status?.tunnelUrl && <UrlLine label={t("mobile.tunnelPublicUrlLabel")} url={status.tunnelUrl} />}
 				<SettingRow
 					stacked
-					label={
-						<span className="flex items-center gap-2">
-							{t("mobile.tunnelMethodLabel")}
-							{status?.tunnelUrl ? (
-								<Chip tone="success">{t("mobile.tunnelConnectedChip")}</Chip>
-							) : savedMode !== "off" ? (
-								<Chip tone="neutral">{t("mobile.tunnelDisconnectedChip")}</Chip>
-							) : null}
-						</span>
-					}
+					label={t("mobile.tunnelMethodLabel")}
 					description={modeInfo.explain}
 					control={
 						<Segmented
@@ -880,40 +931,7 @@ export function MobilePanel() {
 								</div>
 							</>
 						)}
-						{status?.tunnelUrl && <UrlLine label={t("mobile.tunnelPublicUrlLabel")} url={status.tunnelUrl} />}
 						<div className="flex flex-wrap items-center gap-2">
-							<Button
-								variant={tunnelMode === "off" ? "secondary" : "primary"}
-								icon={Globe}
-								loading={busy === "tunnel"}
-								disabled={
-									busy !== null ||
-									namedMissing ||
-									(tunnelMode !== "off" && cloudflaredMissing) ||
-									(!tunnelDirty && tunnelMode === "off" && !status?.tunnelUrl)
-								}
-								title={namedMissing ? t("mobile.errorNamedMissing") : undefined}
-								onClick={applyTunnel}
-							>
-								{busy === "tunnel" ? t("mobile.btnTunnelProcessing") : tunnelButtonLabel}
-							</Button>
-							<Button
-								icon={RefreshCw}
-								loading={busy === "refresh"}
-								disabled={busy !== null}
-								onClick={() => run("refresh", refresh)}
-								title={t("mobile.tipTempUrlSlow")}
-							>
-								{t("mobile.btnRefreshStatus")}
-							</Button>
-							<Button
-								icon={QrCode}
-								disabled={busy !== null || !status?.tunnelUrl}
-								title={status?.tunnelUrl ? undefined : t("mobile.tipTunnelNotReady")}
-								onClick={() => makePairing("tunnel")}
-							>
-								{t("mobile.btnGenerateTunnelQr")}
-							</Button>
 							{tunnelDirty && tunnelSave.status === "idle" && (
 								<Chip tone="warning">{t("mobile.unsavedChangesChip")}</Chip>
 							)}
@@ -921,10 +939,112 @@ export function MobilePanel() {
 						</div>
 					</div>
 				</SettingRow>
-			</SettingsCard>
-			</details>
+			</div>
+			{/* Paired devices (Compact summary bar + expandable drawer) */}
+			<section data-field-id="mobileDevices" className="border-t border-[var(--border-divider)] pt-3">
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<div className="flex items-center gap-2">
+						<h3 className="flex items-center gap-2 text-[13px] font-semibold text-[var(--text)]">
+							{t("mobile.devicesTitle")}
+							{devices !== null && <Chip tone="neutral">{devices.length}</Chip>}
+						</h3>
+						{devices && devices.length > 0 && devices[0].lastSeenAt && (
+							<span className="text-xs text-[var(--text-muted)]">
+								· {t("mobile.deviceLastSeen", { time: formatSyncTime(devices[0].lastSeenAt, locale) })}
+							</span>
+						)}
+					</div>
+					<div className="flex items-center gap-2">
+						{devices && devices.length > 0 && (
+							<Button size="sm" variant="ghost" onClick={() => setDevicesOpen((v) => !v)}>
+								{devicesOpen ? t("mobile.collapseDevices") : t("mobile.manageDevices", { count: devices.length })}
+							</Button>
+						)}
+						<Button size="sm" variant="secondary" icon={ShieldAlert} loading={busy === "revoke"} disabled={busy !== null || deviceBusy || !devices || devices.length === 0} onClick={revokeAll}>
+							{t("mobile.btnRevokeAll")}
+						</Button>
+						<IconButton size="sm" icon={RefreshCw} label={t("mobile.btnRefreshStatus")} disabled={deviceBusy || busy !== null} onClick={() => void refreshDevices()} />
+					</div>
 				</div>
-			</details>
+
+				{deviceListError && <Notice tone="danger"><span role="alert" className="whitespace-pre-wrap [overflow-wrap:anywhere]">{deviceListError}</span></Notice>}
+				{devices === null ? !deviceListError && <p className="py-2 text-xs text-[var(--text-muted)]">{t("mobile.deviceLoading")}</p> : devices.length === 0 ? (
+					<p className="py-2 text-xs text-[var(--text-muted)]">{t("mobile.devicesEmpty")}</p>
+				) : (devices.length <= 2 || devicesOpen) ? (
+					<div className="mt-2 max-h-60 overflow-y-auto space-y-2 pr-1">
+						{devices.map((device) => (
+							<div key={device.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--border-divider)] bg-[var(--card-bg)] p-2.5">
+								<div className="min-w-0 flex-1 space-y-1">
+									<div className="font-medium text-sm text-[var(--text)] [overflow-wrap:anywhere]">{device.name}</div>
+									<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
+										<span>{t("mobile.deviceLastSeen", { time: device.lastSeenAt ? formatSyncTime(device.lastSeenAt, locale) : t("mobile.deviceNever") })}</span>
+										<details className="min-w-0 open:basis-full">
+											<summary className="cursor-pointer whitespace-nowrap">{t("mobile.deviceDetails")}</summary>
+											<div className="space-y-1 pt-2 [overflow-wrap:anywhere]">
+												<div>{t("mobile.deviceCreated", { time: formatSyncTime(device.createdAt, locale) })}</div>
+												{device.userAgent && <div>{device.userAgent}</div>}
+											</div>
+										</details>
+									</div>
+								</div>
+								<div className="flex gap-2">
+									<Button size="sm" disabled={busy !== null || deviceBusy} onClick={() => { setDeviceName(device.name); setWorkError(null); setDeviceDialog({ type: "rename", device }); }}>{t("mobile.deviceRename")}</Button>
+									<Button size="sm" disabled={busy !== null || deviceBusy} onClick={() => openRemove(device)}>{t("mobile.deviceRemove")}</Button>
+								</div>
+							</div>
+						))}
+					</div>
+				) : null}
+			</section>
+			{deviceDialog && (
+				<Modal title={t(deviceDialog.type === "rename" ? "mobile.deviceRenameTitle" : "mobile.removeDeviceTitle")} onClose={() => { if (!deviceBusy) setDeviceDialog(null); }}>
+					<div className="space-y-3 px-4 py-3 text-sm text-[var(--text)]">
+						{deviceDialog.type === "rename" ? (
+							<label className="block space-y-1"><span>{t("mobile.deviceName")}</span><input className={`${INPUT_CLASS} w-full`} value={deviceName} disabled={deviceBusy} onChange={(e) => setDeviceName(e.target.value)} /></label>
+						) : (
+							<>
+								<p>{t("mobile.removeDeviceBody")}</p>
+								{deviceWork === null && !workError && <p>{t("mobile.deviceLoading")}</p>}
+								{deviceWork && deviceWork.length > 0 && (
+									<fieldset className="space-y-2">
+										<legend className="mb-2">{t("mobile.removeDeviceWork")}</legend>
+                                        {deviceWork.some((work) => work.kind === "session") && (
+                                            <div className="space-y-1 text-xs text-[var(--text-muted)]">
+                                                <p>{t("mobile.deviceSessionWorkContinues")}</p>
+                                                {deviceWork.filter((work) => work.kind === "session").map((work) => <p key={work.id} className="[overflow-wrap:anywhere]">{work.title} · {t("mobile.deviceWorkManualStop")}</p>)}
+                                            </div>
+                                        )}
+                                        {deviceWork.some((work) => work.kind === "terminal") && <>
+                                            <label className="flex items-center gap-2"><input type="radio" name="device-work" checked={!stopWork} onChange={() => setStopWork(false)} />{t("mobile.keepDeviceWork")}</label>
+                                            <label className="flex items-center gap-2"><input type="radio" name="device-work" checked={stopWork} onChange={() => setStopWork(true)} />{t("mobile.stopDeviceWork")}</label>
+                                            {stopWork && <div className="space-y-2 pl-5"><p>{t("mobile.selectDeviceWork")}</p>{deviceWork.filter((work) => work.kind === "terminal").map((work) => (
+                                                <label key={work.id} className="flex items-start gap-2"><input type="checkbox" checked={selectedWork.includes(work.id)} onChange={(e) => { const checked = e.target.checked; setSelectedWork((ids) => checked ? [...ids, work.id] : ids.filter((id) => id !== work.id)); }} /><span className="[overflow-wrap:anywhere]">{work.title}</span></label>
+                                            ))}</div>}
+                                        </>}
+									</fieldset>
+								)}
+							</>
+						)}
+						{workError && <Notice tone="danger"><span role="alert" className="whitespace-pre-wrap [overflow-wrap:anywhere]">{workError}</span></Notice>}
+					</div>
+					<div className="flex justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
+						<Button variant="ghost" disabled={deviceBusy} onClick={() => setDeviceDialog(null)}>{t("common.cancel")}</Button>
+						<Button variant={deviceDialog.type === "remove" ? "danger" : "primary"} loading={deviceBusy}
+							disabled={deviceBusy || (deviceDialog.type === "rename" ? !deviceName.trim() : deviceWork === null || (stopWork && selectedWork.length === 0))}
+							onClick={async () => {
+								setDeviceBusy(true);
+								setWorkError(null);
+								try {
+									if (deviceDialog.type === "rename") await mobileRenameDevice(deviceDialog.device.id, deviceName.trim());
+									else await mobileRevokeDevice(deviceDialog.device.id, stopWork ? selectedWork : []);
+									setDeviceDialog(null);
+									await refreshDevices();
+								} catch (e) { setWorkError(errMsg(e)); }
+								finally { setDeviceBusy(false); }
+							}}>{t(deviceDialog.type === "rename" ? "common.save" : "mobile.deviceRemove")}</Button>
+					</div>
+				</Modal>
+			)}
 
 
 		</div>

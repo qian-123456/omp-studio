@@ -510,6 +510,19 @@ pub struct Summary {
     pub failed: u32,
 }
 
+fn subscription_is_current(conn: &Connection, sub: &Subscription) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM push_subscriptions s
+            JOIN mobile_devices d ON d.token_hash = s.token_hash
+            WHERE s.endpoint = ?1 AND s.token_hash = ?2 AND s.p256dh = ?3 AND s.auth = ?4
+        )",
+        params![sub.endpoint, sub.token_hash, sub.p256dh, sub.auth],
+        |row| row.get(0),
+    )
+    .unwrap_or(false)
+}
+
 /// Encrypt and send `payload` to subscriptions (optionally one device, optionally
 /// only devices without an open SSE stream). 404/410 delete the subscription.
 pub async fn notify<F, Fut>(
@@ -541,8 +554,33 @@ where
                 }
             }
         }
+        // Subscribe before checking the snapshot so a concurrent revocation is not missed.
+        let mut revocations = super::auth::subscribe_revocations();
+        if !subscription_is_current(&db.lock(), &sub) {
+            continue;
+        }
         let status = match build_request(&vapid, &sub, body.as_bytes(), now, "high") {
-            Ok(req) => send(req).await,
+            Ok(req) => {
+                tokio::select! {
+                    biased;
+                    _ = async {
+                        loop {
+                            match revocations.recv().await {
+                                Ok(hash) if hash == sub.token_hash => break,
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                    if !subscription_is_current(&db.lock(), &sub) {
+                                        break;
+                                    }
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                                Ok(_) => {}
+                            }
+                        }
+                    } => continue,
+                    // Keep sender construction lazy: it may itself perform synchronous work.
+                    status = async { send(req).await } => status,
+                }
+            }
             Err(e) => Err(e),
         };
         match status {
@@ -762,6 +800,85 @@ mod tests {
 
     pub(crate) fn push_db() -> Connection {
         crate::mobile::auth::test_db()
+    }
+
+    #[tokio::test]
+    async fn queued_push_is_not_started_after_device_revocation() {
+        let conn = push_db();
+        let (key, auth) = good_keys();
+        for (index, hash) in [(1, "push-first"), (2, "push-revoked")] {
+            pair_device(&conn, hash);
+            let sub = validate_subscription(
+                &format!("https://fcm.googleapis.com/fcm/send/{index}"),
+                &key,
+                &auth,
+                hash,
+            )
+            .unwrap();
+            save_subscription(&conn, &sub, &index.to_string()).unwrap();
+        }
+        let db = Mutex::new(conn);
+        let sent = Mutex::new(Vec::new());
+        let summary = notify(
+            &db,
+            None,
+            false,
+            &json!({"title":"private update"}),
+            |req| {
+                sent.lock().push(req.endpoint);
+                db.lock()
+                    .execute(
+                        "DELETE FROM mobile_devices WHERE token_hash = 'push-revoked'",
+                        [],
+                    )
+                    .unwrap();
+                super::super::auth::notify_revoked("push-revoked");
+                async { Ok(201) }
+            },
+        )
+        .await;
+        assert_eq!(*sent.lock(), ["https://fcm.googleapis.com/fcm/send/1"]);
+        assert_eq!(summary.sent, 1);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn revocation_cancels_an_unfinished_push_send() {
+        let conn = push_db();
+        pair_device(&conn, "push-inflight");
+        let (key, auth) = good_keys();
+        let sub = validate_subscription(
+            "https://fcm.googleapis.com/fcm/send/inflight",
+            &key,
+            &auth,
+            "push-inflight",
+        )
+        .unwrap();
+        save_subscription(&conn, &sub, "1").unwrap();
+        let db = Mutex::new(conn);
+        let (started, wait_started) = tokio::sync::oneshot::channel();
+        let started = Mutex::new(Some(started));
+        let payload = json!({"title":"private update"});
+        let notify = notify(&db, None, false, &payload, |_| {
+            started.lock().take().unwrap().send(()).unwrap();
+            std::future::pending::<Result<u16, String>>()
+        });
+        let revoke = async {
+            wait_started.await.unwrap();
+            db.lock()
+                .execute(
+                    "DELETE FROM mobile_devices WHERE token_hash = 'push-inflight'",
+                    [],
+                )
+                .unwrap();
+            super::super::auth::notify_revoked("push-inflight");
+        };
+        let (summary, ()) = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            tokio::join!(notify, revoke)
+        })
+        .await
+        .expect("revocation must cancel the pending transport");
+        assert_eq!(summary, Summary::default());
     }
 
     /// RFC 8291 Appendix A / §5: every intermediate value and the final body.

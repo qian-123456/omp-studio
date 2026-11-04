@@ -2,6 +2,7 @@ import { Suspense, useEffect } from "react";
 import { ROUTES } from "./routes";
 import { ConnectionBanner } from "./ConnectionBanner";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { PairingNotice } from "./PairingNotice";
 import { useTheme } from "./theme";
 import { installViewportTracking } from "./viewport";
 import { useRoute } from "../core/nav";
@@ -36,13 +37,14 @@ function RouteView() {
 	);
 }
 
-export function App() {
+export function App({ paired = false }: { paired?: boolean }) {
 	useTheme();
 	useEffect(() => installViewportTracking(), []);
 	useEffect(() => startSessionsSync(), []);
 	return (
 		<div className="m-app">
 			<ConnectionBanner />
+			{paired && <PairingNotice />}
 			<main className="m-page">
 				<RouteView />
 			</main>

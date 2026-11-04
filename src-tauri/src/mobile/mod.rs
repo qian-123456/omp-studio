@@ -12,6 +12,7 @@ pub mod push;
 pub mod server;
 pub mod tls;
 pub mod tunnel;
+pub(crate) mod work;
 
 use std::sync::Arc;
 

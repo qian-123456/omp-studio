@@ -61,6 +61,8 @@ pub fn router<B: Backend>(ctx: Arc<Ctx<B>>) -> Router {
         .route("/sessions/{id}/last", get(last::<B>))
         .route("/sessions/{id}/transcript", get(transcript::<B>))
         .route("/events", get(events::<B>))
+        .route("/device/name", post(rename_device::<B>))
+        .route("/device", get(current_device::<B>))
         .merge(super::api::routes::<B>())
         .route_layer(middleware::from_fn_with_state(
             ctx.clone(),
@@ -215,9 +217,24 @@ async fn require_auth<B: Backend>(
     mut req: Request,
     next: Next,
 ) -> Response {
-    let token = match auth::token_from_headers(req.headers()) {
-        Some(t) if auth::verify(&ctx.db.lock(), &t, chrono::Utc::now()) => t,
-        _ => return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()).into_response(),
+    let (token, device_id) = match auth::token_from_headers(req.headers()) {
+        Some(t) => {
+            let db = ctx.db.lock();
+            if !auth::verify(&db, &t, chrono::Utc::now()) {
+                return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into())
+                    .into_response();
+            }
+            match auth::device_id_for_token(&db, &t) {
+                Some(id) => (t, id),
+                None => {
+                    return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into())
+                        .into_response()
+                }
+            }
+        }
+        None => {
+            return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()).into_response()
+        }
     };
     // Every state-changing verb (the web app also uses PUT/PATCH/DELETE), not just POST.
     if !matches!(
@@ -230,12 +247,13 @@ async fn require_auth<B: Backend>(
         }
     }
     req.extensions_mut().insert(auth::Token(token));
-    next.run(req).await
+    super::work::with_origin(device_id, next.run(req)).await
 }
 
 #[derive(Deserialize)]
 struct PairQuery {
     code: Option<String>,
+    name: Option<String>,
 }
 
 /// Link previews and prefetchers may GET this URL, but cannot consume a code.
@@ -319,10 +337,27 @@ async fn pair<B: Backend>(
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown");
-    let name: String = ua.chars().take(120).collect();
-    let token = match auth::redeem(&ctx.db.lock(), &code, &name, chrono::Utc::now()) {
-        Ok(Some(t)) => t,
-        _ => return pair_failed_page(),
+    let ua: String = ua.chars().take(120).collect();
+    let name: String = q
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| auth::default_device_name(&ua))
+        .chars()
+        .take(120)
+        .collect();
+    let token = {
+        let db = ctx.db.lock();
+        match auth::redeem(&db, &code, &name, chrono::Utc::now()) {
+            Ok(Some(t)) => {
+                if auth::set_user_agent(&db, &t, &ua).is_err() {
+                    return pair_failed_page();
+                }
+                t
+            }
+            _ => return pair_failed_page(),
+        }
     };
     let https = tls_ext.is_some()
         || headers
@@ -346,6 +381,34 @@ async fn pair<B: Backend>(
         )
             .into_response()
     }
+}
+
+async fn current_device<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    axum::extract::Extension(auth::Token(token)): axum::extract::Extension<auth::Token>,
+) -> ApiResult<crate::contracts::MobileDevice> {
+    let device = auth::device_for_token(&ctx.db.lock(), &token)
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()))?;
+    Ok(Json(device))
+}
+
+#[derive(Deserialize)]
+struct DeviceNameBody {
+    name: String,
+}
+
+async fn rename_device<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    axum::extract::Extension(auth::Token(token)): axum::extract::Extension<auth::Token>,
+    Json(body): Json<DeviceNameBody>,
+) -> Result<StatusCode, ApiError> {
+    let db = ctx.db.lock();
+    let id = auth::device_id_for_token(&db, &token)
+        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()))?;
+    auth::rename_device(&db, &id, &body.name)
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Serialize)]
@@ -693,12 +756,14 @@ async fn events<B: Backend>(
     let rx = ctx.backend.subscribe();
     let sd = ctx.shutdown.clone();
     let db = ctx.db.clone();
+    let revoked = auth::subscribe_revocations();
+    let token_hash = auth::hash_token(&token);
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let updates = stream::unfold(
-        (rx, sd, db, token, interval),
-        |(mut rx, mut sd, db, token, mut interval)| async move {
+        (rx, sd, db, token, interval, revoked, token_hash),
+        |(mut rx, mut sd, db, token, mut interval, mut revoked, token_hash)| async move {
             loop {
                 if *sd.borrow() {
                     return None;
@@ -706,6 +771,14 @@ async fn events<B: Backend>(
                 tokio::select! {
                     changed = sd.changed() => {
                         if changed.is_err() { return None; }
+                    }
+                    revoked_result = revoked.recv() => {
+                        match revoked_result {
+                            Ok(hash) if hash == token_hash => return None,
+                            Err(broadcast::error::RecvError::Lagged(_)) if !auth::is_valid(&db.lock(), &token) => return None,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                            _ => {}
+                        }
                     }
                     _ = interval.tick() => {
                         if !auth::is_valid(&db.lock(), &token) {
@@ -718,14 +791,14 @@ async fn events<B: Backend>(
                                 return None;
                             }
                             if let Some(e) = sse_event(&ev) {
-                                return Some((Ok(e), (rx, sd, db, token, interval)));
+                                return Some((Ok(e), (rx, sd, db, token, interval, revoked, token_hash)));
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(_)) => {
                             if !auth::is_valid(&db.lock(), &token) {
                                 return None;
                             }
-                            return Some((Ok(Event::default().event("resync").data("{}")), (rx, sd, db, token, interval)));
+                            return Some((Ok(Event::default().event("resync").data("{}")), (rx, sd, db, token, interval, revoked, token_hash)));
                         }
                         Err(broadcast::error::RecvError::Closed) => return None,
                     }

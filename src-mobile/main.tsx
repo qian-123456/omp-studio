@@ -11,14 +11,14 @@ import "./styles/base.css";
 /** Boot order matters: a `?pair=<code>` must be redeemed before the first authenticated call. */
 async function boot() {
 	const code = takePairCode();
-	if (code) await pairWithCode(code);
+	const paired = code ? await pairWithCode(code) : false;
 	initNav();
 	startEvents();
 	startDisplayPrefs();
 	void useSessions.getState().refresh().catch(() => {});
 	createRoot(document.getElementById("root")!).render(
 		<StrictMode>
-			<App />
+			<App paired={paired} />
 		</StrictMode>,
 	);
 }
