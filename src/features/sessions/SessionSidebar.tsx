@@ -1116,13 +1116,13 @@ export function SessionSidebar() {
 					<button
 						type="button"
 						onClick={() => void startNewSession()}
-						className="group relative flex h-9.5 w-full items-center justify-center gap-2 rounded-lg border border-white/[0.12] bg-white/[0.07] px-3 text-[13.5px] font-medium text-neutral-100 shadow-xs transition-all hover:border-white/[0.22] hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] active:scale-[0.985]"
+						className="group relative flex h-9.5 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-active-fill)] px-3 text-[13.5px] font-medium text-[var(--text)] shadow-xs transition-all hover:border-[var(--line)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] active:scale-[0.985]"
 						title={`${t("sidebar.newSession")} (⌘N)`}
 					>
 						<SquarePen
 							size={16}
 							strokeWidth={1.8}
-							className="shrink-0 text-neutral-300 transition-colors group-hover:text-white"
+							className="shrink-0 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text)]"
 						/>
 						<span className="truncate whitespace-nowrap">{t("sidebar.newSession")}</span>
 					</button>

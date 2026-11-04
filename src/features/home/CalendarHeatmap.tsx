@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { useSessions } from "../../stores/sessions";
 import { useLive } from "../../stores/live";
+import clsx from "clsx";
 import { useT } from "../../stores/language";
+import { useIsDark } from "../../lib/theme";
 import type { SessionMeta } from "../../lib/contracts";
 
 interface DayData {
@@ -28,12 +30,20 @@ const MONTH_NAMES_EN = [
 const WEEKDAY_NAMES_ZH = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const WEEKDAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const LEVEL_COLORS = [
-	"rgba(255, 255, 255, 0.035)", // 0: 零消耗底色
-	"#0d3b2e",                     // 1: 轻度活跃
-	"#056648",                     // 2: 中度活跃
-	"#059669",                     // 3: 较高活跃
-	"#34d399",                     // 4: 极度活跃
+const DARK_LEVEL_COLORS = [
+	"rgba(255, 255, 255, 0.04)", // 0: 零消耗底色（深色微透）
+	"#0e4429",                     // 1: 轻度活跃
+	"#006d32",                     // 2: 中度活跃
+	"#26a641",                     // 3: 较高活跃
+	"#39d353",                     // 4: 极度活跃
+];
+
+const LIGHT_LEVEL_COLORS = [
+	"rgba(0, 0, 0, 0.06)",        // 0: 零消耗底色（浅色清晰淡灰，不再隐形）
+	"#9be9a8",                     // 1: 清爽浅绿
+	"#40c463",                     // 2: 明朗中绿
+	"#30a14e",                     // 3: 稳健葱绿
+	"#216e39",                     // 4: 深沉翡翠绿
 ];
 
 const CACHE_KEY = "ompws:heatmap-cache:v2";
@@ -95,6 +105,8 @@ class HeatmapErrorBoundary extends React.Component<{ children: React.ReactNode }
 function HeatmapContent() {
 	const { t, locale } = useT();
 	const isZh = locale?.startsWith("zh") ?? true;
+	const isDark = useIsDark();
+	const levelColors = isDark ? DARK_LEVEL_COLORS : LIGHT_LEVEL_COLORS;
 	const sessions = useSessions((s) => s.sessions);
 
 	const [hoveredDay, setHoveredDay] = useState<DayData | null>(null);
@@ -343,7 +355,7 @@ function HeatmapContent() {
 						const x = day.weekIndex * (boxSize + gap) + leftPadding;
 						const y = day.dayIndex * (boxSize + gap);
 						const isHovered = hoveredDay?.dateKey === day.dateKey;
-						const fill = LEVEL_COLORS[day.level];
+						const fill = levelColors[day.level];
 
 						return (
 							<rect
@@ -378,7 +390,7 @@ function HeatmapContent() {
 								x={x}
 								y={105}
 								fontSize={9}
-								fill="var(--text-40, #71717a)"
+								fill="var(--text-40, var(--text-dim))"
 								textAnchor="start"
 								className="font-mono"
 							>
@@ -398,17 +410,22 @@ function HeatmapContent() {
 						top: `${popoverPos.y}px`,
 						transform: `translate(${popoverPos.xAlign}, ${popoverPos.yAlign})`,
 					}}
-					className="pointer-events-none z-(--z-popover) w-[260px] rounded-xl border border-white/15 bg-neutral-900/95 p-3 text-[11.5px] leading-snug text-neutral-100 shadow-2xl backdrop-blur-md"
+					className="pointer-events-none z-(--z-popover) w-[260px] rounded-xl border border-[var(--border)] bg-[var(--bg-panel)]/95 p-3 text-[11.5px] leading-snug text-[var(--text)] shadow-apple-card backdrop-blur-md"
 				>
 					{/* Header: Date + Weekday */}
-					<div className="mb-2 flex items-center justify-between border-b border-white/10 pb-1.5">
-						<span className="font-semibold text-neutral-100">
+					<div className="mb-2 flex items-center justify-between border-b border-[var(--border-divider)] pb-1.5">
+						<span className="font-semibold text-[var(--text)]">
 							{isZh
 								? `${hoveredDay.date.getFullYear()}年${hoveredDay.date.getMonth() + 1}月${hoveredDay.date.getDate()}日 · ${WEEKDAY_NAMES_ZH[hoveredDay.dayIndex]}`
 								: `${WEEKDAY_NAMES_EN[hoveredDay.dayIndex]}, ${MONTH_NAMES_EN[hoveredDay.date.getMonth()]} ${hoveredDay.date.getDate()}, ${hoveredDay.date.getFullYear()}`}
 						</span>
 						{hoveredDay.level > 0 ? (
-							<span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+							<span
+								className={clsx(
+									"rounded px-1.5 py-0.5 text-[10px] font-semibold",
+									isDark ? "bg-emerald-500/15 text-emerald-400" : "bg-emerald-600/10 text-emerald-700",
+								)}
+							>
 								{t("home.activeLevel", { level: hoveredDay.level })}
 							</span>
 						) : null}
@@ -416,27 +433,27 @@ function HeatmapContent() {
 
 					{/* Content */}
 					{hoveredDay.sessionCount === 0 ? (
-						<div className="text-[11px] text-neutral-400">
+						<div className="text-[11px] text-[var(--text-muted)]">
 							{t("home.noActivityDay")}
 						</div>
 					) : (
 						<div className="flex flex-col gap-1.5">
 							<div className="flex justify-between items-center">
-								<span className="text-neutral-400">{t("home.totalTokensLabel")}：</span>
-								<span className="font-mono font-semibold text-white">
+								<span className="text-[var(--text-muted)]">{t("home.totalTokensLabel")}：</span>
+								<span className="font-mono font-semibold text-[var(--text)]">
 									{hoveredDay.tokens > 0 ? formatTokenCount(hoveredDay.tokens) : "—"}
 								</span>
 							</div>
 							<div className="flex justify-between items-center">
-								<span className="text-neutral-400">{t("home.sessionCountLabel")}：</span>
-								<span className="text-neutral-200">
+								<span className="text-[var(--text-muted)]">{t("home.sessionCountLabel")}：</span>
+								<span className="text-[var(--text)] font-medium">
 									{t("home.sessionCountValue", { count: hoveredDay.sessionCount })}
 								</span>
 							</div>
 							{hoveredDay.topModel ? (
-								<div className="flex flex-col gap-0.5 mt-0.5 border-t border-dashed border-white/10 pt-1">
-									<span className="text-neutral-400">{t("home.topModelLabel")}：</span>
-									<span className="break-all text-neutral-200 leading-tight">
+								<div className="flex flex-col gap-0.5 mt-0.5 border-t border-dashed border-[var(--border-divider)] pt-1">
+									<span className="text-[var(--text-muted)]">{t("home.topModelLabel")}：</span>
+									<span className="break-all text-[var(--text)] leading-tight font-mono text-[11px]">
 										{hoveredDay.topModel}
 									</span>
 								</div>
