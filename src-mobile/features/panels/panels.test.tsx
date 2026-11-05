@@ -78,7 +78,7 @@ describe("panel presentation contracts", () => {
 		render(<SidechatPage route={{ name: "sidechat", path: "/s/parent/sidechat", params: { id: "parent" }, query: {} }} />);
 		await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(quote));
 		expect(sessionStorage.getItem(key)).toBeNull();
-		expect(screen.getByRole("button", { name: "发送" }).className).toContain("h-11");
+		expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(false);
 	});
 
 	it("keeps long file names readable in content instead of squeezing the header", async () => {
