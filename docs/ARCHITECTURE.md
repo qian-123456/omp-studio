@@ -81,6 +81,7 @@ src/
   stores/composer.ts         annotations (pills) per session + side-chat requests       [LEAD]
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
   stores/tree.ts             per-session conversation-tree cache: leafId from get_tree + edit-&-resend banner state [B]
+  stores/transcript.ts       shared per-session transcript read ordering and full/incremental cache commits [B]
   stores/displayPrefs.ts    local display prefs: request-stats line + fields, thinking preview (localStorage, not the Rust Settings contract) [LEAD]
   stores/modelKinds.ts      shared all-kind OMP registry, exact runtime kinds, service-role eligibility, serialized refresh/invalidation after provider mutations [D]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
@@ -1182,6 +1183,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   transcript incrementally). Virtualized.
   The authoritative conversation leaf refreshes on connection and streaming transitions, including turn completion, not just tree navigation.
   Offline sessions discard the cached leaf and render unfiltered history; older in-flight tree reads cannot overwrite a later refresh or transition.
+  A live leaf may filter history only when its RPC tree contains every entry in the current transcript. New entries invalidate an older confirmed filter before awaiting another tree read; an incomplete or failed RPC snapshot cannot hide newly persisted turns. A complete snapshot still honors explicit rewinds and sibling navigation, without guessing the leaf from the file tail.
+  Turn completion is observed directly from the live store, so a start/end pair delivered within one React render batch still reloads history.
+  Initial loads, retries, completion reads, external observation and tree navigation share per-session request ordering; stale pages and stale errors cannot overwrite a newer read's cache or result.
   Transcript normalization preserves non-display entries with an id and parent pointer as hidden `custom` items carrying identity/link only.
   Tree ancestry must stay complete across metadata such as system-prompt digests and thinking-level changes; otherwise leaf filtering can hide
   a side chat's first prompt and every visible message. Session headers/title slots are not tree entries; opaque metadata payloads never reach clients.

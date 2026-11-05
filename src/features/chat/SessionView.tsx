@@ -11,7 +11,6 @@ import type {
 } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import {
-	getTranscript,
 	gitSessionTurns,
 	rpcPendingUi,
 	rpcSend,
@@ -20,6 +19,7 @@ import { onTreeNavigated } from "../../lib/events";
 import { useTree } from "../../stores/tree";
 import { TreeResendBanner } from "./TreeResendBanner";
 import { holdTranscript, useLive } from "../../stores/live";
+import { refreshTranscriptCache } from "../../stores/transcript";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { toast } from "../../lib/toast";
@@ -81,8 +81,6 @@ export function SessionView({
 	const alive = useLive((s) => s.sessions[sessionId]?.alive === true);
 	const interruption = useLive((s) => s.sessions[sessionId]?.interruption);
 	const pendingUi = useLive((s) => s.sessions[sessionId]?.pendingUi ?? EMPTY_PENDING_UI);
-	const setItems = useLive((s) => s.setItems);
-	const appendItems = useLive((s) => s.appendItems);
 	const setPendingUi = useLive((s) => s.setPendingUi);
 	const ask = useAskRouting(sessionId, pendingUi);
 	const askReq = ask.route?.req;
@@ -138,39 +136,33 @@ export function SessionView({
 	const centered = emptyState && !compact;
 	const [transcriptError, setTranscriptError] = useState<string | null>(null);
 
-	const loadTranscript = useCallback(async () => {
+	const transcriptReq = useRef(0);
+	const refreshTranscript = useCallback(async (incremental = false) => {
+		const req = ++transcriptReq.current;
+		try {
+			const applied = await refreshTranscriptCache(sessionId, incremental);
+			if (!applied || req !== transcriptReq.current) return;
+			setTranscriptError(null);
+			void useTree.getState().refreshLeaf(sessionId);
+		} catch (err) {
+			if (req !== transcriptReq.current || dropStaleDraft(sessionId, err)) return;
+			if (incremental) toast.error(tNow("chatView.sessionView.refreshHistoryFailed", { error: errMsg(err) }));
+			else setTranscriptError(errMsg(err));
+		} finally {
+			if (req === transcriptReq.current) setIsLoadingTranscript(false);
+		}
+	}, [sessionId]);
+
+	const loadTranscript = useCallback(() => {
 		setIsLoadingTranscript(true);
 		setTranscriptError(null);
-		try {
-			const page = await getTranscript(sessionId);
-			setItems(sessionId, page.items, page.nextOffset, page.tailId);
-		} catch (err) {
-			if (dropStaleDraft(sessionId, err)) return;
-			setTranscriptError(errMsg(err));
-		} finally {
-			setIsLoadingTranscript(false);
-		}
-	}, [sessionId, setItems]);
+		return refreshTranscript();
+	}, [refreshTranscript]);
 
 	// Initial transcript + pending UI load.
 	useEffect(() => {
 		let cancelled = false;
-		setIsLoadingTranscript(true);
-		setTranscriptError(null);
-
-		getTranscript(sessionId)
-			.then((page) => {
-				if (!cancelled) {
-					setItems(sessionId, page.items, page.nextOffset, page.tailId);
-					setIsLoadingTranscript(false);
-				}
-			})
-			.catch((err) => {
-				if (cancelled) return;
-				if (dropStaleDraft(sessionId, err)) return;
-				setTranscriptError(errMsg(err));
-				setIsLoadingTranscript(false);
-			});
+		void loadTranscript();
 
 		rpcPendingUi(sessionId)
 			.then((list) => {
@@ -182,14 +174,33 @@ export function SessionView({
 		}
 		return () => {
 			cancelled = true;
+			transcriptReq.current++;
 		};
-	}, [sessionId, setItems, setPendingUi]);
+	}, [sessionId, loadTranscript, setPendingUi]);
 
-	// Appending a turn advances the upstream leaf without a navigation event.
-	// Re-read it after streaming ends and when a cold session reconnects.
+	// Observe every store transition, including start/end frames delivered in
+	// one React batch while the window is hidden. Rendered flags can miss a turn.
 	useEffect(() => {
+		let cancelled = false;
 		void useTree.getState().refreshLeaf(sessionId);
-	}, [sessionId, alive, streaming]);
+		const off = useLive.subscribe((state, previous) => {
+			const live = state.sessions[sessionId];
+			const prev = previous.sessions[sessionId];
+			if (!live || live === prev) return;
+			if (live.alive !== prev?.alive || live.streaming !== prev?.streaming) {
+				void useTree.getState().refreshLeaf(sessionId);
+			}
+			if (prev?.streaming && !live.streaming) {
+				void refreshTranscript(true).then(() => {
+					if (!cancelled) loadTurns();
+				});
+			}
+		});
+		return () => {
+			cancelled = true;
+			off();
+		};
+	}, [sessionId, refreshTranscript, loadTurns]);
 
 	// Leaf pointer + cross-window tree navigation sync. A navigation from this
 	// window already refetched; the other windows land here.
@@ -197,43 +208,13 @@ export function SessionView({
 		let cancelled = false;
 		const off = onTreeNavigated((p) => {
 			if (cancelled || p.sessionId !== sessionId) return;
-			void useTree.getState().refreshLeaf(sessionId);
-			getTranscript(sessionId)
-				.then((page) => {
-					if (!cancelled) {
-						setItems(sessionId, page.items, page.nextOffset, page.tailId);
-					}
-				})
-				.catch(() => {});
+			void refreshTranscript();
 		});
 		return () => {
 			cancelled = true;
 			void off.then((fn) => fn());
 		};
-	}, [sessionId, setItems]);
-
-	// Incremental transcript refresh and usage update when a turn finishes.
-	const wasStreaming = useRef(false);
-	useEffect(() => {
-		const finished = wasStreaming.current && !streaming;
-		wasStreaming.current = streaming;
-		if (!finished) return;
-		// Switching sessions mid-refresh must not reload another session's turn chips.
-		let cancelled = false;
-		const live = useLive.getState().sessions[sessionId];
-		getTranscript(sessionId, live?.nextOffset ?? 0, live?.tailId)
-			.then((page) => {
-				if (page.reset) setItems(sessionId, page.items, page.nextOffset, page.tailId);
-				else appendItems(sessionId, page.items, page.nextOffset, page.tailId);
-			})
-			.catch((err) => toast.error(t("chatView.sessionView.refreshHistoryFailed", { error: errMsg(err) })))
-			.finally(() => {
-				if (!cancelled) loadTurns();
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
+	}, [sessionId, refreshTranscript]);
 
 	// A session driven by a terminal `omp` is observed read-only: nothing streams
 	// into the live store, so re-read the appended transcript tail whenever the
@@ -247,26 +228,13 @@ export function SessionView({
 	useEffect(() => {
 		if (externalTick === undefined) return;
 		let cancelled = false;
-		const live = useLive.getState().sessions[sessionId];
-		const from = live?.nextOffset ?? 0;
-		getTranscript(sessionId, from, live?.tailId)
-			.then((page) => {
-				if (cancelled) return;
-				// Offset 0 means the initial load has not landed yet: replace, never append.
-				if (page.reset || from === 0) setItems(sessionId, page.items, page.nextOffset, page.tailId);
-				else appendItems(sessionId, page.items, page.nextOffset, page.tailId);
-			})
-			.catch((err) => console.warn("[session] external transcript refresh failed", err))
-			.finally(() => {
-				if (!cancelled) {
-					loadTurns();
-					void useTree.getState().refreshLeaf(sessionId);
-				}
-			});
+		void refreshTranscript(true).then(() => {
+			if (!cancelled) loadTurns();
+		});
 		return () => {
 			cancelled = true;
 		};
-	}, [externalTick, sessionId, setItems, appendItems, loadTurns]);
+	}, [externalTick, refreshTranscript, loadTurns]);
 
 	// Esc while generating aborts the turn — but only when nothing else claims
 	// the key: the composer's slash/@ menus and the selection bubble call

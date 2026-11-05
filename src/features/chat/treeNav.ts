@@ -5,12 +5,13 @@
  * and never change state. */
 
 import { create } from "zustand";
-import { getTranscript, treeNavigate } from "../../lib/ipc";
+import { treeNavigate } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useTree } from "../../stores/tree";
+import { refreshTranscriptCache } from "../../stores/transcript";
 import { tNow } from "../../stores/language";
 import { errMsg } from "../../lib/dialogs";
 import { isForkDraftId } from "../sessions/forkDraft";
@@ -35,8 +36,7 @@ function busyToast(): void {
 
 /** Whole-transcript refetch (same channel as the session view's initial load). */
 export async function refetchTranscript(sessionId: string): Promise<void> {
-	const page = await getTranscript(sessionId);
-	useLive.getState().setItems(sessionId, page.items, page.nextOffset, page.tailId);
+	await refreshTranscriptCache(sessionId);
 }
 
 /**

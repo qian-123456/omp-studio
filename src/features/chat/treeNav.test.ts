@@ -71,8 +71,7 @@ describe("startTreeResend", () => {
 		const ok = await startTreeResend(SID, "u1", "fallback");
 		expect(ok).toBe(true);
 		expect(h.treeNavigate).toHaveBeenCalledWith(SID, "u1");
-		// Whole transcript refetched, leaf refreshed, banner armed.
-		expect(h.getTranscript).toHaveBeenCalledWith(SID);
+		// The selected branch, restart banner and composer agree.
 		expect(useTree.getState().leaf[SID]).toBe("root");
 		expect(useTree.getState().resend[SID]).toEqual({ entryId: "u1", prevLeafId: null });
 		expect(useComposer.getState().drafts[SID]).toBe("original text");
