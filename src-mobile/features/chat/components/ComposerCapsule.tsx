@@ -128,20 +128,23 @@ export function ComposerCapsule({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [flush]);
 
+	const [capsuleWidth, setCapsuleWidth] = useState(0);
+
 	useLayoutEffect(() => {
 		measure();
 		const box = capsule.current;
 		if (!box) return;
+		setCapsuleWidth(box.clientWidth);
 		let width = box.clientWidth;
 		const observer = new ResizeObserver(() => {
 			if (box.clientWidth === width) return;
 			width = box.clientWidth;
+			setCapsuleWidth(width);
 			measure();
 		});
 		observer.observe(box);
 		return () => observer.disconnect();
 	}, [measure, working, top]);
-
 	const insert = useCallback(
 		(text: string) => {
 			const el = ta.current;
@@ -268,49 +271,91 @@ export function ComposerCapsule({
 			<div className="flex items-center justify-between px-2.5 pb-2 pt-0.5 text-xs">
 				{/* Left: [Model ⌵] [Thinking ⌵] [extra chips] */}
 				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap">
+					{!keyboardOpen && (() => {
+						const modelName = shortModel(model ?? "") || "默认模型";
+						const thinkName = desktopThinkingLabel(thinking);
+						const hasModel = onModel || model != null;
+						const hasThinking = onThinking || thinking != null;
+						const shouldMerge = Boolean(
+							hasModel &&
+							hasThinking &&
+							(
+								(capsuleWidth > 0 && capsuleWidth < 330) ||
+								(extraLeft != null && capsuleWidth > 0 && capsuleWidth < 370) ||
+								modelName.length > 18
+							)
+						);
 
-					{!keyboardOpen && (onModel || model != null) && (
-						<button
-							type="button"
-							aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
-							onClick={onModel}
-							disabled={!onModel}
-							className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-m-text hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
-						>
-							<span className="max-w-[130px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
-							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
-						</button>
-					)}
+						if (shouldMerge) {
+							return (
+								<button
+									type="button"
+									aria-label={`当前模型：${modelName}，当前思考强度：${thinkName}，点击切换`}
+									onClick={onThinking ?? onModel}
+									disabled={!onThinking && !onModel}
+									className="flex h-8 min-w-0 max-w-[180px] shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-m-text hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
+								>
+									<span className="truncate">{modelName}</span>
+									<span className="shrink-0 text-m-text-3 font-normal">· {thinkName}</span>
+									<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+								</button>
+							);
+						}
 
-					{!keyboardOpen && (onThinking || thinking != null) && (
-						<button
-							type="button"
-							aria-label={`当前思考强度：${desktopThinkingLabel(thinking)}，点击切换`}
-							onClick={onThinking ?? onModel}
-							disabled={!onThinking && !onModel}
-							className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs whitespace-nowrap text-m-text-2 hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
-						>
-							<span>{desktopThinkingLabel(thinking)}</span>
-							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
-						</button>
-					)}
+						return (
+							<>
+								{hasModel && (
+									<button
+										type="button"
+										aria-label={`当前模型：${modelName}，点击切换`}
+										onClick={onModel}
+										disabled={!onModel}
+										className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-m-text hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
+									>
+										<span className="max-w-[130px] truncate">{modelName}</span>
+										<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+									</button>
+								)}
+								{hasThinking && (
+									<button
+										type="button"
+										aria-label={`当前思考强度：${thinkName}，点击切换`}
+										onClick={onThinking ?? onModel}
+										disabled={!onThinking && !onModel}
+										className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs whitespace-nowrap text-m-text-2 hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
+									>
+										<span>{thinkName}</span>
+										<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+									</button>
+								)}
+							</>
+						);
+					})()}
 
 					{extraLeft}
 				</div>
 
 				{/* Right: [Context %] [🎙️] [Stop?] [Send] */}
 				<div className="flex shrink-0 items-center gap-1.5">
-					{!keyboardOpen && contextText && (
-						<button
-							type="button"
-							aria-label={`上下文用量：${contextText}`}
-							onClick={onContext}
-							disabled={!onContext}
-							className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs whitespace-nowrap hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:opacity-60 ${contextToneClass}`}
-						>
-							<ContextIndicator text={contextText} percent={contextPercent} />
-						</button>
-					)}
+					{!keyboardOpen && contextText && (() => {
+						const mName = shortModel(model ?? "");
+						const compactContext = Boolean(
+							(capsuleWidth > 0 && capsuleWidth < 360) ||
+							(extraLeft != null && (capsuleWidth > 0 && capsuleWidth < 400 || mName.length > 10)) ||
+							mName.length > 15
+						);
+						return (
+							<button
+								type="button"
+								aria-label={`上下文用量：${contextText}`}
+								onClick={onContext}
+								disabled={!onContext}
+								className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs whitespace-nowrap hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:opacity-60 ${contextToneClass}`}
+							>
+								<ContextIndicator text={contextText} percent={contextPercent} compact={compactContext} />
+							</button>
+						);
+					})()}
 
 					<button
 						type="button"

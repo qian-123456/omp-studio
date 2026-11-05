@@ -144,8 +144,15 @@ export function modelLabel(m: ModelOpt): string {
 	return m.name && m.name !== m.id && m.name !== `${m.provider}/${m.id}` ? m.name : m.id;
 }
 
-/** "provider/model" -> "model" (last path segment is the model). */
+/**
+ * Extract clean model identifier from "provider/model" or snapshot names.
+ * Drops organization prefix and trailing date/timestamp snapshots (e.g. -20250219).
+ */
 export function shortModel(text: string): string {
-	const i = text.lastIndexOf("/");
-	return i >= 0 ? text.slice(i + 1) : text;
+	if (!text) return "";
+	const slash = text.lastIndexOf("/");
+	let s = slash >= 0 ? text.slice(slash + 1) : text;
+	// Strip trailing release/snapshot dates like -20250219 or -2024-08-06
+	s = s.replace(/-(?:\d{8}|\d{4}-\d{2}-\d{2})$/, "");
+	return s;
 }

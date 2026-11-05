@@ -70,8 +70,10 @@ describe("labels", () => {
 		expect(modelLabel(ms[1])).toBe("sonnet");
 		expect(modelLabel({ provider: "a", id: "b", name: "a/b" })).toBe("b");
 	});
-	it("shortModel", () => {
+	it("shortModel strips provider prefixes and date snapshots", () => {
 		expect(shortModel("openai/gpt-5")).toBe("gpt-5");
 		expect(shortModel("gpt-5")).toBe("gpt-5");
+		expect(shortModel("anthropic/claude-3-7-sonnet-20250219")).toBe("claude-3-7-sonnet");
+		expect(shortModel("openai/gpt-4o-2024-08-06")).toBe("gpt-4o");
 	});
 });
