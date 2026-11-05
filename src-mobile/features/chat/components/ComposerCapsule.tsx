@@ -211,60 +211,63 @@ export function ComposerCapsule({
 		>
 			{top != null && <div className="p-2 pb-0">{top}</div>}
 
-			{/* Main Textarea Area */}
-			<textarea
-				ref={ta}
-				rows={1}
-				enterKeyHint="enter"
-				placeholder={placeholder}
-				aria-label="消息输入框"
-				onFocus={() => {
-					setFocused(true);
-					onFocusChange?.(true);
-				}}
-				onBlur={() => {
-					setFocused(false);
-					onFocusChange?.(false);
-				}}
-				onInput={() => {
-					if (!composing.current) {
+			{/* Main Input Row: [+] on left, Textarea expanding right */}
+			<div className="flex min-w-0 items-start px-2 pt-2">
+				<button
+					type="button"
+					aria-label="添加"
+					onClick={onPlus}
+					className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-m-text-2 hover:bg-m-surface hover:text-m-text active:bg-m-surface-2 active:scale-95 transition-all"
+				>
+					<Plus size={18} strokeWidth={2} />
+				</button>
+
+				<textarea
+					ref={ta}
+					rows={1}
+					enterKeyHint="enter"
+					placeholder={placeholder}
+					aria-label="消息输入框"
+					onFocus={() => {
+						setFocused(true);
+						onFocusChange?.(true);
+					}}
+					onBlur={() => {
+						setFocused(false);
+						onFocusChange?.(false);
+					}}
+					onInput={() => {
+						if (!composing.current) {
+							onInput?.();
+							schedule();
+						}
+					}}
+					onCompositionStart={() => {
+						composing.current = true;
+					}}
+					onCompositionEnd={() => {
+						composing.current = false;
 						onInput?.();
 						schedule();
-					}
-				}}
-				onCompositionStart={() => {
-					composing.current = true;
-				}}
-				onCompositionEnd={() => {
-					composing.current = false;
-					onInput?.();
-					schedule();
-				}}
-				onKeyDown={(e) => {
-					const native = e.nativeEvent as KeyboardEvent & { inputType?: string };
-					// Native mobile line breaks and IME commits are never message submissions.
-					if (e.key !== "Enter" || e.shiftKey || composing.current || native.isComposing || e.keyCode === 229 || native.inputType === "insertLineBreak") return;
-					const hardware = e.metaKey || e.ctrlKey || (typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches);
-					if (!hardware || e.altKey) return;
-					e.preventDefault();
-					if (!e.repeat) submit();
-				}}
-				style={{ maxHeight: MAX_INPUT, outline: "none", boxShadow: "none" }}
-				className="m-selectable min-h-[44px] w-full resize-none bg-transparent px-3.5 pt-3 pb-2 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
-			/>
+					}}
+					onKeyDown={(e) => {
+						const native = e.nativeEvent as KeyboardEvent & { inputType?: string };
+						// Native mobile line breaks and IME commits are never message submissions.
+						if (e.key !== "Enter" || e.shiftKey || composing.current || native.isComposing || e.keyCode === 229 || native.inputType === "insertLineBreak") return;
+						const hardware = e.metaKey || e.ctrlKey || (typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches);
+						if (!hardware || e.altKey) return;
+						e.preventDefault();
+						if (!e.repeat) submit();
+					}}
+					style={{ maxHeight: MAX_INPUT, outline: "none", boxShadow: "none" }}
+					className="m-selectable min-h-[40px] w-full min-w-0 resize-none bg-transparent px-2.5 pt-1.5 pb-2 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
+				/>
+			</div>
 
 			{/* Bottom Toolbar: Desktop Parity Layout */}
 			<div className="flex items-center justify-between px-2.5 pb-2 pt-0.5 text-xs">
-				{/* Left: [+] [Model ⌵] [Thinking ⌵] [extra chips] */}
+				{/* Left: [Model ⌵] [Thinking ⌵] [extra chips] */}
 				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap">
-					<button
-						type="button"
-						aria-label="添加"
-						onClick={onPlus}
-						className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-m-text-2 hover:bg-m-surface hover:text-m-text active:bg-m-surface-2 active:scale-95 transition-all"
-					>
-						<Plus size={18} strokeWidth={2} />
-					</button>
 
 					{!keyboardOpen && (onModel || model != null) && (
 						<button
