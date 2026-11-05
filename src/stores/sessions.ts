@@ -6,9 +6,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { SessionMeta, Workspace } from "../lib/contracts";
-import { toast } from "../lib/toast";
-import { tNow } from "./language";
-import { onSessionForked, onSessionsRemoved, onSessionsUpdated } from "../lib/events";
+import { onSessionsRemoved, onSessionsUpdated } from "../lib/events";
 import { listSessions, listWorkspaces, markSeen } from "../lib/ipc";
 import { useUi } from "./ui";
 
@@ -516,15 +514,7 @@ export async function startSessionEvents(): Promise<void> {
 			throw err;
 		}
 
-		const unlistenForked = await onSessionForked(({ sessionId }) => {
-			const title = useSessions.getState().sessions[sessionId]?.title?.trim();
-			const name = title ? `「${title}」` : tNow("shell.defaultSessionName");
-			toast.error(
-				tNow("shell.sessionOpenedInTerminalNotice", { name }),
-				20_000,
-			);
-		});
-		activeUnlisteners = [r1.value, r2.value, unlistenForked];
+		activeUnlisteners = [r1.value, r2.value];
 	})().finally(() => {
 		startEventsPromise = null;
 	});

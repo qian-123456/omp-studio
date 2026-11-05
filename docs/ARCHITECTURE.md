@@ -1063,8 +1063,12 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Workspace membership (per space): explicit `session_meta.workspace_id` (ignored when it belongs to another mode) > registered
   workspace of the session's mode whose path equals/contains `repo_root ?? cwd` > that mode's Global if cwd under
   `paths::global_dir_for(mode)` > None (未归入工作区). Each mode's global workspace row is created lazily (§6, §9).
-- External detection: every 5 s run `lsof -c omp -F pn` (names ending `.jsonl` under sessions dir) → pid per file.
-  Files held by an app-owned pid are not External.
+- External detection: `lsof -c omp -F pRn` plus process-identity-validated status files (§8), on watcher activity
+  or a 5–60 s idle-backoff timer. Files held by this app's direct children are not External.
+  Only an external holder of the EXACT live transcript file can suspend its app-owned writer.
+  A `parentSession` link to a DIFFERENT file is not a takeover: side chats and deliberate forks run independently,
+  including during the spawn/handshake window before RPC registration and across app instances.
+  Never stop a parent or emit a terminal-opened notice merely because a derived session exists.
 - Status derivation (live sessions, from bus): `agent_start`→Working; dialog `extension_ui_request` (`select|confirm|input|editor`)
   → AwaitingApproval if `title` starts with `Allow tool` else AwaitingAnswer (pending Approval/Question); a valid `UiResponded` resumes only an active turn;
   `agent_end` with `isTerminal !== false` → Review (pending Review, unread if not selected); last assistant `stopReason:"error"` → Error; Settlement clears outstanding dialog cards; late frames after process exit cannot revive the run.

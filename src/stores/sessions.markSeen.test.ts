@@ -8,7 +8,6 @@ import { useUi } from "./ui";
 vi.mock("../lib/events", () => ({
 	onSessionsUpdated: vi.fn(),
 	onSessionsRemoved: vi.fn(),
-	onSessionForked: vi.fn(async () => vi.fn()),
 }));
 
 vi.mock("../lib/ipc", () => ({
