@@ -77,8 +77,8 @@ Download the latest release for your Mac architecture from [GitHub Releases](htt
 
 | Architecture | Chip / Hardware | Installer Asset |
 |---|---|---|
-| **Apple Silicon** (Recommended) | M1 / M2 / M3 / M4 / M5 series Mac | `omp-workspace_0.1.4_aarch64.dmg` |
-| **Intel Mac** | Older Intel-based Mac | `omp-workspace_0.1.4_x64.dmg` |
+| **Apple Silicon** (Recommended) | M1 / M2 / M3 / M4 / M5 series Mac | `omp-workspace_0.1.7_aarch64.dmg` |
+| **Intel Mac** | Older Intel-based Mac | `omp-workspace_0.1.7_x64.dmg` |
 
 > ⚠️ **Important: "omp-workspace is damaged and can't be opened"**
 >
@@ -167,8 +167,8 @@ pnpm build:app
 
 请前往 [GitHub Releases 最新发布页](https://github.com/qian-123456/omp-studio/releases/latest) 下载对应芯片的安装包：
 
-- **苹果 M 系列芯片（Apple Silicon: M1/M2/M3/M4/M5）**：下载 `omp-workspace_0.1.4_aarch64.dmg`（绝大多数用户推荐）
-- **老款 Intel 芯片**：下载 `omp-workspace_0.1.4_x64.dmg`
+- **苹果 M 系列芯片（Apple Silicon: M1/M2/M3/M4/M5）**：下载 `omp-workspace_0.1.7_aarch64.dmg`（绝大多数用户推荐）
+- **老款 Intel 芯片**：下载 `omp-workspace_0.1.7_x64.dmg`
 
 > ⚠️ **重要：若提示“已损坏，无法打开。你应该将它移到废纸篓”**
 >
