@@ -136,4 +136,13 @@ describe("useAppUpdate store", () => {
 		useAppUpdate.getState().setCheckIntervalHours(1000);
 		expect(useAppUpdate.getState().checkIntervalHours).toBe(720);
 	});
+
+	it("records lastSeenVersion when markUpdateSeen is called", () => {
+		useAppUpdate.setState({
+			updateInfo: { version: "0.2.0", currentVersion: "0.1.0" },
+			lastSeenVersion: null,
+		});
+		useAppUpdate.getState().markUpdateSeen();
+		expect(useAppUpdate.getState().lastSeenVersion).toBe("0.2.0");
+	});
 });

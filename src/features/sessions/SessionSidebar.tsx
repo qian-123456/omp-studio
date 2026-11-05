@@ -13,6 +13,7 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+	ArrowDownToLine,
 	Bell,
 	AlertCircle,
 	Archive,
@@ -34,7 +35,7 @@ import {
 	Pencil,
 	Pin,
 	Plus,
-	SquarePen,
+	PlusCircle,
 	Search,
 	Settings as SettingsIcon,
 	Tag,
@@ -77,9 +78,11 @@ import { draftMeta, isBlankLocalDraft, isLocalDraftId, selectSessionOrDraft, use
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { tNow, useT } from "../../stores/language";
+import { useIsDark } from "../../lib/theme";
 import { isBlankDraft } from "../../lib/createSession";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
+import { useAppUpdate } from "../../stores/appUpdate";
 import { useSettings } from "../settings/store";
 import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
 import { useInboxBadge, useModeActivity } from "../inbox/useInboxBadge";
@@ -244,6 +247,7 @@ function MenuContainer({
 
 export function SessionSidebar() {
 	const { t } = useT();
+	const isDark = useIsDark();
 	const sessions = useSessions((s) => s.sessions);
 	const workspaces = useSessions((s) => s.workspaces);
 	const hasLoaded = useSessions((s) => s.hasLoaded);
@@ -278,6 +282,11 @@ export function SessionSidebar() {
 		}
 		return badge > 0 || running > 0 ? { badge, running } : null;
 	}, [modeActivity, activeMode]);
+	const appUpdateInfo = useAppUpdate((s) => s.updateInfo);
+	const appLastSeenVersion = useAppUpdate((s) => s.lastSeenVersion);
+	const markUpdateSeen = useAppUpdate((s) => s.markUpdateSeen);
+	const hasUnreadAppUpdate =
+		Boolean(appUpdateInfo?.version) && appUpdateInfo?.version !== appLastSeenVersion;
 	// groupOpen subscribed selector (C1, Q02)
 	const groupOpen = useSidebarStore((s) => s.groupOpen);
 	const setGroupOpen = useSidebarStore((s) => s.setGroupOpen);
@@ -1116,15 +1125,32 @@ export function SessionSidebar() {
 					<button
 						type="button"
 						onClick={() => void startNewSession()}
-						className="group relative flex h-9.5 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-active-fill)] px-3 text-[13.5px] font-medium text-[var(--text)] shadow-xs transition-all hover:border-[var(--line)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] active:scale-[0.985]"
+						className={clsx(
+							"group relative flex h-9.5 w-full items-center justify-center gap-1.5 rounded-lg text-[13.5px] font-semibold transition-all active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+							isDark
+								? "border border-white/[0.10] bg-white/[0.07] text-white shadow-xs hover:border-white/[0.18] hover:bg-white/[0.12]"
+								: "border border-black/[0.08] bg-white text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] hover:bg-white hover:border-black/[0.14] hover:shadow-[0_2px_6px_rgba(0,0,0,0.09),0_1px_3px_rgba(0,0,0,0.04)]",
+						)}
 						title={`${t("sidebar.newSession")} (⌘N)`}
 					>
-						<SquarePen
-							size={16}
-							strokeWidth={1.8}
-							className="shrink-0 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text)]"
+						<PlusCircle
+							size={15}
+							strokeWidth={2}
+							className={clsx(
+								"shrink-0 transition-colors",
+								isDark
+									? "text-white/80 group-hover:text-white"
+									: "text-[var(--text)]/85 group-hover:text-[var(--text)]",
+							)}
 						/>
-						<span className="truncate whitespace-nowrap">{t("sidebar.newSession")}</span>
+						<span
+							className={clsx(
+								"truncate whitespace-nowrap tracking-tight font-semibold",
+								isDark ? "text-white" : "text-[var(--text)]",
+							)}
+						>
+							{t("sidebar.newSession")}
+						</span>
 					</button>
 
 					{/* 3. 定时任务 */}
@@ -2076,14 +2102,16 @@ export function SessionSidebar() {
 			<ArchiveUndoBar />
 
 			{/* Settings footer (S18: single accessible button) */}
-			<div className="flex shrink-0 items-center gap-1 p-2">
+			{/* Settings footer (S18: accessible button + Qoder-style dynamic update badge) */}
+			<div className="flex shrink-0 items-center gap-1.5 p-2">
 				<button
 					type="button"
-					onClick={() =>
-						centerView === "settings" ? closeSettings() : openSettings()
-					}
+					onClick={() => {
+						if (hasUnreadAppUpdate) markUpdateSeen();
+						centerView === "settings" ? closeSettings() : openSettings();
+					}}
 					className={clsx(
-						"group flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+						"group flex h-9 flex-1 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 						centerView === "settings"
 							? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
 							: "font-medium text-[var(--text)] hover:bg-[var(--bg-hover)]",
@@ -2102,6 +2130,27 @@ export function SessionSidebar() {
 					/>
 					<span className="truncate">{t("common.settings")}</span>
 				</button>
+
+				{/* Qoder-style expandable update button (pure theme adaptive colors, expands on hover) */}
+				{hasUnreadAppUpdate && (
+					<button
+						type="button"
+						onClick={() => {
+							markUpdateSeen();
+							openSettingsTarget("about");
+						}}
+						title={t("sidebar.updateAvailableTooltip", {
+							version: appUpdateInfo?.version ?? "",
+						})}
+						className="group/upd relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-[7px] bg-[var(--accent)] text-[var(--bg)] shadow-xs transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] hover:w-[62px] hover:bg-[var(--accent-hover)] active:scale-95 shrink-0 px-1.5"
+					>
+						<ArrowDownToLine size={13} strokeWidth={2.2} className="shrink-0" />
+						<span className="max-w-0 overflow-hidden text-[11px] font-semibold leading-none whitespace-nowrap opacity-0 transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/upd:max-w-[34px] group-hover/upd:opacity-100 group-hover/upd:ml-1">
+							{t("sidebar.updateAction")}
+						</span>
+					</button>
+				)}
+
 				<button
 					type="button"
 					onClick={() => openSettingsTarget("quota")}

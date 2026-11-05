@@ -54,6 +54,7 @@ export function AboutSection() {
 		check: checkAppUpdate,
 		downloadAndInstall: downloadAppUpdate,
 		relaunchApp,
+		markUpdateSeen,
 	} = useAppUpdate();
 	const [detailsOpen, setDetailsOpen] = useState(false);
 	const [switching, setSwitching] = useState(false);
@@ -67,7 +68,8 @@ export function AboutSection() {
 		void loadInfo();
 		void loadAppVersion();
 		void syncStaleness().catch(() => {});
-	}, [loadInfo]);
+		markUpdateSeen();
+	}, [loadInfo, markUpdateSeen]);
 
 	const ompVersion = ompVersionLabel(info, status);
 

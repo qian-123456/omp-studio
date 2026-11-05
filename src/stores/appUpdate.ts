@@ -10,6 +10,7 @@ import { tNow } from "./language";
 const APP_UPDATE_LAST_CHECK_KEY = "ompws:app-update-last-check";
 const APP_UPDATE_AUTO_CHECK_KEY = "ompws:app-update-auto-check";
 const APP_UPDATE_INTERVAL_KEY = "ompws:app-update-check-interval-hours";
+const APP_UPDATE_SEEN_KEY = "ompws:app-update-seen-version";
 const DEFAULT_APP_CHECK_INTERVAL_HOURS = 24;
 const UPDATE_CHECK_TICK_MS = 60 * 1000;
 export interface AppUpdateInfo {
@@ -35,6 +36,8 @@ interface AppUpdateState {
 	lastCheckedAt: number | null;
 	error: string | null;
 	updateHandle: Update | null;
+	lastSeenVersion: string | null;
+	markUpdateSeen: () => void;
 
 	autoCheck: boolean;
 	checkIntervalHours: number;
@@ -64,6 +67,10 @@ function storedIntervalHours(): number {
 	const n = Number(localStorage.getItem(APP_UPDATE_INTERVAL_KEY));
 	return Number.isFinite(n) && n >= 1 && n <= 720 ? n : DEFAULT_APP_CHECK_INTERVAL_HOURS;
 }
+function storedSeenVersion(): string | null {
+	if (typeof localStorage === "undefined") return null;
+	return localStorage.getItem(APP_UPDATE_SEEN_KEY);
+}
 
 export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	appVersion: null,
@@ -77,6 +84,15 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	updateHandle: null,
 	autoCheck: storedAutoCheck(),
 	checkIntervalHours: storedIntervalHours(),
+	lastSeenVersion: storedSeenVersion(),
+	markUpdateSeen: () => {
+		const version = get().updateInfo?.version;
+		if (!version) return;
+		if (typeof localStorage !== "undefined") {
+			localStorage.setItem(APP_UPDATE_SEEN_KEY, version);
+		}
+		set({ lastSeenVersion: version });
+	},
 	setAutoCheck: (enabled: boolean) => {
 		if (typeof localStorage !== "undefined") {
 			localStorage.setItem(APP_UPDATE_AUTO_CHECK_KEY, String(enabled));
