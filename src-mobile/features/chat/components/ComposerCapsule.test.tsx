@@ -24,11 +24,10 @@ describe("ComposerCapsule", () => {
 			<ComposerCapsule placeholder="消息" onPlus={() => {}} onSend={() => {}} model="openai/gpt-5" thinking="high" contextText="15%" contextPercent={15} onModel={onModel} onThinking={onThinking} onContext={onContext} />,
 		);
 		expect(container.querySelector(".m-glass-panel, .m-glass-btn")).toBeNull();
-		expect(screen.getByRole("textbox").parentElement?.className).toContain("bg-m-composer-bg");
+		expect(screen.getByRole("textbox").closest(".bg-m-composer-bg")).not.toBeNull();
 		for (const name of [/当前模型/, /当前思考强度/, /上下文用量/]) {
 			const button = screen.getByRole("button", { name });
-			expect(button.className).toContain("min-h-11");
-			expect(button.className).not.toContain("rounded-m-pill");
+			expect(button.className).toContain("rounded-m-pill");
 			fireEvent.click(button);
 		}
 		expect(onModel).toHaveBeenCalledTimes(1);
@@ -41,14 +40,17 @@ describe("ComposerCapsule", () => {
 		expect(Number(circles[1].getAttribute("stroke-dashoffset"))).toBeCloseTo(2 * Math.PI * 7 * 0.85);
 		const mic = screen.getByRole("button", { name: "语音输入" });
 		expect(mic.className).toContain("h-11 w-11");
-		expect(mic.className).not.toContain("bg-");
+		expect(mic.className).not.toContain("bg-m-danger");
+		const send = screen.getByRole("button", { name: "发送" });
+		expect(send.className).toContain("bg-m-surface-2");
 		fireEvent.focus(screen.getByRole("textbox"));
 		expect(screen.queryByRole("button", { name: /当前模型/ })).toBeNull();
 		expect(screen.queryByRole("button", { name: /当前思考强度/ })).toBeNull();
 		expect(screen.queryByRole("button", { name: /上下文用量/ })).toBeNull();
+		expect(screen.getByRole("button", { name: "添加" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "语音输入" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();
 	});
-
 	it("keeps input uncontrolled and emits nothing during IME composition", async () => {
 		const onInput = vi.fn();
 		const onSync = vi.fn();
