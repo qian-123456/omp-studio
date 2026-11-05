@@ -29,6 +29,10 @@ vi.mock("./stores/ompUpdate", () => ({
 	useOmpUpdate: { getState: () => ({ checkOnStartup: async () => {} }) },
 	watchOmpUpdateChecks: () => () => {}, watchOmpStaleness: () => () => {},
 }));
+vi.mock("./stores/appUpdate", () => ({
+	useAppUpdate: { getState: () => ({ checkOnStartup: async () => {} }) },
+	watchAppUpdateChecks: () => () => {},
+}));
 vi.mock("./stores/ompInstall", () => ({ useOmpInstall: { getState: () => ({ checkOnStartup: async () => {} }) } }));
 vi.mock("./features/omp-install/OmpInstallDialog", () => ({ OmpInstallDialog: () => null }));
 vi.mock("./lib/nativeShortcuts", () => ({ installNativeShortcuts: () => () => {} }));

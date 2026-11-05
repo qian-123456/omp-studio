@@ -5,6 +5,7 @@
 //! `status` (status machine), `store` (SQLite), `external` (lsof/status files),
 //! `transcript` (get_transcript), `usage` (session_usage), `tasks` (background loops).
 
+pub(crate) mod activity;
 pub mod commands;
 pub(crate) mod external;
 pub(crate) mod parse;

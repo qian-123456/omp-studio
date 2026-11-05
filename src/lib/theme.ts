@@ -576,6 +576,17 @@ export function useThemeChoice(): ThemeChoice {
 export function useResolvedThemeId(): string {
 	return useThemeSync(() => resolvedThemeId());
 }
+/** Reactive boolean: true when resolved theme or active wallpaper is dark mode. */
+export function useIsDark(): boolean {
+	return useThemeSync(() => {
+		if (wallpaperState.enabled) {
+			return wallpaperState.appearance !== "light";
+		}
+		const id = resolvedThemeId();
+		return themeById(id)?.dark ?? true;
+	});
+}
+
 
 export function useSystemDarkTheme(): string {
 	return useThemeSync(getSystemDarkTheme);

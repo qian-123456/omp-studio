@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { shortModel, thinkLabel } from "../lib/models";
+import { ContextIndicator } from "./ContextIndicator";
 
 /**
  * Tracks keyboard state via Visual Viewport or active input focus.
@@ -51,7 +52,7 @@ export function ComposerToolbar({
 					type="button"
 					aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
 					onClick={onModel}
-					className="m-glass-btn flex min-h-8 shrink-0 items-center gap-1 rounded-m-pill px-2.5 text-m-xs font-medium whitespace-nowrap text-m-text"
+					className="flex min-h-11 shrink-0 items-center gap-1 px-2 text-m-xs font-medium whitespace-nowrap text-m-text"
 				>
 					<span className="max-w-[140px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
 					<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
@@ -60,7 +61,7 @@ export function ComposerToolbar({
 					type="button"
 					aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
 					onClick={onThinking ?? onModel}
-					className="m-glass-btn flex min-h-8 shrink-0 items-center gap-1 rounded-m-pill px-2 text-m-xs whitespace-nowrap text-m-text-2"
+					className="flex min-h-11 shrink-0 items-center gap-1 px-2 text-m-xs whitespace-nowrap text-m-text-2"
 				>
 					<span>{thinkLabel(thinking)}</span>
 					<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
@@ -72,9 +73,9 @@ export function ComposerToolbar({
 				aria-label={`上下文用量：${contextText ?? "0%"}`}
 				onClick={onContext}
 				disabled={!onContext}
-				className={`m-glass-btn flex min-h-8 shrink-0 items-center rounded-m-pill px-2.5 text-m-xs whitespace-nowrap disabled:opacity-60 ${contextToneClass}`}
+				className={`flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-m-xs whitespace-nowrap disabled:opacity-60 ${contextToneClass}`}
 			>
-				<span>上下文 {contextText ?? "0%"}</span>
+				<ContextIndicator text={contextText ?? "0%"} />
 			</button>
 		</div>
 	);

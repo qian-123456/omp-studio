@@ -100,7 +100,6 @@ describe("Toolbar below composer (Change 2)", () => {
 
 		const ctxBtn = screen.getByRole("button", { name: /上下文用量/ });
 		expect(ctxBtn).toBeTruthy();
-		expect(ctxBtn.textContent).toContain("上下文");
 
 		// Tapping context opens ContextSheet with compaction action
 		fireEvent.click(ctxBtn);

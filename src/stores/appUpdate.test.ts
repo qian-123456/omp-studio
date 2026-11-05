@@ -120,4 +120,29 @@ describe("useAppUpdate store", () => {
 		await useAppUpdate.getState().relaunchApp();
 		expect(mockRelaunch).toHaveBeenCalled();
 	});
+
+	it("updates autoCheck preference and interval hours", () => {
+		useAppUpdate.getState().setAutoCheck(false);
+		expect(useAppUpdate.getState().autoCheck).toBe(false);
+		useAppUpdate.getState().setAutoCheck(true);
+		expect(useAppUpdate.getState().autoCheck).toBe(true);
+
+		useAppUpdate.getState().setCheckIntervalHours(12);
+		expect(useAppUpdate.getState().checkIntervalHours).toBe(12);
+
+		// clamps within [1, 720]; <= 0 falls back to 24 (same as normalizeHours)
+		useAppUpdate.getState().setCheckIntervalHours(0);
+		expect(useAppUpdate.getState().checkIntervalHours).toBe(24);
+		useAppUpdate.getState().setCheckIntervalHours(1000);
+		expect(useAppUpdate.getState().checkIntervalHours).toBe(720);
+	});
+
+	it("records lastSeenVersion when markUpdateSeen is called", () => {
+		useAppUpdate.setState({
+			updateInfo: { version: "0.2.0", currentVersion: "0.1.0" },
+			lastSeenVersion: null,
+		});
+		useAppUpdate.getState().markUpdateSeen();
+		expect(useAppUpdate.getState().lastSeenVersion).toBe("0.2.0");
+	});
 });

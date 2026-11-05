@@ -12,7 +12,6 @@ import { BEHAVIOR_HINT, BEHAVIOR_LABEL, type StreamBehavior } from "../lib/promp
 import { commandAction, commandInput, detectSlashQuery, type SlashCmd } from "../lib/slash";
 import { saveUnsent, UNSENT_DEBOUNCE_MS } from "../lib/unsent";
 import { ComposerCapsule, type ComposerApi } from "./ComposerCapsule";
-import { ComposerToolbar, useKeyboardOpen } from "./ComposerToolbar";
 import { ContextSheet } from "./ContextSheet";
 import { GoalSheet, goalLabel } from "./GoalSheet";
 import { PathSheet } from "./PathSheet";
@@ -53,8 +52,6 @@ export function Composer({ sessionId, onOpenPicker }: { sessionId: string; onOpe
 	const [slashQuery, setSlashQuery] = useState<string | null>(null);
 	const [sheet, setSheet] = useState<Sheet>(null);
 	const [sketch, setSketch] = useState(false);
-	const [inputFocused, setInputFocused] = useState(false);
-	const keyboardOpen = useKeyboardOpen(inputFocused);
 	const apiRef = useRef<ComposerApi | null>(null);
 	const saveTimer = useRef<number | undefined>(undefined);
 	const fileAny = useRef<HTMLInputElement>(null);
@@ -201,47 +198,46 @@ export function Composer({ sessionId, onOpenPicker }: { sessionId: string; onOpe
 				onInput={onInput}
 				onSync={onSync}
 				onUnmount={onUnmount}
-				onFocusChange={setInputFocused}
-			/>
-
-			<ComposerToolbar
 				model={cstate?.model}
 				thinking={cstate?.thinkingLevel}
 				onModel={onOpenPicker}
 				onThinking={onOpenPicker}
 				contextText={formatContextPercent(pct) ?? "未知"}
+				contextPercent={pct}
 				contextToneClass={TONE_TEXT[tone]}
 				onContext={() => setSheet("context")}
-				hidden={keyboardOpen}
-			>
-				{planOn && (
-					<Chip tone="accent" icon={<Lightbulb size={13} />} onClick={() => void togglePlan()} className="shrink-0 pr-2">
-						规划模式
-						<X size={13} aria-hidden />
-					</Chip>
-				)}
-				{queued && (
-					<Chip tone="accent" className="shrink-0">
-						{queued}
-					</Chip>
-				)}
-				{goal && (
-					<Chip icon={<Target size={13} />} onClick={() => setSheet("goal")} className="shrink-0">
-						目标
-					</Chip>
-				)}
-				{working && (
-					<button
-						type="button"
-						aria-label={`发送方式：${BEHAVIOR_LABEL[behavior]}，点击切换`}
-						title={BEHAVIOR_HINT[behavior]}
-						onClick={() => setBehavior(behavior === "followUp" ? "steer" : "followUp")}
-						className="m-glass-btn flex min-h-8 shrink-0 items-center rounded-m-pill px-2 text-m-xs text-m-accent"
-					>
-						<span>{BEHAVIOR_LABEL[behavior]} ⇄</span>
-					</button>
-				)}
-			</ComposerToolbar>
+				extraLeft={
+					<>
+						{planOn && (
+							<Chip tone="accent" icon={<Lightbulb size={13} />} onClick={() => void togglePlan()} className="shrink-0 pr-2">
+								规划模式
+								<X size={13} aria-hidden />
+							</Chip>
+						)}
+						{queued && (
+							<Chip tone="accent" className="shrink-0">
+								{queued}
+							</Chip>
+						)}
+						{goal && (
+							<Chip icon={<Target size={13} />} onClick={() => setSheet("goal")} className="shrink-0">
+								目标
+							</Chip>
+						)}
+						{working && (
+							<button
+								type="button"
+								aria-label={`发送方式：${BEHAVIOR_LABEL[behavior]}，点击切换`}
+								title={BEHAVIOR_HINT[behavior]}
+								onClick={() => setBehavior(behavior === "followUp" ? "steer" : "followUp")}
+								className="flex min-h-11 shrink-0 items-center px-2 text-m-xs text-m-accent"
+							>
+								<span>{BEHAVIOR_LABEL[behavior]} ⇄</span>
+							</button>
+						)}
+					</>
+				}
+			/>
 
 			<input ref={fileAny} type="file" multiple hidden onChange={(e) => pickFiles(e, controller)} />
 			<input ref={fileCamera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pickFiles(e, controller, true)} />

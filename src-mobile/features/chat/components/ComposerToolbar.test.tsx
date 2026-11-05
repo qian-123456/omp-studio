@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("ComposerToolbar", () => {
-	it("renders model name, thinking level, and context usage in liquid glass buttons", () => {
+	it("renders model, thinking and context as unadorned controls", () => {
 		const onModel = vi.fn();
 		const onThinking = vi.fn();
 		const onContext = vi.fn();
@@ -35,7 +35,13 @@ describe("ComposerToolbar", () => {
 		expect(onThinking).toHaveBeenCalledTimes(1);
 
 		const contextBtn = screen.getByRole("button", { name: /上下文用量/ });
-		expect(contextBtn.textContent).toContain("上下文 15%");
+		expect(contextBtn.textContent).toBe("15%");
+		expect(contextBtn.querySelectorAll("circle")).toHaveLength(2);
+		for (const button of [modelBtn, thinkingBtn, contextBtn]) {
+			expect(button.className).toContain("min-h-11");
+			expect(button.className).not.toContain("m-glass-btn");
+			expect(button.className).not.toContain("rounded-m-pill");
+		}
 		fireEvent.click(contextBtn);
 		expect(onContext).toHaveBeenCalledTimes(1);
 	});

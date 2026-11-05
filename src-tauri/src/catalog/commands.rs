@@ -386,6 +386,14 @@ pub async fn session_usage(
     Ok(usage::summary(&session_id, file.as_deref()).await)
 }
 
+/// Historical request usage, independent of live RPC handles or Token Tracker.
+#[tauri::command]
+pub async fn activity_usage() -> Result<crate::contracts::ActivityUsage, String> {
+    tokio::task::spawn_blocking(super::activity::load)
+        .await
+        .map_err(|e| format!("activity scan: {e}"))?
+}
+
 /// Transcript-derived thinking level / context size for a session with no live
 /// process. Missing file (nothing flushed yet) yields an empty snapshot.
 #[tauri::command]

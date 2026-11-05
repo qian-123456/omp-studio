@@ -47,6 +47,8 @@ export default defineMessages({
 		noSessionsInMode: "这个模式还没有会话",
 		addProjectDir: "添加项目目录",
 		newSessionTooltip: "新建会话（选择当前目录或独立工作树）",
+		updateAction: "更新",
+		updateAvailableTooltip: "发现新版本 {version}，点击前往更新",
 	},
 	"en-US": {
 		newSession: "New Session",
@@ -94,5 +96,7 @@ export default defineMessages({
 		noSessionsInMode: "No sessions in this mode yet",
 		addProjectDir: "Add Project Directory",
 		newSessionTooltip: "New session (current directory or isolated worktree)",
+		updateAction: "Update",
+		updateAvailableTooltip: "New version {version} available; click to update",
 	},
 });
