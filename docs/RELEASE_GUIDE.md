@@ -95,3 +95,27 @@ xattr -cr /Applications/omp-workspace.app
 4. 打标签：`git tag -a vx.y.z -m "omp-workspace vx.y.z"`；
 5. 推送代码与标签：`git push origin main && git push origin vx.y.z`；
 6. GitHub Actions (`.github/workflows/release.yml`) 自动开始构建并发布 Release。
+
+## 4. macOS 应用身份与 Dock 验收
+
+### 4.1 正式版与开发版分离
+
+- 正式版继续使用 `ai.omp.workspace`、`omp-workspace.app` 和原图标；不得通过修改正式版标识、签名公钥或用户 Dock 偏好来掩盖重复图标。
+- `pnpm tauri dev`、`pnpm dev:preview` 和 `scripts/open-worktree.mjs` 的开发启动统一经过 `scripts/tauri.mjs`，自动先合并 `src-tauri/tauri.dev.conf.json`，再合并调用方的端口等配置。
+- 开发版使用 `ai.omp.workspace.dev`、`omp-workspace Dev`，以及带橙色 DEV 标签的独立 PNG/ICNS 图标。`pnpm tauri build` 和 `pnpm build:app` 不自动合并开发配置。
+- 修改开发图标时，在仓库根目录执行 `swift scripts/generate-dev-icon.swift`，只更新 `src-tauri/icons/dev.png` 和 `dev.icns`，不修改正式版素材。
+- 不使用 `pnpm exec tauri dev` 绕过项目入口；已经运行的开发进程需要在其下一次正常启动时加载新配置，不为更换图标强制重启用户实例。
+
+### 4.2 原生发布门槛
+
+以下项目必须在隔离的 macOS 测试环境完成，单元测试或构建成功不能替代 Dock 验收：
+
+测试隔离只使用 `OMPWS_DATA_DIR` 和 `PI_CODING_AGENT_DIR`，不得覆盖 `HOME`：替换系统主目录可能使 macOS 找不到默认钥匙串并弹出重置提示。需要完全避免钥匙串访问时，应在独立测试数据目录预置随机生成的测试主密钥（目录权限 `0700`、文件权限 `0600`），不得复制真实用户密钥或凭证。若出现钥匙串提示，取消并停止该测试实例，绝不重置系统钥匙串。
+
+1. 从 DMG 安装到「应用程序」，从访达启动，再固定到 Dock；确认固定入口与运行指示合并为一个正式版图标。
+2. 从固定入口反复打开，确认不产生第二个正式版图标。
+3. 通过带有效签名的更新包完成应用内升级、重启，再从原固定入口启动；确认固定路径、正式版应用标识和图标合并关系不变。
+4. 下载达到 100% 但签名校验或安装尚未完成时，不出现可用的重启入口；校验/安装失败时不得显示「可以重启」。
+5. 正式版与开发版同时运行时，开发版具有 DEV 图标和独立名称，不能把它误认成第二个正式版。
+
+缺失 Dock 记录字段或存在多个进程只能作为调查线索，不能单独视为重复图标根因；未观察到上述原生行为时，不得宣称已彻底修复。

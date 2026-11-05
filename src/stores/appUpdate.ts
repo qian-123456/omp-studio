@@ -33,6 +33,7 @@ interface AppUpdateState {
 	downloading: boolean;
 	downloadProgress: AppDownloadProgress | null;
 	readyToRestart: boolean;
+	restarting: boolean;
 	lastCheckedAt: number | null;
 	error: string | null;
 	updateHandle: Update | null;
@@ -79,6 +80,7 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	downloading: false,
 	downloadProgress: null,
 	readyToRestart: false,
+	restarting: false,
 	lastCheckedAt: storedLastCheck(),
 	error: null,
 	updateHandle: null,
@@ -126,7 +128,7 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	},
 
 	check: async (silent = false) => {
-		if (get().checking || get().downloading) return;
+		if (get().checking || get().downloading || get().readyToRestart || get().restarting) return;
 		set({ checking: true, error: null });
 		try {
 			await get().loadVersion();
@@ -169,7 +171,7 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 
 	downloadAndInstall: async () => {
 		const update = get().updateHandle;
-		if (!update || get().downloading) return;
+		if (!update || get().checking || get().downloading || get().readyToRestart || get().restarting) return;
 
 		set({ downloading: true, error: null, readyToRestart: false });
 		let total = 0;
@@ -197,14 +199,13 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 						},
 					});
 				} else if (event.event === "Finished") {
+					// Finished covers the download only; verification and installation still follow.
 					set({
 						downloadProgress: {
 							downloaded: total,
 							total,
 							percent: 100,
 						},
-						readyToRestart: true,
-						downloading: false,
 					});
 				}
 			});
@@ -218,14 +219,19 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 	},
 
 	relaunchApp: async () => {
+		if (!get().readyToRestart || get().downloading || get().restarting) return;
+		set({ restarting: true, error: null });
 		try {
 			await relaunch();
 		} catch (e) {
-			toast.error(errMsg(e));
+			const msg = errMsg(e);
+			set({ restarting: false, error: msg });
+			toast.error(msg);
 		}
 	},
 
 	dismissUpdate: async () => {
+		if (get().downloading || get().readyToRestart || get().restarting) return;
 		const handle = get().updateHandle;
 		if (handle) {
 			try {

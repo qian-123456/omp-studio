@@ -8,13 +8,13 @@
 		"dev": "node scripts/dev.mjs",
 		"dev:mobile": "vite build --config vite.mobile.config.ts --watch",
 		"build:mobile": "vite build --config vite.mobile.config.ts",
-		"dev:preview": "VITE_PORT=1425 OMPWS_DATA_DIR=$HOME/.omp-workspace-dev tauri dev -c '{\"build\":{\"devUrl\":\"http://localhost:1425\"}}'",
+		"dev:preview": "VITE_PORT=1425 OMPWS_DATA_DIR=$HOME/.omp-workspace-dev node scripts/tauri.mjs dev -c '{\"build\":{\"devUrl\":\"http://localhost:1425\"}}'",
 		"build": "tsc --noEmit && pnpm build:mobile && vite build",
 		"build:app": "tsc --noEmit && pnpm build:mobile && vite build && tauri build",
 		"preview": "vite preview",
 		"guide:build": "node site/guide/build.mjs",
 		"test": "vitest run",
-		"tauri": "tauri"
+		"tauri": "node scripts/tauri.mjs"
 	},
 	"dependencies": {
 		"@codemirror/lang-markdown": "^6.3.4",
@@ -26,7 +26,7 @@
 		"@tauri-apps/plugin-notification": "^2.3.1",
 		"@tauri-apps/plugin-opener": "^2.5.0",
 		"@tauri-apps/plugin-process": "~2.4.0",
-		"@tauri-apps/plugin-updater": "~2.12.0",
+		"@tauri-apps/plugin-updater": "2.14.0",
 		"@uiw/react-codemirror": "^4.25.2",
 		"@xterm/addon-fit": "^0.10.0",
 		"@xterm/addon-search": "0.16.0",

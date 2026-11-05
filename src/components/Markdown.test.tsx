@@ -74,6 +74,7 @@ describe("Markdown list markers", () => {
 describe("Markdown context menus", () => {
 	it("preserves native link and image context menus", () => {
 		const root = document.createElement("div");
+		root.id = "root";
 		root.innerHTML = html("[**external link**](https://example.com)\n\n![image](/Users/me/pic.png)");
 		document.body.append(root);
 		try {
@@ -90,14 +91,17 @@ describe("Markdown context menus", () => {
 
 	it("keeps generic WebView suppression and respects custom selection menus", () => {
 		const text = document.createElement("p");
+		const root = document.createElement("div");
+		root.id = "root";
+		root.append(text);
 		const customSelectionMenu = vi.fn((e: MouseEvent) => e.preventDefault());
-		document.body.append(text);
+		document.body.append(root);
 		try {
 			expect(dispatchContextMenu(text).defaultPrevented).toBe(true);
 			expect(dispatchContextMenu(text, customSelectionMenu).defaultPrevented).toBe(true);
 			expect(customSelectionMenu).toHaveBeenCalledOnce();
 		} finally {
-			text.remove();
+			root.remove();
 		}
 	});
 });

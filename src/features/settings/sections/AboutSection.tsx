@@ -44,6 +44,7 @@ export function AboutSection() {
 		downloading: appDownloading,
 		downloadProgress: appProgress,
 		readyToRestart,
+		restarting: appRestarting,
 		lastCheckedAt: appLastCheckedAt,
 		error: appError,
 		autoCheck: appAutoCheck,
@@ -170,7 +171,7 @@ export function AboutSection() {
 	if (readyToRestart) {
 		appUpdateHint = <Chip tone="success" icon={CheckCircle2}>{t("settingsSections.about.appReadyToRestart")}</Chip>;
 		appUpdateControl = (
-			<Button variant="primary" icon={RotateCw} onClick={() => void relaunchApp()}>
+			<Button variant="primary" icon={RotateCw} loading={appRestarting} disabled={appRestarting} onClick={() => void relaunchApp()}>
 				{t("settingsSections.about.appRestartNow")}
 			</Button>
 		);

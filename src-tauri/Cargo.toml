@@ -64,7 +64,7 @@ hyper-util = { version = "0.1", default-features = false, features = [
     "http1",
 ] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
-tauri-plugin-updater = "2"
+tauri-plugin-updater = "=2.14.0"
 tauri-plugin-process = "2"
 # Mobile web bundle (src-tauri/mobile-dist): embedded in release, read from disk in debug.
 rust-embed = { version = "=8.13.0", default-features = false }
