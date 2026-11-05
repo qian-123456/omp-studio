@@ -155,6 +155,7 @@ Rules for parallel work:
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
 | `~/.omp-workspace/extension/omp-workspace-plan.ts` | plan mode extension (§8.3), installed at startup by `rpc/plan_ext.rs`; always loaded via `-e` after the privacy extension |
 | `~/.omp-workspace/plugins/omp-workspace-visualize/` | bundled omp plugin (`plugin.json` + `skills/visualize/SKILL.md`) embedded via `include_str!` from `src-tauri/resources/plugins/`; installed at startup, spawned via `--plugin-dir` when `settings.visualize_enabled` (default true) |
+| `~/.omp-workspace/rpc-lifecycle.jsonl`, `rpc-lifecycle.previous.jsonl` | Bounded RPC lifecycle diagnostics, rotated at 1 MiB; respects `OMPWS_DATA_DIR` |
 | `~/.omp-workspace/images/` | durable pasted/dropped images; legacy `<app-cache>/ompws-clip` stays readable; both GC'd by `storage_image_gc_auto` (30 days + unreferenced) |
 | `~/.omp-workspace/oneshot-sessions/` | cwd / `--session-dir` for one-shot `omp -p` runs (summaries, quick ask, diagnose) |
 | `~/.omp-workspace/privacy/secrets.json` | privacy entries (placeholders+aliases, value, track, wholeWord, optional `cutoffs`) + `nativeHash` (from entries without cutoffs); read live by the privacy extension (0600, dir 0700, atomic) |
@@ -521,6 +522,8 @@ Frontend events (`app.emit`), names are exact:
 | `model_switch:changed` | `null` | D (after a template apply/undo or an automatic quota switch) |
 | `omp:install` | `OmpInstallProgress` `{ line?: string, downloadedBytes?: number }` — one ANSI-stripped installer output line, or the size of the in-progress `.omp.download.*` file (polled ~500 ms) | `omp_install.rs` (during `omp_install_run`) |
 
+An unexpected `rpc:process` exit during an active turn preserves unfinished output, records a system-disconnection warning without inventing a cause, enables manual Continue, and pauses queued auto-send; it never automatically retries. Deliberate stop/restart intent is not presented as an unknown disconnection.
+
 ## 6. SQLite schema (`db.rs`, migrations v1 → … → v18)
 
 ```sql
@@ -820,6 +823,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 Session id/file come from `ctx.sessionManager` (probe `getSessionId?.()`/`getSessionFile?.()`/`getHeader?.()`
 defensively; see `~/.omp/agent/extensions/session-autoname.ts` for the API style). Never throws.
 Catalog (A) accepts a status-file owner only when its process identity matches the current PID start time; legacy files without `processStartedAt` require lsof corroboration. A live but reused PID is not ownership evidence.
+Ownership checks for attach/takeover, catalog status and conflict reaping require either a writable lsof descriptor (`-F pRfan`, access `w`/`u`) or a process-identity-validated status file for the exact session file. A read-only observer alone must not block attach or stop the app-owned writer; a confirmed competing writer still wins even during active work.
 
 ### 8.1 Turn checkpoints extension
 
@@ -849,6 +853,8 @@ and the OMP terminal. Mapping file: `$OMPWS_PRIVACY_FILE` (set by `privacy::spaw
   mode + overlay `secrets.enabled`), which OMP reads only at process start. `session_before_compact` therefore cancels compaction when
   the confirmed spawn token is `unprotected:` or differs from `secrets.json.nativeHash`; `rpc::refresh_privacy` restarts an idle session whose spawn hash is stale
   before writing a `prompt` frame.
+  Privacy refresh and idle suspension serialize their authoritative state/subagent probes and shutdown against host dispatch. Unknown state, queued messages, pending commands/UI, streaming, async work or active subagents prevent maintenance shutdown; a busy session keeps its existing process and the extension's compaction guard remains in force. Explicit restart and app shutdown remain intentional operations.
+  Lifecycle records contain UTC timestamp, session ID, PID, source, exit code and busy-state counts/flags, not prompt or credential contents. Host abort commands, explicit stops/restarts, app shutdown, idle suspension, privacy refresh, external writer conflicts and observed process exits are recorded. `process_exit` is an observation, not an inferred cause; a preceding host request is separate evidence. Records rotate to one previous file at 1 MiB and write failures are warned.
 - Fail closed: if the native block could not be written (`conflict`, `error`, or an isolated `OMPWS_DATA_DIR` instance, which never
   touches the global file), `secrets.json.nativeHash` is `unprotected:<hash>` and the confirmed spawn token stays unprotected, so equality of failed hashes cannot authorize compaction.
 - Cutoffs (future-only marks): an entry may carry `cutoffs: { [sessionId]: epochMs }` in `secrets.json` (omitted when empty). In that
@@ -905,7 +911,9 @@ pub fn rpc::image_blocks_from_paths(paths: &[String]) -> Result<Vec<serde_json::
 pub async fn rpc::ensure_live(state: &AppState, session_id: &str, cwd: Option<String>) -> Result<LiveSessionInfo, String>; // cwd=Some: persist as cwd_override + resume there
 pub async fn rpc::pending_ui(state: &AppState, session_id: &str) -> Vec<PendingUiRequest>;
 pub fn rpc::is_live(session_id: &str) -> bool;
-pub async fn rpc::stop(state: &AppState, session_id: &str) -> Result<(), String>; // E uses it before terminal view
+pub async fn rpc::stop(handle: &Arc<rpc::process::SessionHandle>) -> Result<(), String>; // intentional stop, including terminal handoff
+pub(crate) async fn rpc::stop_external_conflict(handle: &Arc<rpc::process::SessionHandle>) -> Result<(), String>; // confirmed competing writer; preserves single-writer safety even while busy
+pub(crate) async fn rpc::stop_unused_draft(handle: &Arc<rpc::process::SessionHandle>) -> bool; // authoritative idle probes and shutdown serialized against dispatch; false retains the process
 pub fn rpc::init(state: AppState);       // idle-suspend loop
 // git (C)
 pub fn git::badge(cwd: &Path) -> Option<GitBadge>;                   // fast (cached ≤5s)
@@ -1068,9 +1076,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Workspace membership (per space): explicit `session_meta.workspace_id` (ignored when it belongs to another mode) > registered
   workspace of the session's mode whose path equals/contains `repo_root ?? cwd` > that mode's Global if cwd under
   `paths::global_dir_for(mode)` > None (未归入工作区). Each mode's global workspace row is created lazily (§6, §9).
-- External detection: `lsof -c omp -F pRn` plus process-identity-validated status files (§8), on watcher activity
+- External detection: `lsof -c omp -F pRfan` plus process-identity-validated status files (§8), on watcher activity
   or a 5–60 s idle-backoff timer. Files held by this app's direct children are not External.
-  Only an external holder of the EXACT live transcript file can suspend its app-owned writer.
+  Only an external writer or validated session status for the EXACT live transcript file can suspend its app-owned writer.
   A `parentSession` link to a DIFFERENT file is not a takeover: side chats and deliberate forks run independently,
   including during the spawn/handshake window before RPC registration and across app instances.
   Never stop a parent or emit a terminal-opened notice merely because a derived session exists.
@@ -1145,8 +1153,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Multi-select going through Other (custom note, empty selection, or any multi inside a multi-question ask, which has no Done entry) sends
   editor text `Selected: A, B` / `Selected: none`, plus `; note: <text>` — omp's result keeps only customInput on that path.
   `跳过`/Esc responds `{cancelled:true}` (cancels the whole ask). Unmatched/out-of-sync requests fall back to `PendingUiCard`.
-- Idle suspend: every 60 s, live sessions not streaming, no pending UI, no activity for `idle_suspend_minutes` → `rpc_stop`, set `session_meta.suspended=1`.
-  `rpc_ensure_live` clears it.
+- Idle suspend: settlement schedules a countdown, with a 60 s fallback sweep. Unretained sessions without activity for `idle_suspend_minutes` undergo the dispatch-serialized authoritative idle checks described in §8.2 before shutdown and setting `session_meta.suspended=1`; `rpc_ensure_live` clears it.
 - Side chat: parent must have `fork_depth < 3`. Label = parent label + "." + (count of existing children + 1). `create` starts
   `StartOpts{cwd: parent cwd, parent_session_id, label, fork_file}` (all tools stay enabled; the boundary text
   `prompts/side_chat_boundary.md` — answer only the question, never continue the parent's pending/inherited work, use tools only when
@@ -1173,6 +1180,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   ✅ 验收 / ✅ 验收并归档 when pending Review, 恢复 for interrupted/suspended, 接管 for external, 聊天/终端 toggle). Message stream from
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
   transcript incrementally). Virtualized.
+  Transcript normalization preserves non-display entries with an id and parent pointer as hidden `custom` items carrying identity/link only.
+  Tree ancestry must stay complete across metadata such as system-prompt digests and thinking-level changes; otherwise leaf filtering can hide
+  a side chat's first prompt and every visible message. Session headers/title slots are not tree entries; opaque metadata payloads never reach clients.
   Explicit message navigation retains indexed-row scrolling and follow state. A mounted optimistic/queued message absent from the row index may use its DOM anchor; missing anchors remain pending for later renders, never fall back to the newest message.
 - Turn grouping (`turnGrouping.ts`): normalizes linear transcript items into `DisplayBlock[]` (`TurnBlock` vs `ProtocolBlock`).
   Each `TurnBlock` starts at a `user` item — or, for agent activity with no preceding visible user message, has `userItem = null`

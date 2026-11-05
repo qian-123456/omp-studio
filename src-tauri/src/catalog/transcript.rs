@@ -146,7 +146,7 @@ pub fn normalize_lines(bytes: &[u8]) -> Vec<TranscriptItem> {
         .collect()
 }
 
-/// Map one session entry to a transcript item (None = not shown).
+/// Normalize display content while retaining hidden entries that link the tree.
 pub fn normalize_entry(v: &Value) -> Option<TranscriptItem> {
     let mut item = TranscriptItem {
         id: s(v, "id"),
@@ -192,6 +192,16 @@ pub fn normalize_entry(v: &Value) -> Option<TranscriptItem> {
         "model_change" => {
             item.kind = TranscriptKind::ModelChange;
             item.model = v.get("model").and_then(Value::as_str).map(str::to_string);
+        }
+        _ if !item.id.is_empty()
+            && v.get("parentId")
+                .is_some_and(|parent| parent.is_null() || parent.is_string()) =>
+        {
+            // Metadata is still an ancestor of later messages. Dropping it
+            // breaks root-to-leaf filtering and can hide an entire side chat.
+            // Retain only its identity/link; never expose the opaque payload.
+            item.kind = TranscriptKind::Custom;
+            item.hidden = true;
         }
         _ => return None,
     }
@@ -499,6 +509,43 @@ fn opt(s: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_preserves_message_ancestry_without_exposing_payloads() {
+        let entries = [
+            serde_json::json!({"type":"session","id":"session","cwd":"/project"}),
+            serde_json::json!({"type":"message","id":"parent","parentId":null,"message":{"role":"assistant","content":"Inherited answer"}}),
+            serde_json::json!({"type":"message","id":"question","parentId":"parent","message":{"role":"user","content":"Side chat question"}}),
+            serde_json::json!({"type":"thinking_level_change","id":"thinking","parentId":"question","thinkingLevel":"medium"}),
+            serde_json::json!({"type":"custom","id":"digest","parentId":"thinking","customType":"system-prompt-digest","data":{"secret":"private metadata payload"}}),
+            serde_json::json!({"type":"message","id":"answer","parentId":"digest","message":{"role":"assistant","content":"Side chat answer"}}),
+        ];
+        let bytes = entries
+            .iter()
+            .map(|entry| format!("{entry}\n"))
+            .collect::<String>();
+        let items = normalize_lines(bytes.as_bytes());
+        let mut path = Vec::new();
+        let mut current = Some("answer");
+        while let Some(id) = current {
+            let item = items
+                .iter()
+                .find(|item| item.id == id)
+                .expect("missing ancestor");
+            path.push(item.id.as_str());
+            current = item.parent_id.as_deref();
+        }
+        assert_eq!(path, ["answer", "digest", "thinking", "question", "parent"]);
+        for id in ["thinking", "digest"] {
+            let item = items.iter().find(|item| item.id == id).unwrap();
+            assert!(item.hidden);
+            assert!(item.text.is_none());
+        }
+        assert!(!serde_json::to_string(&items)
+            .unwrap()
+            .contains("private metadata payload"));
+        assert!(items.iter().all(|item| item.id != "session"));
+    }
     #[test]
     fn partial_usage_preserves_unknown_and_explicit_zero() {
         let entry: Value = serde_json::from_str(
@@ -540,31 +587,19 @@ mod tests {
     #[test]
     fn normalizes_fixture() {
         let items = normalize_lines(FIXTURE.as_bytes());
-        let kinds: Vec<_> = items.iter().map(|i| i.kind).collect();
-        use TranscriptKind as K;
-        assert_eq!(
-            kinds,
-            vec![
-                K::ModelChange,
-                K::Custom,
-                K::User,
-                K::Assistant,
-                K::ToolResult,
-                K::Compaction
-            ]
-        );
-
-        assert!(items[1].hidden);
-        assert_eq!(items[2].text.as_deref(), Some("do it"));
-        assert_eq!(items[2].images.len(), 1);
-        let a = &items[3];
+        let get = |id: &str| items.iter().find(|item| item.id == id).unwrap();
+        assert!(get("cm").hidden);
+        assert!(get("cu").hidden);
+        assert_eq!(get("u").text.as_deref(), Some("do it"));
+        assert_eq!(get("u").images.len(), 1);
+        let a = get("a");
         assert_eq!(a.thinking.as_deref(), Some("hmm"));
         assert_eq!(a.tool_calls[0].intent.as_deref(), Some("List"));
         assert_eq!(a.usage.as_ref().unwrap().total_tokens, Some(115));
         assert_eq!(a.parent_id.as_deref(), Some("u"));
-        let r = items[4].tool_result.as_ref().unwrap();
+        let r = get("r").tool_result.as_ref().unwrap();
         assert_eq!((r.tool_call_id.as_str(), r.text.as_str()), ("c1", "a.txt"));
-        assert_eq!(items[5].text.as_deref(), Some("sum"));
+        assert_eq!(get("k").text.as_deref(), Some("sum"));
     }
 
     #[test]
@@ -639,7 +674,14 @@ mod tests {
         let partial = r#"{"type":"message","id":"z","message":{"role":"user""#;
         std::fs::write(&path, format!("{FIXTURE}{partial}")).unwrap();
         let page = read_page(&path, "S", 0, None).unwrap();
-        assert_eq!(page.items.len(), 6);
+        let visible_ids = |items: &[TranscriptItem]| {
+            items
+                .iter()
+                .filter(|item| !item.hidden)
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(visible_ids(&page.items), ["m", "u", "a", "r", "k"]);
         assert_eq!(page.next_offset, FIXTURE.len() as u64);
         assert!(!page.reset);
         assert_eq!(page.tail_id.as_deref(), Some("k"));
@@ -651,7 +693,6 @@ mod tests {
         .unwrap();
         let page2 = read_page(&path, "S", page.next_offset, page.tail_id.as_deref()).unwrap();
         assert!(!page2.reset);
-        assert_eq!(page2.items.len(), 1);
         assert_eq!(page2.items[0].text.as_deref(), Some("more"));
         assert_eq!(page2.tail_id.as_deref(), Some("z"));
         // Nothing new: the tail is kept, no reset.
@@ -661,7 +702,7 @@ mod tests {
         // Offset past EOF resets.
         let page3 = read_page(&path, "S", 10_000_000, None).unwrap();
         assert!(page3.reset);
-        assert_eq!(page3.items.len(), 7);
+        assert_eq!(visible_ids(&page3.items), ["m", "u", "a", "r", "k", "z"]);
         assert_eq!(sum_usage(&path).unwrap(), (Some(115), Some(0.5)));
         std::fs::remove_dir_all(&dir).unwrap();
     }

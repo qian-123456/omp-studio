@@ -637,6 +637,12 @@ pub async fn send_command(
             .stdin_tx
             .send(command.to_string())
             .map_err(|_| "session stdin closed".to_string())?;
+        if matches!(
+            command.get("type").and_then(Value::as_str),
+            Some("abort" | "abort_and_prompt" | "abort_and_restore_queue")
+        ) {
+            super::lifecycle::record(handle, command["type"].as_str().unwrap_or("abort"), None);
+        }
         crate::mobile::work::dispatched(handle, &command);
         if !matches!(
             command.get("type").and_then(Value::as_str),
@@ -677,8 +683,8 @@ pub async fn send_command(
     }
 }
 
-/// Dispatch while the caller owns `dispatch_lock`. Only the idle suspender may
-/// use this; holding the lock across both probes and stdin close is what makes
+/// Dispatch while the caller owns `dispatch_lock`. Maintenance shutdown probes
+/// hold the lock across both queries and stdin close, which makes
 /// the check-and-stop operation indivisible to host prompts.
 pub(crate) async fn send_command_locked(
     handle: &Arc<SessionHandle>,
@@ -903,6 +909,7 @@ pub async fn spawn_with_sink(
     impl Drop for SpawnGuard {
         fn drop(&mut self) {
             if self.armed {
+                super::lifecycle::record(&self.handle, "spawn_aborted", None);
                 let _ = self.handle.shutdown.send(true);
                 let was_alive = self.handle.alive.swap(false, Ordering::SeqCst);
                 self.handle.pending.fail_all("spawn aborted");
@@ -1054,6 +1061,8 @@ async fn monitor(
     exit_tx: oneshot::Sender<String>,
 ) {
     let status = child.wait().await;
+    let code = status.as_ref().ok().and_then(|s| s.code());
+    super::lifecycle::record(&handle, "process_exit", code);
     let _ = exit_tx.send(match &status {
         Ok(status) => format!("exit status: {status}"),
         Err(err) => format!("failed to wait for process: {err}"),
@@ -1093,7 +1102,28 @@ fn publish_exit(sink: &OutSink, handle: &Arc<SessionHandle>, code: Option<i32>) 
 
 /// Close stdin, wait ≤5s for exit, then SIGKILL.
 pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
+    stop_handle_with_source(handle, "explicit_stop").await
+}
+
+pub(super) async fn stop_handle_with_source(
+    handle: &Arc<SessionHandle>,
+    source: &str,
+) -> Result<(), String> {
     let _dispatch = handle.dispatch_lock.lock().await;
+    stop_handle_locked(handle, source).await
+}
+
+pub(super) async fn stop_handle_locked(
+    handle: &Arc<SessionHandle>,
+    source: &str,
+) -> Result<(), String> {
+    if !*handle.shutdown.borrow() {
+        super::lifecycle::record(handle, source, None);
+    }
+    stop_handle_after_signal(handle).await
+}
+
+async fn stop_handle_after_signal(handle: &Arc<SessionHandle>) -> Result<(), String> {
     let _ = handle.shutdown.send(true);
     // An explicit stop cancels its callers: fail them now instead of waiting
     // for the exit path (the reader may still resolve responses that already

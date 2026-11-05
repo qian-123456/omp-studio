@@ -173,7 +173,17 @@ async fn run_external_loop(state: AppState) {
 
         let status_files = external::read_status_files(&status_dir);
         let status_alive = external::status_validator(external::process_birth);
-        let new_ext = external::external_map(holders, &status_files, &status_alive, own_pid);
+        let owned_pids: std::collections::HashSet<u32> = crate::rpc::registry()
+            .read()
+            .values()
+            .map(|handle| handle.pid)
+            .collect();
+        let external_status: Vec<_> = status_files
+            .iter()
+            .filter(|status| !owned_pids.contains(&status.pid))
+            .cloned()
+            .collect();
+        let new_ext = external::external_map(holders, &external_status, &status_alive, own_pid);
 
         // Terminal squeezes GUI offline: an external holder on a file we also
         // hold via an app-owned RPC child means a single-writer conflict; step
@@ -193,7 +203,7 @@ async fn run_external_loop(state: AppState) {
         for handle in conflicting {
             let session_id = handle.session_id.read().clone();
             warn!("external holder detected for {session_id}; stopping app-owned RPC");
-            let _ = crate::rpc::stop(&handle).await;
+            let _ = crate::rpc::stop_external_conflict(&handle).await;
             crate::rpc::set_suspended(&state, &session_id, true);
         }
 

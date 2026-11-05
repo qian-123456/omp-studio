@@ -41,6 +41,18 @@ describe("held queue drain", () => {
 		expect(sendPrompt.mock.calls[0][1]).toBe("queued one");
 	});
 
+	it("does not automatically send queued work when a working process disconnects or reconnects", async () => {
+		const sid = "q-disconnect";
+		useLive.getState().reduceProcess({ sessionId: sid, running: true, exitCode: null });
+		useLive.getState().reduceFrame({ sessionId: sid, frame: { type: "agent_start" } });
+		useHeldQueue.getState().push(sid, "held while working");
+		useLive.getState().reduceProcess({ sessionId: sid, running: false, exitCode: 1 });
+		useLive.getState().reduceProcess({ sessionId: sid, running: true, exitCode: null });
+		await Promise.resolve();
+		expect(sendPrompt).not.toHaveBeenCalled();
+		expect(useHeldQueue.getState().queues[sid]).toHaveLength(1);
+	});
+
 	it("send-now twice in a row sends once", async () => {
 		useHeldQueue.getState().push(SID, "now");
 		const item = useHeldQueue.getState().queues[SID][0];

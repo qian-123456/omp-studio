@@ -93,7 +93,8 @@ Side chats act as disposable branches of the main conversation:
 - Click `+` ▸ **New side chat** in the right panel, or type `/btw your question`.
 - Fully inherits existing context without adding clutter to the main timeline.
 - Supports nested side chats (up to 3 levels). Click **Hand back to parent session** to summarize findings and insert them into the main composer.
-- **First message**: During session creation, text, quotations, and images use the same presentation as committed user messages. Session actions such as resend and edit become available only after creation.
+- **First message**: During session creation, text, quotations, and images keep the same position and appearance as after sending, with a creation indicator. Session actions such as resend and edit become available only after creation.
+- **History**: Internal session records do not interrupt the connection between earlier questions and replies. They stay hidden from the conversation, and loading history never rewrites the original transcript.
 
 ## Tool Execution and Approvals
 

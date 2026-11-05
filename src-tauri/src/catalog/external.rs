@@ -38,15 +38,51 @@ pub fn parse_lsof(out: &str, sessions_dir: &str) -> HashMap<String, Holder> {
     }
     map
 }
+/// Unlike observation, a writer conflict requires an explicitly writable fd.
+/// Access is reported per descriptor by lsof's `a` field.
+pub fn parse_lsof_writers(out: &str, sessions_dir: &str) -> HashMap<String, Holder> {
+    let mut map = HashMap::new();
+    let mut pid = None;
+    let mut ppid = None;
+    let mut writable = false;
+    let own_pid = std::process::id();
+    for line in out.lines() {
+        let (tag, rest) = line.split_at(line.len().min(1));
+        match tag {
+            "p" => {
+                pid = rest.parse().ok();
+                ppid = None;
+                writable = false;
+            }
+            "R" => ppid = rest.parse().ok(),
+            "f" => writable = false,
+            "a" => writable = matches!(rest, "w" | "u"),
+            "n" if writable && rest.ends_with(".jsonl") && rest.starts_with(sessions_dir) => {
+                if let Some(pid) = pid {
+                    let holder = Holder { pid, ppid };
+                    if (holder.pid != own_pid && holder.ppid != Some(own_pid))
+                        || !map
+                            .get(rest)
+                            .is_some_and(|h: &Holder| h.pid != own_pid && h.ppid != Some(own_pid))
+                    {
+                        map.insert(rest.to_string(), holder);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    map
+}
 
-/// Run lsof for omp processes. Errors / missing lsof yield an empty map.
+/// Query writable omp session descriptors. Errors / missing lsof yield an empty map.
 pub fn lsof_holders(sessions_dir: &Path) -> HashMap<String, Holder> {
     let out = Command::new("/usr/sbin/lsof")
-        .args(["-w", "-n", "-P", "-c", "omp", "-F", "pRn"])
+        .args(["-w", "-n", "-P", "-c", "omp", "-F", "pRfan"])
         .env("PATH", "/usr/sbin:/usr/bin:/bin:/sbin")
         .output();
     match out {
-        Ok(o) => parse_lsof(
+        Ok(o) => parse_lsof_writers(
             &String::from_utf8_lossy(&o.stdout),
             &sessions_dir.to_string_lossy(),
         ),
@@ -177,6 +213,50 @@ pub fn external_map(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writer_detection_ignores_readers_and_keeps_valid_status_fallback() {
+        let file = "/sessions/a.jsonl";
+        let output = "p10\nR1\nf3\nar\nn/sessions/a.jsonl\np11\nR1\nf4\naw\nn/sessions/b.jsonl\np12\nR1\nf5\nau\nn/sessions/c.jsonl\nf6\nn/sessions/d.jsonl\n";
+        let writers = parse_lsof_writers(output, "/sessions");
+        assert!(!writers.contains_key(file));
+        assert_eq!(writers["/sessions/b.jsonl"].pid, 11);
+        assert_eq!(writers["/sessions/c.jsonl"].pid, 12);
+        assert!(!writers.contains_key("/sessions/d.jsonl"));
+        let status = StatusFile {
+            session_id: "a".into(),
+            session_file: file.into(),
+            pid: 10,
+            state: "working".into(),
+            process_started_at: Some("birth".into()),
+        };
+        assert_eq!(
+            external_map(writers, &[status], |_| true, 999).get(file),
+            Some(&10)
+        );
+    }
+
+    #[test]
+    fn competing_writer_is_not_masked_by_our_child_or_a_later_reader() {
+        let own_pid = std::process::id();
+        let competitor_pid = own_pid + 2;
+        let file = "/sessions/shared.jsonl";
+        let owned = format!("p{}\nR{own_pid}\nf3\nau\nn{file}\n", own_pid + 1);
+        let competitor = format!("p{competitor_pid}\nR0\nf4\naw\nn{file}\n");
+        let reader = format!("p{}\nR0\nf5\nar\nn{file}\n", own_pid + 3);
+        for output in [
+            format!("{owned}{competitor}{reader}"),
+            format!("{competitor}{owned}{reader}"),
+        ] {
+            let owners = external_map(
+                parse_lsof_writers(&output, "/sessions"),
+                &[],
+                |_| false,
+                own_pid,
+            );
+            assert_eq!(owners.get(file), Some(&competitor_pid));
+        }
+    }
 
     const LSOF: &str = "p100\nR1\nfcwd\nn/work\nf23\nn/h/.omp/agent/sessions/b/a.jsonl\nf24\nn/h/.omp/agent/sessions/b/a/sub.txt\np200\nR999\nf5\nn/h/.omp/agent/sessions/b/c.jsonl\np300\nR1\nf5\nn/elsewhere/x.jsonl\n";
 

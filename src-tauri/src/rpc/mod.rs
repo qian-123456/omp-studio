@@ -7,6 +7,7 @@ pub mod commands;
 pub(crate) mod fork;
 mod forkcut;
 mod frame;
+mod lifecycle;
 #[cfg(test)]
 mod live_test;
 mod plan_ext;
@@ -180,16 +181,20 @@ pub fn touch_session(session_id: &str) {
 }
 
 /// Cheap local eligibility. Unknown runtime state is not proof of idleness.
-fn idle_suspendable(handle: &SessionHandle, threshold: Duration) -> bool {
-    let id = handle.session_id.read();
-    !session_retained(&id)
-        && handle.alive.load(Ordering::SeqCst)
+fn maintenance_idle(handle: &SessionHandle) -> bool {
+    handle.alive.load(Ordering::SeqCst)
         && !handle.streaming.load(Ordering::SeqCst)
         && handle.settled.load(Ordering::SeqCst)
         && !handle.awaiting_async_work.load(Ordering::SeqCst)
         && handle.active_subagents.lock().is_empty()
         && handle.pending_ui.lock().is_empty()
         && handle.pending.is_empty()
+}
+
+fn idle_suspendable(handle: &SessionHandle, threshold: Duration) -> bool {
+    let id = handle.session_id.read();
+    !session_retained(&id)
+        && maintenance_idle(handle)
         && handle.last_activity.lock().elapsed() >= threshold
 }
 
@@ -239,9 +244,33 @@ async fn suspend_if_idle(handle: &Arc<SessionHandle>, version: u64) -> bool {
     if !idle_suspendable(handle, Duration::ZERO) {
         return false;
     }
+    maintenance_shutdown(handle, version, true, "idle_suspension").await
+}
+
+async fn maintenance_shutdown(
+    handle: &Arc<SessionHandle>,
+    version: u64,
+    respect_retention: bool,
+    source: &str,
+) -> bool {
     let _dispatch = handle.dispatch_lock.lock().await;
+    if !maintenance_quiescent_locked(handle, version, respect_retention).await {
+        return false;
+    }
+    lifecycle::record(handle, source, None);
+    let _ = handle.shutdown.send(true);
+    true
+}
+
+/// Called with dispatch locked; response frames do not advance activity_version.
+async fn maintenance_quiescent_locked(
+    handle: &Arc<SessionHandle>,
+    version: u64,
+    respect_retention: bool,
+) -> bool {
     if handle.activity_version.load(Ordering::SeqCst) != version
-        || !idle_suspendable(handle, Duration::ZERO)
+        || !maintenance_idle(handle)
+        || (respect_retention && session_retained(&handle.session_id.read()))
     {
         return false;
     }
@@ -268,19 +297,19 @@ async fn suspend_if_idle(handle: &Arc<SessionHandle>, version: u64) -> bool {
         .and_then(Value::as_array)
         .is_some_and(|items| {
             items.iter().all(|item| {
-                !matches!(
+                matches!(
                     item.get("status").and_then(Value::as_str),
-                    Some("pending" | "running")
+                    Some("completed" | "failed" | "aborted")
                 )
             })
         });
     if !no_active_subagents
         || handle.activity_version.load(Ordering::SeqCst) != version
-        || !idle_suspendable(handle, Duration::ZERO)
+        || !maintenance_idle(handle)
+        || (respect_retention && session_retained(&handle.session_id.read()))
     {
         return false;
     }
-    let _ = handle.shutdown.send(true);
     true
 }
 
@@ -296,7 +325,7 @@ pub async fn shutdown() {
     let mut set = tokio::task::JoinSet::new();
     for handle in handles {
         set.spawn(async move {
-            let _ = process::stop_handle(&handle).await;
+            let _ = process::stop_handle_with_source(&handle, "app_shutdown").await;
         });
     }
     while set.join_next().await.is_some() {}
@@ -339,7 +368,7 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
     let handle = process::spawn(state, opts).await?;
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
-        let _ = process::stop_handle(&handle).await;
+        let _ = process::stop_handle_with_source(&handle, "startup_missing_session_id").await;
         return Err("omp did not report a sessionId".into());
     }
     // Spawning an RPC process for the session (new or resumed) makes it
@@ -361,7 +390,7 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
     let old_handle = registry().read().get(&session_id).cloned();
     if let Some(old) = old_handle {
         if !Arc::ptr_eq(&old, &handle) {
-            let _ = process::stop_handle(&old).await;
+            let _ = process::stop_handle_with_source(&old, "registration_replacement").await;
         }
     }
     let info = handle.info();
@@ -581,17 +610,18 @@ pub async fn refresh_privacy(
     state: &AppState,
     session_id: &str,
 ) -> Result<Arc<SessionHandle>, String> {
+    let lock = session_resume_lock(session_id);
+    let _resume = lock.lock().await;
     let handle = get_handle(session_id).ok_or("session is not live")?;
-    let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
-    if !privacy_ext::needs_restart(
-        &handle.native_hash,
-        &crate::privacy::native_hash(),
-        streaming,
-    ) {
+    if !privacy_ext::needs_restart(&handle.native_hash, &crate::privacy::native_hash(), false) {
         return Ok(handle);
     }
-    drop(handle);
-    let info = restart(state, session_id).await?;
+    omp_terminal_guard(session_id)?;
+    let version = handle.activity_version.load(Ordering::SeqCst);
+    if !maintenance_shutdown(&handle, version, false, "privacy_refresh").await {
+        return Ok(handle);
+    }
+    let info = restart_locked(state, session_id, "privacy_refresh").await?;
     get_handle(&info.session_id).ok_or_else(|| "session not live after restart".to_string())
 }
 
@@ -637,15 +667,34 @@ pub async fn stop(handle: &Arc<SessionHandle>) -> Result<(), String> {
     process::stop_handle(handle).await
 }
 
+/// Resolve an external single-writer conflict, even when the session is busy.
+pub(crate) async fn stop_external_conflict(handle: &Arc<SessionHandle>) -> Result<(), String> {
+    process::stop_handle_with_source(handle, "external_writer_conflict").await
+}
+
+/// Release an unused draft only if authoritative state still proves it idle.
+pub(crate) async fn stop_unused_draft(handle: &Arc<SessionHandle>) -> bool {
+    let version = handle.activity_version.load(Ordering::SeqCst);
+    maintenance_shutdown(handle, version, false, "unused_draft_release").await
+}
+
 /// Restart the session RPC process (the `/fresh` equivalent): terminates any
 /// active child process and resumes with `--resume <file>`, resetting all
 /// provider streams and active connection state without altering transcript history.
 pub async fn restart(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String> {
     let lock = session_resume_lock(session_id);
     let _guard = lock.lock().await;
+    restart_locked(state, session_id, "explicit_restart").await
+}
+
+async fn restart_locked(
+    state: &AppState,
+    session_id: &str,
+    source: &str,
+) -> Result<LiveSessionInfo, String> {
     omp_terminal_guard(session_id)?;
     if let Some(handle) = get_handle(session_id) {
-        let _ = process::stop_handle(&handle).await;
+        let _ = process::stop_handle_with_source(&handle, source).await;
         for _ in 0..20 {
             if get_handle(session_id).is_none() {
                 break;
@@ -935,6 +984,102 @@ fn session_header_cwd(file: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn maintenance_test_handle() -> (
+        Arc<SessionHandle>,
+        tokio::sync::mpsc::UnboundedReceiver<String>,
+        tokio::sync::watch::Receiver<bool>,
+    ) {
+        let mut handle = SessionHandle::for_test();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        handle.stdin_tx = tx;
+        handle.shutdown = shutdown;
+        (Arc::new(handle), rx, shutdown_rx)
+    }
+
+    fn reply(handle: &SessionHandle, line: &str, data: Value) {
+        let command: Value = serde_json::from_str(line).unwrap();
+        assert!(handle.pending.resolve(
+            command["id"].as_str().unwrap(),
+            json!({"success": true, "data": data})
+        ));
+    }
+
+    #[tokio::test]
+    async fn maintenance_rejects_busy_and_queued_work() {
+        let (handle, mut rx, shutdown) = maintenance_test_handle();
+        handle.streaming.store(true, Ordering::SeqCst);
+        assert!(!maintenance_shutdown(&handle, 1, false, "privacy_refresh").await);
+        handle.streaming.store(false, Ordering::SeqCst);
+        let pending = handle.pending.insert("compact".into());
+        assert!(!maintenance_shutdown(&handle, 1, false, "privacy_refresh").await);
+        handle.pending.remove("compact");
+        drop(pending);
+        handle.awaiting_async_work.store(true, Ordering::SeqCst);
+        assert!(!maintenance_shutdown(&handle, 1, false, "privacy_refresh").await);
+        handle.awaiting_async_work.store(false, Ordering::SeqCst);
+        let h = handle.clone();
+        let probe =
+            tokio::spawn(
+                async move { maintenance_shutdown(&h, 1, false, "privacy_refresh").await },
+            );
+        let line = rx.recv().await.unwrap();
+        reply(
+            &handle,
+            &line,
+            json!({"isSettled":true,"isStreaming":false,"hasPendingAsyncWork":false,"queuedMessageCount":1}),
+        );
+        assert!(!probe.await.unwrap());
+        assert!(!*shutdown.borrow());
+    }
+
+    #[tokio::test]
+    async fn maintenance_check_and_shutdown_excludes_concurrent_dispatch() {
+        let (handle, mut rx, shutdown) = maintenance_test_handle();
+        let h = handle.clone();
+        let maintenance =
+            tokio::spawn(
+                async move { maintenance_shutdown(&h, 1, false, "privacy_refresh").await },
+            );
+        let state = rx.recv().await.unwrap();
+        let h = handle.clone();
+        let prompt = tokio::spawn(async move {
+            process::send_command(&h, json!({"type":"prompt","message":"test"})).await
+        });
+        reply(
+            &handle,
+            &state,
+            json!({"isSettled":true,"isStreaming":false,"hasPendingAsyncWork":false,"queuedMessageCount":0}),
+        );
+        let subagents = rx.recv().await.unwrap();
+        reply(&handle, &subagents, json!({"subagents":[]}));
+        assert!(maintenance.await.unwrap());
+        assert!(*shutdown.borrow());
+        assert!(prompt.await.unwrap().is_err());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn maintenance_does_not_stop_when_activity_arrives_during_probes() {
+        let (handle, mut rx, shutdown) = maintenance_test_handle();
+        let h = handle.clone();
+        let maintenance =
+            tokio::spawn(
+                async move { maintenance_shutdown(&h, 1, false, "privacy_refresh").await },
+            );
+        let state = rx.recv().await.unwrap();
+        reply(
+            &handle,
+            &state,
+            json!({"isSettled":true,"isStreaming":false,"hasPendingAsyncWork":false,"queuedMessageCount":0}),
+        );
+        let subagents = rx.recv().await.unwrap();
+        handle.touch();
+        reply(&handle, &subagents, json!({"subagents":[]}));
+        assert!(!maintenance.await.unwrap());
+        assert!(!*shutdown.borrow());
+    }
 
     struct TempFile(std::path::PathBuf);
     impl Drop for TempFile {

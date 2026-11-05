@@ -21,7 +21,7 @@ import {
 } from "./retryNotice";
 import { useComposer } from "./composer";
 import { useSessions } from "./sessions";
-import { useHeldQueue } from "../features/chat/heldQueue";
+import { pauseHeldAutoSend, useHeldQueue } from "../features/chat/heldQueue";
 import { PLAN_STATUS_KEY, type PlanStatus, parsePlanStatus } from "../features/chat/plan/planStatus";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
 import {
@@ -238,6 +238,10 @@ export interface SessionLive {
 	alive: boolean;
 	/** Explicit transport exit; unlike initial alive=false, rejects late frames. */
 	processExited?: boolean;
+	/** Why an active turn lost its process, when the client initiated it. */
+	interruption?: "disconnected" | "restart" | "stop";
+	/** Intent recorded before an explicit stop/restart can emit a process exit. */
+	exitIntent?: "restart" | "stop";
 	/** Message scroll request queued for virtual list scrollToItem + highlight. */
 	scrollRequest?: { itemId: string; timestamp: number; quote?: string } | null;
 	/** Thinking timing for live turn: start/end epoch ms */
@@ -822,6 +826,8 @@ function reduce(
 			return {
 				...live,
 				streaming: true,
+				interruption: live.streaming ? live.interruption : undefined,
+				exitIntent: live.streaming ? live.exitIntent : undefined,
 				thinkingStartedAt: null,
 				thinkingEndedAt: null,
 			};
@@ -1027,6 +1033,7 @@ function reduce(
 				: live.pendingUserEchoes;
 			return {
 				...live,
+				exitIntent: undefined,
 				pendingUserEchoes,
 				streaming: false,
 				pendingUi: [],
@@ -1612,6 +1619,15 @@ export function dropEchoesForTexts(sessionId: string, texts: readonly string[]):
 	});
 }
 
+/** Track a user-initiated process exit before the IPC can emit its exit event. */
+export function setExitIntent(sessionId: string, intent: SessionLive["exitIntent"]): void {
+	useLive.setState((state) => {
+		const live = state.sessions[sessionId];
+		if (!live || live.exitIntent === intent) return state;
+		return { sessions: { ...state.sessions, [sessionId]: { ...live, exitIntent: intent } } };
+	});
+}
+
 export const useLive = create<LiveState>((set) => ({
 	sessions: {},
 	reduceFrame: ({ sessionId, frame }) => {
@@ -1653,11 +1669,14 @@ export const useLive = create<LiveState>((set) => ({
 			}
 		}
 	},
-	reduceProcess: ({ sessionId, running, exitCode }) =>
+	reduceProcess: ({ sessionId, running }) => {
+		const current = useLive.getState().sessions[sessionId];
+		if (!running && current?.streaming) pauseHeldAutoSend(sessionId);
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
+			const snapshot = !running && live.streaming ? snapshotFromLive(live, Date.now()) : null;
 			const next = running
-				? { ...live, alive: true, processExited: false }
+				? { ...live, alive: true, processExited: false, exitIntent: undefined }
 				: {
 						...live,
 						alive: false,
@@ -1668,11 +1687,14 @@ export const useLive = create<LiveState>((set) => ({
 						pendingUi: [],
 						tools: {},
 						liveRequests: [],
+						interruption: live.streaming ? (live.exitIntent ?? "disconnected") : live.interruption,
+						exitIntent: undefined,
+						restoredUnfinished: snapshot ?? live.restoredUnfinished,
 						...archiveRetry(live, Date.now()),
 					};
-			void exitCode;
 			return { sessions: { ...s.sessions, [sessionId]: next } };
-		}),
+		});
+	},
 	dismissUi: (sessionId, reqId) =>
 		set((s) => {
 			const live = s.sessions[sessionId];
@@ -2130,6 +2152,7 @@ useLive.subscribe((s, prev) => {
 			// nowhere else and the restore path dedupes if it does.
 			clearTimeout(snapshotTimers.get(sid));
 			snapshotTimers.delete(sid);
+			if (live.processExited && live.restoredUnfinished) saveSnapshot(sid, live.restoredUnfinished);
 			if (!live.processExited) clearSnapshot(sid);
 		}
 	}
@@ -2414,32 +2437,30 @@ let unlisteners: Promise<UnlistenFn>[] | null = null;
 export function startLiveEvents(): void {
 	if (unlisteners) return;
 	const { reduceFrame, reduceProcess } = useLive.getState();
+	const batcher = createFrameBatcher((payload) => {
+		reduceFrame(payload);
+		const frame = payload.frame;
+		const ty =
+			frame && typeof frame === "object" && "type" in frame && typeof frame.type === "string"
+				? frame.type
+				: undefined;
+		if (
+			ty === "model_changed" ||
+			ty === "thinking_level_changed" ||
+			ty === "turn_end" ||
+			ty === "auto_compaction_end"
+		) {
+			ipcMod ??= import("../lib/ipc");
+			void ipcMod
+				.then((m) => m.rpcSend(payload.sessionId, { type: "get_state" }))
+				.catch(() => {});
+		}
+	}, scheduleFlush);
 	unlisteners = [
-		onRpcFrame(
-			(() => {
-				const batcher = createFrameBatcher((payload) => {
-					reduceFrame(payload);
-					const frame = payload.frame;
-					const ty =
-						frame && typeof frame === "object" && "type" in frame && typeof frame.type === "string"
-							? frame.type
-							: undefined;
-					if (
-						ty === "model_changed" ||
-						ty === "thinking_level_changed" ||
-						ty === "turn_end" ||
-						ty === "auto_compaction_end"
-					) {
-						ipcMod ??= import("../lib/ipc");
-						void ipcMod
-							.then((m) => m.rpcSend(payload.sessionId, { type: "get_state" }))
-							.catch(() => {});
-					}
-				}, scheduleFlush);
-				return batcher.push;
-			})(),
-		),
+		onRpcFrame(batcher.push),
 		onRpcProcess((payload) => {
+			// Apply already-received frames before the exit rejects late frames.
+			batcher.flush();
 			reduceProcess(payload);
 			// On (re)attach, seed the subagent map: lifecycle frames before our
 			// attach are missed and get_subagents lists the running ones.

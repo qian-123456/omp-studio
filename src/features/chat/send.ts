@@ -5,7 +5,7 @@ import { confirmDialog } from "../../lib/dialogs";
 import { ensureLive, ResumeCancelledError } from "../../lib/ensureLive";
 import { imageContentsFromPaths, privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
-import { dropEchoesForTexts, restoreTextsToDraft, useLive } from "../../stores/live";
+import { dropEchoesForTexts, restoreTextsToDraft, setExitIntent, useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import { createSession } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
@@ -216,7 +216,13 @@ export function restoredQueueTexts(resp: unknown): string[] {
 export async function abortTurn(sessionId: string): Promise<void> {
 	// Set before RPC: its terminal frame can arrive before the response resolves.
 	pauseHeldAutoSend(sessionId);
-	return abortAndRestoreQueue(sessionId);
+	setExitIntent(sessionId, "stop");
+	try {
+		return await abortAndRestoreQueue(sessionId);
+	} catch (error) {
+		if (useLive.getState().sessions[sessionId]?.exitIntent === "stop") setExitIntent(sessionId, undefined);
+		throw error;
+	}
 }
 
 /** Internal interrupt sends intentionally continue; only an explicit stop pauses local held items. */

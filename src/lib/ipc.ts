@@ -103,7 +103,7 @@ import type {
 	WorktreeInfo,
 	Workspace,
 } from "./contracts";
-import { useLive } from "../stores/live";
+import { setExitIntent, useLive } from "../stores/live";
 
 // ---- LEAD ----
 
@@ -236,8 +236,15 @@ export const rpcPendingUi = (sessionId: string) =>
 export const rpcStop = (sessionId: string) =>
 	invoke<void>("rpc_stop", { sessionId });
 
-export const rpcRestart = (sessionId: string) =>
-	invoke<LiveSessionInfo>("rpc_restart", { sessionId });
+export const rpcRestart = async (sessionId: string) => {
+	setExitIntent(sessionId, "restart");
+	try {
+		return await invoke<LiveSessionInfo>("rpc_restart", { sessionId });
+	} catch (error) {
+		if (useLive.getState().sessions[sessionId]?.exitIntent === "restart") setExitIntent(sessionId, undefined);
+		throw error;
+	}
+};
 
 export const rpcListLive = () => invoke<LiveSessionInfo[]>("rpc_list_live");
 

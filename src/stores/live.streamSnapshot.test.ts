@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../lib/contracts";
-import { pruneRemovedSessions, useLive, type SessionLive } from "./live";
+import { pruneRemovedSessions, setExitIntent, useLive, type SessionLive } from "./live";
 import {
 	clearSnapshot,
 	loadSnapshot,
@@ -82,6 +82,49 @@ const item = (id: string, text: string): TranscriptItem => ({
 
 const frame = (sessionId: string, f: Record<string, unknown>) =>
 	useLive.getState().reduceFrame({ sessionId, frame: f });
+
+describe("process exit during a turn", () => {
+	const proc = (sessionId: string, running: boolean) =>
+		useLive.getState().reduceProcess({ sessionId, running, exitCode: running ? null : 1 });
+
+	it("retains even an unthrottled partial answer and explains the unknown disconnect until a new run", () => {
+		const sid = "disconnect-partial";
+		proc(sid, true);
+		frame(sid, { type: "agent_start" });
+		frame(sid, { type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "partial output" }] } });
+		proc(sid, false);
+		expect(useLive.getState().sessions[sid].interruption).toBe("disconnected");
+		expect(useLive.getState().sessions[sid].restoredUnfinished?.answerText).toBe("partial output");
+		expect(loadSnapshot(sid)?.answerText).toBe("partial output");
+		expect(useLive.getState().sessions[sid].streaming).toBe(false);
+		proc(sid, true);
+		expect(useLive.getState().sessions[sid].interruption).toBe("disconnected");
+		frame(sid, { type: "agent_start" });
+		expect(useLive.getState().sessions[sid].interruption).toBeUndefined();
+	});
+
+	it("does not warn for an idle exit or a completed explicit stop", () => {
+		const sid = "disconnect-idle";
+		proc(sid, true);
+		proc(sid, false);
+		expect(useLive.getState().sessions[sid].interruption).toBeUndefined();
+		proc(sid, true);
+		frame(sid, { type: "agent_start" });
+		setExitIntent(sid, "stop");
+		frame(sid, { type: "agent_end", isTerminal: true, aborted: true });
+		proc(sid, false);
+		expect(useLive.getState().sessions[sid].interruption).toBeUndefined();
+	});
+
+	it.each(["stop", "restart"] as const)("identifies a process exit during an explicit %s", (intent) => {
+		const sid = `disconnect-${intent}`;
+		proc(sid, true);
+		frame(sid, { type: "agent_start" });
+		setExitIntent(sid, intent);
+		proc(sid, false);
+		expect(useLive.getState().sessions[sid].interruption).toBe(intent);
+	});
+});
 
 describe("restore while the session is still streaming", () => {
 	it("merges the snapshot into the live state and lets frames take over", () => {

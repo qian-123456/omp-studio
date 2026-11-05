@@ -197,6 +197,9 @@ export default defineMessages({
 			unfinishedRemove: "移除",
 			unfinishedThinking: "思考过程",
 			unfinishedTools: "包含 {count} 个工具调用",
+			disconnected: "会话进程在处理时断开，原因未知。已保留可用的输出；可使用继续手动恢复，不会自动重试。",
+			restarted: "会话在处理时被重启。已保留可用的输出；可使用继续手动恢复。",
+			stopped: "会话进程在停止请求期间断开。已保留可用的输出；可使用继续手动恢复。",
 		},
 		sessionStats: {
 			durationZero: "0秒",
@@ -473,6 +476,9 @@ export default defineMessages({
 			unfinishedRemove: "Remove",
 			unfinishedThinking: "Thinking",
 			unfinishedTools: "{count} tool calls included",
+			disconnected: "The session process disconnected while working; the cause is unknown. Available output is preserved. Use Continue to resume manually; it will not retry automatically.",
+			restarted: "The session was restarted while working. Available output is preserved; use Continue to resume manually.",
+			stopped: "The session process disconnected while a stop was requested. Available output is preserved; use Continue to resume manually.",
 		},
 		sessionStats: {
 			durationZero: "0s",

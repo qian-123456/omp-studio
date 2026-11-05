@@ -466,10 +466,10 @@ export function Composer({
 
 	const live = useLive((s) => s.sessions[sessionId]);
 	const streaming = live?.streaming === true;
-	// Codex-style resume affordance: the latest turn ended aborted → the send
-	// button shows ▶ and fires a bare "继续" with empty input.
+	// An aborted or disconnected turn can be resumed manually with ▶.
 	const canResume = useMemo(() => {
 		if (streaming) return false;
+		if (live?.interruption) return true;
 		const items = live?.items ?? [];
 		for (let i = items.length - 1; i >= 0; i--) {
 			const it = items[i];
@@ -477,7 +477,7 @@ export function Composer({
 			return it.stopReason === "aborted";
 		}
 		return false;
-	}, [live?.items, streaming]);
+	}, [live?.items, live?.interruption, streaming]);
 	// omp advertises `skill:*` commands only from a running process, and app
 	// sessions spawn it lazily on the first send — until then (or while the
 	// list is still in flight) the menu falls back to the skills found on disk.

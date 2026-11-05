@@ -26,6 +26,7 @@ import { toast } from "../../lib/toast";
 import { useT, tNow } from "../../stores/language";
 import { abortTurn } from "./send";
 import { StartGlow } from "../../components/StartHero";
+import { Notice } from "../../components/Notice";
 import { MODAL_SELECTOR } from "../../components/FloatingLayer";
 import { ChatTrace } from "./ChatTrace";
 import { AnnotationMarkers } from "./AnnotationMarkers";
@@ -78,6 +79,7 @@ export function SessionView({
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
 	useQueueAutoSend(sessionId, streaming);
 	const alive = useLive((s) => s.sessions[sessionId]?.alive === true);
+	const interruption = useLive((s) => s.sessions[sessionId]?.interruption);
 	const pendingUi = useLive((s) => s.sessions[sessionId]?.pendingUi ?? EMPTY_PENDING_UI);
 	const setItems = useLive((s) => s.setItems);
 	const appendItems = useLive((s) => s.appendItems);
@@ -410,6 +412,13 @@ export function SessionView({
 						{/* Queued messages are grey "排队中" bubbles in the thread (QueuedBubbles).
 						    Post-turn manual bar: edit/merge/reorder; with auto-send on the queue is
 						    already drained (a failed send restores its item here). */}
+						{interruption && (
+							<div className="px-3 pb-2">
+								<Notice tone="warning">
+									{t(interruption === "restart" ? "chatView.streamRestore.restarted" : interruption === "stop" ? "chatView.streamRestore.stopped" : "chatView.streamRestore.disconnected")}
+								</Notice>
+							</div>
+						)}
 						<StopTimeoutBanner sessionId={sessionId} />
 						{!streaming && <HeldQueueBar sessionId={sessionId} streaming={false} />}
 						{sharing ? (

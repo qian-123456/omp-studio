@@ -222,7 +222,9 @@ pub async fn set_active<B: Backend>(ctx: Arc<Ctx<B>>, id: &str, active: bool, me
         let info = start.lock().await.clone();
         if let Some(info) = info {
             if let Some(handle) = crate::rpc::get_handle(&info.session_id) {
-                let _ = crate::rpc::stop(&handle).await;
+                if !crate::rpc::stop_unused_draft(&handle).await {
+                    return;
+                }
             }
             *start.lock().await = None;
         }

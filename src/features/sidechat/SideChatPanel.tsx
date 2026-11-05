@@ -93,6 +93,7 @@ export function SideChatPanel() {
 	if (isBlankTab(active)) return <NewSideChat key={active} parentId={parentId} tabId={active} />;
 	return <SideChatThread key={active} childId={active} />;
 }
+const SIDE_CHAT_TOOLBAR_CLASS = "flex shrink-0 justify-end px-2 pt-1.5";
 
 /** An existing side chat: a compact thread view plus a 更多 menu for the extra actions. */
 function SideChatThread({ childId }: { childId: string }) {
@@ -110,7 +111,7 @@ function SideChatThread({ childId }: { childId: string }) {
 	}, [childId]);
 	return (
 		<div className="flex h-full flex-col">
-			<div className="flex shrink-0 justify-end px-2 pt-1.5">
+			<div className={SIDE_CHAT_TOOLBAR_CLASS}>
 				<button
 					ref={btnRef}
 					type="button"
@@ -516,28 +517,33 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 
 	return (
 		<div data-session-view={tabId} className="@container flex h-full flex-col">
+			<div className={SIDE_CHAT_TOOLBAR_CLASS} aria-hidden="true">
+				<div className="h-6 w-6" />
+			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{pendingQuestion ? (
 					<div className="relative mx-auto w-full px-3 py-1 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
-						<UserRow
-							sessionId={tabId}
-							pending
-							item={{
-								id: `pending-${tabId}`,
-								kind: "user",
-								parentId: null,
-								thinking: null,
-								toolCalls: [],
-								toolResult: null,
-								usage: null,
-								model: null,
-								stopReason: null,
-								hidden: false,
-								text: pendingQuestion,
-								ts: "",
-								images: pendingImages,
-							}}
-						/>
+						<div className="py-1">
+							<UserRow
+								sessionId={tabId}
+								pending
+								item={{
+									id: `pending-${tabId}`,
+									kind: "user",
+									parentId: null,
+									thinking: null,
+									toolCalls: [],
+									toolResult: null,
+									usage: null,
+									model: null,
+									stopReason: null,
+									hidden: false,
+									text: pendingQuestion,
+									ts: "",
+									images: pendingImages,
+								}}
+							/>
+						</div>
 						<div role="status" className="flex items-center justify-end gap-1 whitespace-nowrap text-[10px] text-[var(--text-40)]">
 							<Loader2 size={10} className="animate-spin" />
 							{t("sidechat.creatingSideChat")}

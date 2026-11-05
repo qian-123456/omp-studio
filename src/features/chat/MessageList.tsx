@@ -2225,7 +2225,7 @@ export function MessageList({
 									key={echo.id}
 									id={`msg-${echo.id}`}
 									className={clsx(
-										"w-full py-1 opacity-90",
+										isSideChat && !traceGutter ? "w-full py-2" : "w-full py-1 opacity-90",
 										traceGutter ? TRACE_GUTTER_PAD : "px-3",
 									)}
 								>
