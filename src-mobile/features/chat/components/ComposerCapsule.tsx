@@ -16,8 +16,8 @@ export interface ComposerApi {
 	insert(text: string): void;
 }
 
-/** One 28px line plus 12px padding, inside the 44px touch row. */
-const LINE_PX = 44;
+/** One 24px line plus 12px padding, matching the 36px touch/input row. */
+const LINE_PX = 36;
 const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 
 /**
@@ -86,7 +86,7 @@ export function ComposerCapsule({
 	const composing = useRef(false);
 	const raf = useRef(0);
 	const [hasText, setHasText] = useState(() => initialText.trim() !== "");
-	// Latest callbacks without re-creating the imperative api on every render.
+	const [multi, setMulti] = useState(false);
 	const cb = useRef({ onSync, onInput, onUnmount });
 	cb.current = { onSync, onInput, onUnmount };
 
@@ -97,10 +97,11 @@ export function ComposerCapsule({
 		if (!el || !box || composing.current) return;
 		const scrollTop = el.scrollTop;
 		el.style.height = "0px";
-		el.style.height = `${Math.max(LINE_PX, el.scrollHeight)}px`;
+		const scrollH = el.scrollHeight;
+		el.style.height = `${Math.max(LINE_PX, scrollH)}px`;
 		el.scrollTop = scrollTop;
+		setMulti(scrollH > LINE_PX + 4);
 	}, []);
-
 	/** One frame-coalesced pass; never change layout or sync drafts during IME composition. */
 	const flush = useCallback(() => {
 		raf.current = 0;
@@ -215,12 +216,12 @@ export function ComposerCapsule({
 			{top != null && <div className="p-2 pb-0">{top}</div>}
 
 			{/* Main Input Row: [+] on left, Textarea expanding right, actions alongside when keyboard is open */}
-			<div className="flex min-w-0 items-end px-2 pt-2 pb-1.5 gap-1.5">
+			<div className={`flex min-w-0 ${multi ? "items-end pb-1.5" : "items-center"} px-2.5 ${keyboardOpen ? "py-1.5" : "pt-2 pb-1"} gap-1.5`}>
 				<button
 					type="button"
 					aria-label="添加"
 					onClick={onPlus}
-					className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-m-text-2 hover:bg-m-surface hover:text-m-text active:bg-m-surface-2 active:scale-95 transition-all"
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-m-text-2 hover:bg-m-surface hover:text-m-text active:bg-m-surface-2 active:scale-95 transition-all"
 				>
 					<Plus size={18} strokeWidth={2} />
 				</button>
@@ -263,12 +264,12 @@ export function ComposerCapsule({
 						if (!e.repeat) submit();
 					}}
 					style={{ maxHeight: MAX_INPUT, outline: "none", boxShadow: "none" }}
-					className="m-selectable min-h-[36px] w-full min-w-0 resize-none bg-transparent px-2 pt-1 pb-1 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
+					className="m-selectable min-h-[36px] w-full min-w-0 resize-none bg-transparent px-2 py-1.5 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
 				/>
 
 				{/* When keyboard is OPEN: mic, stop and send join the upper row, keeping the composer to strictly 1 row! */}
 				{keyboardOpen && (
-					<div className="mb-0.5 flex shrink-0 items-center gap-1.5">
+					<div className="flex shrink-0 items-center gap-1.5">
 						<button
 							type="button"
 							aria-label={recording ? "停止录音" : "语音输入"}
