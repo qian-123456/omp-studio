@@ -27,7 +27,7 @@ describe("ComposerCapsule", () => {
 		expect(screen.getByRole("textbox").closest(".bg-m-composer-bg")).not.toBeNull();
 		for (const name of [/当前模型/, /当前思考强度/, /上下文用量/]) {
 			const button = screen.getByRole("button", { name });
-			expect(button.className).toContain("rounded-m-pill");
+			expect(button.className).toContain("rounded-lg");
 			fireEvent.click(button);
 		}
 		expect(onModel).toHaveBeenCalledTimes(1);
@@ -39,7 +39,7 @@ describe("ComposerCapsule", () => {
 		expect(circles).toHaveLength(2);
 		expect(Number(circles[1].getAttribute("stroke-dashoffset"))).toBeCloseTo(2 * Math.PI * 7 * 0.85);
 		const mic = screen.getByRole("button", { name: "语音输入" });
-		expect(mic.className).toContain("h-11 w-11");
+		expect(mic.className).toContain("h-8 w-8");
 		expect(mic.className).not.toContain("bg-m-danger");
 		const send = screen.getByRole("button", { name: "发送" });
 		expect(send.className).toContain("bg-m-surface-2");

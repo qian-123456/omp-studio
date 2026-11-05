@@ -20,8 +20,6 @@ export interface ComposerApi {
 const LINE_PX = 44;
 const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 
-const roundBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
-
 /**
  * Desktop-parity mobile composer card:
  * Textarea on top, toolbar on bottom (Plus, Model, Thinking, Extra chips, Context, Mic, Send).
@@ -206,82 +204,122 @@ export function ComposerCapsule({
 		// A stale second click on Send must never become an implicit Stop request.
 		if (!busy && (text.trim() !== "" || hasExtra)) onSend(text);
 	};
-	const hasMeta = Boolean(
-		(!keyboardOpen && (onModel || model != null)) ||
-		(!keyboardOpen && (onThinking || thinking != null)) ||
-		(!keyboardOpen && extraLeft) ||
-		(!keyboardOpen && contextText)
-	);
-
 	return (
 		<div
 			ref={capsule}
-			className="relative flex flex-col rounded-[24px] bg-m-composer-bg p-2 border border-m-border shadow-m-composer transition-shadow"
+			className="relative flex flex-col rounded-[22px] bg-m-composer-bg border border-m-border shadow-m-composer transition-colors"
 		>
-			{top != null && <div className="mb-1.5">{top}</div>}
+			{top != null && <div className="p-2 pb-0">{top}</div>}
 
-			{/* Main Input Row: [+] [Textarea] [Mic] [Stop?] [Send] */}
-			<div className="flex min-w-0 items-end gap-1">
-				<button
-					type="button"
-					aria-label="添加"
-					onClick={onPlus}
-					className={`${roundBtn} text-m-text-2 hover:text-m-text hover:bg-m-surface active:bg-m-surface-2 active:scale-95`}
-				>
-					<Plus size={22} strokeWidth={1.75} />
-				</button>
-
-				<textarea
-					ref={ta}
-					rows={1}
-					enterKeyHint="enter"
-					placeholder={placeholder}
-					aria-label="消息输入框"
-					onFocus={() => {
-						setFocused(true);
-						onFocusChange?.(true);
-					}}
-					onBlur={() => {
-						setFocused(false);
-						onFocusChange?.(false);
-					}}
-					onInput={() => {
-						if (!composing.current) {
-							onInput?.();
-							schedule();
-						}
-					}}
-					onCompositionStart={() => {
-						composing.current = true;
-					}}
-					onCompositionEnd={() => {
-						composing.current = false;
+			{/* Main Textarea Area */}
+			<textarea
+				ref={ta}
+				rows={1}
+				enterKeyHint="enter"
+				placeholder={placeholder}
+				aria-label="消息输入框"
+				onFocus={() => {
+					setFocused(true);
+					onFocusChange?.(true);
+				}}
+				onBlur={() => {
+					setFocused(false);
+					onFocusChange?.(false);
+				}}
+				onInput={() => {
+					if (!composing.current) {
 						onInput?.();
 						schedule();
-					}}
-					onKeyDown={(e) => {
-						const native = e.nativeEvent as KeyboardEvent & { inputType?: string };
-						// Native mobile line breaks and IME commits are never message submissions.
-						if (e.key !== "Enter" || e.shiftKey || composing.current || native.isComposing || e.keyCode === 229 || native.inputType === "insertLineBreak") return;
-						const hardware = e.metaKey || e.ctrlKey || (typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches);
-						if (!hardware || e.altKey) return;
-						e.preventDefault();
-						if (!e.repeat) submit();
-					}}
-					style={{ maxHeight: MAX_INPUT, outline: "none", boxShadow: "none" }}
-					className="m-selectable min-h-[44px] w-full min-w-0 resize-none bg-transparent px-2.5 pt-2.5 pb-2 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
-				/>
+					}
+				}}
+				onCompositionStart={() => {
+					composing.current = true;
+				}}
+				onCompositionEnd={() => {
+					composing.current = false;
+					onInput?.();
+					schedule();
+				}}
+				onKeyDown={(e) => {
+					const native = e.nativeEvent as KeyboardEvent & { inputType?: string };
+					// Native mobile line breaks and IME commits are never message submissions.
+					if (e.key !== "Enter" || e.shiftKey || composing.current || native.isComposing || e.keyCode === 229 || native.inputType === "insertLineBreak") return;
+					const hardware = e.metaKey || e.ctrlKey || (typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches);
+					if (!hardware || e.altKey) return;
+					e.preventDefault();
+					if (!e.repeat) submit();
+				}}
+				style={{ maxHeight: MAX_INPUT, outline: "none", boxShadow: "none" }}
+				className="m-selectable min-h-[44px] w-full resize-none bg-transparent px-3.5 pt-3 pb-2 text-m-md leading-6 text-m-text outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 placeholder:text-m-text-3"
+			/>
 
-				<div className="flex shrink-0 items-center gap-1">
+			{/* Bottom Toolbar: Desktop Parity Layout */}
+			<div className="flex items-center justify-between px-2.5 pb-2 pt-0.5 text-xs">
+				{/* Left: [+] [Model ⌵] [Thinking ⌵] [extra chips] */}
+				<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap">
+					<button
+						type="button"
+						aria-label="添加"
+						onClick={onPlus}
+						className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-m-text-2 hover:bg-m-surface hover:text-m-text active:bg-m-surface-2 active:scale-95 transition-all"
+					>
+						<Plus size={18} strokeWidth={2} />
+					</button>
+
+					{!keyboardOpen && (onModel || model != null) && (
+						<button
+							type="button"
+							aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
+							onClick={onModel}
+							disabled={!onModel}
+							className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-m-text hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
+						>
+							<span className="max-w-[130px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
+							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+						</button>
+					)}
+
+					{!keyboardOpen && (onThinking || thinking != null) && (
+						<button
+							type="button"
+							aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
+							onClick={onThinking ?? onModel}
+							disabled={!onThinking && !onModel}
+							className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs whitespace-nowrap text-m-text-2 hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
+						>
+							<span>{thinkLabel(thinking)}</span>
+							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
+						</button>
+					)}
+
+					{extraLeft}
+				</div>
+
+				{/* Right: [Context %] [🎙️] [Stop?] [Send] */}
+				<div className="flex shrink-0 items-center gap-1.5">
+					{!keyboardOpen && contextText && (
+						<button
+							type="button"
+							aria-label={`上下文用量：${contextText}`}
+							onClick={onContext}
+							disabled={!onContext}
+							className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs whitespace-nowrap hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:opacity-60 ${contextToneClass}`}
+						>
+							<ContextIndicator text={contextText} percent={contextPercent} />
+						</button>
+					)}
+
 					<button
 						type="button"
 						aria-label={recording ? "停止录音" : "语音输入"}
 						aria-pressed={recording}
 						disabled={transcribing}
 						onClick={() => void toggleRecording()}
-						className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-white shadow-sm" : "text-m-text-2 hover:text-m-text hover:bg-m-surface active:bg-m-surface-2 active:scale-95"}`}
+						className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+							recording ? "m-pulse bg-m-danger text-white shadow-sm" : "text-m-text-2 hover:text-m-text hover:bg-m-surface active:bg-m-surface-2 active:scale-95"
+						}`}
 					>
-						{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
+						{transcribing ? <Spinner size={16} /> : recording ? <Square size={13} fill="currentColor" /> : <Mic size={17} />}
 					</button>
 
 					{showStop && (
@@ -289,9 +327,9 @@ export function ComposerCapsule({
 							type="button"
 							aria-label="停止"
 							onClick={onStop}
-							className={`${roundBtn} bg-m-text text-m-bg active:scale-95`}
+							className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-m-text text-m-bg active:scale-95 transition-all shadow-sm"
 						>
-							<Square size={14} fill="currentColor" />
+							<Square size={12} fill="currentColor" />
 						</button>
 					)}
 
@@ -301,65 +339,16 @@ export function ComposerCapsule({
 						aria-label="发送"
 						disabled={!canSend}
 						onClick={submit}
-						className={`${roundBtn} ${
+						className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-150 ${
 							canSend
 								? "bg-m-accent text-m-accent-text shadow-sm hover:brightness-105 active:scale-95 cursor-pointer"
-								: "bg-m-surface-2 text-m-text-3 border border-m-border/60 cursor-not-allowed"
+								: "bg-m-surface-2 text-m-text-3 border border-m-border/40 cursor-not-allowed"
 						}`}
 					>
-						{busy ? <Spinner size={18} /> : <ArrowUp size={20} strokeWidth={2.25} />}
+						{busy ? <Spinner size={16} /> : <ArrowUp size={16} strokeWidth={2.25} />}
 					</button>
 				</div>
 			</div>
-
-			{/* Secondary metadata toolbar: only visible when virtual keyboard is closed */}
-			{hasMeta && (
-				<div className="flex min-w-0 items-center justify-between gap-1.5 pt-1.5 border-t border-m-border/30 mt-1">
-					{/* Left: [Model ⌵] [Thinking ⌵] [extra chips] */}
-					<div className="m-noscrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto whitespace-nowrap">
-						{(onModel || model != null) && (
-							<button
-								type="button"
-								aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
-								onClick={onModel}
-								disabled={!onModel}
-								className="flex min-h-8 shrink-0 items-center gap-1 rounded-m-pill bg-m-surface/80 px-2.5 py-1 text-m-xs font-medium whitespace-nowrap text-m-text hover:bg-m-surface active:bg-m-surface-2 transition-colors disabled:cursor-default"
-							>
-								<span className="max-w-[130px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
-								<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
-							</button>
-						)}
-						{(onThinking || thinking != null) && (
-							<button
-								type="button"
-								aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
-								onClick={onThinking ?? onModel}
-								disabled={!onThinking && !onModel}
-								className="flex min-h-8 shrink-0 items-center gap-1 rounded-m-pill bg-m-surface/80 px-2 py-1 text-m-xs whitespace-nowrap text-m-text-2 hover:bg-m-surface active:bg-m-surface-2 transition-colors disabled:cursor-default"
-							>
-								<span>{thinkLabel(thinking)}</span>
-								<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
-							</button>
-						)}
-						{extraLeft}
-					</div>
-
-					{/* Right: [Context %] */}
-					{contextText && (
-						<div className="flex shrink-0 items-center">
-							<button
-								type="button"
-								aria-label={`上下文用量：${contextText}`}
-								onClick={onContext}
-								disabled={!onContext}
-								className={`flex min-h-8 shrink-0 items-center gap-1.5 rounded-m-pill bg-m-surface/80 px-2.5 py-1 text-m-xs whitespace-nowrap hover:bg-m-surface active:bg-m-surface-2 transition-colors disabled:opacity-60 ${contextToneClass}`}
-							>
-								<ContextIndicator text={contextText} percent={contextPercent} />
-							</button>
-						</div>
-					)}
-				</div>
-			)}
 		</div>
 	);
 }
