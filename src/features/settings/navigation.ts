@@ -55,11 +55,8 @@ export const NAV_GROUPS: NavGroup[] = [
 		id: "general",
 		items: [
 			{ id: "general", icon: Sliders },
-			{ id: "shortcuts", icon: Keyboard },
-			{ id: "storage", icon: HardDrive },
 			{ id: "appearance", icon: Palette },
-			{ id: "notifications", icon: Bell },
-			{ id: "privacy", icon: Shield },
+			{ id: "about", icon: Info },
 		],
 	},
 	{
@@ -105,13 +102,18 @@ export const NAV_GROUPS: NavGroup[] = [
 	},
 	{
 		id: "advanced",
-		items: [{ id: "advanced", icon: Wrench }],
+		items: [
+			{ id: "advanced", icon: Wrench },
+			{ id: "shortcuts", icon: Keyboard },
+			{ id: "storage", icon: HardDrive },
+			{ id: "notifications", icon: Bell },
+			{ id: "privacy", icon: Shield },
+		],
 	},
 	{
 		id: "help",
 		items: [
 			{ id: "guide", icon: BookOpen },
-			{ id: "about", icon: Info },
 		],
 	},
 ];

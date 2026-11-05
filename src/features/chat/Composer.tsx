@@ -9,6 +9,7 @@ import {
 	ChevronDown,
 	CornerDownRight,
 	Loader2,
+	Mic,
 	Play,
 	Lightbulb,
 	Plus,
@@ -16,6 +17,7 @@ import {
 	X,
 } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useVoiceInput } from "./useVoiceInput";
 import { clipboardFilePaths, clipboardTextBesideFiles, importImageFile, listWorkspaceFiles, ompConfigList, ompModelRolesRead, ompModelRolesSet, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -351,6 +353,7 @@ export function Composer({
 	const [argHintLine, setArgHintLine] = useState<string | null>(null);
 
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const voiceSelection = useRef<{ sessionId: string; text: string; start: number; end: number } | null>(null);
 	const [contextOpen, setContextOpen] = useState(false);
 	const backdropRef = useRef<HTMLDivElement>(null);
 	const composerCardRef = useRef<HTMLDivElement>(null);
@@ -397,6 +400,33 @@ export function Composer({
 			else if (offset !== chip.offset) setChip(moved);
 		}
 		setDraft(sessionId, nextText);
+	};
+	const voice = useVoiceInput(`${sessionId}:${!!readonly}`, (transcript) => {
+		const ta = taRef.current;
+		if (!ta || ta.dataset.composer !== sessionId || readonly) return;
+		const draft = useComposer.getState().drafts[sessionId] ?? "";
+		const saved = voiceSelection.current;
+		voiceSelection.current = null;
+		const start = saved?.sessionId === sessionId && saved.text === draft ? saved.start : ta.selectionStart;
+		const end = saved?.sessionId === sessionId && saved.text === draft ? saved.end : ta.selectionEnd;
+		setText(draft.slice(0, start) + transcript + draft.slice(end));
+		const caret = start + transcript.length;
+		setCursorPos(caret);
+		requestAnimationFrame(() => {
+			const el = taRef.current;
+			if (el?.dataset.composer !== sessionId) return;
+			el.focus();
+			el.setSelectionRange(caret, caret);
+		});
+	}, (kind, detail) => {
+		if (kind === "unavailable") toast.error(t("composer.voiceUnavailable"));
+		else if (kind === "permission") toast.error(t("composer.voicePermission"));
+		else if (kind === "empty") toast.error(t("composer.voiceEmpty"));
+		else toast.error(t("composer.voiceFailed", { error: detail ?? "" }));
+	});
+	const rememberVoiceSelection = (ta: HTMLTextAreaElement) => {
+		if (voice.state !== "recording" && voice.state !== "transcribing") return;
+		voiceSelection.current = { sessionId, text: ta.value, start: ta.selectionStart, end: ta.selectionEnd };
 	};
 	const inlineRange = useMemo(() => inlineChipRange(chip, text), [chip, text]);
 	const legacyChip = chip !== null && chip.offset === undefined;
@@ -2771,6 +2801,7 @@ export function Composer({
 						}}
 						onKeyUp={(e) => {
 							const ta = e.target as HTMLTextAreaElement;
+							rememberVoiceSelection(ta);
 							if (ta.selectionStart !== ta.selectionEnd) {
 								setCursorPos(ta.selectionStart);
 								return;
@@ -2786,6 +2817,7 @@ export function Composer({
 								setCursorPos(pos);
 							}
 						}}
+						onMouseUp={(e) => rememberVoiceSelection(e.currentTarget)}
 						onClick={(e) => {
 							const ta = e.target as HTMLTextAreaElement;
 							if (ta.selectionStart !== ta.selectionEnd) {
@@ -3029,6 +3061,31 @@ export function Composer({
 
 						{/* Send / streaming controls (Codex circular button) */}
 						<div className="flex items-center gap-1.5">
+							{!readonly && (
+								<button
+									type="button"
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => {
+										if (voice.state === "idle") {
+											const ta = taRef.current;
+											voiceSelection.current = ta ? {
+												sessionId,
+												text: useComposer.getState().drafts[sessionId] ?? "",
+												start: ta.selectionStart,
+												end: ta.selectionEnd,
+											} : null;
+										}
+										void voice.toggle();
+									}}
+									disabled={voice.state === "starting" || voice.state === "transcribing"}
+									aria-label={voice.state === "recording" ? t("composer.voiceStop") : voice.state === "transcribing" ? t("composer.voiceTranscribing") : t("composer.voiceStart")}
+									title={voice.state === "recording" ? t("composer.voiceStop") : voice.state === "transcribing" ? t("composer.voiceTranscribing") : t("composer.voiceStart")}
+									aria-pressed={voice.state === "recording"}
+									className={clsx("flex h-7 w-7 items-center justify-center transition-colors disabled:opacity-50", voice.state === "recording" ? "text-red-500" : "text-[var(--text-muted)] hover:text-[var(--text)]")}
+								>
+									{voice.state === "starting" || voice.state === "transcribing" ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} />}
+								</button>
+							)}
 							{readonly ? (
 								<button
 									type="button"

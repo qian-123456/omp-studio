@@ -644,6 +644,20 @@ export interface UsageSummary {
 	source: string;
 }
 
+export interface ActivityDayUsage {
+	date: string;
+	/** Known request sum; null only when all requests lack usage. */
+	tokens: number | null;
+	missingRequests: number;
+	sessions: number;
+	turns: number;
+	topModel: string | null;
+}
+
+export interface ActivityUsage {
+	days: ActivityDayUsage[];
+}
+
 /** Last-known thinking level / context size from the transcript (no live process). */
 export interface SessionSnapshot {
 	thinkingLevel: string | null;

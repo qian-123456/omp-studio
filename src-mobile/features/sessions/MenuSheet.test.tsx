@@ -75,14 +75,20 @@ describe("MenuSheet (Left Navigation Sheet)", () => {
 		// 2. Middle section: Space selector & "按项目 / 按时间" funnel view filter
 		const filterBtn = screen.getByRole("button", { name: /视图筛选/i });
 		expect(filterBtn).not.toBeNull();
+		expect(filterBtn.className).toContain("min-h-11 min-w-11");
+		expect(filterBtn.querySelector("svg")).not.toBeNull();
+		expect(filterBtn.querySelector(".m-glass-btn")).toBeNull();
 		fireEvent.click(filterBtn);
 
 		const projectTab = screen.getByRole("menuitemradio", { name: "按项目" });
-		const timeTab = screen.getByRole("menuitemradio", { name: "按时间" });
 		expect(projectTab.getAttribute("aria-checked")).toBe("true");
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(screen.queryByRole("menu", { name: "切换视图" })).toBeNull();
+		expect(document.activeElement).toBe(filterBtn);
+		fireEvent.click(filterBtn);
 
 		// Toggle view mode
-		fireEvent.click(timeTab);
+		fireEvent.click(screen.getByRole("menuitemradio", { name: "按时间" }));
 		expect(screen.getByRole("button", { name: /视图筛选，当前：按时间/i })).not.toBeNull();
 		fireEvent.click(screen.getByRole("button", { name: /视图筛选/i }));
 		expect(screen.getByRole("menuitemradio", { name: "按时间" }).getAttribute("aria-checked")).toBe("true");

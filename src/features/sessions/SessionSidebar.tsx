@@ -35,7 +35,7 @@ import {
 	Pencil,
 	Pin,
 	Plus,
-	PlusCircle,
+	SquarePen,
 	Search,
 	Settings as SettingsIcon,
 	Tag,
@@ -1133,7 +1133,7 @@ export function SessionSidebar() {
 						)}
 						title={`${t("sidebar.newSession")} (⌘N)`}
 					>
-						<PlusCircle
+						<SquarePen
 							size={15}
 							strokeWidth={2}
 							className={clsx(

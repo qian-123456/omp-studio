@@ -203,6 +203,7 @@ export function Composer({ sessionId, onOpenPicker }: { sessionId: string; onOpe
 				onModel={onOpenPicker}
 				onThinking={onOpenPicker}
 				contextText={formatContextPercent(pct) ?? "未知"}
+				contextPercent={pct}
 				contextToneClass={TONE_TEXT[tone]}
 				onContext={() => setSheet("context")}
 				extraLeft={
@@ -229,7 +230,7 @@ export function Composer({ sessionId, onOpenPicker }: { sessionId: string; onOpe
 								aria-label={`发送方式：${BEHAVIOR_LABEL[behavior]}，点击切换`}
 								title={BEHAVIOR_HINT[behavior]}
 								onClick={() => setBehavior(behavior === "followUp" ? "steer" : "followUp")}
-								className="m-glass-btn flex min-h-8 shrink-0 items-center rounded-m-pill px-2 text-m-xs text-m-accent"
+								className="flex min-h-11 shrink-0 items-center px-2 text-m-xs text-m-accent"
 							>
 								<span>{BEHAVIOR_LABEL[behavior]} ⇄</span>
 							</button>

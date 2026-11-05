@@ -910,6 +910,25 @@ pub struct UsageSummary {
     pub source: String,
 }
 
+/// Persisted request activity grouped by the machine's local calendar day.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityUsage {
+    pub days: Vec<ActivityDayUsage>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityDayUsage {
+    pub date: String,
+    /// Sum of known requests; None when all requests that day lack usage.
+    pub tokens: Option<u64>,
+    pub missing_requests: u64,
+    pub sessions: u64,
+    pub turns: u64,
+    pub top_model: Option<String>,
+}
+
 /// Role of a full-text search hit's message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Re
 import { Spinner } from "../../../ui";
 import { shortModel, thinkLabel } from "../lib/models";
 import { useKeyboardOpen } from "./ComposerToolbar";
+import { ContextIndicator } from "./ContextIndicator";
 import { useVoiceInput } from "./useVoiceInput";
 
 /** Imperative handle of the uncontrolled textarea. */
@@ -19,7 +20,7 @@ export interface ComposerApi {
 const LINE_PX = 44;
 const MAX_INPUT = "calc(var(--m-vh, 100dvh) * 0.4 - 64px)";
 
-const roundBtn = "m-glass-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
+const roundBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-m-pill transition-colors duration-(--m-dur-fast)";
 
 /**
  * Desktop-parity mobile composer card:
@@ -46,6 +47,7 @@ export function ComposerCapsule({
 	onModel,
 	onThinking,
 	contextText,
+	contextPercent,
 	contextToneClass = "text-m-text-3",
 	onContext,
 	extraLeft,
@@ -76,6 +78,7 @@ export function ComposerCapsule({
 	onModel?: () => void;
 	onThinking?: () => void;
 	contextText?: string | null;
+	contextPercent?: number | null;
 	contextToneClass?: string;
 	onContext?: () => void;
 	extraLeft?: ReactNode;
@@ -207,7 +210,7 @@ export function ComposerCapsule({
 	return (
 		<div
 			ref={capsule}
-			className="m-glass-panel relative flex flex-col rounded-[22px] p-2 shadow-m-composer"
+			className="relative flex flex-col rounded-[22px] bg-m-composer-bg p-2 shadow-m-composer"
 		>
 			{top != null && <div className="mb-1.5">{top}</div>}
 			<textarea
@@ -267,9 +270,9 @@ export function ComposerCapsule({
 							aria-label={`当前模型：${shortModel(model ?? "") || "默认模型"}，点击切换`}
 							onClick={onModel}
 							disabled={!onModel}
-							className="m-glass-btn flex min-h-11 shrink-0 items-center gap-1 rounded-m-pill px-3 text-m-xs font-medium whitespace-nowrap text-m-text disabled:cursor-default"
+							className="flex min-h-11 shrink-0 items-center gap-1 px-2 text-m-xs font-medium whitespace-nowrap text-m-text disabled:cursor-default"
 						>
-							<span className="max-w-[130px] truncate">{shortModel(model ?? "") || "默认模型"}</span>
+							<span>{shortModel(model ?? "") || "默认模型"}</span>
 							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
 						</button>
 					)}
@@ -279,7 +282,7 @@ export function ComposerCapsule({
 							aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
 							onClick={onThinking ?? onModel}
 							disabled={!onThinking && !onModel}
-							className="m-glass-btn flex min-h-11 shrink-0 items-center gap-1 rounded-m-pill px-2.5 text-m-xs whitespace-nowrap text-m-text-2 disabled:cursor-default"
+							className="flex min-h-11 shrink-0 items-center gap-1 px-2 text-m-xs whitespace-nowrap text-m-text-2 disabled:cursor-default"
 						>
 							<span>{thinkLabel(thinking)}</span>
 							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
@@ -296,9 +299,9 @@ export function ComposerCapsule({
 							aria-label={`上下文用量：${contextText}`}
 							onClick={onContext}
 							disabled={!onContext}
-							className={`m-glass-btn flex min-h-11 shrink-0 items-center rounded-m-pill px-3 text-m-xs whitespace-nowrap disabled:opacity-60 ${contextToneClass}`}
+							className={`flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-m-xs whitespace-nowrap disabled:opacity-60 ${contextToneClass}`}
 						>
-							<span>上下文 {contextText}</span>
+							<ContextIndicator text={contextText} percent={contextPercent} />
 						</button>
 					)}
 					<button
@@ -307,7 +310,7 @@ export function ComposerCapsule({
 						aria-pressed={recording}
 						disabled={transcribing}
 						onClick={() => void toggleRecording()}
-						className={`${roundBtn} ${recording ? "m-pulse bg-m-danger text-m-bg" : "text-m-text"}`}
+						className={`${roundBtn} ${recording ? "m-pulse text-m-danger" : "text-m-text"}`}
 					>
 						{transcribing ? <Spinner size={18} /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={22} strokeWidth={1.75} />}
 					</button>

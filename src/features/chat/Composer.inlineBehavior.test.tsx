@@ -5,7 +5,7 @@
  * and annotation-owned images in the outgoing payload.
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as IpcModule from "../../lib/ipc";
 import type * as EventsModule from "../../lib/events";
@@ -14,6 +14,7 @@ import { emptySessionLive, useLive } from "../../stores/live";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { usePendingSession } from "../sessions/pendingSession";
+import { useToasts } from "../../lib/toast";
 import { Composer } from "./Composer";
 
 const S1 = "inline-s1";
@@ -24,6 +25,7 @@ const h = vi.hoisted(() => ({
 	imageContents: vi.fn(async (_paths: string[]) => [] as Array<{ type: "image"; data: string; mimeType: string }>),
 	rpcSend: vi.fn(async (_id: string, _cmd: unknown) => ({}) as Record<string, unknown>),
 	materialize: vi.fn(async (_id: string) => S1),
+	voiceTranscribe: vi.fn(async (_audio: ArrayBuffer) => "spoken"),
 }));
 
 vi.mock("../../components/ImagePreviewModal", () => ({
@@ -36,6 +38,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 	return {
 		...orig,
 		rpcSend: h.rpcSend,
+		voiceTranscribe: h.voiceTranscribe,
 		imageContentsFromPaths: h.imageContents,
 		rpcEnsureLive: vi.fn(async () => ({ sessionId: S1 })),
 		rpcRelease: vi.fn(async () => {}),
@@ -385,5 +388,105 @@ describe("annotation images in the outgoing payload", () => {
 			images?: unknown[];
 		};
 		expect(sent.images).toHaveLength(2);
+	});
+});
+
+describe("desktop voice input", () => {
+	const stopTrack = vi.fn();
+	const getUserMedia = vi.fn();
+	let mediaDevicesDescriptor: PropertyDescriptor | undefined;
+	let mediaRecorderDescriptor: PropertyDescriptor | undefined;
+	let arrayBufferDescriptor: PropertyDescriptor | undefined;
+
+	class FakeRecorder {
+		static isTypeSupported(type: string) { return type === "audio/mp4"; }
+		state = "inactive";
+		mimeType = "audio/mp4";
+		ondataavailable: ((event: { data: Blob }) => void) | null = null;
+		onstop: (() => void) | null = null;
+		onerror: (() => void) | null = null;
+		start() { this.state = "recording"; }
+		stop() {
+			this.state = "inactive";
+			this.ondataavailable?.({ data: new Blob(["audio"], { type: this.mimeType }) });
+			this.onstop?.();
+		}
+	}
+
+	beforeEach(() => {
+		mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+		mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
+		arrayBufferDescriptor = Object.getOwnPropertyDescriptor(Blob.prototype, "arrayBuffer");
+		Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
+		Object.defineProperty(globalThis, "MediaRecorder", { configurable: true, value: FakeRecorder });
+		Object.defineProperty(Blob.prototype, "arrayBuffer", { configurable: true, value: async () => new ArrayBuffer(5) });
+		stopTrack.mockReset();
+		getUserMedia.mockReset().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] });
+		h.voiceTranscribe.mockReset().mockResolvedValue("spoken");
+		useToasts.setState({ items: [] });
+	});
+
+	afterEach(() => {
+		if (mediaDevicesDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+		else Reflect.deleteProperty(navigator, "mediaDevices");
+		if (mediaRecorderDescriptor) Object.defineProperty(globalThis, "MediaRecorder", mediaRecorderDescriptor);
+		else Reflect.deleteProperty(globalThis, "MediaRecorder");
+		if (arrayBufferDescriptor) Object.defineProperty(Blob.prototype, "arrayBuffer", arrayBufferDescriptor);
+		else Reflect.deleteProperty(Blob.prototype, "arrayBuffer");
+	});
+
+	it("transcribes stopped recording and replaces the current selection", async () => {
+		liveFor(S1);
+		render(<Composer sessionId={S1} />);
+		await flush();
+		const input = textarea(S1);
+		type(input, "hello world");
+		input.setSelectionRange(6, 11);
+		fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+		await screen.findByRole("button", { name: "停止录音并转写" });
+		fireEvent.click(screen.getByRole("button", { name: "停止录音并转写" }));
+		await waitFor(() => expect(textarea(S1).value).toBe("hello spoken"));
+		expect(h.voiceTranscribe).toHaveBeenCalledOnce();
+		expect(stopTrack).toHaveBeenCalled();
+	});
+
+	it("releases the microphone when switching sessions during recording", async () => {
+		liveFor(S1, S2);
+		const view = render(<Composer sessionId={S1} />);
+		await flush();
+		fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+		await screen.findByRole("button", { name: "停止录音并转写" });
+		view.rerender(<Composer sessionId={S2} />);
+		expect(stopTrack).toHaveBeenCalled();
+		expect(h.voiceTranscribe).not.toHaveBeenCalled();
+		expect(textarea(S2).value).toBe("");
+	});
+
+	it("ignores transcription that completes after switching sessions", async () => {
+		let resolve!: (text: string) => void;
+		h.voiceTranscribe.mockReturnValueOnce(new Promise<string>((done) => { resolve = done; }));
+		liveFor(S1, S2);
+		const view = render(<Composer sessionId={S1} />);
+		await flush();
+		fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+		await screen.findByRole("button", { name: "停止录音并转写" });
+		fireEvent.click(screen.getByRole("button", { name: "停止录音并转写" }));
+		await waitFor(() => expect(h.voiceTranscribe).toHaveBeenCalledOnce());
+		view.rerender(<Composer sessionId={S2} />);
+		await act(async () => { resolve("late transcript"); });
+		expect(textarea(S2).value).toBe("");
+		expect(useComposer.getState().drafts[S1] ?? "").toBe("");
+	});
+
+	it("reports denied microphone access", async () => {
+		getUserMedia.mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"));
+		liveFor(S1);
+		render(<Composer sessionId={S1} />);
+		await flush();
+		fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+		await waitFor(() => expect(useToasts.getState().items).toEqual(
+			expect.arrayContaining([expect.objectContaining({ kind: "error", text: "麦克风权限被拒绝，请在系统设置中允许" })]),
+		));
+		expect(h.voiceTranscribe).not.toHaveBeenCalled();
 	});
 });

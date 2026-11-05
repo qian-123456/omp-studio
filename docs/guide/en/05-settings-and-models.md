@@ -24,13 +24,13 @@ The settings are structured into seven distinct groups:
 
 | Group | Included Pages & Scope |
 | --- | --- |
-| **General** (「常规」) | **General** (defaults, Git delivery mode, approvals), **Storage** (disk usage & cleanup), **Appearance** (themes & density), **Notifications** (system alerts), **Privacy** (secret redaction) |
+| **General** (「常规」) | **General** (defaults, Git delivery mode, approvals), **Appearance** (themes & density), **Version and updates** (version check & engine hot-updates) |
 | **Models** (「模型」) | **Models and providers** (API keys, OAuth accounts), **Model roles** (role mappings), **Thinking and sampling** (reasoning effort), **Helper models** (advisors & vision), **Fallback models and retries** (fallback chains), **Context window** (token limits & compaction) |
 | **Sessions** (「会话」) | **Sessions** (worktree & sleep timers), **Inbox** (triage rules), **Session checkup** (doctor defaults), **Rule files** (AGENTS.md guidelines), **System prompt composition** (system prompt visualizer & AI pruning) |
 | **Agent capabilities** (「Agent 能力」) | **Tools** (tool whitelist), **File access** (read/write & LSP), **Command line** (shell execution), **Sub-agents** (custom sub-agent definitions), **Memory** (long-term memory files), **Skills and commands** (skill directories) |
 | **Connections** (「连接」) | **Mobile access** (LAN pairing, Cloudflare Tunnel, IPv6 DDNS), **MCP servers** (external tool protocol), **Plugins** (installed plugins & extensions), **Web search** (search engines) |
-| **Advanced** (「高级」) | **Advanced** (omp executable path, terminal bridge extension, backup & reset) |
-| **Help** (「帮助」) | **User guide** (this guide, feature walkthroughs & shortcuts), **Version and updates** (version check & engine hot-updates) |
+| **Advanced** (「高级」) | **Advanced** (omp executable path, terminal bridge extension, backup & reset), **Shortcuts**, **Storage** (disk usage & cleanup), **Notifications** (system alerts), **Privacy** (secret redaction) |
+| **Help** (「帮助」) | **User guide** (this guide, feature walkthroughs & shortcuts) |
 
 ## Configure Model Providers and Keys
 

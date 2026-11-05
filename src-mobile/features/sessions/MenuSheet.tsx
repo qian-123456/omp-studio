@@ -64,11 +64,9 @@ function ViewModeFilter({
 				aria-label={`视图筛选，当前：${currentLabel}，点击切换`}
 				title={`视图：${currentLabel}`}
 				onClick={() => setOpen((v) => !v)}
-				className="flex min-h-11 min-w-11 items-center justify-center px-1"
+				className="flex min-h-11 min-w-11 items-center justify-center px-1 text-m-text"
 			>
-				<span className="m-glass-btn flex h-9 w-9 items-center justify-center rounded-m-pill text-m-text">
-					<Filter size={17} strokeWidth={1.75} />
-				</span>
+				<Filter size={17} strokeWidth={1.75} />
 			</button>
 			{open && (
 				<div

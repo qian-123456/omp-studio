@@ -270,6 +270,7 @@ pub fn run() {
             catalog::commands::reorder_session_groups,
             catalog::commands::set_session_group,
             catalog::commands::session_usage,
+            catalog::commands::activity_usage,
             catalog::commands::session_snapshot,
             catalog::commands::rescan_sessions,
             catalog::search::search_sessions,
@@ -437,6 +438,7 @@ pub fn run() {
             providers::commands::oauth_logout,
             providers::commands::omp_usage_report,
             // E — mobile + tunnel
+            mobile::api::voice::voice_transcribe,
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,
             mobile::commands::mobile_status,

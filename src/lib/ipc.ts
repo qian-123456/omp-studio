@@ -4,8 +4,12 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+
+/** Transcribe recorded audio using the configured speech model. */
+export const voiceTranscribe = (audio: ArrayBuffer) => invoke<string>("voice_transcribe", audio);
 import type { ServiceConfigChanges, ServiceConfigSnapshot } from "./serviceConfigTypes";
 import type {
+	ActivityUsage,
 	AppPaths,
 	BacklogItem,
 	BacklogKind,
@@ -178,6 +182,7 @@ export const setSessionGroup = (sessionId: string, groupId: string | null) =>
 
 export const sessionUsage = (sessionId: string) =>
 	invoke<UsageSummary>("session_usage", { sessionId });
+export const activityUsage = () => invoke<ActivityUsage>("activity_usage");
 export const sessionSnapshot = (sessionId: string) =>
 	invoke<SessionSnapshot>("session_snapshot", { sessionId });
 

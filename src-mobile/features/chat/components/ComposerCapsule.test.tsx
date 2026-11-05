@@ -16,6 +16,39 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 describe("ComposerCapsule", () => {
+	it("uses a solid composer and unadorned toolbar controls while preserving touch targets", () => {
+		const onModel = vi.fn();
+		const onThinking = vi.fn();
+		const onContext = vi.fn();
+		const { container } = render(
+			<ComposerCapsule placeholder="消息" onPlus={() => {}} onSend={() => {}} model="openai/gpt-5" thinking="high" contextText="15%" contextPercent={15} onModel={onModel} onThinking={onThinking} onContext={onContext} />,
+		);
+		expect(container.querySelector(".m-glass-panel, .m-glass-btn")).toBeNull();
+		expect(screen.getByRole("textbox").parentElement?.className).toContain("bg-m-composer-bg");
+		for (const name of [/当前模型/, /当前思考强度/, /上下文用量/]) {
+			const button = screen.getByRole("button", { name });
+			expect(button.className).toContain("min-h-11");
+			expect(button.className).not.toContain("rounded-m-pill");
+			fireEvent.click(button);
+		}
+		expect(onModel).toHaveBeenCalledTimes(1);
+		expect(onThinking).toHaveBeenCalledTimes(1);
+		expect(onContext).toHaveBeenCalledTimes(1);
+		const context = screen.getByRole("button", { name: "上下文用量：15%" });
+		expect(context.textContent).toBe("15%");
+		const circles = context.querySelectorAll("circle");
+		expect(circles).toHaveLength(2);
+		expect(Number(circles[1].getAttribute("stroke-dashoffset"))).toBeCloseTo(2 * Math.PI * 7 * 0.85);
+		const mic = screen.getByRole("button", { name: "语音输入" });
+		expect(mic.className).toContain("h-11 w-11");
+		expect(mic.className).not.toContain("bg-");
+		fireEvent.focus(screen.getByRole("textbox"));
+		expect(screen.queryByRole("button", { name: /当前模型/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /当前思考强度/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /上下文用量/ })).toBeNull();
+		expect(screen.getByRole("button", { name: "语音输入" })).toBeTruthy();
+	});
+
 	it("keeps input uncontrolled and emits nothing during IME composition", async () => {
 		const onInput = vi.fn();
 		const onSync = vi.fn();
