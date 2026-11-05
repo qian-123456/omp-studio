@@ -45,6 +45,31 @@ export function thinkLabel(level: string | null | undefined): string {
 	return THINK_LABEL[l] ?? l;
 }
 
+/** Desktop-canonical English thinking level name (High, Low, Medium, X-High, Max, Auto, Off). */
+export function desktopThinkingLabel(level: string | null | undefined): string {
+	const l = (level || "").trim().toLowerCase();
+	switch (l) {
+		case "xhigh":
+			return "X-High";
+		case "max":
+			return "Max";
+		case "high":
+			return "High";
+		case "medium":
+			return "Medium";
+		case "low":
+			return "Low";
+		case "minimal":
+			return "Minimal";
+		case "auto":
+			return "Auto";
+		case "off":
+			return "Off";
+		default:
+			return level ? level.charAt(0).toUpperCase() + level.slice(1) : "Auto";
+	}
+}
+
 /**
  * Split a settings model reference (`provider/id[:level]`, e.g. `google/gemini-3-flash:high`)
  * into the catalog key and the optional thinking suffix.

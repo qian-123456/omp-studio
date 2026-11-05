@@ -1,7 +1,7 @@
 import { ArrowUp, ChevronDown, Mic, Plus, Square } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Spinner } from "../../../ui";
-import { shortModel, thinkLabel } from "../lib/models";
+import { desktopThinkingLabel, shortModel } from "../lib/models";
 import { useKeyboardOpen } from "./ComposerToolbar";
 import { ContextIndicator } from "./ContextIndicator";
 import { useVoiceInput } from "./useVoiceInput";
@@ -285,12 +285,12 @@ export function ComposerCapsule({
 					{!keyboardOpen && (onThinking || thinking != null) && (
 						<button
 							type="button"
-							aria-label={`当前思考强度：${thinkLabel(thinking)}，点击切换`}
+							aria-label={`当前思考强度：${desktopThinkingLabel(thinking)}，点击切换`}
 							onClick={onThinking ?? onModel}
 							disabled={!onThinking && !onModel}
 							className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs whitespace-nowrap text-m-text-2 hover:bg-m-surface active:bg-m-surface-2 transition-all disabled:cursor-default"
 						>
-							<span>{thinkLabel(thinking)}</span>
+							<span>{desktopThinkingLabel(thinking)}</span>
 							<ChevronDown size={13} className="shrink-0 text-m-text-3" aria-hidden />
 						</button>
 					)}

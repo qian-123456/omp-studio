@@ -7,10 +7,10 @@ export function ContextIndicator({ text, percent }: { text: string; percent?: nu
 	return (
 		<>
 			<svg width={18} height={18} viewBox="0 0 18 18" className="shrink-0 -rotate-90" aria-hidden="true">
-				<circle cx={9} cy={9} r={7} fill="none" strokeWidth={2} className="stroke-m-surface-2" />
-				<circle cx={9} cy={9} r={7} fill="none" strokeWidth={2} stroke="currentColor" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - fraction)} strokeLinecap="round" className="transition-all duration-300" />
+				<circle cx={9} cy={9} r={7} fill="none" strokeWidth={2.2} className="stroke-m-surface-2" />
+				<circle cx={9} cy={9} r={7} fill="none" strokeWidth={2.2} stroke="currentColor" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - fraction)} strokeLinecap="round" className="transition-all duration-300" />
 			</svg>
-			<span className="font-mono text-[11px]">{text === "未知" ? "—" : text}</span>
+			<span className="font-mono text-[11px] font-medium leading-none">{text === "未知" ? "—" : text}</span>
 		</>
 	);
 }
