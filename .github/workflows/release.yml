@@ -23,9 +23,9 @@ jobs:
       matrix:
         include:
           - target: 'aarch64-apple-darwin'
-            args: '--target aarch64-apple-darwin --ignore-version-mismatches'
+            args: '--target aarch64-apple-darwin'
           - target: 'x86_64-apple-darwin'
-            args: '--target x86_64-apple-darwin --ignore-version-mismatches'
+            args: '--target x86_64-apple-darwin'
 
     runs-on: macos-latest
     steps:
@@ -80,6 +80,31 @@ jobs:
             ### 运行环境 / Requirements
             - 需要本地已安装或自动安装 [`omp`](https://github.com/can1357/oh-my-pi) CLI（首次启动未检测到会自动安装）。
             - 准备至少一个模型供应商凭据（支持 API Key 或 OAuth 订阅）。
+
+            ---
+
+            ### 本次更新 / What's New
+            #### 新增功能 / Features
+            - 开发版使用独立名称、应用标识和 DEV 图标，避免与正式版混淆。
+            - 手机端优化输入框与工具栏布局，键盘展开时保持单行操作区，并统一思考等级显示。
+            - 增加会话运行状态与归属诊断。
+
+            #### 修复与优化 / Fixes
+            - 自动更新必须完成签名验证和安装后才允许重启，不再把下载完成误判为安装完成。
+            - 防止重复安装、重复重启及安装中误操作；重启失败可重试。
+            - 未分组会话优先归入已有项目，修正手机端输入区对齐与间距。
+
+            #### 重大改动 / Breaking Changes
+            - 正式版名称、应用标识、图标和用户数据保持不变。
+            - 开发版的新身份在下一次正常启动时生效，不强制重启已有开发实例。
+
+            #### 验证范围 / Verification Scope
+            - 已通过全量测试和隔离环境中的签名更新、安装、重启验证。
+            - 现有 Dock 固定入口跨升级后的图标合并仍待原生验收；本版本不重置 Dock，也不修改或重建已有固定项。
+
+            ### 问题反馈与帮助 / Support
+            - [在线用户手册](https://github.com/qian-123456/omp-studio/tree/main/docs/guide/zh)
+            - [GitHub Issues](https://github.com/qian-123456/omp-studio/issues)
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
