@@ -2117,10 +2117,10 @@ export function SessionSidebar() {
 						title={t("sidebar.updateAvailableTooltip", {
 							version: appUpdateInfo?.version ?? "",
 						})}
-						className="group/upd relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-[7px] bg-[var(--accent)] text-[var(--bg)] shadow-xs transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] hover:w-[62px] hover:bg-[var(--accent-hover)] active:scale-95 shrink-0 px-1.5"
+						className="group/upd relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] bg-[var(--accent)] text-[var(--bg)] shadow-xs transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] hover:w-[48px] hover:bg-[var(--accent-hover)] active:scale-95 shrink-0 px-1"
 					>
-						<ArrowDownToLine size={13} strokeWidth={2.2} className="shrink-0" />
-						<span className="max-w-0 overflow-hidden text-[11px] font-semibold leading-none whitespace-nowrap opacity-0 transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/upd:max-w-[34px] group-hover/upd:opacity-100 group-hover/upd:ml-1">
+						<ArrowDownToLine size={11} strokeWidth={2} className="shrink-0" />
+						<span className="max-w-0 overflow-hidden text-[10px] font-semibold leading-none whitespace-nowrap opacity-0 transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/upd:max-w-[28px] group-hover/upd:opacity-100 group-hover/upd:ml-1">
 							{t("sidebar.updateAction")}
 						</span>
 					</button>
