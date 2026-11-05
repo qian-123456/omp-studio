@@ -1180,6 +1180,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   ✅ 验收 / ✅ 验收并归档 when pending Review, 恢复 for interrupted/suspended, 接管 for external, 聊天/终端 toggle). Message stream from
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
   transcript incrementally). Virtualized.
+  The authoritative conversation leaf refreshes on connection and streaming transitions, including turn completion, not just tree navigation.
+  Offline sessions discard the cached leaf and render unfiltered history; older in-flight tree reads cannot overwrite a later refresh or transition.
   Transcript normalization preserves non-display entries with an id and parent pointer as hidden `custom` items carrying identity/link only.
   Tree ancestry must stay complete across metadata such as system-prompt digests and thinking-level changes; otherwise leaf filtering can hide
   a side chat's first prompt and every visible message. Session headers/title slots are not tree entries; opaque metadata payloads never reach clients.

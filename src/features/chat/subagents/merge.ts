@@ -362,7 +362,7 @@ export function mergeAgents(input: {
 	// start/end spans the whole batch and must not be used as a per-agent time;
 	// unknown stays unknown.
 	for (const r of rows.values()) {
-		if (isTerminalStatus(r.status) && r.startedAt && r.endedAt && (!r.durationMs || r.durationMs <= 0)) {
+		if (isTerminalStatus(r.status) && r.startedAt && r.endedAt) {
 			const ms = Date.parse(r.endedAt) - Date.parse(r.startedAt);
 			if (Number.isFinite(ms) && ms > 0) r.durationMs = ms;
 		}

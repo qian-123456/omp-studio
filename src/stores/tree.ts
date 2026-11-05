@@ -33,20 +33,29 @@ interface TreeState {
 	cancelResend(sessionId: string): void;
 }
 
+const leafRequests = new Map<string, number>();
+
 export const useTree = create<TreeState>((set, get) => ({
 	leaf: {},
 	resend: {},
 	setLeaf: (sessionId, leafId) =>
 		set((s) => ({ leaf: { ...s.leaf, [sessionId]: leafId } })),
 	refreshLeaf: async (sessionId) => {
+		// Streaming/offline transitions also invalidate an older idle read.
+		const request = (leafRequests.get(sessionId) ?? 0) + 1;
+		leafRequests.set(sessionId, request);
 		const live = useLive.getState().sessions[sessionId];
-		if (!live?.alive || live.streaming) return;
+		if (!live?.alive) {
+			get().setLeaf(sessionId, null);
+			return;
+		}
+		if (live.streaming) return;
 		try {
 			const data = await treeGet(sessionId);
+			if (leafRequests.get(sessionId) !== request) return;
 			get().setLeaf(sessionId, data.leafId ?? null);
 		} catch {
-			// Offline / refused: keep the previous leaf (or none) and the
-			// unfiltered rendering that goes with it.
+			// A refused read does not replace the last confirmed live branch.
 		}
 	},
 	startResend: (sessionId, draft) =>

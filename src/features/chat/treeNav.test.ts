@@ -86,6 +86,22 @@ describe("startTreeResend", () => {
 		expect(useComposer.getState().drafts[SID]).toBe("from item");
 	});
 
+	it("does not start a second edit while the first navigation is pending", async () => {
+		// ES2021 does not provide Promise.withResolvers.
+		let resolve!: (value: { cancelled: boolean; editorText: string }) => void;
+		const promise = new Promise<{ cancelled: boolean; editorText: string }>((done) => { resolve = done; });
+		h.treeNavigate.mockReturnValueOnce(promise).mockResolvedValue({ cancelled: true, editorText: "second" });
+		h.getTranscript.mockResolvedValue({ sessionId: SID, items: [], nextOffset: 0, tailId: null });
+		h.treeGet.mockResolvedValue({ tree: [], leafId: null });
+		const first = startTreeResend(SID, "u1", "first");
+		const second = await startTreeResend(SID, "u2", "second");
+		expect(second).toBe(false);
+		expect(h.treeNavigate).toHaveBeenCalledOnce();
+		resolve({ cancelled: true, editorText: "first" });
+		expect(await first).toBe(true);
+		expect(useComposer.getState().drafts[SID]).toBe("first");
+	});
+
 	it("refuses while streaming with a toast and changes nothing", async () => {
 		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true, streaming: true } } });
 		const ok = await startTreeResend(SID, "u1", "x");

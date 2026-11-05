@@ -49,7 +49,7 @@ import { AnswerFooter } from "./AnswerFooter";
 import { ClampedProse } from "./ClampedProse";
 import { isForkDraftId } from "../sessions/forkDraft";
 import { filterToLeafPath, versionsByItem, type TreeVersions } from "./treePath";
-import { startTreeResend } from "./treeNav";
+import { startTreeResend, useTreeEditPending } from "./treeNav";
 import { useTree } from "../../stores/tree";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
@@ -205,6 +205,7 @@ export const UserRow = React.memo(function UserRow({
 	const [editing, setEditing] = useState(() => hasEditDraft(item.id));
 	const [draft, setDraft] = useState(() => getEditDraft(item.id) ?? "");
 	const [resending, setResending] = useState(false);
+	const pendingEdit = useTreeEditPending((s) => s.entries[sessionId]);
 	const updateDraft = (v: string) => {
 		setDraft(v);
 		setEditDraft(item.id, v);
@@ -371,11 +372,13 @@ export const UserRow = React.memo(function UserRow({
 				<div
 					className={clsx(
 						"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
+						pendingEdit === item.id && "opacity-100",
 						(editing || isForkDraftId(sessionId)) && "hidden",
 					)}
 				>
 					<button
 						type="button"
+						disabled={Boolean(pendingEdit)}
 						onClick={() => {
 							// Live session: rewind past this message and hand its
 							// text to the composer — the next send creates a sibling
@@ -394,8 +397,9 @@ export const UserRow = React.memo(function UserRow({
 						title={t("chat.message.editAndResend")}
 						aria-label={t("chat.message.editAndResend")}
 					>
-						<Pencil size={12} />
+						{pendingEdit === item.id ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}
 					</button>
+					{pendingEdit === item.id && <span role="status" className="whitespace-nowrap text-xs text-[var(--text-60)]">{t("common.loading")}</span>}
 					<button
 						type="button"
 						onClick={async () => {

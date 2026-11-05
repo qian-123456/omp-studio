@@ -58,6 +58,23 @@ describe("mergeAgents per-dispatch rows", () => {
 		expect(r.rows).toHaveLength(1);
 		expect(r.rows[0]?.filePath).toBe("/tmp/1-Beta.jsonl");
 	});
+
+	it("uses the recorded start and end for completed duration despite stale live progress", () => {
+		const { rows } = mergeAgents({
+			args: { tasks: [{ id: "Alpha", task: "do alpha" }] },
+			details: null,
+			fileList: [{
+				...summary("Alpha", "do alpha"),
+				startedAt: "2026-11-05T21:21:03Z",
+				endedAt: "2026-11-05T21:25:42Z",
+			}],
+			liveSubagents: {
+				Alpha: { status: "completed", label: "Alpha", parentToolCallId: "c", progress: { id: "Alpha", durationMs: 2000 } as never },
+			},
+			toolCallId: "c",
+		});
+		expect(rows[0].durationMs).toBe(279_000);
+	});
 });
 
 describe("mergeAgents attempt isolation", () => {

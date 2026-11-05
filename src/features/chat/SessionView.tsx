@@ -185,11 +185,16 @@ export function SessionView({
 		};
 	}, [sessionId, setItems, setPendingUi]);
 
+	// Appending a turn advances the upstream leaf without a navigation event.
+	// Re-read it after streaming ends and when a cold session reconnects.
+	useEffect(() => {
+		void useTree.getState().refreshLeaf(sessionId);
+	}, [sessionId, alive, streaming]);
+
 	// Leaf pointer + cross-window tree navigation sync. A navigation from this
 	// window already refetched; the other windows land here.
 	useEffect(() => {
 		let cancelled = false;
-		void useTree.getState().refreshLeaf(sessionId);
 		const off = onTreeNavigated((p) => {
 			if (cancelled || p.sessionId !== sessionId) return;
 			void useTree.getState().refreshLeaf(sessionId);

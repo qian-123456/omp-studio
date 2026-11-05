@@ -4,6 +4,7 @@
  * root→leaf path. Busy sessions are refused up front with a friendly toast
  * and never change state. */
 
+import { create } from "zustand";
 import { getTranscript, treeNavigate } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
@@ -13,6 +14,8 @@ import { useTree } from "../../stores/tree";
 import { tNow } from "../../stores/language";
 import { errMsg } from "../../lib/dialogs";
 import { isForkDraftId } from "../sessions/forkDraft";
+
+export const useTreeEditPending = create<{ entries: Record<string, string | undefined> }>(() => ({ entries: {} }));
 
 /** True when a navigate/switch would be refused: mid-answer, waiting on a
  * dialog, or not backed by a live process (fork drafts, offline sessions). */
@@ -73,18 +76,29 @@ export async function startTreeResend(
 	entryId: string,
 	fallbackText: string,
 ): Promise<boolean> {
+	if (useTreeEditPending.getState().entries[sessionId]) return false;
 	if (treeUnavailable(sessionId)) {
 		busyToast();
 		return false;
 	}
-	const prevLeafId = currentLeafId(sessionId);
-	const data = await navigateTree(sessionId, entryId);
-	if (!data) return false;
-	const text = data.editorText?.trim() ? data.editorText : fallbackText;
-	useTree.getState().startResend(sessionId, { entryId, prevLeafId });
-	useComposer.getState().setDraft(sessionId, text);
-	useComposer.getState().focusComposer(sessionId);
-	return true;
+	useTreeEditPending.setState((s) => ({ entries: { ...s.entries, [sessionId]: entryId } }));
+	let ready = false;
+	try {
+		const prevLeafId = currentLeafId(sessionId);
+		const data = await navigateTree(sessionId, entryId);
+		if (!data) return false;
+		const text = data.editorText?.trim() ? data.editorText : fallbackText;
+		useTree.getState().startResend(sessionId, { entryId, prevLeafId });
+		useComposer.getState().setDraft(sessionId, text);
+		ready = true;
+	} finally {
+		useTreeEditPending.setState((s) => {
+			const { [sessionId]: _entry, ...entries } = s.entries;
+			return { entries };
+		});
+	}
+	if (ready) useComposer.getState().focusComposer(sessionId);
+	return ready;
 }
 
 /** Current leaf id: the cached get_tree value, falling back to the transcript

@@ -16,6 +16,7 @@ import { useUi } from "../../stores/ui";
 import { usePendingSession } from "../sessions/pendingSession";
 import { loadChip, saveChip } from "./slash/chip";
 import { Composer } from "./Composer";
+import { useTreeEditPending } from "./treeNav";
 
 const DRAFT = "local-draft:plan-1";
 const REAL = "real-1";
@@ -105,6 +106,7 @@ beforeEach(async () => {
 
 afterEach(() => {
 	cleanup();
+	useTreeEditPending.setState({ entries: {} });
 	document.body.innerHTML = "";
 });
 
@@ -113,6 +115,20 @@ const ta = (id: string): HTMLTextAreaElement => {
 	if (!el) throw new Error("composer textarea not rendered");
 	return el;
 };
+
+describe("Composer while a message edit is being prepared", () => {
+	it("prevents input and sending until navigation completes without losing the draft", () => {
+		useComposer.getState().setDraft(REAL, "unsent text");
+		useTreeEditPending.setState({ entries: { [REAL]: "message-1" } });
+		const view = render(<Composer sessionId={REAL} />);
+		expect(ta(REAL).disabled).toBe(true);
+		expect((view.getByRole("button", { name: "发送消息" }) as HTMLButtonElement).disabled).toBe(true);
+		expect(ta(REAL).value).toBe("unsent text");
+		act(() => useTreeEditPending.setState({ entries: {} }));
+		expect(ta(REAL).disabled).toBe(false);
+		expect(ta(REAL).value).toBe("unsent text");
+	});
+});
 
 describe("Composer plan chip on a new-chat draft", () => {
 	it("does not carry the chip to the materialized session", async () => {

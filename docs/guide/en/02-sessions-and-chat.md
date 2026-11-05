@@ -59,6 +59,10 @@ Each space keeps completely isolated projects and sessions. An active indicator 
 Start typing anywhere on your keyboard, and keystrokes automatically route directly to the composer without requiring a mouse click, provided no dialog or editor has focus. IME composition is strictly respected.
 With the default Enter-to-send setting, Enter used to confirm an IME candidate does not send the message. Press Enter again after confirmation to send.
 
+### Editing a sent message
+
+Click edit below the message and wait while the conversation returns to that point. A loading indicator appears and input and sending are temporarily disabled. Once ready, edit and send from the composer; the previous answer remains available as another version.
+
 ### Concurrency and Dispatch Strategies
 When the agent is already running a turn, you can configure how new messages are dispatched (configured in **Settings ▸ Sessions ▸ Sending method**):
 

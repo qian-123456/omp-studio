@@ -4,6 +4,7 @@
 import clsx from "clsx";
 import { caretVisualLines } from "./caretLine";
 import { getImageTokenPalette } from "./imageTokens";
+import { useTreeEditPending } from "./treeNav";
 import {
 	ArrowUp,
 	ChevronDown,
@@ -334,6 +335,7 @@ export function Composer({
 	const isLocalDraft = isLocalDraftId(sessionId);
 	const localDraft = usePendingSession((s) => isLocalDraft ? s.drafts[sessionId] : undefined);
 	const [busy, setBusy] = useState(false);
+	const pendingTreeEdit = useTreeEditPending((s) => Boolean(s.entries[sessionId]));
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [menuDismissed, setMenuDismissed] = useState(false);
 	const [cursorPos, setCursorPos] = useState(0);
@@ -1512,6 +1514,7 @@ export function Composer({
 	};
 	/** ▶ resume: guarded by `busy` so a double click cannot send two Continues. */
 	const resumeTurn = async () => {
+		if (useTreeEditPending.getState().entries[sessionId]) return;
 		if (busy) return;
 		setBusy(true);
 		try {
@@ -1526,7 +1529,7 @@ export function Composer({
 		const raw = text;
 		// A local draft hands its composer state to the real session before the echo.
 		let inputOwner = sessionId;
-		if (!hasPayload || busy) return;
+		if (!hasPayload || busy || useTreeEditPending.getState().entries[sessionId]) return;
 		if (isOverflow) {
 			toast.error(t("chat.overflow.blockedSendNotice"));
 			setOverflowHighlighted(true);
@@ -2732,7 +2735,7 @@ export function Composer({
 						</div>
 					)}
 					<textarea
-						disabled={readonly}
+						disabled={readonly || pendingTreeEdit}
 						ref={taRef}
 						data-composer={sessionId}
 						value={text}
@@ -3165,7 +3168,7 @@ export function Composer({
 											void submit("send");
 										}
 									}}
-									disabled={busy || (!hasPayload && !canResume)}
+									disabled={busy || pendingTreeEdit || (!hasPayload && !canResume)}
 									aria-label={resumeMode ? t("composer.resume") : t("composer.send")}
 									title={
 										resumeMode
@@ -3176,7 +3179,7 @@ export function Composer({
 									}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
-										(hasPayload || canResume) && !busy
+										(hasPayload || canResume) && !busy && !pendingTreeEdit
 											? "bg-[var(--text)] text-[var(--bg)] hover:opacity-85 active:scale-95"
 											: "bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}
