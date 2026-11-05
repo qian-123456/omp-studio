@@ -481,6 +481,36 @@ fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
             .collect();
         refresh_git(cwds, false);
     }
+    // Persist a unique cross-space project owner before publishing session
+    // metadata. Never overwrite a concurrent change to the stored assignment.
+    let global_dir = paths::global_dir().to_string_lossy().into_owned();
+    let moves: Vec<_> = {
+        let c = cat().lock();
+        targets
+            .iter()
+            .filter_map(|s| {
+                let row = rows.get(&s.head.id)?;
+                let cwd = scan::effective_cwd(&s.head, row);
+                let repo_root = c.git.get(cwd).and_then(|g| g.1.repo_root.as_deref());
+                let mode =
+                    scan::unassigned_code_owner(row, &workspaces, repo_root, cwd, &global_dir)?;
+                Some((s.head.id.clone(), mode))
+            })
+            .collect()
+    };
+    if !moves.is_empty() {
+        let db = state.db.lock();
+        for (id, mode) in moves {
+            let Some(row) = rows.get_mut(&id) else {
+                continue;
+            };
+            match scan::persist_code_owner(&db, &id, row, mode) {
+                Ok(true) => {}
+                Ok(false) => *row = store::load_meta_row(&db, &id),
+                Err(e) => tracing::warn!("migrate session workspace {id}: {e}"),
+            }
+        }
+    }
     // Compute phase (global dirs are derived per-mode inside build_meta).
     let mut pending_writes = Vec::new();
     let mut changed = Vec::new();

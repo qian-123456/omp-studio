@@ -277,6 +277,57 @@ pub fn resolve_workspace(
     None
 }
 
+/// Find an unambiguous project owner for a Code session that has no Code
+/// workspace. Existing assignments and global conversations stay untouched.
+pub(super) fn unassigned_code_owner(
+    row: &MetaRow,
+    workspaces: &[Workspace],
+    repo_root: Option<&str>,
+    cwd: &str,
+    global_dir: &str,
+) -> Option<SpaceMode> {
+    if row.mode != SpaceMode::Code
+        || path_within(cwd, global_dir)
+        || resolve_workspace(
+            row.workspace_id.as_deref(),
+            SpaceMode::Code,
+            workspaces,
+            repo_root,
+            cwd,
+            global_dir,
+        )
+        .is_some()
+    {
+        return None;
+    }
+    let mut owners = [SpaceMode::Work, SpaceMode::Study, SpaceMode::Research]
+        .into_iter()
+        .filter(|mode| {
+            resolve_workspace(None, *mode, workspaces, repo_root, cwd, global_dir).is_some()
+        });
+    let owner = owners.next()?;
+    owners.next().is_none().then_some(owner)
+}
+
+/// Apply the move only while the persisted assignment still matches the scan.
+pub(super) fn persist_code_owner(
+    db: &rusqlite::Connection,
+    id: &str,
+    row: &mut MetaRow,
+    mode: SpaceMode,
+) -> rusqlite::Result<bool> {
+    let changed = db.execute(
+        "UPDATE session_meta SET mode = ?2, workspace_id = NULL
+         WHERE session_id = ?1 AND mode = 'code' AND workspace_id IS ?3",
+        rusqlite::params![id, mode.as_str(), row.workspace_id],
+    )?;
+    if changed == 1 {
+        row.mode = mode;
+        row.workspace_id = None;
+    }
+    Ok(changed == 1)
+}
+
 /// Build the static part of a SessionMeta (status fields are filled by the caller).
 /// The session's space is derived: a cwd under the global dir is always
 /// `chat` (covers legacy rows and sessions without a row); otherwise the
@@ -503,6 +554,96 @@ mod tests {
             resolve_workspace(None, SpaceMode::Chat, &list, None, "/repo/x", g),
             None
         );
+    }
+
+    #[test]
+    fn unassigned_code_session_moves_only_to_unique_project_owner() {
+        let ws = |id: &str, path: &str, mode| Workspace {
+            id: id.into(),
+            path: path.into(),
+            name: id.into(),
+            kind: WorkspaceKind::Project,
+            sort: 0,
+            mode,
+        };
+        let row = MetaRow::default();
+        let g = "/home/.omp-workspace/global";
+        let mut list = vec![ws("work", "/repo", SpaceMode::Work)];
+        let owner = |row: &MetaRow, list: &[Workspace], root, cwd| {
+            unassigned_code_owner(row, list, root, cwd, g)
+        };
+        assert_eq!(owner(&row, &list, None, "/repo/app"), Some(SpaceMode::Work));
+        assert_eq!(
+            owner(&row, &list, Some("/repo"), "/other/tree"),
+            Some(SpaceMode::Work)
+        );
+        assert_eq!(owner(&row, &list, None, "/repository"), None);
+        assert_eq!(owner(&row, &list, None, g), None);
+        let work_row = MetaRow {
+            mode: SpaceMode::Work,
+            ..Default::default()
+        };
+        assert_eq!(owner(&work_row, &list, None, "/repo"), None);
+        list.push(ws("code", "/repo", SpaceMode::Code));
+        assert_eq!(owner(&row, &list, None, "/repo"), None);
+        list.pop();
+        list.push(ws("study", "/repo", SpaceMode::Study));
+        assert_eq!(owner(&row, &list, None, "/repo"), None);
+    }
+
+    #[test]
+    fn code_owner_migration_persists_without_overwriting_concurrent_changes() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE session_meta (session_id TEXT PRIMARY KEY, mode TEXT, workspace_id TEXT);
+             INSERT INTO session_meta VALUES ('s', 'code', NULL);",
+        )
+        .unwrap();
+        let s = scanned(None, None, None, None);
+        let workspaces = vec![Workspace {
+            id: "study-repo".into(),
+            path: "/repo".into(),
+            name: "repo".into(),
+            kind: WorkspaceKind::Project,
+            sort: 0,
+            mode: SpaceMode::Study,
+        }];
+        let mut row = MetaRow::default();
+        let before = build_meta(&s, &row, &GitInfo::default(), &workspaces, None);
+        assert_eq!(before.mode, SpaceMode::Code);
+        assert_eq!(before.workspace_id, None);
+        let owner = unassigned_code_owner(
+            &row,
+            &workspaces,
+            None,
+            &s.head.cwd,
+            "/home/.omp-workspace/global",
+        )
+        .unwrap();
+        assert!(persist_code_owner(&db, "s", &mut row, owner).unwrap());
+        let after = build_meta(&s, &row, &GitInfo::default(), &workspaces, None);
+        assert_eq!(after.mode, SpaceMode::Study);
+        assert_eq!(after.workspace_id.as_deref(), Some("study-repo"));
+        let stored: String = db
+            .query_row(
+                "SELECT mode FROM session_meta WHERE session_id = 's'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, "study");
+        assert_eq!(row.mode, SpaceMode::Study);
+
+        let mut stale = MetaRow::default();
+        assert!(!persist_code_owner(&db, "s", &mut stale, SpaceMode::Work).unwrap());
+        let stored: String = db
+            .query_row(
+                "SELECT mode FROM session_meta WHERE session_id = 's'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, "study");
     }
 
     /// Sessions whose session_meta row has mode='work' resolve inside the

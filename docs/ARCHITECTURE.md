@@ -952,6 +952,11 @@ Spaces (modes) notes (§3, §4, §6 v10/v11):
 - `SpaceMode` is only a discriminator on existing tables/code paths: `workspaces.mode`, `session_meta.mode`,
   `session_groups.mode`. Nothing else is shared across modes — a session's workspace resolution only considers
   workspaces of its own mode (`scan::resolve_workspace` takes the mode + `paths::global_dir()`).
+- During catalog recomputation, an unassigned Code session is moved persistently
+  to the matching Work, Study, or Research project when exactly one of those
+  spaces owns its repository root or working directory. Existing Code project
+  assignments, global conversations, and ambiguous matches are left unchanged;
+  session files and content are not modified.
 - `chat` (通用对话) is a standalone space: it owns the single global workspace (`global`, `~/.omp-workspace/global`,
   created by `db::ensure_global_workspace(conn)` at startup/rebuild/`rpc::start`) and all session groups. Code/Work/
   Study/Research hold only project workspaces; `add_workspace(mode=chat)` is rejected.
