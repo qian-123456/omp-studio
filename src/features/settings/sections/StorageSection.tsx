@@ -22,7 +22,7 @@ import { useComposer } from "../../../stores/composer";
 import { useSessions } from "../../../stores/sessions";
 import { useHomeDir } from "../../../lib/hooks";
 import { shortPath } from "../../../lib/paths";
-import { getWorkspacePalette } from "../../sessions/SessionSidebar";
+import { getWorkspacePalette } from "../../sessions/sidebarPalette";
 import {
 	calculateStorageBreakdown,
 	collectDraftTexts,

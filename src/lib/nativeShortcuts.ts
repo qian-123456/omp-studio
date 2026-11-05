@@ -90,11 +90,21 @@ function closeActive(): void {
 }
 
 /** Mount once: Esc guard + Cmd+W (native menu event). Returns a cleanup. */
+function onHardReloadKeydown(e: KeyboardEvent): void {
+	if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "r" || e.key === "R")) {
+		e.preventDefault();
+		window.location.reload();
+	}
+}
+
+/** Mount once: Esc guard + Cmd+W (native menu event) + Cmd+Shift+R reload. Returns a cleanup. */
 export function installNativeShortcuts(): () => void {
 	const uninstallEsc = installEscapeGuard();
 	const unlisten = listen("native:close-tab", closeActive);
+	window.addEventListener("keydown", onHardReloadKeydown, true);
 	return () => {
 		uninstallEsc();
+		window.removeEventListener("keydown", onHardReloadKeydown, true);
 		void unlisten.then((f) => f());
 	};
 }

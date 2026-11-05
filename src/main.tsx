@@ -10,17 +10,33 @@ import { startSessionEvents, useSessions } from "./stores/sessions";
 import { suppressWebViewContextMenu } from "./lib/webviewContextMenu";
 
 // Apply the persisted theme before first paint so there is no palette flash.
-initTheme();
+try {
+	initTheme();
+} catch (err) {
+	console.error("initTheme failed", err);
+}
 
 // Load the session index once and subscribe to catalog events at app start.
-startSessionEvents()
-	.then(() => useSessions.getState().load())
-	.catch((err) => console.error("initial session load failed", err));
+try {
+	startSessionEvents()
+		.then(() => useSessions.getState().load())
+		.catch((err) => console.error("initial session load failed", err));
+} catch (err) {
+	console.error("startSessionEvents failed", err);
+}
 // Prune completely empty drafts when selection moves away from them.
-installDraftAutoCleanup();
+try {
+	installDraftAutoCleanup();
+} catch (err) {
+	console.error("installDraftAutoCleanup failed", err);
+}
 // Native scrollbars are hidden in CSS (classic always-on lane is ugly);
 // these JS-drawn overlay pills replace them.
-startScrollPills();
+try {
+	startScrollPills();
+} catch (err) {
+	console.error("startScrollPills failed", err);
+}
 // Suppress the native WebView menu ("Reload" / "Inspect Element") except for
 // links, images, and editable fields. Custom menus call preventDefault themselves.
 document.addEventListener("contextmenu", suppressWebViewContextMenu);

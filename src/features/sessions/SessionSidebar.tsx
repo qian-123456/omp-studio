@@ -102,7 +102,6 @@ import { visibleCut } from "./paging";
 import {
 	SPACE_MODE_META,
 	SPACE_MODES,
-	isGlobalWorkspaceId,
 	modeGlobalWorkspace,
 	modeHasProjects,
 } from "./modes";
@@ -125,37 +124,13 @@ import { SIDEBAR_LIST_ATTR, getVisibleSessionIds } from "./visibleRows";
 import { groupsForMode, splitSessionsByGroup, useSessionGroups } from "./sessionGroups";
 import { claimEscape } from "../../lib/escapeClaim";
 import { useTrafficLightsVisible } from "../../lib/trafficLights";
+import { getWorkspacePalette } from "./sidebarPalette";
 
 const RECENT_LIMIT = 3;
 const RECENT_STEP = 5;
 /** Projects without worktrees show more sessions up front. */
 const NO_WORKTREE_RECENT_LIMIT = 5;
 
-export interface WorkspacePalette {
-	folderColor: string;
-}
-
-export const WORKSPACE_PALETTES: WorkspacePalette[] = [
-	{ folderColor: "text-sky-600 dark:text-sky-400" },
-	{ folderColor: "text-emerald-600 dark:text-emerald-400" },
-	{ folderColor: "text-amber-600 dark:text-amber-400" },
-	{ folderColor: "text-purple-600 dark:text-purple-400" },
-	{ folderColor: "text-rose-600 dark:text-rose-400" },
-	{ folderColor: "text-teal-600 dark:text-teal-400" },
-];
-
-export function getWorkspacePalette(idOrName: string): WorkspacePalette {
-	if (isGlobalWorkspaceId(idOrName)) {
-		return { folderColor: "text-indigo-600 dark:text-indigo-400" };
-	}
-	let hash = 0;
-	for (let i = 0; i < idOrName.length; i++) {
-		hash = (hash << 5) - hash + idOrName.charCodeAt(i);
-		hash |= 0;
-	}
-	const idx = Math.abs(hash) % WORKSPACE_PALETTES.length;
-	return WORKSPACE_PALETTES[idx];
-}
 
 interface PlusMenuState {
 	ws: Workspace;

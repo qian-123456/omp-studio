@@ -15,10 +15,16 @@ export default defineConfig({
 		port: process.env.VITE_PORT ? parseInt(process.env.VITE_PORT, 10) : 1421,
 		strictPort: true,
 		watch: {
-			// NOTE: do not ignore "**/.worktrees/**" here — when the dev server runs
-			// from a worktree under the main repo's .worktrees/, that pattern would
-			// exclude this whole project and silently disable HMR.
-			ignored: ["**/src-tauri/**"],
+			// Ignore backend, cache, docs, test files, and other worktree build outputs from triggering dev reload.
+			ignored: [
+				"**/src-tauri/**",
+				"**/.cache/**",
+				"**/docs/**",
+				"**/*.test.{ts,tsx,js,jsx}",
+				"**/.worktrees/*/dist/**",
+				"**/.worktrees/*/mobile-dist/**",
+				"**/.worktrees/*/target/**",
+			],
 		},
 	},
 	build: {

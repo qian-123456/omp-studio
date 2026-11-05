@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getWorkspacePalette, WORKSPACE_PALETTES } from "./SessionSidebar";
+import { getWorkspacePalette, WORKSPACE_PALETTES } from "./sidebarPalette";
 
 describe("getWorkspacePalette", () => {
 	it("returns dedicated indigo palette for the global workspace", () => {
