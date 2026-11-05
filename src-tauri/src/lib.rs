@@ -437,6 +437,10 @@ pub fn run() {
             providers::commands::oauth_logout,
             providers::commands::omp_usage_report,
             // E — mobile + tunnel
+            mobile::commands::mobile_camera_start,
+            mobile::commands::mobile_camera_poll,
+            mobile::commands::mobile_camera_ack,
+            mobile::commands::mobile_camera_stop,
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,
             mobile::commands::mobile_status,

@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type * as Ipc from "../../lib/ipc";
 import type * as Events from "../../lib/events";
 import type { SessionMeta } from "../../lib/contracts";
+import type { CameraPhoto } from "../../lib/mobileCameraTypes";
 import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
@@ -16,6 +17,7 @@ const h = vi.hoisted(() => ({
 	createSideChat: vi.fn(),
 	sideChatAsk: vi.fn(),
 	addUserEcho: vi.fn(),
+	cameraPhoto: null as null | ((photo: CameraPhoto, isCurrent: () => boolean) => Promise<boolean>),
 }));
 vi.mock("../../lib/ipc", async (importOriginal) => ({
 	...(await importOriginal<typeof Ipc>()),
@@ -62,6 +64,12 @@ vi.mock("../chat/SessionView", () => ({
 }));
 vi.mock("../../components/ModelSelect", () => ({
 	ModelMenuContent: () => <div data-testid="model-menu" />,
+}));
+vi.mock("../../components/PhoneCameraDialog", () => ({
+	PhoneCameraDialog: ({ onPhoto }: { onPhoto: typeof h.cameraPhoto }) => {
+		h.cameraPhoto = onPhoto;
+		return <div data-testid="phone-camera" />;
+	},
 }));
 vi.mock("../../lib/dialogs", () => ({
 	confirmDialog: vi.fn(async () => true),
@@ -156,9 +164,25 @@ describe("SideChatPanel blank new chat", () => {
 		fireEvent.click(screen.getByRole("button", { name: "添加" }));
 		expect(screen.getByText("图片")).toBeTruthy();
 		expect(screen.getByText("草图")).toBeTruthy();
+		expect(screen.getByText("手机拍照")).toBeTruthy();
 		for (const unsupported of ["文件", "Finder 选中项", "在项目中工作", "目标", "规划模式"]) {
 			expect(screen.queryByText(unsupported)).toBeNull();
 		}
+	});
+
+	it("inserts phone photos only into the originating blank tab without sending", async () => {
+		render(<SideChatPanel />);
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
+		fireEvent.click(screen.getByText("手机拍照"));
+		const photo: CameraPhoto = { id: "photo", path: "/images/photo.jpg", name: "photo.jpg", width: 20, height: 20, state: "received" };
+		await act(async () => { expect(await h.cameraPhoto!(photo, () => true)).toBe(true); });
+		expect(useComposer.getState().images[blankId]?.map((image) => image.path)).toEqual([photo.path]);
+		expect(useComposer.getState().images.p1 ?? []).toHaveLength(0);
+		expect(useComposer.getState().sideChatDrafts[blankId]).toContain("🖼️#1");
+		expect(h.createSideChat).not.toHaveBeenCalled();
+		expect(h.sideChatAsk).not.toHaveBeenCalled();
+		await act(async () => { expect(await h.cameraPhoto!(photo, () => false)).toBe(false); });
+		expect(useComposer.getState().images[blankId]).toHaveLength(1);
 	});
 
 	it("shows a pending bubble, then asks before committing the echo and bound tab", async () => {

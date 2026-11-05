@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>手机拍照</title>
+  <link rel="stylesheet" href="/camera.css">
+  <script src="/camera-qr.js" defer></script>
+  <script src="/camera.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1 data-text="title"></h1>
+    </header>
+    <div class="connection-row">
+      <div id="connection" class="connection" role="status" aria-live="polite"></div>
+      <button id="reconnect" class="button secondary" type="button" data-text="reconnect"></button>
+    </div>
+    <details id="recovery" class="help">
+      <summary data-text="recoveryTitle"></summary>
+      <p data-text="recoveryHelp"></p>
+      <div class="recovery-actions">
+        <button id="photograph-qr" class="button secondary" type="button" data-text="photographQr"></button>
+        <input id="qr-input" type="file" accept="image/*" capture="environment">
+        <button id="retry-connection" class="button secondary" type="button" data-text="retryConnection"></button>
+      </div>
+      <p id="qr-status" role="status" aria-live="polite" hidden></p>
+      <details class="paste-help">
+        <summary data-text="pasteTitle"></summary>
+        <form id="recovery-form">
+          <label for="recovery-url" data-text="recoveryLabel"></label>
+          <input id="recovery-url" type="url" autocomplete="off" required>
+          <button id="recovery-submit" class="button secondary" type="submit" data-text="recoverySubmit"></button>
+        </form>
+      </details>
+    </details>
+    <p class="notice" data-text="networkNotice"></p>
+    <p id="storage-status" class="storage-notice" role="status" hidden></p>
+    <section class="panel" aria-labelledby="picker-title">
+      <h2 id="picker-title" data-text="chooseTitle"></h2>
+      <div class="actions">
+        <label class="button primary" for="camera-input" data-text="takePhoto"></label>
+        <input id="camera-input" type="file" accept="image/*" capture="environment">
+        <label class="button secondary" for="library-input" data-text="choosePhoto"></label>
+        <input id="library-input" type="file" accept="image/*" multiple>
+      </div>
+    </section>
+    <section class="panel" aria-labelledby="batch-title">
+      <h2 id="batch-title" data-text="batchTitle"></h2>
+      <p id="summary" role="status" aria-live="polite"></p>
+      <p id="progress" role="status" aria-live="polite"></p>
+      <div id="photos" class="photos"></div>
+      <div class="actions"><button id="upload" class="button primary" type="button" data-text="upload"></button></div>
+    </section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <details class="help">
+      <summary data-text="helpTitle"></summary>
+      <p data-text="chooseDescription"></p>
+      <p data-text="limits"></p>
+      <p data-text="storageOK"></p>
+      <p data-text="browserNotice"></p>
+    </details>
+  </main>
+</body>
+</html>

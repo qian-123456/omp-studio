@@ -1,5 +1,5 @@
 /** Codex-style "+" Add menu in the Composer bottom toolbar. */
-import { Check, FolderOpen, ImagePlus, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
+import { Camera, Check, FolderOpen, ImagePlus, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { useT } from "../../stores/language";
@@ -66,6 +66,7 @@ export function AddMenuPopover({
 	onAddFiles,
 	onAttachFinder,
 	onAddImages,
+	onPhoneCamera,
 	onPickProject,
 	onGoal,
 	onTogglePlan,
@@ -78,6 +79,7 @@ export function AddMenuPopover({
 	onAddFiles?: () => void;
 	onAttachFinder?: () => void;
 	onAddImages?: () => void;
+	onPhoneCamera?: () => void;
 	onPickProject?: () => void;
 	onGoal?: () => void;
 	onTogglePlan?: () => void;
@@ -104,6 +106,7 @@ export function AddMenuPopover({
 			{onAddFiles && <Item icon={<Paperclip size={14} />} color={TONE.files} title={t("chat.addMenu.files")} desc={t("chat.addMenu.filesDesc")} onClick={run(onAddFiles)} />}
 			{onAttachFinder && <Item icon={<Monitor size={14} />} color={TONE.finder} title={t("chat.addMenu.finder")} desc={t("chat.addMenu.finderDesc")} onClick={run(onAttachFinder)} />}
 			{onAddImages && <Item icon={<ImagePlus size={14} />} color={TONE.images} title={t("chat.addMenu.images")} desc={t("chat.addMenu.imagesDesc")} onClick={run(onAddImages)} />}
+			{onPhoneCamera && <Item icon={<Camera size={14} />} color={TONE.images} title={t("chat.phoneCamera.menu")} desc={t("chat.phoneCamera.menuDesc")} onClick={run(onPhoneCamera)} />}
 			{hasAttachGroup && hasModeGroup && <div className="my-1 border-t border-[var(--line,var(--border-divider))]" />}
 			{onPickProject && <Item icon={<FolderOpen size={14} />} color={TONE.project} title={t("chat.addMenu.workInProject")} desc={t("chat.addMenu.workInProjectDesc")} onClick={run(onPickProject)} />}
 			{onGoal && <Item icon={<Target size={14} />} color={TONE.goal} title={t("chat.addMenu.goal")} desc={t("chat.addMenu.goalDesc")} onClick={run(onGoal)} />}

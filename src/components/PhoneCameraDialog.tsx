@@ -35,14 +35,17 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 	const retryRef = useRef<((photoId?: string) => void) | null>(null);
 	const activeRef = useRef(false);
 	const contentRef = useRef<HTMLDivElement>(null);
+	const captureRef = useRef<string | undefined>(undefined);
+	const attachedRef = useRef(new Set<string>());
+	const confirmedRef = useRef(new Set<string>());
 
 	useEffect(() => {
 		let active = true;
 		let captureId: string | undefined;
 		activeRef.current = true;
 		let timer: number | undefined;
-		const attached = new Set<string>();
-		const confirmed = new Set<string>();
+		const attached = attachedRef.current;
+		const confirmed = confirmedRef.current;
 		const failed = new Set<string>();
 		let locked = false;
 		const current = () => active && activeRef.current;
@@ -144,16 +147,17 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 		};
 		collapsedOnce.current = false;
 		setShowQr(true);
-		setLink(null); setSnapshot(null); setIssue(null); setPhotoIssues({}); setCount(0);
+		setLink(null); setSnapshot(null); setIssue(null); setCount(confirmed.size); setBusy(false); setCopied(false);
 		serializeLifecycle(async () => {
 			if (!current()) return;
 			try {
-				const started = await mobileCameraStart(locale);
+				const started = await mobileCameraStart(locale, captureRef.current);
 				if (!current()) {
 					await mobileCameraStop(started.captureId);
 					return;
 				}
 				captureId = started.captureId;
+				captureRef.current = started.captureId;
 				setLink(started);
 				void poll();
 			} catch (error) {
@@ -206,6 +210,14 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 		catch (error) { setIssue({ kind: "copy", error: message(error) }); }
 	};
 	const close = () => { activeRef.current = false; onClose(); };
+	const reconnect = () => {
+		if (busy || !link) return;
+		activeRef.current = false;
+		setShowQr(true);
+		setLink(null);
+		setSnapshot(null);
+		setAttempt((n) => n + 1);
+	};
 	const errors = <>
 		{issue && <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-[color-mix(in_srgb,var(--status-error)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-error)_9%,transparent)] p-3 text-xs text-[var(--status-error)]">
 			<div className="flex min-w-0 flex-1 items-start gap-2">
@@ -250,6 +262,9 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 				</span>}
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
+				{link && <button type="button" disabled={busy} onClick={reconnect} className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[var(--border-divider)] bg-[var(--bg-hover)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition-all hover:bg-[var(--bg-active-fill)] active:scale-95 disabled:opacity-50">
+					{t("chat.phoneCamera.reconnect")}
+				</button>}
 				{!ended && <button type="button" onClick={() => setShowQr(true)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[var(--border-divider)] bg-[var(--bg-hover)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition-all hover:bg-[var(--bg-active-fill)] active:scale-95">
 					<QrCode size={12} />
 					{t("chat.phoneCamera.showQr")}
@@ -300,7 +315,7 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 			{link && !ended && <>
 				<div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-well,rgba(0,0,0,0.1))] px-4 py-5">
 					<div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 [&_svg]:block [&_svg]:h-48 [&_svg]:w-48" aria-label={t("chat.phoneCamera.link")} dangerouslySetInnerHTML={{ __html: link.qrSvg }} />
-					<p className="mt-3 select-none text-xs text-[var(--text-muted)]">{t("chat.phoneCamera.menuDesc")}</p>
+					<p className="mt-3 select-none text-center text-xs text-[var(--text-muted)]">{t("chat.phoneCamera.reconnectInstruction")}</p>
 				</div>
 				<div className="space-y-1.5">
 					<label className="block text-xs font-medium text-[var(--text-muted)]">{t("chat.phoneCamera.link")}</label>
@@ -315,6 +330,9 @@ export function PhoneCameraDialog({ onPhoto, onClose }: {
 			</>}
 			{errors}
 			<div className="mt-2 flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3">
+				{link && <button type="button" disabled={busy} onClick={reconnect} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50">
+					{t("chat.phoneCamera.reconnect")}
+				</button>}
 				{collapsedOnce.current && !ended && <button type="button" onClick={() => setShowQr(false)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition-all hover:bg-[var(--bg-hover)] active:scale-95">
 					<EyeOff size={13} />
 					{t("chat.phoneCamera.hideQr")}

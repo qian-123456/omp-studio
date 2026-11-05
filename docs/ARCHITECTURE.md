@@ -45,6 +45,8 @@ src-tauri/src/
   backlog/          backlog store + prompt assembly                                    [D]
   notify/           native notifications, dock badge, sound                            [D]
   mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel, IPv6 HTTPS + DDNS [E]
+    camera.rs       temporary upload-only camera listener and lifecycle                [E]
+    camera-web/     embedded phone capture page, script and styles                     [E]
   terminal/         PTY sessions                                                       [E]
   schedules/        scheduled tasks, cadence, runner, background scheduler (§11 F)     [E]
   skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
@@ -701,6 +703,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **E — mobile / terminal:**
 - `mobile_start() -> MobileStatus`, `mobile_stop()` (also stops the IPv6 listener and persists `mobile_ipv6_enabled=false`), `mobile_status() -> MobileStatus`,
   `mobile_create_pairing(target: Option<PairingTarget>) -> PairingInfo` (default `lan`), `mobile_revoke_all()`
+- `mobile_camera_start(language: Option<String>, resume_capture_id: Option<String>) -> CameraLink`, `mobile_camera_poll(capture_id: String) -> CameraSnapshot`, `mobile_camera_ack(capture_id: String, photo_id: String, error: Option<String>)`, `mobile_camera_stop(capture_id: String)`. Camera links contain a capture ID, URL, QR SVG and UTC expiry; snapshots contain the capture state and received photos. Acknowledgement distinguishes an attached photo from an attachment failure. Renewal accepts only the latest inactive in-memory capture, retains its receipt/hash/count records, waits for its uploads and listener shutdown, and issues a new ten-minute token. Desktop lifecycle operations are serialized so delayed cleanup cannot stop the renewed capture.
+- Camera capture uses a separate, ten-minute LAN listener with an ephemeral bearer token; it does not start, pair with, or grant access to the mobile workbench. The phone can only read capture status and upload validated JPEG/PNG photos. The desktop inserts received photos into the originating draft and never sends them automatically. LAN HTTP is unencrypted.
+  On macOS, network notifications trigger an identity comparison rather than an immediate disconnect: the active interface, primary service, available network signature and Wi-Fi profile are checked, and an inactive link or changed identity ends the connection. Missing initial identity prevents startup; persistently missing identity ends the connection. Address and route are also checked before accepting a saved image. Identical profile and router signatures cannot distinguish cloned networks.
+  The phone stages multiple JPEG photos and uploads sequentially on explicit batch confirmation, preserving per-photo UUIDs for idempotent retry. IndexedDB stores bytes, state, capture association and a random non-credential batch ID; bearer tokens remain only in tab session storage. Cached photos are removed after desktop attachment acknowledgement. The port is persisted per data profile in `camera-port`; an occupied or corrupt saved port fails explicitly rather than changing the browser origin. With the LAN address unchanged, a fresh QR in the same browser can restore cached photos in a new tab. Desktop Reconnect is available before expiry and immediately opens a generating state instead of displaying a stale QR. Phone Reconnect opens the system camera picker to photograph the fresh desktop QR, with visible recovery guidance; it does not depend on secure-context live video. The QR is decoded locally and its full same-origin `/camera` link passes the same validation as the secondary paste fallback. QR images are neither staged nor uploaded. A separate action retries the current permission after a temporary outage. Authenticated phone status includes capture ID and UTC expiry; receipt reconciliation prevents resending confirmed photos. Transfers to a different capture require explicit confirmation and exclude already received/failed rows. A restarted app or replaced capture cannot resume the old receipt record; changed IP, legacy random ports and unavailable/evicted storage remain recovery limits. An open page retains capture and individual photo download after expiry; no listener lifetime or authorization boundary is extended.
+  QR decoding uses the self-hosted Apache-2.0 jsQR 1.4.0 distribution in `camera-web/vendor`, served at `/camera-qr.js` under the existing Host and CSP guards; no CDN or external decoder is contacted. The upstream npm tarball was verified against `sha512-dxLob7q65Xg2DvstYkRpkYtmKm2sPJ9oFhrhmudT1dZvNFFTlroai3AWSpLey/w5vMcLBXRgOJsbXpdN9HzU/A==`. The adjacent license must be retained when updating the pinned decoder.
 - `mobile_list_devices() -> Vec<MobileDevice>`, `mobile_rename_device(device_id, name)` (empty resets the platform-derived default),
   `mobile_device_work(device_id) -> Vec<MobileDeviceWork>`, `mobile_revoke_device(device_id, stop_work_ids: Vec<String>)`.
   Removing a device invalidates only that authorization; an empty selection leaves computer work running.
@@ -912,6 +919,10 @@ pub async fn todos::summary(state: &AppState, session_id: &str, ensure: bool) ->
 pub fn todos::init(state: AppState); pub fn notify::init(state: AppState); pub fn backlog::init(state: AppState);
 // mobile/terminal (E)
 pub fn mobile::init(state: AppState);    // autostart when settings.mobile_enabled
+pub async fn mobile::camera::start(language: Option<String>) -> Result<CameraLink, String>;
+pub async fn mobile::camera::poll(capture_id: String) -> Result<CameraSnapshot, String>;
+pub async fn mobile::camera::ack(capture_id: String, photo_id: String, error: Option<String>) -> Result<(), String>;
+pub async fn mobile::camera::stop(capture_id: String) -> Result<(), String>;
 pub(crate) fn mobile::work::dispatched(handle: &Arc<rpc::SessionHandle>, command: &serde_json::Value); // RPC: after successful stdin enqueue, under dispatch lock
 pub(crate) fn mobile::work::frame(handle: &rpc::SessionHandle, frame: &serde_json::Value); // correlated prompt completion/settlement
 pub(crate) fn mobile::work::process_exited(handle: &rpc::SessionHandle); // clear only matching process instance

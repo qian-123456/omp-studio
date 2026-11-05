@@ -265,6 +265,7 @@ import { CommandChipBadge } from "./slash/CommandChip";
 import { requestTakeover } from "../sessions/sessionActions";
 import { ContextPillBar, WorkspacePickerPopover } from "./ContextPillBar";
 import { AddMenuPopover } from "./AddMenuPopover";
+import { PhoneCameraDialog } from "../../components/PhoneCameraDialog";
 const SketchPad = lazy(() =>
 	import("./sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
 );
@@ -626,6 +627,12 @@ export function Composer({
 
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
 	const [sketchOpen, setSketchOpen] = useState(false);
+	const [cameraOwner, setCameraOwner] = useState<string | null>(null);
+	const cameraSessionRef = useRef(sessionId);
+	cameraSessionRef.current = sessionId;
+	useEffect(() => {
+		setCameraOwner(null);
+	}, [sessionId]);
 	const addBtnRef = useRef<HTMLButtonElement>(null);
 	const wsPillBtnRef = useRef<HTMLButtonElement>(null);
 	const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
@@ -1874,20 +1881,24 @@ export function Composer({
 
 	/** Register an image path as a `🖼️#N` token at the caret (saved clipboard
 	 * images and real paths alike). */
-	const insertImageToken = async (imagePath: string, name?: string) => {
+	const insertImageToken = async (imagePath: string, name?: string, isCurrent?: () => boolean): Promise<boolean> => {
 		try {
 			// Copy into the app clip cache: the asset protocol can only serve that
 			// directory, and temp sources (Finder screenshots) get deleted. Fall
 			// back to the original path if the copy fails.
-			const stored = await importImageFile(imagePath).catch(() => imagePath);
+			const stored = isCurrent ? imagePath : await importImageFile(imagePath).catch(() => imagePath);
+			if (isCurrent && !isCurrent()) return false;
 			const dims = await getImageDimensions(convertFileSrc(stored));
+			if (isCurrent && !isCurrent()) return false;
 			const dimensions = dims.width > 0 && dims.height > 0 ? dims : undefined;
 			addImage(sessionId, stored, name, dimensions);
 			const nextNum = (useComposer.getState().images[sessionId] ?? []).length;
 			insertMarkerAtCursor(`🖼️#${nextNum}`);
 			toast.success(t("composer.insertedImage", { num: nextNum }));
+			return true;
 		} catch (err) {
 			toast.error(t("composer.processImageFailed", { error: errMsg(err) }));
+			return false;
 		}
 	};
 
@@ -2588,6 +2599,15 @@ export function Composer({
 						onClose={() => setPreviewImageIndex(null)}
 					/>
 				)}
+				{!readonly && cameraOwner === sessionId && (
+					<PhoneCameraDialog
+						onPhoto={(photo, isCurrent) => insertImageToken(photo.path, photo.name, () => cameraSessionRef.current === cameraOwner && isCurrent())}
+						onClose={() => {
+							setCameraOwner(null);
+							addBtnRef.current?.focus();
+						}}
+					/>
+				)}
 				{sketchOpen && (
 					<Suspense fallback={null}>
 						<SketchPad
@@ -2901,6 +2921,7 @@ export function Composer({
 								onClose={() => setAddMenuOpen(false)}
 								onAddFiles={() => void handleAddAttachment()}
 								onAttachFinder={() => void handleAttachFinder()}
+								onPhoneCamera={() => setCameraOwner(sessionId)}
 								onPickProject={() => setWorkspacePickerOpen(true)}
 								onGoal={handleInsertGoal}
 								onTogglePlan={() => void setPlanMode(!planMode)}

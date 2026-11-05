@@ -4,6 +4,35 @@ use crate::contracts::{MobileDevice, MobileDeviceWork, MobileStatus, PairingInfo
 use crate::state::AppState;
 
 #[tauri::command]
+pub async fn mobile_camera_start(
+    language: Option<String>,
+    resume_capture_id: Option<String>,
+) -> Result<super::camera::CameraLink, String> {
+    super::camera::start(language, resume_capture_id).await
+}
+
+#[tauri::command]
+pub async fn mobile_camera_poll(
+    capture_id: String,
+) -> Result<super::camera::CameraSnapshot, String> {
+    super::camera::poll(capture_id).await
+}
+
+#[tauri::command]
+pub async fn mobile_camera_ack(
+    capture_id: String,
+    photo_id: String,
+    error: Option<String>,
+) -> Result<(), String> {
+    super::camera::ack(capture_id, photo_id, error).await
+}
+
+#[tauri::command]
+pub async fn mobile_camera_stop(capture_id: String) -> Result<(), String> {
+    super::camera::stop(capture_id).await
+}
+
+#[tauri::command]
 pub async fn mobile_start(state: tauri::State<'_, AppState>) -> Result<MobileStatus, String> {
     super::start(&state).await
 }

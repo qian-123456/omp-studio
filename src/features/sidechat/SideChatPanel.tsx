@@ -5,6 +5,7 @@ import { ArrowUp, ChevronDown, Loader2, MoreHorizontal, Plus } from "lucide-reac
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { PhoneCameraDialog } from "../../components/PhoneCameraDialog";
 import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { type ClipboardEvent, type DragEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -174,6 +175,13 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
 	const [sketchOpen, setSketchOpen] = useState(false);
+	const [cameraOwner, setCameraOwner] = useState<string | null>(null);
+	const ownerKey = `${parentId}\0${tabId}`;
+	const cameraOwnerRef = useRef(ownerKey);
+	cameraOwnerRef.current = ownerKey;
+	useEffect(() => {
+		setCameraOwner(null);
+	}, [ownerKey]);
 	const addBtnRef = useRef<HTMLButtonElement>(null);
 	const attachmentRef = useRef<HTMLDivElement | null>(null);
 	const selectionRef = useRef({ start: 0, end: 0 });
@@ -181,8 +189,9 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const rememberSelection = (textarea: HTMLTextAreaElement) => {
 		selectionRef.current = { start: textarea.selectionStart, end: textarea.selectionEnd };
 	};
-	const registerImagePath = async (path: string, name?: string, importPath = true) => {
+	const registerImagePath = async (path: string, name?: string, importPath = true, isCurrent?: () => boolean): Promise<boolean> => {
 		const storedPath = importPath ? await importImageFile(path).catch(() => path) : path;
+		if (isCurrent && !isCurrent()) return false;
 		const currentText = useComposer.getState().sideChatDrafts[tabId] ?? "";
 		const currentImages = useComposer.getState().images[tabId] ?? EMPTY_IMAGES;
 		useComposer.getState().addImage(tabId, storedPath, name);
@@ -202,6 +211,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 			textarea.style.height = "auto";
 			textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
 		}, 0);
+		return true;
 	};
 	const addImageFile = async (file: File | Blob) => {
 		const path = await saveClipboardImage(await imageFileToBase64(file));
@@ -662,6 +672,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 										ignoreRef={addBtnRef}
 										onClose={() => setAddMenuOpen(false)}
 										onAddImages={() => void pickImages()}
+										onPhoneCamera={() => setCameraOwner(ownerKey)}
 										onSketch={() => setSketchOpen(true)}
 									/>
 								)}
@@ -745,6 +756,15 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								</button>
 							</div>
 						</div>
+						{cameraOwner === ownerKey && (
+							<PhoneCameraDialog
+								onPhoto={(photo, isCurrent) => registerImagePath(photo.path, photo.name, false, () => cameraOwnerRef.current === cameraOwner && isCurrent())}
+								onClose={() => {
+									setCameraOwner(null);
+									addBtnRef.current?.focus();
+								}}
+							/>
+						)}
 						{sketchOpen && (
 							<Suspense fallback={null}>
 								<SketchPad

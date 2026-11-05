@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as IpcModule from "../../lib/ipc";
 import type * as EventsModule from "../../lib/events";
+import type { CameraPhoto } from "../../lib/mobileCameraTypes";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
@@ -19,6 +20,7 @@ const SESSION = "s1";
 const h = vi.hoisted(() => ({
 	rpcSend: vi.fn(async (_sessionId: string, _command: unknown) => ({}) as Record<string, unknown>),
 	listWorkspaceFiles: vi.fn(async (_cwd: string) => [] as string[]),
+	cameraPhoto: null as null | ((photo: CameraPhoto, isCurrent: () => boolean) => Promise<boolean>),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => {
@@ -61,6 +63,12 @@ vi.mock("../../stores/modelCatalog", () => ({
 vi.mock("../../components/ModelSelect", () => ({
 	ModelMenuContent: () => <div data-testid="model-menu" />,
 }));
+vi.mock("../../components/PhoneCameraDialog", () => ({
+	PhoneCameraDialog: ({ onPhoto }: { onPhoto: typeof h.cameraPhoto }) => {
+		h.cameraPhoto = onPhoto;
+		return <div data-testid="phone-camera" />;
+	},
+}));
 
 beforeAll(() => {
 	class RO {
@@ -93,6 +101,62 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	document.body.innerHTML = "";
+});
+const cameraPhoto: CameraPhoto = { id: "phone-1", path: "/images/phone.jpg", name: "phone.jpg", width: 20, height: 20, state: "received" };
+
+describe("phone camera attachments", () => {
+	it("adds a phone image alongside existing images without sending, then sends it manually", async () => {
+		const originalImage = globalThis.Image;
+		class LoadedImage {
+			naturalWidth = 20;
+			naturalHeight = 20;
+			onload: (() => void) | null = null;
+			set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+		}
+		vi.stubGlobal("Image", LoadedImage);
+		try {
+			act(() => {
+				useComposer.getState().setImages(SESSION, [img("existing", "/existing.png")]);
+				useComposer.getState().setDraft(SESSION, "🖼️#1 ");
+			});
+			ta().setSelectionRange(ta().value.length, ta().value.length);
+			fireEvent.click(screen.getByRole("button", { name: /添加/ }));
+			fireEvent.click(screen.getByText("手机拍照"));
+			await act(async () => { expect(await h.cameraPhoto!(cameraPhoto, () => true)).toBe(true); });
+			expect(useComposer.getState().images[SESSION].map((image) => image.path)).toEqual(["/existing.png", cameraPhoto.path]);
+			expect(draft()).toContain("🖼️#2");
+			expect(prompts()).toHaveLength(0);
+			fireEvent.keyDown(ta(), { key: "Enter" });
+			await waitFor(() => expect(prompts()).toHaveLength(1));
+			const command = h.rpcSend.mock.calls.map(([, value]) => value).find((value) => value !== null && typeof value === "object" && "type" in value && value.type === "prompt");
+			expect(command && typeof command === "object" && "images" in command ? command.images : null).toHaveLength(2);
+		} finally {
+			vi.stubGlobal("Image", originalImage);
+		}
+	});
+
+	it("discards a photo when its owner changes during dimension loading", async () => {
+		const originalImage = globalThis.Image;
+		let finish: (() => void) | null = null;
+		class PendingImage {
+			naturalWidth = 20;
+			naturalHeight = 20;
+			onload: (() => void) | null = null;
+			set src(_value: string) { finish = () => this.onload?.(); }
+		}
+		vi.stubGlobal("Image", PendingImage);
+		try {
+			fireEvent.click(screen.getByRole("button", { name: /添加/ }));
+			fireEvent.click(screen.getByText("手机拍照"));
+			let current = true;
+			const result = h.cameraPhoto!(cameraPhoto, () => current);
+			current = false;
+			await act(async () => { finish!(); expect(await result).toBe(false); });
+			expect(useComposer.getState().images[SESSION] ?? []).toHaveLength(0);
+		} finally {
+			vi.stubGlobal("Image", originalImage);
+		}
+	});
 });
 
 const ta = (): HTMLTextAreaElement => {

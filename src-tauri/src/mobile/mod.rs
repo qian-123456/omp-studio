@@ -4,6 +4,7 @@ pub mod api;
 pub mod assets;
 pub mod auth;
 pub mod backend;
+pub mod camera;
 pub mod commands;
 pub mod ddns;
 pub mod ipv6;

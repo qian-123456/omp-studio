@@ -4,6 +4,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { CameraLink, CameraSnapshot } from "./mobileCameraTypes";
 import type { ServiceConfigChanges, ServiceConfigSnapshot } from "./serviceConfigTypes";
 import type {
 	AppPaths,
@@ -841,6 +842,15 @@ export const modelSwitchUndo = (logId: string) =>
 	invoke<SwitchResult>("model_switch_undo", { logId });
 
 // ---- E — mobile / tunnel ----
+
+export const mobileCameraStart = (language?: string, resumeCaptureId?: string) =>
+	invoke<CameraLink>("mobile_camera_start", { language: language ?? null, resumeCaptureId: resumeCaptureId ?? null });
+export const mobileCameraPoll = (captureId: string) =>
+	invoke<CameraSnapshot>("mobile_camera_poll", { captureId });
+export const mobileCameraAck = (captureId: string, photoId: string, error?: string | null) =>
+	invoke<void>("mobile_camera_ack", { captureId, photoId, error: error ?? null });
+export const mobileCameraStop = (captureId: string) =>
+	invoke<void>("mobile_camera_stop", { captureId });
 
 export const mobileStart = () => invoke<MobileStatus>("mobile_start");
 
