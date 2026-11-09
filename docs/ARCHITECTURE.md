@@ -218,6 +218,9 @@ byte rotation and cross-process `flock`; health counters are sampled every 30 se
 Normal exit flushes best-effort; SIGKILL, power loss and overflow can lose records.
 Unavailable or stale evidence is unknown, never evidence of a healthy application.
 
+Multi-process writer regression fixtures wait for every child before deleting shared
+storage, including failure paths, and report the failed worker and its spawn or wait result.
+
 The **General → Troubleshooting → Local diagnostic records** switch is available
 in both release and development builds. `Settings.diagnostics_enabled`
 (`diagnosticsEnabled` on the wire) defaults to true for existing installations.

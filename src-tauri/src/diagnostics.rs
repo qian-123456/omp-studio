@@ -2482,26 +2482,37 @@ mod tests {
     #[test]
     fn concurrent_processes_share_rotation_lock() {
         let root = TempRoot::new();
+        let executable = std::env::current_exe().unwrap();
         let mut children = Vec::new();
+        let mut failure = None;
         for worker in 0..4 {
-            children.push(
-                std::process::Command::new(std::env::current_exe().unwrap())
-                    .args([
-                        "--exact",
-                        "diagnostics::tests::writer_child",
-                        "--ignored",
-                        "--nocapture",
-                    ])
-                    .env("OMPWS_DIAGNOSTIC_TEST_ROOT", &root.0)
-                    .env("OMPWS_DIAGNOSTIC_TEST_WORKER", worker.to_string())
-                    .stdout(std::process::Stdio::null())
-                    .spawn()
-                    .unwrap(),
-            );
+            match std::process::Command::new(&executable)
+                .args([
+                    "--exact",
+                    "diagnostics::tests::writer_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("OMPWS_DIAGNOSTIC_TEST_ROOT", &root.0)
+                .env("OMPWS_DIAGNOSTIC_TEST_WORKER", worker.to_string())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(child) => children.push(child),
+                Err(error) => {
+                    failure = Some((worker, "spawn", Err(error)));
+                    break;
+                }
+            }
         }
-        for mut child in children {
-            assert!(child.wait().unwrap().success());
+        // Keep shared storage alive until every writer exits, even after a failure.
+        for (worker, mut child) in children.into_iter().enumerate() {
+            let status = child.wait();
+            if !status.as_ref().is_ok_and(|status| status.success()) && failure.is_none() {
+                failure = Some((worker, "wait", status));
+            }
         }
+        assert!(failure.is_none(), "writer child failed: {failure:?}");
         for name in ["events.jsonl", "events.previous.jsonl"] {
             let bytes = fs::read(root.diagnostic(name)).unwrap();
             assert!(!bytes.is_empty() && bytes.len() <= 256);
