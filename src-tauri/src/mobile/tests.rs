@@ -308,7 +308,7 @@ async fn pairing_rejects_untrusted_sources_without_consuming_code() {
                 assert_eq!(headers[header::CACHE_CONTROL], "no-store");
                 assert!(body.starts_with("<!doctype html>"));
                 assert!(body.contains("<meta charset=utf-8>"));
-                assert!(body.chars().any(|c| !c.is_ascii()));
+                assert!(!body.is_ascii());
                 assert!(!body.contains('\u{fffd}'));
             }
             assert_eq!(call(&h, pair_request(&code)).await.0, StatusCode::SEE_OTHER);
@@ -919,7 +919,7 @@ async fn curl_end_to_end() {
     assert!(!headers.contains("set-cookie:"));
     assert!(!headers.contains("content-disposition:"));
     assert!(body.starts_with("<!doctype html>"));
-    assert!(body.chars().any(|c| !c.is_ascii()));
+    assert!(!body.is_ascii());
 
     let jar_s = jar.to_string_lossy().to_string();
     let out = curl(vec![

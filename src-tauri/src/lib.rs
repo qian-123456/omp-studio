@@ -5,6 +5,7 @@ mod backlog;
 mod catalog;
 mod contracts;
 mod db;
+mod diagnostics;
 mod git;
 mod ime;
 mod local_rows;
@@ -174,6 +175,14 @@ pub fn run_key_cli(id: Option<String>) -> i32 {
 /// Report an unrecoverable startup error (stderr + native dialog on macOS) and exit cleanly
 /// instead of surfacing a raw panic.
 fn fatal_startup(what: &str, err: &dyn std::fmt::Display) -> ! {
+    let phase = match what {
+        "无法创建数据目录 ~/.omp-workspace" => "ensure_dirs",
+        "无法打开应用数据库" => "database",
+        "无法初始化全局工作区" => "global_workspace",
+        _ => "tauri_setup",
+    };
+    diagnostics::record_startup_failure(phase);
+    diagnostics::shutdown();
     let msg = format!("{what}：{err}\n请检查 ~/.omp-workspace 的权限与磁盘空间后重试。");
     eprintln!("omp-workspace: {msg}");
     #[cfg(target_os = "macos")]
@@ -192,6 +201,9 @@ fn fatal_startup(what: &str, err: &dyn std::fmt::Display) -> ! {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     paths::ensure_dirs().unwrap_or_else(|e| fatal_startup("无法创建数据目录 ~/.omp-workspace", &e));
+    let _diagnostics_guard = diagnostics::init(&paths::data_dir()).ok();
+    diagnostics::install_panic_hook();
+    diagnostics::record_app_started();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -208,6 +220,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            diagnostics::start_health_task();
             // Isolated instances (`OMPWS_DATA_DIR`) keep images outside the static
             // `$HOME/.omp-workspace/images` scope in tauri.conf.json; allow the live dir.
             {
@@ -252,6 +265,7 @@ pub fn run() {
             current_worktree_identity,
             allowed_tools_list,
             ime::ime_active,
+            diagnostics::diagnostics_record,
             // A — catalog
             catalog::commands::list_sessions,
             catalog::commands::get_transcript,
@@ -541,6 +555,8 @@ pub fn run() {
                     }
                 });
                 tauri::async_runtime::block_on(rpc::shutdown());
+                diagnostics::emit(diagnostics::DiagnosticEvent::new("app.exit", "startup"));
+                diagnostics::shutdown();
             }
         });
 }

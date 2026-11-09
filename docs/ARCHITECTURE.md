@@ -37,6 +37,7 @@ src-tauri/src/
   state.rs          AppState + event bus (§5)                                          [LEAD]
   db.rs             SQLite open + migrations (§6)                                      [LEAD]
   paths.rs          data dirs (§3)                                                     [LEAD]
+  diagnostics.rs    bounded content-free local diagnostic writer and ingest           [LEAD]
   catalog/          session scan/parse/watch/status/workspaces/usage                   [A]
   rpc/              omp --mode rpc process manager, idle suspend, takeover; subagents.rs reads subagent transcripts [B]
   git/              git status/log/diff/worktrees/time machine                         [C]
@@ -74,6 +75,7 @@ src/
   lib/contracts.ts           TS mirror of contracts.rs                                  [LEAD]
   lib/serviceConfigTypes.ts   redacted global service-parameter command types            [D]
   lib/ipc.ts                 typed wrappers for EVERY command in §7                     [LEAD]
+  lib/diagnostics.ts         bounded diagnostic capture and transparent invoke wrapper [LEAD]
   lib/events.ts              typed `listen` helpers for §5 events                       [LEAD]
   lib/format.ts              relative time, bytes, etc.                                 [LEAD]
   stores/ui.ts               selected session, center view, right tab, modals           [LEAD]
@@ -132,6 +134,8 @@ src/
   features/terminal/         right-panel command terminal & agent terminal center view  [E]
 ```
 
+`scripts/diagnostics.mjs` is the read-only agent query entry point, owned by the integration lead.
+
 Rules for parallel work:
 - Each module only edits files it owns. `[LEAD]` files are frozen after scaffold except: a module
   MAY append its own dependencies to `Cargo.toml` / `package.json`, and MAY fill in the body of the
@@ -156,7 +160,8 @@ Rules for parallel work:
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
 | `~/.omp-workspace/extension/omp-workspace-plan.ts` | plan mode extension (§8.3), installed at startup by `rpc/plan_ext.rs`; always loaded via `-e` after the privacy extension |
 | `~/.omp-workspace/plugins/omp-workspace-visualize/` | bundled omp plugin (`plugin.json` + `skills/visualize/SKILL.md`) embedded via `include_str!` from `src-tauri/resources/plugins/`; installed at startup, spawned via `--plugin-dir` when `settings.visualize_enabled` (default true) |
-| `~/.omp-workspace/rpc-lifecycle.jsonl`, `rpc-lifecycle.previous.jsonl` | Bounded RPC lifecycle diagnostics, rotated at 1 MiB; respects `OMPWS_DATA_DIR` |
+| `~/.omp-workspace/diagnostics/events.jsonl`, `events.previous.jsonl` | Content-free schema-v1 diagnostics; each file ≤2 MiB, each full line ≤8 KiB; honors `OMPWS_DATA_DIR`. Directory 0700, files and stable `.writer.lock` 0600; Unix-only secure writer, no symlinks |
+| `~/.omp-workspace/rpc-lifecycle.jsonl`, `rpc-lifecycle.previous.jsonl` | Retired lifecycle files, left untouched; no dual write, migration or default query |
 | `~/.omp-workspace/images/` | durable pasted/dropped images; legacy `<app-cache>/ompws-clip` stays readable; both GC'd by `storage_image_gc_auto` (30 days + unreferenced) |
 | `~/.omp-workspace/oneshot-sessions/` | cwd / `--session-dir` for one-shot `omp -p` runs (summaries, quick ask, diagnose) |
 | `~/.omp-workspace/privacy/secrets.json` | privacy entries (placeholders+aliases, value, track, wholeWord, optional `cutoffs`) + `nativeHash` (from entries without cutoffs); read live by the privacy extension (0600, dir 0700, atomic) |
@@ -171,6 +176,48 @@ Rules for parallel work:
 
 All structs: `#[serde(rename_all = "camelCase")]`. Enums: `#[serde(rename_all = "snake_case")]`.
 Timestamps are ISO-8601 strings (UTC) unless noted.
+
+### Local diagnostic protocol
+
+`FrontendDiagnosticInput` requires `event`, `occurredAt` (UTC RFC3339) and `source`.
+Optional fields: `operationId`, `sessionId` (UUIDs), `command`, `code`, `outcome`,
+`durationMs`, `sourceFile`, `sourceLine`, `sourceColumn`, `frames`, `alive`,
+`streaming`, `removedRows`, `exitCode`, `exitIntent`.
+`DiagnosticContext` contains the same optional fields except `frames`.
+Rust ingestion rejects unknown fields and rejects the entire invalid batch with
+`diagnostics_invalid_batch`; no arbitrary payload, message or error text is accepted.
+`DiagnosticAck` is `{status: "accepted" | "disabled", accepted: u16,
+droppedEvents: u64, writeFailures: u64, rejectedEvents: u64}` (camelCase on the wire).
+Acceptance means queued, not durable. Backend counters are cumulative per app run.
+
+Frontend events: `frontend.ipc_started`, `frontend.ipc_finished`, `frontend.error`,
+`frontend.state_reconciled`, `frontend.process_observed`, `frontend.reconnect_started`,
+`frontend.reconnect_finished`. Sources: `bootstrap`, `root_boundary`, `app_boundary`,
+`aside_boundary`, `window_error`, `unhandled_rejection`, `resource_error`, `ipc`,
+`state_reconcile`, `process_observed`, `reconnect`.
+Outcomes: `ok`, `error`, `reused`, `resumed`, `observed`; exit intent: `stop`, `restart`, `other`.
+Codes are the closed `DiagnosticCode` enum shared by Rust and TypeScript; unknown
+errors become `unexpected_error`, never guessed from arbitrary message text.
+Source frames contain at most eight relative application locations (2 KiB total),
+without absolute home paths, URL queries, messages or function arguments.
+
+Persisted records use the official tracing JSON envelope
+`{timestamp, level, target, fields, span?}` with target `ompws.diagnostics`.
+Required fields: `schemaVersion: 1`, `eventId`, `appRunId`, `appPid`, `event`, `origin`.
+`occurredAt` is capture time; `timestamp` is backend observation time, not a causal ordering.
+`span.operationId` is a local UUID, not a W3C trace ID. Request identity is
+`appRunId + sessionId + childPid + requestId`; `req_N` alone is never globally unique.
+Backend events cover app startup/exit/panic, health, RPC invoke/command outcomes,
+spawn phases, I/O/protocol/EOF, resume and lifecycle observations.
+`process_exit` is a lifecycle source, not proof of the cause of failure.
+
+Only this controlled target persists. Raw subprocess stderr, third-party tracing,
+chat/tool/config/audio contents and exception messages are excluded.
+The writer uses the official lossy 1024-record background queue, LF-aware bounded
+byte rotation and cross-process `flock`; health counters are sampled every 30 seconds.
+Normal exit flushes best-effort; SIGKILL, power loss and overflow can lose records.
+Unavailable or stale evidence is unknown, never evidence of a healthy application.
+
 
 ```rust
 pub enum SessionStatus {
@@ -612,6 +659,14 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **LEAD (lib.rs / state):** `get_settings() -> Settings`, `save_settings(settings: Settings) -> Settings` (also re-applies the OS window title via `settings::apply_window_title`), `app_paths() -> {dataDir, globalDir}`
 
+**LEAD — diagnostics:** `diagnostics_record(events: Vec<FrontendDiagnosticInput>, dropped_events: u64) -> DiagnosticAck`.
+Maximum 20 events per batch and 4 KiB per frontend event. Invalid batches are rejected
+atomically; disabled storage does not fail business operations.
+`droppedEvents` in the request is the frontend's unacknowledged dropped-event increment.
+The IPC handler decodes the complete raw request inside the diagnostic boundary,
+including field types, unknown keys and `droppedEvents`; framework deserialization
+must not echo malformed diagnostic values before the fixed rejection is applied.
+
 **A — catalog:**
 - `list_sessions() -> Vec<SessionMeta>`
 - `get_transcript(session_id, from_offset: Option<u64>, tail_id: Option<String>) -> TranscriptPage` — full parse from 0 or incremental from byte offset (streamed line by line). The offset is only trusted while the file under it is unchanged: omp rewrites the jsonl in place (`/shake`), so the read restarts from 0 with `reset = true` when `from_offset` is past EOF, is not a line boundary, or the entry ending there is not `tail_id` (the previous page's `tail_id`; the mobile `GET /sessions/:id/transcript` takes it as `?tail=`). `ToolResultInfo.details` is slimmed: `task`/`agent`/`ask` keep it whole; every other tool keeps only `{diff}` (when a string) — the duplicated `displayContent`/`oldText`/`newText`/`perFileResults`/`truncation`/`meta` are dropped (the UI never reads them; −57% tool-result payload on the largest session)
@@ -636,15 +691,22 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 
 **B — rpc:**
-- `rpc_start(opts: StartOpts) -> LiveSessionInfo` — `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta` after the child reports its sessionId; the group must exist in the same mode (else `会话分组不存在或与空间不匹配`), and the mode's global workspace row/dir is created lazily before spawn
-- `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`). Any `--resume` spawn (`rpc_start` with `resumeFile`, `rpc_ensure_live`, restart) first checks lsof holders + status files (§8, excluding this app's children) and returns `Err("SESSION_HELD:<pid>")` without spawning when another process holds the file (two writers corrupt the JSONL); `errMsg` (`src/lib/dialogs.ts`) renders it in Chinese. ensure_live/restart also refuse while this session's `omp` terminal (`term_open_session`) is open.
-- `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
+- `rpc_start(opts: StartOpts, diagnostic_operation_id: Option<String>) -> LiveSessionInfo` — `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta` after the child reports its sessionId; the group must exist in the same mode (else `会话分组不存在或与空间不匹配`), and the mode's global workspace row/dir is created lazily before spawn
+- `rpc_ensure_live(session_id, cwd: Option<String>, diagnostic_operation_id: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`). Any `--resume` spawn (`rpc_start` with `resumeFile`, `rpc_ensure_live`, restart) first checks lsof holders + status files (§8, excluding this app's children) and returns `Err("SESSION_HELD:<pid>")` without spawning when another process holds the file (two writers corrupt the JSONL); `errMsg` (`src/lib/dialogs.ts`) renders it in Chinese. ensure_live/restart also refuse while this session's `omp` terminal (`term_open_session`) is open.
+- `rpc_send(session_id, command: Value, diagnostic_operation_id: Option<String>) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`. Unknown, settled or already consumed request IDs are refused before writing; only an accepted current response can emit the event.
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
 - `tree_navigate(session_id, entry_id) -> Value` — same-session tree navigation: sends upstream `navigate_tree {entryId}` (no `summarize` in phase 1) to the live session and returns its data (`{cancelled, editorText?}`; a user-message target rewinds past itself and carries `editorText` for the composer). On success broadcasts `tree:navigated` + the mobile SSE `touch`. Recognizable errors: `TREE_BUSY` (upstream refuses while streaming/bash/compaction/retry — nothing changed), `TREE_ENTRY_NOT_FOUND`, `session is not live`
 - `tree_get(session_id) -> Value` — upstream `get_tree` verbatim (`{ tree: SessionTreeNode[], leafId: string | null }`); requires a live session. The frontend caches only `leafId` per session (`stores/tree.ts`) — siblings and parent chains are already in `TranscriptItem.parentId`; rendering filters to the root→leaf path (`treePath.ts`)
-- `rpc_stop(session_id)` — close stdin, wait ≤5s, then kill
-- `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
+- `rpc_stop(session_id, diagnostic_operation_id: Option<String>)` — close stdin, wait ≤5s, then kill
+- `rpc_restart(session_id, diagnostic_operation_id: Option<String>) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
+
+The five optional diagnostic IDs correlate a frontend operation without changing
+OMP request IDs. Missing/invalid values generate a UUID and never reject business
+calls. Fast successful `get_state`/`get_subagents` polling emits no diagnostic
+start/result records at either boundary; failed/slow polls emit only results.
+Other desktop IPC reports only failures or operations lasting at least two seconds.
+Plugin-SDK internal IPC and mobile are outside this capture boundary.
 
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
 - `rpc_omp_staleness() -> OmpStaleness` — stat-only (never runs omp): `fingerprint` identifies the binary a new spawn would exec (settings `omp_binary` resolved against the spawn PATH, canonicalized, + mtime + size; None if unresolvable); `stale_session_ids` = live sessions whose spawn-time fingerprint (stored on `SessionHandle`) differs. Unknown spawn fingerprint or None current → not stale. Detects `omp update` run outside the app; fix with `rpc_restart`.
@@ -897,6 +959,12 @@ Previewing a pending command does not submit the command, activate backend plan 
 ## 9. Cross-module Rust API (stubbed at scaffold; signatures frozen)
 
 ```rust
+// diagnostics (LEAD): one persistence boundary; safe no-op before initialization
+pub fn diagnostics::init(root: &Path) -> Result<DiagnosticsGuard, DiagnosticInitError>;
+pub fn diagnostics::emit(event: DiagnosticEvent);
+pub fn diagnostics::operation_span(operation_id: Option<&str>) -> tracing::Span;
+pub fn diagnostics::shutdown(); // idempotent, best-effort normal-exit flush
+// diagnostics_record is the strict frontend ingest command (§7), never wrapped by itself.
 // catalog (A)
 pub async fn catalog::list(state: &AppState) -> Vec<SessionMeta>;
 pub async fn catalog::get(state: &AppState, session_id: &str) -> Option<SessionMeta>;

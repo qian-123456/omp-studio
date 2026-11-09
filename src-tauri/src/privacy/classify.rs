@@ -336,11 +336,8 @@ pub fn count_whole_word(text: &str, value: &str) -> u32 {
         let before_ok = text[..start]
             .chars()
             .next_back()
-            .map_or(true, |c| !is_word_char(c));
-        let after_ok = text[end..]
-            .chars()
-            .next()
-            .map_or(true, |c| !is_word_char(c));
+            .is_none_or(|c| !is_word_char(c));
+        let after_ok = text[end..].chars().next().is_none_or(|c| !is_word_char(c));
         if before_ok && after_ok {
             count += 1;
             from = end;

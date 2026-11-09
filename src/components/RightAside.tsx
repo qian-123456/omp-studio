@@ -4,6 +4,7 @@ import { useTabBadges } from "../features/sessions/useTabBadges";
 import { RightPanelHeader } from "./RightPanelHeader";
 import { RightPanelEmptyState } from "./RightPanelEmptyState";
 import { tNow } from "../stores/language";
+import { captureDiagnosticError } from "../lib/diagnostics";
 // Only the active tab is mounted, so each panel (xterm, git, …) loads on first open.
 const FileExplorer = lazy(() =>
 	import("../features/explorer/FileExplorer").then((m) => ({ default: m.FileExplorer })),
@@ -38,7 +39,8 @@ class ErrorBoundary extends React.Component<
 	static getDerivedStateFromError(e: unknown) {
 		return { error: e instanceof Error ? e.message : String(e) };
 	}
-	componentDidCatch(_error: unknown, info: React.ErrorInfo) {
+	componentDidCatch(error: unknown, info: React.ErrorInfo) {
+		captureDiagnosticError("aside_boundary", error);
 		this.setState({ stack: info.componentStack ?? null });
 	}
 	render() {

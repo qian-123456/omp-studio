@@ -1926,3 +1926,98 @@ export interface StorageTrashReport {
 	freedBytes: number;
 	skipped: { id: string; reason: string }[];
 }
+
+// --- bounded local diagnostics (mirrored in src-tauri/src/contracts.rs) ---
+
+export type FrontendDiagnosticEvent =
+	| "frontend.ipc_started"
+	| "frontend.ipc_finished"
+	| "frontend.error"
+	| "frontend.state_reconciled"
+	| "frontend.process_observed"
+	| "frontend.reconnect_started"
+	| "frontend.reconnect_finished";
+
+export type FrontendDiagnosticSource =
+	| "bootstrap"
+	| "root_boundary"
+	| "app_boundary"
+	| "aside_boundary"
+	| "window_error"
+	| "unhandled_rejection"
+	| "resource_error"
+	| "ipc"
+	| "state_reconcile"
+	| "process_observed"
+	| "reconnect";
+
+export type DiagnosticCode =
+	| "invalid_command"
+	| "not_live"
+	| "process_not_running"
+	| "stdin_closed"
+	| "command_timeout"
+	| "response_channel_closed"
+	| "upstream_rejected"
+	| "spawn_failed"
+	| "startup_timeout"
+	| "protocol_invalid"
+	| "io_permission_denied"
+	| "io_not_found"
+	| "io_other"
+	| "cwd_missing"
+	| "session_held"
+	| "unexpected_error"
+	| "js_error"
+	| "promise_rejection"
+	| "resource_load_error";
+
+export type DiagnosticOutcome = "ok" | "error" | "reused" | "resumed" | "observed";
+
+export type DiagnosticExitIntent = "stop" | "restart" | "other";
+
+/** Optional, whitelisted context; bounded strings are validated at ingestion. */
+export interface DiagnosticContext {
+	/** UUID. */
+	operationId?: string;
+	/** UUID. */
+	sessionId?: string;
+	/** Static IPC command matching [a-z][a-z0-9_]{0,63}. */
+	command?: string;
+	code?: DiagnosticCode;
+	outcome?: DiagnosticOutcome;
+	durationMs?: number;
+	/** Validated relative application source path, never an absolute path. */
+	sourceFile?: string;
+	sourceLine?: number;
+	sourceColumn?: number;
+	alive?: boolean;
+	streaming?: boolean;
+	removedRows?: number;
+	exitCode?: number;
+	exitIntent?: DiagnosticExitIntent;
+}
+
+/** Frontend-only diagnostic input; never contains raw errors or arbitrary data. */
+export interface FrontendDiagnosticInput extends DiagnosticContext {
+	event: FrontendDiagnosticEvent;
+	/** UTC RFC3339 event time, validated by the diagnostic ingestion boundary. */
+	occurredAt: string;
+	source: FrontendDiagnosticSource;
+	/** At most eight LF-separated relative file:line:column locations, <=2 KiB. */
+	frames?: string;
+}
+
+export type DiagnosticAckStatus = "accepted" | "disabled";
+
+/**
+ * Queue submission acknowledgment, not a persistence guarantee.
+ * Health counters are cumulative for the current backend run.
+ */
+export interface DiagnosticAck {
+	status: DiagnosticAckStatus;
+	accepted: number;
+	droppedEvents: number;
+	writeFailures: number;
+	rejectedEvents: number;
+}

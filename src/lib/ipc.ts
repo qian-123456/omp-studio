@@ -3,7 +3,7 @@
  * JS uses camelCase argument keys; Tauri maps them to snake_case.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithDiagnostics as invoke } from "./diagnostics";
 import type { CameraLink, CameraSnapshot } from "./mobileCameraTypes";
 
 /** Transcribe recorded audio using the configured speech model. */

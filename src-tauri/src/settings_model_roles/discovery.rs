@@ -1073,7 +1073,7 @@ fn agent_plugin_manifest_is_valid(doc: &JsonMap<String, JsonValue>) -> bool {
         "license",
     ]
     .iter()
-    .all(|field| doc.get(*field).map_or(true, JsonValue::is_string));
+    .all(|field| doc.get(*field).is_none_or(JsonValue::is_string));
     let keywords_ok = match doc.get("keywords") {
         None => true,
         Some(JsonValue::Array(items)) => items.iter().all(JsonValue::is_string),

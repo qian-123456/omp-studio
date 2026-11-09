@@ -422,15 +422,24 @@ pub async fn voice_transcribe(request: tauri::ipc::Request<'_>) -> Result<String
     if bytes.len() > MAX_AUDIO_SIZE {
         return Err("Audio exceeds the 25 MB limit".into());
     }
-    let audio = extract_raw(&HeaderMap::new(), Bytes::copy_from_slice(bytes))
-        .map_err(|(_, Json(error))| error["error"]["message"].as_str().unwrap_or("Invalid audio").to_string())?;
-    let Json(result) = transcribe_audio(audio).await
-        .map_err(|(_, Json(error))| error["error"]["message"].as_str().unwrap_or("Transcription failed").to_string())?;
+    let audio = extract_raw(&HeaderMap::new(), Bytes::copy_from_slice(bytes)).map_err(
+        |(_, Json(error))| {
+            error["error"]["message"]
+                .as_str()
+                .unwrap_or("Invalid audio")
+                .to_string()
+        },
+    )?;
+    let Json(result) = transcribe_audio(audio).await.map_err(|(_, Json(error))| {
+        error["error"]["message"]
+            .as_str()
+            .unwrap_or("Transcription failed")
+            .to_string()
+    })?;
     Ok(result["text"].as_str().unwrap_or("").to_string())
 }
 
 async fn transcribe_audio(audio: AudioPayload) -> VoiceResult {
-
     if audio.bytes.is_empty() {
         return Err(structured_error(
             StatusCode::BAD_REQUEST,

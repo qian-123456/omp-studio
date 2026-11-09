@@ -494,58 +494,91 @@ pub async fn ensure_live(
     session_id: &str,
     cwd: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
-    if let Some(handle) = get_handle(session_id) {
-        handle.touch();
-        return Ok(handle.info());
-    }
-    let lock = session_resume_lock(session_id);
-    let _guard = lock.lock().await;
-    if let Some(handle) = get_handle(session_id) {
-        handle.touch();
-        return Ok(handle.info());
-    }
-    omp_terminal_guard(session_id)?;
-    let (file, found_cwd) = find_session_file(state, session_id)
-        .await
-        .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
-    let cwd = match cwd {
-        Some(dir) => {
-            let dir = crate::services::files::resolve(&dir)?
-                .to_string_lossy()
-                .into_owned();
-            let _mutation = catalog::session_mutation_lock().lock().await;
-            if !std::path::Path::new(&dir).is_dir() {
-                return Err(format!("目录不存在: {dir}"));
-            }
-            // Persist first so the recomputed meta reports the new cwd.
-            catalog::set_cwd_override(state, session_id, &dir).await;
-            dir
-        }
-        None => {
-            if let Some(err) = cwd_missing_err(&found_cwd) {
-                return Err(err);
-            }
-            crate::services::files::resolve(&found_cwd)?
-                .to_string_lossy()
-                .into_owned()
-        }
+    let started = std::time::Instant::now();
+    let mut reused = true;
+    let diagnostic = |name| {
+        let mut event = crate::diagnostics::DiagnosticEvent::new(name, "rpc");
+        event.session_id = uuid::Uuid::parse_str(session_id)
+            .ok()
+            .map(|_| session_id.to_owned());
+        event
     };
-    // Single-writer takeover: an external omp holding the file must exit (and
-    // flush its session_exit record) before our RPC child loads it.
-    if let Some(meta) = catalog::get(state, session_id).await {
-        terminate_session_holder(&meta).await;
+    crate::diagnostics::emit(diagnostic("rpc.resume_started"));
+    let result = async {
+        if let Some(handle) = get_handle(session_id) {
+            handle.touch();
+            return Ok(handle.info());
+        }
+        let lock = session_resume_lock(session_id);
+        let _guard = lock.lock().await;
+        if let Some(handle) = get_handle(session_id) {
+            handle.touch();
+            return Ok(handle.info());
+        }
+        reused = false;
+        omp_terminal_guard(session_id)?;
+        let (file, found_cwd) = find_session_file(state, session_id)
+            .await
+            .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
+        let cwd = match cwd {
+            Some(dir) => {
+                let dir = crate::services::files::resolve(&dir)?
+                    .to_string_lossy()
+                    .into_owned();
+                let _mutation = catalog::session_mutation_lock().lock().await;
+                if !std::path::Path::new(&dir).is_dir() {
+                    return Err(format!("目录不存在: {dir}"));
+                }
+                // Persist first so the recomputed meta reports the new cwd.
+                catalog::set_cwd_override(state, session_id, &dir).await;
+                dir
+            }
+            None => {
+                if let Some(err) = cwd_missing_err(&found_cwd) {
+                    return Err(err);
+                }
+                crate::services::files::resolve(&found_cwd)?
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        };
+        // Single-writer takeover: an external omp holding the file must exit (and
+        // flush its session_exit record) before our RPC child loads it.
+        if let Some(meta) = catalog::get(state, session_id).await {
+            terminate_session_holder(&meta).await;
+        }
+        let info = start(
+            state,
+            &StartOpts {
+                cwd,
+                resume_file: Some(file),
+                ..Default::default()
+            },
+        )
+        .await?;
+        set_suspended(state, session_id, false);
+        Ok(info)
     }
-    let info = start(
-        state,
-        &StartOpts {
-            cwd,
-            resume_file: Some(file),
-            ..Default::default()
-        },
-    )
-    .await?;
-    set_suspended(state, session_id, false);
-    Ok(info)
+    .await;
+    let mut event = diagnostic("rpc.resume_finished");
+    event.duration_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+    event.outcome = Some(
+        match &result {
+            Ok(_) if reused => "reused",
+            Ok(_) => "resumed",
+            Err(_) => "error",
+        }
+        .into(),
+    );
+    event.code = result
+        .as_ref()
+        .err()
+        .map(|error| crate::diagnostics::classify_error(error).into());
+    if let Ok(info) = &result {
+        event.child_pid = Some(info.pid);
+    }
+    crate::diagnostics::emit(event);
+    result
 }
 
 /// The omp `prompt` command: `images` are native `ImageContent` blocks

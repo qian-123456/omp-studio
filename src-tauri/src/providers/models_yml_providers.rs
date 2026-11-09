@@ -315,7 +315,7 @@ fn same_models(got: &[ModelEntry], want: &[ModelEntry]) -> bool {
             }
             (ModelEntry::Id(g), ModelEntry::Spec(w)) => {
                 g == w.id.trim()
-                    && w.name.as_deref().map_or(true, |n| n.trim().is_empty())
+                    && w.name.as_deref().is_none_or(|n| n.trim().is_empty())
                     && w.context_window.is_none()
                     && w.max_tokens.is_none()
                     && w.kind.is_none()

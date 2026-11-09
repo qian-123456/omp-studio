@@ -39,6 +39,8 @@ image = { version = "=0.25.8", default-features = false, features = ["jpeg", "pn
 parking_lot = "0.12"
 regex = "1"
 tracing = "0.1"
+tracing-subscriber = { version = "=0.3.22", default-features = false, features = ["fmt", "json", "registry", "std"] }
+tracing-appender = "=0.2.4"
 portable-pty = "0.9"
 libc = "0.2.189"
 sha2 = "0.10"
@@ -78,5 +80,6 @@ core-foundation = "0.10"
 system-configuration = "0.7"
 
 [dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

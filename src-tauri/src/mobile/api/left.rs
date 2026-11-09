@@ -627,7 +627,7 @@ fn build_tree(
     let is_deleted_wt = |s: &SessionMeta| {
         s.git
             .as_ref()
-            .map_or(true, |g| g.worktree.is_none() && g.branch.is_none())
+            .is_none_or(|g| g.worktree.is_none() && g.branch.is_none())
             && infer_worktree_name(&s.cwd).is_some()
     };
     let mut deleted_sessions: Vec<SessionMeta> = Vec::new();
@@ -1185,7 +1185,7 @@ fn search_sessions(
         .collect();
     let candidates: Vec<&SessionMeta> = metas
         .iter()
-        .filter(|s| mode.map_or(true, |m| s.mode == m))
+        .filter(|s| mode.is_none_or(|m| s.mode == m))
         .filter(|s| !is_empty_side_chat(s))
         .filter(|s| include_archived || !is_archived_cascaded(s, &by_id))
         .collect();

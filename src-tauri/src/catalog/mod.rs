@@ -366,7 +366,7 @@ fn refresh_git(cwds: Vec<String>, force: bool) -> Vec<String> {
     let now = Instant::now();
     let mut changed = Vec::new();
     for (cwd, info) in results {
-        let differs = c.git.get(&cwd).map_or(true, |(_, old)| *old != info);
+        let differs = c.git.get(&cwd).is_none_or(|(_, old)| *old != info);
         if differs {
             changed.push(cwd.clone());
         }
@@ -459,7 +459,7 @@ fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
             let id = &s.head.id;
             let row = rows.entry(id.clone()).or_default();
             let needs_seq = row.seq.is_none()
-                && row.label.as_deref().map_or(true, str::is_empty)
+                && row.label.as_deref().is_none_or(str::is_empty)
                 && scan::title_number(s, row).is_none();
             if needs_seq {
                 let _ = store::ensure_row(&db, id, &s.path.to_string_lossy());
@@ -573,7 +573,7 @@ fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
                 pending_writes.push((id.clone(), pending));
             }
             let old = c.metas.get(id);
-            let differs = old.map_or(true, |o| !same_meta(o, &meta));
+            let differs = old.is_none_or(|o| !same_meta(o, &meta));
             if let Some(o) = old {
                 if o.status != meta.status {
                     status_changes.push((id.clone(), o.status, meta.status));

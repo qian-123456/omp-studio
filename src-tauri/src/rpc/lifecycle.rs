@@ -1,48 +1,43 @@
 //! Bounded, content-free host lifecycle diagnostics.
-use std::io::Write;
+use crate::diagnostics::{emit, DiagnosticEvent};
 use std::sync::atomic::Ordering;
 
 use super::process::SessionHandle;
-
-const MAX_BYTES: u64 = 1024 * 1024;
-static LOG_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
 pub(super) fn record(handle: &SessionHandle, source: &str, exit_code: Option<i32>) {
     // Test handles do not represent a child process.
     if handle.pid == 0 {
         return;
     }
-    let entry = serde_json::json!({
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "sessionId": *handle.session_id.read(),
-        "pid": handle.pid,
-        "source": source,
-        "exitCode": exit_code,
-        "alive": handle.alive.load(Ordering::SeqCst),
-        "streaming": handle.streaming.load(Ordering::SeqCst),
-        "settled": handle.settled.load(Ordering::SeqCst),
-        "asyncWork": handle.awaiting_async_work.load(Ordering::SeqCst),
-        "subagents": handle.active_subagents.lock().len(),
-        "pendingUi": handle.pending_ui.lock().len(),
-        "pendingCommands": handle.pending.len(),
-        "shutdownRequested": *handle.shutdown.borrow(),
-    });
-    let _guard = LOG_LOCK.lock();
-    let result = (|| -> std::io::Result<()> {
-        let root = crate::paths::data_dir();
-        std::fs::create_dir_all(&root)?;
-        let path = root.join("rpc-lifecycle.jsonl");
-        if std::fs::metadata(&path).is_ok_and(|m| m.len() >= MAX_BYTES) {
-            std::fs::rename(&path, root.join("rpc-lifecycle.previous.jsonl"))?;
-        }
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
-        writeln!(file, "{entry}")?;
-        file.sync_data()
-    })();
-    if let Err(error) = result {
-        tracing::warn!("rpc lifecycle diagnostic write failed: {error}");
+    let source = match source {
+        "explicit_stop" => "explicit_stop",
+        "app_shutdown" => "app_shutdown",
+        "startup_missing_session_id" => "startup_missing_session_id",
+        "registration_replacement" => "registration_replacement",
+        "external_writer_conflict" => "external_writer_conflict",
+        "explicit_restart" => "explicit_restart",
+        "privacy_refresh" => "privacy_refresh",
+        "idle_suspension" => "idle_suspension",
+        "unused_draft_release" => "unused_draft_release",
+        "spawn_aborted" => "spawn_aborted",
+        "process_exit" => "process_exit",
+        _ => "other",
+    };
+    let mut event = DiagnosticEvent::new("rpc.lifecycle", source);
+    let session_id = handle.session_id.read();
+    if uuid::Uuid::parse_str(&session_id).is_ok() {
+        event.session_id = Some(session_id.clone());
     }
+    drop(session_id);
+    event.child_pid = Some(handle.pid);
+    event.exit_code = exit_code;
+    event.alive = Some(handle.alive.load(Ordering::SeqCst));
+    event.streaming = Some(handle.streaming.load(Ordering::SeqCst));
+    event.settled = Some(handle.settled.load(Ordering::SeqCst));
+    event.async_work = Some(handle.awaiting_async_work.load(Ordering::SeqCst));
+    event.subagents = Some(handle.active_subagents.lock().len() as u64);
+    event.pending_ui = Some(handle.pending_ui.lock().len() as u64);
+    event.pending_commands = Some(handle.pending.len() as u64);
+    event.shutdown_requested = Some(*handle.shutdown.borrow());
+    emit(event);
 }

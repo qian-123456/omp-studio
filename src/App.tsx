@@ -21,6 +21,7 @@ import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
+import { captureDiagnosticError } from "./lib/diagnostics";
 import { installNativeShortcuts } from "./lib/nativeShortcuts";
 import { installShortcutDispatcher } from "./features/shortcuts/dispatcher";
 import { effectiveCenterViewOf } from "./features/shortcuts/actions/navigation";
@@ -85,7 +86,8 @@ class ErrorBoundary extends React.Component<
 	static getDerivedStateFromError(e: unknown) {
 		return { error: e instanceof Error ? e.message : String(e) };
 	}
-	componentDidCatch(_error: unknown, info: React.ErrorInfo) {
+	componentDidCatch(error: unknown, info: React.ErrorInfo) {
+		captureDiagnosticError("app_boundary", error);
 		this.setState({ stack: info.componentStack ?? null });
 	}
 	render() {

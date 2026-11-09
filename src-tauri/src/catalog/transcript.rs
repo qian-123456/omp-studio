@@ -36,7 +36,7 @@ pub fn read_page(
         match line_ending_at(&mut f, from_offset)? {
             Some(line) => {
                 let id = entry_id(&line);
-                if tail_id.map_or(true, |t| id.as_deref() == Some(t)) {
+                if tail_id.is_none_or(|t| id.as_deref() == Some(t)) {
                     tail = id;
                     from_offset
                 } else {

@@ -6,7 +6,7 @@
  * the command (app not restarted after an update) the cache stays `false`
  * and type-to-focus keeps its plain behaviour. */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithDiagnostics as invoke } from "./diagnostics";
 import { listen } from "@tauri-apps/api/event";
 
 let active = false;

@@ -12,8 +12,11 @@ use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdout};
 use tokio::sync::{mpsc, oneshot, watch};
+use tracing::instrument::WithSubscriber;
+use tracing::Instrument;
 
 use crate::contracts::{LiveSessionInfo, PendingUiRequest, Settings, StartOpts};
+use crate::diagnostics::{self, DiagnosticEvent};
 use crate::rpc::frame::ChunkReassembler;
 use crate::state::{AppEvent, AppState};
 use crate::{paths, rpc};
@@ -611,6 +614,125 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     Ok(cmd)
 }
 
+fn process_event(
+    handle: &SessionHandle,
+    name: &'static str,
+    source: &'static str,
+) -> DiagnosticEvent {
+    let mut event = DiagnosticEvent::new(name, source);
+    let session = handle.session_id.read();
+    event.session_id = uuid::Uuid::parse_str(&session)
+        .ok()
+        .map(|_| session.clone());
+    event.child_pid = Some(handle.pid);
+    event
+}
+
+fn io_code(error: &std::io::Error) -> &'static str {
+    match error.kind() {
+        std::io::ErrorKind::PermissionDenied => "io_permission_denied",
+        std::io::ErrorKind::NotFound => "io_not_found",
+        _ => "io_other",
+    }
+}
+
+/// Only request boundaries inherit their caller's operation; background IO never does.
+struct CommandObservation {
+    started: Instant,
+    command: &'static str,
+    polling: bool,
+    request_id: Option<String>,
+    phase: &'static str,
+    code: Option<&'static str>,
+    upstream_code: Option<&'static str>,
+}
+
+impl CommandObservation {
+    fn new(command: &Value) -> Self {
+        let name = command.get("type").and_then(Value::as_str).unwrap_or("");
+        Self {
+            started: Instant::now(),
+            command: diagnostics::command_name(name),
+            polling: matches!(name, "get_state" | "get_subagents"),
+            request_id: None,
+            phase: "validate",
+            code: None,
+            upstream_code: None,
+        }
+    }
+
+    fn event(&self, handle: &SessionHandle, name: &'static str) -> DiagnosticEvent {
+        let mut event = process_event(handle, name, "rpc");
+        event.command = Some(self.command.into());
+        event.request_id = self.request_id.clone();
+        event.phase = Some(self.phase.into());
+        event
+    }
+
+    fn dispatched(&mut self, handle: &SessionHandle, id: &str) {
+        self.phase = "dispatch";
+        self.request_id = Some(id.into());
+        if !self.polling {
+            diagnostics::emit(self.event(handle, "rpc.command_started"));
+        }
+    }
+
+    fn rejected(&mut self, handle: &SessionHandle, response: &Value) {
+        self.code = Some("upstream_rejected");
+        self.upstream_code = response.get("code").and_then(Value::as_str).map(|code| {
+            if code == "session_busy" {
+                "session_busy"
+            } else {
+                "other"
+            }
+        });
+        // These are host-generated cancellation responses, not upstream failures.
+        if *handle.shutdown.borrow()
+            && matches!(
+                response.get("error").and_then(Value::as_str),
+                Some("session is stopping" | "spawn aborted")
+            )
+        {
+            self.code = None;
+            self.upstream_code = None;
+        }
+    }
+
+    fn finished(&self, handle: &SessionHandle, result: &Result<Value, String>) {
+        if self.polling && result.is_ok() && self.started.elapsed() < Duration::from_secs(2) {
+            return;
+        }
+        let mut event = self.event(handle, "rpc.command_finished");
+        let cancelled = *handle.shutdown.borrow()
+            && result.as_ref().err().is_some_and(|error| {
+                matches!(error.as_str(), "session is stopping" | "spawn aborted")
+            });
+        event.outcome = Some(
+            if cancelled {
+                "observed"
+            } else if result.is_ok() {
+                "ok"
+            } else {
+                "error"
+            }
+            .into(),
+        );
+        event.code = if cancelled {
+            None
+        } else {
+            self.code.map(str::to_owned).or_else(|| {
+                result
+                    .as_ref()
+                    .err()
+                    .map(|error| diagnostics::classify_error(error).into())
+            })
+        };
+        event.upstream_code = self.upstream_code.map(str::to_owned);
+        event.duration_ms = Some(self.started.elapsed().as_secs_f64() * 1000.0);
+        diagnostics::emit(event);
+    }
+}
+
 /// Send one command, correlating the response by generated id.
 /// `success:false` → `Err(error)`.
 ///
@@ -622,28 +744,108 @@ pub async fn send_command(
     handle: &Arc<SessionHandle>,
     mut command: Value,
 ) -> Result<Value, String> {
-    if !command.is_object() {
-        return Err("command must be a JSON object".into());
+    let mut observation = CommandObservation::new(&command);
+    let result = async {
+        if !command.is_object() {
+            return Err("command must be a JSON object".into());
+        }
+        let (id, rx, timeout) = {
+            let _dispatch = handle.dispatch_lock.lock().await;
+            if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
+                return Err("session process is not running".into());
+            }
+            let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
+            command["id"] = json!(id);
+            let rx = handle.pending.insert(id.clone());
+            observation.dispatched(handle, &id);
+            handle
+                .stdin_tx
+                .send(command.to_string())
+                .map_err(|_| stdin_closed(handle))?;
+            observation.phase = "response";
+            if matches!(
+                command.get("type").and_then(Value::as_str),
+                Some("abort" | "abort_and_prompt" | "abort_and_restore_queue")
+            ) {
+                super::lifecycle::record(handle, command["type"].as_str().unwrap_or("abort"), None);
+            }
+            crate::mobile::work::dispatched(handle, &command);
+            if !matches!(
+                command.get("type").and_then(Value::as_str),
+                Some("get_state" | "get_subagents")
+            ) {
+                handle.touch();
+            }
+            let timeout = match command.get("type").and_then(Value::as_str) {
+                Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
+                _ => CMD_TIMEOUT,
+            };
+            (id, rx, timeout)
+        };
+
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(resp)) => {
+                if resp.get("success").and_then(Value::as_bool) == Some(false) {
+                    observation.rejected(handle, &resp);
+                    let msg = resp
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("command failed");
+                    // Upstream refusal codes (e.g. `session_busy` for navigate_tree)
+                    // arrive as a top-level `code`; surface them so callers can map
+                    // them to friendly errors.
+                    let err = match resp.get("code").and_then(Value::as_str) {
+                        Some(code) => format!("{code}: {msg}"),
+                        None => msg.to_string(),
+                    };
+                    return Err(err);
+                }
+                Ok(resp)
+            }
+            Ok(Err(_)) => Err("response channel dropped".into()),
+            Err(_) => {
+                handle.pending.remove(&id);
+                Err("command timed out".into())
+            }
+        }
     }
-    let (id, rx, timeout) = {
-        let _dispatch = handle.dispatch_lock.lock().await;
+    .await;
+    observation.finished(handle, &result);
+    result
+}
+
+/// Dispatch while the caller owns `dispatch_lock`. Maintenance shutdown probes
+/// hold the lock across both queries and stdin close, which makes
+/// the check-and-stop operation indivisible to host prompts.
+pub(crate) async fn send_command_locked(
+    handle: &Arc<SessionHandle>,
+    mut command: Value,
+) -> Result<Value, String> {
+    let mut observation = CommandObservation::new(&command);
+    let result = async {
+        if !command.is_object() {
+            return Err("command must be a JSON object".into());
+        }
+        if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
+            return Err("session process is not running".into());
+        }
+        // Recheck after waiting: suspension may have closed stdin while this call
+        // waited for another command to finish.
         if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
             return Err("session process is not running".into());
         }
         let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
         command["id"] = json!(id);
         let rx = handle.pending.insert(id.clone());
+        observation.dispatched(handle, &id);
         handle
             .stdin_tx
             .send(command.to_string())
-            .map_err(|_| "session stdin closed".to_string())?;
-        if matches!(
-            command.get("type").and_then(Value::as_str),
-            Some("abort" | "abort_and_prompt" | "abort_and_restore_queue")
-        ) {
-            super::lifecycle::record(handle, command["type"].as_str().unwrap_or("abort"), None);
-        }
-        crate::mobile::work::dispatched(handle, &command);
+            .map_err(|_| stdin_closed(handle))?;
+        observation.phase = "response";
+        // A long command may produce no inbound frames for minutes (`compact`),
+        // so the send itself counts as activity for the idle reaper.
+        // The suspender's internal probes are deliberately not user activity.
         if !matches!(
             command.get("type").and_then(Value::as_str),
             Some("get_state" | "get_subagents")
@@ -654,90 +856,28 @@ pub async fn send_command(
             Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
             _ => CMD_TIMEOUT,
         };
-        (id, rx, timeout)
-    };
-
-    match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(resp)) => {
-            if resp.get("success").and_then(Value::as_bool) == Some(false) {
-                let msg = resp
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("command failed");
-                // Upstream refusal codes (e.g. `session_busy` for navigate_tree)
-                // arrive as a top-level `code`; surface them so callers can map
-                // them to friendly errors.
-                let err = match resp.get("code").and_then(Value::as_str) {
-                    Some(code) => format!("{code}: {msg}"),
-                    None => msg.to_string(),
-                };
-                return Err(err);
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(resp)) => {
+                if resp.get("success").and_then(Value::as_bool) == Some(false) {
+                    observation.rejected(handle, &resp);
+                    let err = resp
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("command failed");
+                    return Err(err.to_string());
+                }
+                Ok(resp)
             }
-            Ok(resp)
-        }
-        Ok(Err(_)) => Err("response channel dropped".into()),
-        Err(_) => {
-            handle.pending.remove(&id);
-            Err("command timed out".into())
-        }
-    }
-}
-
-/// Dispatch while the caller owns `dispatch_lock`. Maintenance shutdown probes
-/// hold the lock across both queries and stdin close, which makes
-/// the check-and-stop operation indivisible to host prompts.
-pub(crate) async fn send_command_locked(
-    handle: &Arc<SessionHandle>,
-    mut command: Value,
-) -> Result<Value, String> {
-    if !command.is_object() {
-        return Err("command must be a JSON object".into());
-    }
-    if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
-        return Err("session process is not running".into());
-    }
-    // Recheck after waiting: suspension may have closed stdin while this call
-    // waited for another command to finish.
-    if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
-        return Err("session process is not running".into());
-    }
-    let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
-    command["id"] = json!(id);
-    let rx = handle.pending.insert(id.clone());
-    handle
-        .stdin_tx
-        .send(command.to_string())
-        .map_err(|_| "session stdin closed".to_string())?;
-    // A long command may produce no inbound frames for minutes (`compact`),
-    // so the send itself counts as activity for the idle reaper.
-    // The suspender's internal probes are deliberately not user activity.
-    if !matches!(
-        command.get("type").and_then(Value::as_str),
-        Some("get_state" | "get_subagents")
-    ) {
-        handle.touch();
-    }
-    let timeout = match command.get("type").and_then(Value::as_str) {
-        Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
-        _ => CMD_TIMEOUT,
-    };
-    match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(resp)) => {
-            if resp.get("success").and_then(Value::as_bool) == Some(false) {
-                let err = resp
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("command failed");
-                return Err(err.to_string());
+            Ok(Err(_)) => Err("response channel dropped".into()),
+            Err(_) => {
+                handle.pending.remove(&id);
+                Err("command timed out".into())
             }
-            Ok(resp)
-        }
-        Ok(Err(_)) => Err("response channel dropped".into()),
-        Err(_) => {
-            handle.pending.remove(&id);
-            Err("command timed out".into())
         }
     }
+    .await;
+    observation.finished(handle, &result);
+    result
 }
 
 /// Write a fire-and-forget frame (extension_ui_response etc.).
@@ -761,7 +901,7 @@ pub async fn send_raw(handle: &Arc<SessionHandle>, frame: Value) -> Result<(), S
     handle
         .stdin_tx
         .send(frame.to_string())
-        .map_err(|_| "session stdin closed".to_string())?;
+        .map_err(|_| stdin_closed(handle))?;
     if let Some(id) = response_id {
         requests.retain(|r| r.request.get("id").and_then(Value::as_str) != Some(id));
     }
@@ -776,98 +916,147 @@ pub async fn spawn(state: &AppState, opts: &StartOpts) -> Result<Arc<SessionHand
     spawn_with_sink(opts, &settings, sink_from_state(state)).await
 }
 
+fn stdin_closed(handle: &SessionHandle) -> String {
+    let mut event = process_event(handle, "rpc.io_failed", "stdin");
+    event.phase = Some("dispatch".into());
+    event.code = Some("stdin_closed".into());
+    event.outcome = Some("error".into());
+    diagnostics::emit(event);
+    "session stdin closed".into()
+}
+
+fn observe_spawn_stage(
+    handle: &SessionHandle,
+    phase: &'static str,
+    started: Instant,
+    result: &Result<Value, String>,
+) {
+    if let Err(error) = result {
+        let mut event = process_event(handle, "rpc.spawn_failed", "rpc");
+        event.phase = Some(phase.into());
+        event.outcome = Some("error".into());
+        event.duration_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+        event.code = Some(diagnostics::classify_error(error).into());
+        diagnostics::emit(event);
+    }
+}
+
 /// Inner spawn used by tests (custom sink) and by `spawn`.
 pub async fn spawn_with_sink(
     opts: &StartOpts,
     settings: &Settings,
     sink: OutSink,
 ) -> Result<Arc<SessionHandle>, String> {
-    let mut cmd = build_command(opts, settings)?;
-    let path = augmented_path().await;
-    cmd.env("PATH", &path);
-    // Same resolution std uses for the child (program looked up in the child's PATH).
-    let omp_fingerprint = omp_fingerprint(&settings.omp_binary, &path);
-    let mut native_hash = String::new();
-    for (key, value) in crate::privacy::spawn_env() {
-        if key == "OMPWS_PRIVACY_NATIVE_HASH" {
-            native_hash.clone_from(&value);
-        }
-        cmd.env(key, value);
-    }
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("spawn omp failed ({path}): {e}"))?;
-    let pid = child.id().unwrap_or(0);
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "omp stdout not piped".to_string())?;
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "omp stdin not piped".to_string())?;
-    let startup_stderr = Arc::new(parking_lot::Mutex::new(String::new()));
-    let recording_stderr = Arc::new(AtomicBool::new(true));
-    let (stderr_done_tx, stderr_done_rx) = oneshot::channel();
-    if let Some(stderr) = child.stderr.take() {
-        let output = startup_stderr.clone();
-        let recording = recording_stderr.clone();
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "omp-stderr", "{line}");
-                if recording.load(Ordering::Relaxed) {
-                    let mut text = output.lock();
-                    text.push_str(&line);
-                    text.push('\n');
-                }
+    let started = Instant::now();
+    let mut phase = "spawn";
+    let mut child_pid = None;
+    let exit_status = Arc::new(parking_lot::Mutex::new((None, None)));
+    let mut failure_code = None;
+    let mut event = DiagnosticEvent::new("rpc.spawn_started", "rpc");
+    event.phase = Some(phase.into());
+    diagnostics::emit(event);
+    let result = async {
+        let mut cmd = build_command(opts, settings)?;
+        let path = augmented_path().await;
+        cmd.env("PATH", &path);
+        // Same resolution std uses for the child (program looked up in the child's PATH).
+        let omp_fingerprint = omp_fingerprint(&settings.omp_binary, &path);
+        let mut native_hash = String::new();
+        for (key, value) in crate::privacy::spawn_env() {
+            if key == "OMPWS_PRIVACY_NATIVE_HASH" {
+                native_hash.clone_from(&value);
             }
-            let _ = stderr_done_tx.send(());
+            cmd.env(key, value);
+        }
+
+        let mut child = cmd.spawn().map_err(|e| {
+            failure_code = Some(io_code(&e));
+            format!("spawn omp failed ({path}): {e}")
+        })?;
+        let pid = child.id().unwrap_or(0);
+        child_pid = Some(pid);
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "omp stdout not piped".to_string())?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "omp stdin not piped".to_string())?;
+        let startup_stderr = Arc::new(parking_lot::Mutex::new(String::new()));
+        let recording_stderr = Arc::new(AtomicBool::new(true));
+        let (stderr_done_tx, stderr_done_rx) = oneshot::channel();
+        if let Some(stderr) = child.stderr.take() {
+            let output = startup_stderr.clone();
+            let recording = recording_stderr.clone();
+            tokio::spawn(
+                async move {
+                    let mut lines = BufReader::new(stderr).lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        tracing::debug!(target: "omp-stderr", "{line}");
+                        if recording.load(Ordering::Relaxed) {
+                            let mut text = output.lock();
+                            text.push_str(&line);
+                            text.push('\n');
+                        }
+                    }
+                    let _ = stderr_done_tx.send(());
+                }
+                .instrument(tracing::Span::none())
+                .with_current_subscriber(),
+            );
+        }
+
+        let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<String>();
+        let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+        let (stdout_closed_tx, _) = watch::channel(false);
+        let (ready_tx, ready_rx) = oneshot::channel::<Value>();
+
+        let handle = Arc::new(SessionHandle {
+            session_id: parking_lot::RwLock::new(String::new()),
+            session_file: parking_lot::RwLock::new(String::new()),
+            cwd: opts.cwd.clone(),
+            pid,
+            stdin_tx,
+            shutdown: shutdown_tx,
+            pending: PendingMap::default(),
+            pending_ui: parking_lot::Mutex::new(Vec::new()),
+            plan_status: parking_lot::Mutex::new(None),
+            pending_frames: parking_lot::Mutex::new(Vec::new()),
+            stdout_closed: stdout_closed_tx,
+            streaming: AtomicBool::new(false),
+            alive: AtomicBool::new(true),
+            last_activity: parking_lot::Mutex::new(Instant::now()),
+            activity_version: AtomicU64::new(1),
+            dispatch_lock: tokio::sync::Mutex::new(()),
+            awaiting_async_work: AtomicBool::new(false),
+            settled: AtomicBool::new(false),
+            active_subagents: parking_lot::Mutex::new(HashSet::new()),
+            omp_fingerprint,
+            native_hash,
         });
-    }
 
-    let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<String>();
-    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
-    let (stdout_closed_tx, _) = watch::channel(false);
-    let (ready_tx, ready_rx) = oneshot::channel::<Value>();
-
-    let handle = Arc::new(SessionHandle {
-        session_id: parking_lot::RwLock::new(String::new()),
-        session_file: parking_lot::RwLock::new(String::new()),
-        cwd: opts.cwd.clone(),
-        pid,
-        stdin_tx,
-        shutdown: shutdown_tx,
-        pending: PendingMap::default(),
-        pending_ui: parking_lot::Mutex::new(Vec::new()),
-        plan_status: parking_lot::Mutex::new(None),
-        pending_frames: parking_lot::Mutex::new(Vec::new()),
-        stdout_closed: stdout_closed_tx,
-        streaming: AtomicBool::new(false),
-        alive: AtomicBool::new(true),
-        last_activity: parking_lot::Mutex::new(Instant::now()),
-        activity_version: AtomicU64::new(1),
-        dispatch_lock: tokio::sync::Mutex::new(()),
-        awaiting_async_work: AtomicBool::new(false),
-        settled: AtomicBool::new(false),
-        active_subagents: parking_lot::Mutex::new(HashSet::new()),
-        omp_fingerprint,
-        native_hash,
-    });
-
-    // stdin writer task: drains the channel, exits on shutdown/close.
-    let writer_handle = handle.clone();
-    let stdin_task = tokio::spawn(async move {
+        // stdin writer task: drains the channel, exits on shutdown/close.
+        let writer_handle = handle.clone();
+        let stdin_task = tokio::spawn(async move {
         let mut stdin = stdin;
         loop {
             tokio::select! {
                 line = stdin_rx.recv() => match line {
                     Some(line) => {
-                        let ok = stdin.write_all(line.as_bytes()).await.is_ok()
-                            && stdin.write_all(b"\n").await.is_ok()
-                            && stdin.flush().await.is_ok();
-                        if !ok { break; }
+                        let result = async {
+                            stdin.write_all(line.as_bytes()).await?;
+                            stdin.write_all(b"\n").await?;
+                            stdin.flush().await
+                        }.await;
+                        if let Err(error) = result {
+                            let mut event = process_event(&writer_handle, "rpc.io_failed", "stdin");
+                            event.phase = Some("write".into());
+                            event.code = Some(io_code(&error).into());
+                            event.outcome = Some("error".into());
+                            diagnostics::emit(event);
+                            break;
+                        }
                     }
                     None => break,
                 },
@@ -885,112 +1074,172 @@ pub async fn spawn_with_sink(
         writer_handle
             .fail_pending_after_drain("session stdin closed")
             .await;
-    });
+    }.instrument(tracing::Span::none()).with_current_subscriber());
 
-    // stdout reader task.
-    let reader_handle = handle.clone();
-    let reader_sink = sink.clone();
-    let reader_task = tokio::spawn(read_loop(reader_sink, reader_handle, stdout, ready_tx));
+        // stdout reader task.
+        let reader_handle = handle.clone();
+        let reader_sink = sink.clone();
+        let reader_task = tokio::spawn(
+            read_loop(reader_sink, reader_handle, stdout, ready_tx)
+                .instrument(tracing::Span::none())
+                .with_current_subscriber(),
+        );
 
-    // Monitor task owns the child; emits rpc:process on exit and cleans up.
-    let monitor_handle = handle.clone();
-    let monitor_sink = sink.clone();
-    let (exit_tx, exit_rx) = oneshot::channel();
-    let monitor_task = tokio::spawn(monitor(monitor_sink, monitor_handle, child, exit_tx));
+        // Monitor task owns the child; emits rpc:process on exit and cleans up.
+        let monitor_handle = handle.clone();
+        let monitor_sink = sink.clone();
+        let (exit_tx, exit_rx) = oneshot::channel();
+        let monitor_task = tokio::spawn(
+            monitor(
+                monitor_sink,
+                monitor_handle,
+                child,
+                exit_tx,
+                exit_status.clone(),
+            )
+            .instrument(tracing::Span::none())
+            .with_current_subscriber(),
+        );
 
-    struct SpawnGuard {
-        handle: Arc<SessionHandle>,
-        stdin_task: tokio::task::JoinHandle<()>,
-        reader_task: tokio::task::JoinHandle<()>,
-        monitor_task: tokio::task::JoinHandle<()>,
-        armed: bool,
-    }
+        struct SpawnGuard {
+            handle: Arc<SessionHandle>,
+            stdin_task: tokio::task::JoinHandle<()>,
+            reader_task: tokio::task::JoinHandle<()>,
+            monitor_task: tokio::task::JoinHandle<()>,
+            armed: bool,
+        }
 
-    impl Drop for SpawnGuard {
-        fn drop(&mut self) {
-            if self.armed {
-                super::lifecycle::record(&self.handle, "spawn_aborted", None);
-                let _ = self.handle.shutdown.send(true);
-                let was_alive = self.handle.alive.swap(false, Ordering::SeqCst);
-                self.handle.pending.fail_all("spawn aborted");
-                self.stdin_task.abort();
-                self.reader_task.abort();
-                let pid = self.handle.pid;
-                if pid > 1 && was_alive {
-                    // SAFETY: best-effort kill of child process if spawn failed before completion.
-                    unsafe {
-                        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        impl Drop for SpawnGuard {
+            fn drop(&mut self) {
+                if self.armed {
+                    super::lifecycle::record(&self.handle, "spawn_aborted", None);
+                    let _ = self.handle.shutdown.send(true);
+                    let was_alive = self.handle.alive.swap(false, Ordering::SeqCst);
+                    self.handle.pending.fail_all("spawn aborted");
+                    self.stdin_task.abort();
+                    self.reader_task.abort();
+                    let pid = self.handle.pid;
+                    if pid > 1 && was_alive {
+                        // SAFETY: best-effort kill of child process if spawn failed before completion.
+                        unsafe {
+                            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                        }
                     }
+                    self.monitor_task.abort();
                 }
-                self.monitor_task.abort();
             }
         }
-    }
 
-    let mut guard = SpawnGuard {
-        handle: handle.clone(),
-        stdin_task,
-        reader_task,
-        monitor_task,
-        armed: true,
-    };
+        let mut guard = SpawnGuard {
+            handle: handle.clone(),
+            stdin_task,
+            reader_task,
+            monitor_task,
+            armed: true,
+        };
 
-    // Handshake.
-    let ready = match tokio::time::timeout(READY_TIMEOUT, ready_rx).await {
-        Ok(Ok(ready)) => ready,
-        result => {
-            let reason = if result.is_err() {
-                "omp did not emit a ready frame"
-            } else {
-                "omp stdout closed before ready"
-            };
-            let exit = tokio::time::timeout(Duration::from_secs(1), exit_rx)
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .unwrap_or_else(|| "process has not exited".to_string());
-            let _ = tokio::time::timeout(Duration::from_secs(1), stderr_done_rx).await;
-            let stderr = startup_stderr.lock().clone();
-            return Err(format!("{reason}; {exit}; cwd: {}\n{stderr}", opts.cwd));
-        }
-    };
-    recording_stderr.store(false, Ordering::Relaxed);
-    startup_stderr.lock().clear();
-    if ready
-        .get("supportedProtocolVersions")
-        .and_then(Value::as_array)
-        .is_some_and(|v| v.contains(&json!(2)))
-    {
-        let _ = send_command(
-            &handle,
-            json!({"type": "negotiate_protocol", "protocolVersion": 2}),
-        )
-        .await;
-    }
-    let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
-    apply_state(&handle, &state_resp);
-    drain_pending_frames(&sink, &handle);
-    let _ = send_command(
-        &handle,
-        json!({"type": "set_subagent_subscription", "level": "progress"}),
-    )
-    .await;
-    if let Some(parent) = &opts.parent_session_id {
-        // `--fork` already copied the parent transcript; a blank `new_session`
-        // would discard it and break prefix caching.
-        if opts.fork_file.is_none() {
-            send_command(
+        // Handshake.
+        phase = "ready";
+        let ready = match tokio::time::timeout(READY_TIMEOUT, ready_rx).await {
+            Ok(Ok(ready)) => ready,
+            result => {
+                failure_code = Some(if result.is_err() {
+                    "startup_timeout"
+                } else {
+                    "spawn_failed"
+                });
+                let reason = if result.is_err() {
+                    "omp did not emit a ready frame"
+                } else {
+                    "omp stdout closed before ready"
+                };
+                let exit = tokio::time::timeout(Duration::from_secs(1), exit_rx)
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or_else(|| "process has not exited".to_string());
+                let _ = tokio::time::timeout(Duration::from_secs(1), stderr_done_rx).await;
+                let stderr = startup_stderr.lock().clone();
+                return Err(format!("{reason}; {exit}; cwd: {}\n{stderr}", opts.cwd));
+            }
+        };
+        recording_stderr.store(false, Ordering::Relaxed);
+        startup_stderr.lock().clear();
+        if ready
+            .get("supportedProtocolVersions")
+            .and_then(Value::as_array)
+            .is_some_and(|v| v.contains(&json!(2)))
+        {
+            phase = "negotiate";
+            let negotiation = send_command(
                 &handle,
-                json!({"type": "new_session", "parentSession": parent}),
+                json!({"type": "negotiate_protocol", "protocolVersion": 2}),
             )
-            .await?;
+            .await;
+            observe_spawn_stage(&handle, phase, started, &negotiation);
         }
+        phase = "get_state";
         let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
         apply_state(&handle, &state_resp);
         drain_pending_frames(&sink, &handle);
+        phase = "subscription";
+        let subscription = send_command(
+            &handle,
+            json!({"type": "set_subagent_subscription", "level": "progress"}),
+        )
+        .await;
+        observe_spawn_stage(&handle, phase, started, &subscription);
+        if let Some(parent) = &opts.parent_session_id {
+            // `--fork` already copied the parent transcript; a blank `new_session`
+            // would discard it and break prefix caching.
+            if opts.fork_file.is_none() {
+                phase = "new_session";
+                send_command(
+                    &handle,
+                    json!({"type": "new_session", "parentSession": parent}),
+                )
+                .await?;
+            }
+            phase = "get_state";
+            let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
+            apply_state(&handle, &state_resp);
+            drain_pending_frames(&sink, &handle);
+        }
+        guard.armed = false;
+        Ok(handle)
     }
-    guard.armed = false;
-    Ok(handle)
+    .await;
+    let mut event = DiagnosticEvent::new(
+        if result.is_ok() {
+            "rpc.spawn_ready"
+        } else {
+            "rpc.spawn_failed"
+        },
+        "rpc",
+    );
+    event.child_pid = child_pid;
+    event.phase = Some(phase.into());
+    event.duration_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+    event.outcome = Some(if result.is_ok() { "ok" } else { "error" }.into());
+    if let Ok(handle) = &result {
+        event.session_id = process_event(handle, "rpc.spawn_ready", "rpc").session_id;
+    } else {
+        event.code = Some(
+            failure_code
+                .unwrap_or_else(|| {
+                    result
+                        .as_ref()
+                        .err()
+                        .map_or("spawn_failed", |error| diagnostics::classify_error(error))
+                })
+                .into(),
+        );
+        let status = *exit_status.lock();
+        event.exit_code = status.0;
+        event.exit_signal = status.1;
+    }
+    diagnostics::emit(event);
+    result
 }
 pub(crate) fn apply_state(handle: &SessionHandle, resp: &Value) {
     let data = resp.get("data").unwrap_or(resp);
@@ -1020,12 +1269,33 @@ async fn read_loop(
     let mut lines = BufReader::new(stdout).lines();
     let mut reasm = ChunkReassembler::default();
     let mut ready_tx = Some(ready_tx);
-    while let Ok(Some(line)) = lines.next_line().await {
+    loop {
+        let line = match lines.next_line().await {
+            Ok(Some(line)) => line,
+            result => {
+                let mut event = process_event(&handle, "rpc.stdout_closed", "stdout");
+                event.phase = Some(if result.is_err() { "read" } else { "eof" }.into());
+                event.outcome = Some(if result.is_err() { "error" } else { "observed" }.into());
+                if let Err(error) = result {
+                    event.code = Some(io_code(&error).into());
+                    let mut failed = process_event(&handle, "rpc.io_failed", "stdout");
+                    failed.phase = Some("read".into());
+                    failed.outcome = Some("error".into());
+                    failed.code = event.code.clone();
+                    diagnostics::emit(failed);
+                }
+                diagnostics::emit(event);
+                break;
+            }
+        };
         if line.trim().is_empty() {
             continue;
         }
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             tracing::warn!("rpc: unparseable stdout line ({} bytes)", line.len());
+            let mut event = process_event(&handle, "rpc.protocol_invalid", "stdout");
+            event.code = Some("protocol_invalid".into());
+            diagnostics::emit(event);
             continue;
         };
         match reasm.feed(value) {
@@ -1046,7 +1316,12 @@ async fn read_loop(
                 emit_frame(&sink, &handle, &frame);
             }
             Ok(None) => {}
-            Err(e) => tracing::warn!("rpc_chunk: {e}"),
+            Err(e) => {
+                tracing::warn!("rpc_chunk: {e}");
+                let mut event = process_event(&handle, "rpc.protocol_invalid", "stdout");
+                event.code = Some("protocol_invalid".into());
+                diagnostics::emit(event);
+            }
         }
     }
     // EOF: every response the child wrote has been applied. Wake the writer and
@@ -1054,14 +1329,32 @@ async fn read_loop(
     handle.stdout_closed.send_replace(true);
 }
 
+type ExitObservation = Arc<parking_lot::Mutex<(Option<i32>, Option<i32>)>>;
+
 async fn monitor(
     sink: OutSink,
     handle: Arc<SessionHandle>,
     mut child: Child,
     exit_tx: oneshot::Sender<String>,
+    exit_status: ExitObservation,
 ) {
     let status = child.wait().await;
     let code = status.as_ref().ok().and_then(|s| s.code());
+    #[cfg(unix)]
+    let signal = {
+        use std::os::unix::process::ExitStatusExt;
+        status.as_ref().ok().and_then(|status| status.signal())
+    };
+    #[cfg(not(unix))]
+    let signal = None;
+    *exit_status.lock() = (code, signal);
+    if let Err(error) = &status {
+        let mut event = process_event(&handle, "rpc.io_failed", "rpc");
+        event.phase = Some("read".into());
+        event.outcome = Some("error".into());
+        event.code = Some(io_code(error).into());
+        diagnostics::emit(event);
+    }
     super::lifecycle::record(&handle, "process_exit", code);
     let _ = exit_tx.send(match &status {
         Ok(status) => format!("exit status: {status}"),
@@ -1152,6 +1445,10 @@ async fn stop_handle_after_signal(handle: &Arc<SessionHandle>) -> Result<(), Str
     }
     Err("session process did not exit".to_string())
 }
+
+#[cfg(test)]
+#[path = "diagnostic_tests.rs"]
+mod diagnostic_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1702,8 +1999,10 @@ mod tests {
 
     #[test]
     fn build_command_resume_does_not_apply_new_session_model() {
-        let mut settings = Settings::default();
-        settings.new_session_model = Some("openai/gpt-5".into());
+        let settings = Settings {
+            new_session_model: Some("openai/gpt-5".into()),
+            ..Settings::default()
+        };
         let opts = StartOpts {
             cwd: "/tmp".into(),
             resume_file: Some("/tmp/session.jsonl".into()),
@@ -1716,8 +2015,10 @@ mod tests {
 
     #[test]
     fn build_command_resume_keeps_explicit_model_override() {
-        let mut settings = Settings::default();
-        settings.new_session_model = Some("openai/gpt-5".into());
+        let settings = Settings {
+            new_session_model: Some("openai/gpt-5".into()),
+            ..Settings::default()
+        };
         let opts = StartOpts {
             cwd: "/tmp".into(),
             resume_file: Some("/tmp/session.jsonl".into()),
@@ -1731,8 +2032,10 @@ mod tests {
 
     #[test]
     fn build_command_fresh_still_uses_new_session_model() {
-        let mut settings = Settings::default();
-        settings.new_session_model = Some("openai/gpt-5".into());
+        let settings = Settings {
+            new_session_model: Some("openai/gpt-5".into()),
+            ..Settings::default()
+        };
         let opts = StartOpts {
             cwd: "/tmp".into(),
             ..Default::default()

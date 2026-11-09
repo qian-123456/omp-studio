@@ -1575,7 +1575,7 @@ mod tests {
         assert!(
             matches!(start(None, None).await, Err(message) if message.contains("已有拍照连接"))
         );
-        assert!(matches!(start(Some("fr-FR".into()), None).await, Err(_)));
+        assert!(start(Some("fr-FR".into()), None).await.is_err());
         let receiver = session.shutdown.subscribe();
         tokio::spawn(run_server(listener, session.clone(), receiver));
         let client = reqwest::Client::builder().no_proxy().build().unwrap();

@@ -397,9 +397,10 @@ fn drop_stale_blocked(active: &[&str]) {
 /// [`BLOCKED_NOTIFY_WINDOW_MS`].
 fn notify_due(key: String, now: i64) -> bool {
     let mut live = live().lock();
-    let due = live.notified.get(&key).map_or(true, |at| {
-        now.saturating_sub(*at) >= BLOCKED_NOTIFY_WINDOW_MS
-    });
+    let due = live
+        .notified
+        .get(&key)
+        .is_none_or(|at| now.saturating_sub(*at) >= BLOCKED_NOTIFY_WINDOW_MS);
     if due {
         live.notified.insert(key, now);
     }

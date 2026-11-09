@@ -8,11 +8,15 @@ import { startScrollPills } from "./lib/scrollPills";
 import { installDraftAutoCleanup } from "./features/sessions/newSession";
 import { startSessionEvents, useSessions } from "./stores/sessions";
 import { suppressWebViewContextMenu } from "./lib/webviewContextMenu";
+import { captureDiagnosticError, installGlobalDiagnostics } from "./lib/diagnostics";
+
+installGlobalDiagnostics();
 
 // Apply the persisted theme before first paint so there is no palette flash.
 try {
 	initTheme();
 } catch (err) {
+	captureDiagnosticError("bootstrap", err);
 	console.error("initTheme failed", err);
 }
 
@@ -20,14 +24,19 @@ try {
 try {
 	startSessionEvents()
 		.then(() => useSessions.getState().load())
-		.catch((err) => console.error("initial session load failed", err));
+		.catch((err) => {
+			captureDiagnosticError("bootstrap", err);
+			console.error("initial session load failed", err);
+		});
 } catch (err) {
+	captureDiagnosticError("bootstrap", err);
 	console.error("startSessionEvents failed", err);
 }
 // Prune completely empty drafts when selection moves away from them.
 try {
 	installDraftAutoCleanup();
 } catch (err) {
+	captureDiagnosticError("bootstrap", err);
 	console.error("installDraftAutoCleanup failed", err);
 }
 // Native scrollbars are hidden in CSS (classic always-on lane is ugly);
@@ -35,6 +44,7 @@ try {
 try {
 	startScrollPills();
 } catch (err) {
+	captureDiagnosticError("bootstrap", err);
 	console.error("startScrollPills failed", err);
 }
 // Suppress the native WebView menu ("Reload" / "Inspect Element") except for
@@ -56,6 +66,7 @@ class RootErrorBoundary extends React.Component<
 	}
 
 	componentDidCatch(error: Error, info: React.ErrorInfo) {
+		captureDiagnosticError("root_boundary", error);
 		console.error("RootErrorBoundary caught error:", error, info);
 	}
 

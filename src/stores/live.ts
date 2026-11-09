@@ -7,6 +7,7 @@
  */
 
 import { normalizeThinkContent } from "../lib/thinkTags";
+import { recordDiagnostic } from "../lib/diagnostics";
 import { isSideChatPrompt, sideChatPromptToDisplay } from "../features/chat/sideChatView";
 import { resolveCurrentModel } from "../lib/models";
 import {
@@ -1404,6 +1405,12 @@ function reduce(
 						// disconnect): omp is idle, so drop the stale live rows the
 						// way the end does — the wake-up / next user turn must not
 						// replay them.
+						const removedRows = live.liveRequests.length + Object.keys(live.tools).length + (live.streamingMessage ? 1 : 0);
+						if (removedRows > 0) recordDiagnostic({
+							event: "frontend.state_reconciled", source: "state_reconcile",
+							occurredAt: new Date().toISOString(), sessionId, removedRows,
+							alive: live.alive, streaming: false, outcome: "observed",
+						});
 						return {
 							...noted,
 							state,
@@ -1669,8 +1676,15 @@ export const useLive = create<LiveState>((set) => ({
 			}
 		}
 	},
-	reduceProcess: ({ sessionId, running }) => {
+	reduceProcess: ({ sessionId, running, exitCode }) => {
 		const current = useLive.getState().sessions[sessionId];
+		recordDiagnostic({
+			event: "frontend.process_observed", source: "process_observed",
+			occurredAt: new Date().toISOString(), sessionId, alive: running,
+			streaming: current?.streaming, outcome: "observed",
+			...(exitCode !== null ? { exitCode } : {}),
+			...(!running && current?.exitIntent ? { exitIntent: current.exitIntent } : {}),
+		});
 		if (!running && current?.streaming) pauseHeldAutoSend(sessionId);
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
@@ -2471,11 +2485,24 @@ export function startLiveEvents(): void {
 						m.rpcSend(payload.sessionId, { type: "get_subagents" }),
 					)
 					.catch(() => {});
+				recordDiagnostic({
+					event: "frontend.reconnect_started", source: "reconnect",
+					occurredAt: new Date().toISOString(), sessionId: payload.sessionId,
+				});
 				void ipcMod
 					.then((m) =>
 						m.rpcSend(payload.sessionId, { type: "get_state" }),
 					)
-					.catch(() => {});
+					.then(() => recordDiagnostic({
+						event: "frontend.reconnect_finished", source: "reconnect",
+						occurredAt: new Date().toISOString(), sessionId: payload.sessionId, outcome: "ok",
+					}))
+					.catch(() => {
+						recordDiagnostic({
+							event: "frontend.reconnect_finished", source: "reconnect",
+							occurredAt: new Date().toISOString(), sessionId: payload.sessionId, outcome: "error",
+						});
+					});
 			}
 		}),
 		onSessionsRemoved(pruneRemovedSessions),

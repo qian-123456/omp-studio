@@ -95,7 +95,7 @@ fn prune_instance_trees(
         &HashSet::from([self_pid]),
     );
 
-    let self_is_responsible = responsible.get(&self_pid).map_or(true, |r| *r == self_pid);
+    let self_is_responsible = responsible.get(&self_pid).is_none_or(|r| *r == self_pid);
     let shares_responsibility = other_roots
         .iter()
         .any(|pid| responsible.get(pid) == Some(&self_pid));
@@ -117,7 +117,7 @@ fn prune_instance_trees(
     app.retain(|pid| {
         by_pid
             .get(pid)
-            .map_or(true, |row| exe_base(&row.comm) != omp_exe)
+            .is_none_or(|row| exe_base(&row.comm) != omp_exe)
     });
     InstanceTrees { app, current }
 }

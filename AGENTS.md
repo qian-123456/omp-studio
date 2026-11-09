@@ -65,3 +65,16 @@ cargo fmt                    # format (CI expects fmt-clean)
 - **Wizard navigation**: Multi-step flows must allow going back (「上一步」) and keep previous choices.
 - **Capabilities from data**: Choices like thinking levels must be derived from model capabilities (`resolveThinkingLevels` in `src/lib/models.ts`).
 - **Floating UI layers**: Popovers, modals, drawers, toasts must use `FloatingLayer` / `Z_LAYER` (`docs/LAYERS.md`), never raw `z-*` classes (enforced by `zLayerGuard.test.ts`).
+
+## Agent diagnostics
+
+- Start investigation with `node scripts/diagnostics.mjs summary --instance main`
+  (or the exact worktree slug / `--data-dir <isolated-directory>`). Use
+  `node scripts/diagnostics.mjs instances` when selection is unclear.
+- Follow returned operation filters with `node scripts/diagnostics.mjs trace
+  --instance <slug> --operation <UUID>`; narrow by run/session rather than reading
+  full log files or chat transcripts first. Default output is at most 8 KiB.
+- Preserve observed/unknown and `contextOnly` distinctions. Missing completion
+  does not prove a crash; missing logs do not prove health. Legacy lifecycle files
+  are not the new writer. Never upload diagnostics automatically or touch another
+  instance; native acceptance and process-isolation rules above still apply.

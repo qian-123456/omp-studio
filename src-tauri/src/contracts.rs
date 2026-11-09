@@ -1813,6 +1813,180 @@ pub struct SkillsCatalog {
     pub extensions: Vec<ExtensionItem>,
 }
 
+// --- bounded local diagnostics (mirrored in src/lib/contracts.ts) ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FrontendDiagnosticEvent {
+    #[serde(rename = "frontend.ipc_started")]
+    IpcStarted,
+    #[serde(rename = "frontend.ipc_finished")]
+    IpcFinished,
+    #[serde(rename = "frontend.error")]
+    Error,
+    #[serde(rename = "frontend.state_reconciled")]
+    StateReconciled,
+    #[serde(rename = "frontend.process_observed")]
+    ProcessObserved,
+    #[serde(rename = "frontend.reconnect_started")]
+    ReconnectStarted,
+    #[serde(rename = "frontend.reconnect_finished")]
+    ReconnectFinished,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontendDiagnosticSource {
+    Bootstrap,
+    RootBoundary,
+    AppBoundary,
+    AsideBoundary,
+    WindowError,
+    UnhandledRejection,
+    ResourceError,
+    Ipc,
+    StateReconcile,
+    ProcessObserved,
+    Reconnect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticCode {
+    InvalidCommand,
+    NotLive,
+    ProcessNotRunning,
+    StdinClosed,
+    CommandTimeout,
+    ResponseChannelClosed,
+    UpstreamRejected,
+    SpawnFailed,
+    StartupTimeout,
+    ProtocolInvalid,
+    IoPermissionDenied,
+    IoNotFound,
+    IoOther,
+    CwdMissing,
+    SessionHeld,
+    UnexpectedError,
+    JsError,
+    PromiseRejection,
+    ResourceLoadError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticOutcome {
+    Ok,
+    Error,
+    Reused,
+    Resumed,
+    Observed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticExitIntent {
+    Stop,
+    Restart,
+    Other,
+}
+
+/// Optional, whitelisted context; bounded strings are validated at ingestion.
+/// Keep these fields aligned with FrontendDiagnosticInput without serde flatten,
+/// so both wire objects can reject unknown fields.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<DiagnosticCode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<DiagnosticOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_column: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alive: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streaming: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed_rows: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_intent: Option<DiagnosticExitIntent>,
+}
+
+/// Frontend-only diagnostic input; never contains raw errors or arbitrary data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FrontendDiagnosticInput {
+    pub event: FrontendDiagnosticEvent,
+    /// UTC RFC3339 event time, validated by the diagnostic ingestion boundary.
+    pub occurred_at: String,
+    pub source: FrontendDiagnosticSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<DiagnosticCode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<DiagnosticOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_column: Option<u32>,
+    /// At most eight LF-separated relative file:line:column locations, <=2 KiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frames: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alive: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streaming: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed_rows: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_intent: Option<DiagnosticExitIntent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticAckStatus {
+    Accepted,
+    Disabled,
+}
+
+/// Queue submission acknowledgment, not a persistence guarantee.
+/// Health counters are cumulative for the current backend run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticAck {
+    pub status: DiagnosticAckStatus,
+    pub accepted: u16,
+    pub dropped_events: u64,
+    pub write_failures: u64,
+    pub rejected_events: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

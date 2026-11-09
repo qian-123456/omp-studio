@@ -55,6 +55,7 @@ function ui(loading: boolean) {
 }
 
 beforeEach(() => {
+	vi.useFakeTimers();
 	vi.stubGlobal(
 		"ResizeObserver",
 		class {
@@ -70,8 +71,14 @@ beforeEach(() => {
 	useTurnNav.setState({ revealTurn: null });
 });
 afterEach(() => {
-	cleanup();
-	vi.useRealTimers();
+	try {
+		cleanup();
+		act(() => {
+			vi.runOnlyPendingTimers();
+		});
+	} finally {
+		vi.useRealTimers();
+	}
 });
 
 describe("pending reveal target", () => {

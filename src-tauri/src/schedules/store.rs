@@ -787,7 +787,7 @@ pub fn earliest_next_run(conn: &Connection) -> Result<Option<DateTime<Local>>, r
     let mut min: Option<DateTime<chrono::FixedOffset>> = None;
     for v in vals {
         if let Ok(dt) = DateTime::parse_from_rfc3339(&v?) {
-            if min.map_or(true, |m| dt < m) {
+            if min.is_none_or(|m| dt < m) {
                 min = Some(dt);
             }
         }
