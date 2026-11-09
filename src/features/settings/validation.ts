@@ -40,6 +40,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 	const out: Partial<Settings> = {};
 
 	const boolKeys: (keyof Settings)[] = [
+		"diagnosticsEnabled",
 		"systemDetection",
 		"smartContextRouting",
 		"notifyTurnEnd",

@@ -3,9 +3,11 @@
 import { create } from "zustand";
 import type { Settings } from "../../lib/contracts";
 import { getSettings, saveSettings } from "../../lib/ipc";
+import { setDiagnosticsEnabled } from "../../lib/diagnostics";
 
 /** Mirror of `Settings::default()` in contracts.rs (used by import / restore). */
 export const DEFAULT_SETTINGS: Settings = {
+	diagnosticsEnabled: true,
 	systemDetection: true,
 	smartContextRouting: false,
 	idleSuspendMinutes: 15,
@@ -76,13 +78,20 @@ export const useSettings = create<SettingsState>((set, get) => ({
 	settings: null,
 	error: null,
 	load: () => {
-		loading ??= getSettings()
+		if (loading) return loading;
+		const rev = currentRev;
+		// Read after older saves; discard the snapshot if a newer edit starts meanwhile.
+		loading = saveQueue.then(() => getSettings())
 			.then((settings) => {
+				if (currentRev !== rev) return;
+				setDiagnosticsEnabled(settings.diagnosticsEnabled);
 				lastConfirmed = settings;
 				keyRevisions.clear();
 				set({ settings, error: null });
 			})
-			.catch((e) => set({ error: String(e) }))
+			.catch((e) => {
+				if (currentRev === rev) set({ error: String(e) });
+			})
 			.finally(() => {
 				loading = null;
 			});
@@ -100,6 +109,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
 			keyRevisions.set(k, rev);
 		}
 		const next = { ...current, ...patch };
+		setDiagnosticsEnabled(next.diagnosticsEnabled);
 		set({ settings: next });
 
 		const queued = saveQueue.then(async () => {
@@ -114,10 +124,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
 						(confirmedPatch as Record<string, unknown>)[k] = saved[k];
 					}
 				}
-				set((state) => ({
-					settings: state.settings ? { ...state.settings, ...confirmedPatch } : saved,
-					error: null,
-				}));
+				set((state) => {
+					const settings = state.settings ? { ...state.settings, ...confirmedPatch } : saved;
+					setDiagnosticsEnabled(settings.diagnosticsEnabled);
+					return { settings, error: null };
+				});
 			} catch (e) {
 				const revertPatch: Partial<Settings> = {};
 				for (const k of Object.keys(patch) as (keyof Settings)[]) {
@@ -129,10 +140,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
 						}
 					}
 				}
-				set((state) => ({
-					settings: state.settings ? { ...state.settings, ...revertPatch } : null,
-					error: String(e),
-				}));
+				set((state) => {
+					const settings = state.settings ? { ...state.settings, ...revertPatch } : null;
+					setDiagnosticsEnabled(settings?.diagnosticsEnabled ?? false);
+					return { settings, error: String(e) };
+				});
 				throw e;
 			}
 		});

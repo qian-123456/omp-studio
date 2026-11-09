@@ -38,6 +38,7 @@ beforeEach(async () => {
 	rawInvoke.mockImplementation((command: string) => Promise.resolve(command === "diagnostics_record" ? ACK : undefined));
 	// A fresh module is intentional: these cases exercise the Document/HMR loading boundary.
 	diagnostics = await import("./diagnostics");
+	diagnostics.setDiagnosticsEnabled(true);
 });
 
 afterEach(() => {
@@ -245,6 +246,105 @@ describe("bounded queue and acknowledged loss", () => {
 		const count = batches().length;
 		await vi.advanceTimersByTimeAsync(10000);
 		expect(batches()).toHaveLength(count);
+	});
+});
+
+describe("diagnostic preference transitions", () => {
+	it("drops startup observations until the persisted preference is known, without instrumenting business calls", async () => {
+		vi.stubGlobal("document", {});
+		const pending = deferred<unknown>();
+		const args = { command: { type: "prompt" }, sessionId: SESSION };
+		rawInvoke.mockImplementation((command: string) => command === "diagnostics_record" ? Promise.resolve(ACK) : pending.promise);
+		diagnostics.recordDiagnostic(observation(1));
+		diagnostics.captureDiagnosticError("bootstrap", new Error("not yet enabled"));
+		const result = diagnostics.invokeWithDiagnostics("rpc_send", args);
+		expect(rawInvoke.mock.calls[0][1]).toBe(args);
+		expect(crypto.randomUUID).not.toHaveBeenCalled();
+		diagnostics.setDiagnosticsEnabled(false);
+		await vi.runAllTimersAsync();
+		expect(batches()).toHaveLength(0);
+		diagnostics.setDiagnosticsEnabled(true);
+		pending.resolve(undefined);
+		await result;
+		diagnostics.recordDiagnostic(observation(2));
+		await vi.runAllTimersAsync();
+		expect(batches()).toEqual([{ events: [expect.objectContaining({ removedRows: 2 })], droppedEvents: 0 }]);
+	});
+
+	it("clears queued events, timers and deduplication while off and records only future errors after re-enable", async () => {
+		const error = new Error("same boundary error");
+		diagnostics.captureDiagnosticError("root_boundary", error);
+		diagnostics.recordDiagnostic(observation(1));
+		diagnostics.setDiagnosticsEnabled(false);
+		diagnostics.recordDiagnostic(observation(2));
+		diagnostics.captureDiagnosticError("app_boundary", error);
+		const args = { sessionId: SESSION, command: { type: "prompt" } };
+		await diagnostics.invokeWithDiagnostics("rpc_send", args);
+		expect(rawInvoke.mock.calls[0][1]).toBe(args);
+		expect(crypto.randomUUID).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.runAllTimersAsync();
+		expect(batches()).toHaveLength(0);
+		diagnostics.setDiagnosticsEnabled(true);
+		diagnostics.captureDiagnosticError("app_boundary", error);
+		await vi.runAllTimersAsync();
+		expect(batches()[0]).toMatchObject({ droppedEvents: 0, events: [expect.objectContaining({ source: "app_boundary" })] });
+	});
+
+	it("does not record an old business completion after an off-to-on transition", async () => {
+		const pending = deferred<unknown>();
+		rawInvoke.mockImplementation((command: string) => command === "diagnostics_record" ? Promise.resolve(ACK) : pending.promise);
+		const result = diagnostics.invokeWithDiagnostics("rpc_start", {});
+		diagnostics.setDiagnosticsEnabled(false);
+		diagnostics.setDiagnosticsEnabled(true);
+		pending.resolve({ sessionId: SESSION });
+		await result;
+		await vi.runAllTimersAsync();
+		expect(batches()).toHaveLength(0);
+		diagnostics.recordDiagnostic(observation(3));
+		await vi.runAllTimersAsync();
+		expect(batches()[0].events).toEqual([expect.objectContaining({ removedRows: 3 })]);
+	});
+
+	it("ignores stale transport failures without restoring drops or releasing a new in-flight batch", async () => {
+		const oldBatch = deferred<DiagnosticAck>();
+		const newBatch = deferred<DiagnosticAck>();
+		rawInvoke.mockReturnValueOnce(oldBatch.promise).mockReturnValueOnce(newBatch.promise);
+		for (let i = 0; i < 140; i++) diagnostics.recordDiagnostic(observation(i));
+		diagnostics.setDiagnosticsEnabled(false);
+		diagnostics.setDiagnosticsEnabled(true);
+		for (let i = 200; i < 220; i++) diagnostics.recordDiagnostic(observation(i));
+		diagnostics.recordDiagnostic(observation(220));
+		expect(batches()).toHaveLength(2);
+		oldBatch.reject(new Error("old transport"));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(batches()).toHaveLength(2);
+		newBatch.resolve(ACK);
+		await vi.runAllTimersAsync();
+		expect(batches()[1].droppedEvents).toBe(0);
+		expect(batches()[2]).toEqual({ events: [expect.objectContaining({ removedRows: 220 })], droppedEvents: 0 });
+	});
+
+	it("keeps global listeners active across toggle and HMR-style reinstall without forgetting the preference", async () => {
+		const add = vi.spyOn(browser, "addEventListener");
+		const dispose = diagnostics.installGlobalDiagnostics();
+		diagnostics.setDiagnosticsEnabled(false);
+		browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("off") }));
+		vi.resetModules();
+		// Dynamic import deliberately exercises HMR module re-evaluation, which static imports cannot.
+		const reinstalled = await import("./diagnostics");
+		expect(reinstalled.installGlobalDiagnostics()).toBe(dispose);
+		expect(add).toHaveBeenCalledTimes(2);
+		dispose();
+		reinstalled.installGlobalDiagnostics();
+		dispose();
+		browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("still off") }));
+		await vi.runAllTimersAsync();
+		expect(batches()).toHaveLength(0);
+		reinstalled.setDiagnosticsEnabled(true);
+		browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("on") }));
+		await vi.runAllTimersAsync();
+		expect(batches()[0].events).toEqual([expect.objectContaining({ source: "unhandled_rejection" })]);
 	});
 });
 

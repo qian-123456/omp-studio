@@ -1,14 +1,15 @@
 //! Content-free, bounded local evidence. Queue acceptance is not a durability promise.
+#[cfg(test)]
 use std::borrow::Cow;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use serde::Deserialize;
-use tracing_appender::non_blocking::{ErrorCounter, NonBlockingBuilder, WorkerGuard};
+use tracing_appender::non_blocking::{ErrorCounter, NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::prelude::*;
 use uuid::Uuid;
@@ -22,6 +23,7 @@ const TARGET: &str = "ompws.diagnostics";
 const FILE_BYTES: u64 = 2 * 1024 * 1024;
 const LINE_BYTES: usize = 8 * 1024;
 const INVALID_BATCH: &str = "diagnostics_invalid_batch";
+#[cfg(test)]
 const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
 /// Every field is a scalar from the approved schema, never a message or payload.
@@ -146,17 +148,247 @@ struct HealthTask {
     thread: std::thread::JoinHandle<()>,
 }
 
+struct Admission {
+    enabled: bool,
+    stopped: bool,
+    worker: Option<WorkerGuard>,
+    queue_errors: Option<ErrorCounter>,
+    retired_dropped: u64,
+    #[cfg(unix)]
+    output: Option<Arc<Mutex<Option<BoundedWriter>>>>,
+}
+
+#[derive(Clone, Default)]
+struct RoutingWriter(Arc<Mutex<Option<NonBlocking>>>);
+
+struct RoutedWriter<'a>(MutexGuard<'a, Option<NonBlocking>>);
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for RoutingWriter {
+    type Writer = RoutedWriter<'a>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        RoutedWriter(self.0.lock())
+    }
+}
+
+impl Write for RoutedWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self.0.as_mut() {
+            Some(writer) => writer.write(bytes),
+            None => Ok(bytes.len()),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self.0.as_mut() {
+            Some(writer) => writer.flush(),
+            None => Ok(()),
+        }
+    }
+}
+
+#[cfg(unix)]
+struct GenerationWriter(Arc<Mutex<Option<BoundedWriter>>>);
+
+#[cfg(unix)]
+impl Write for GenerationWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self.0.lock().as_mut() {
+            Some(writer) => writer.write(bytes),
+            None => Ok(bytes.len()),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self.0.lock().as_mut() {
+            Some(writer) => writer.flush(),
+            None => Ok(()),
+        }
+    }
+}
+
 struct Runtime {
     metadata: Metadata,
-    worker: Mutex<Option<WorkerGuard>>,
-    queue_errors: ErrorCounter,
-    enabled: AtomicBool,
+    root: PathBuf,
+    admission: Mutex<Admission>,
+    writer: RoutingWriter,
+    counters: Arc<Counters>,
     health: Mutex<Option<HealthTask>>,
+}
+
+impl Runtime {
+    fn new(
+        root: &Path,
+        enabled: bool,
+        counters: Arc<Counters>,
+    ) -> Result<Self, DiagnosticInitError> {
+        let runtime = Self {
+            metadata: Metadata {
+                app_run_id: Uuid::new_v4().to_string(),
+                app_pid: std::process::id(),
+            },
+            root: root.to_path_buf(),
+            admission: Mutex::new(Admission {
+                enabled: false,
+                stopped: false,
+                worker: None,
+                queue_errors: None,
+                retired_dropped: 0,
+                #[cfg(unix)]
+                output: None,
+            }),
+            writer: RoutingWriter::default(),
+            counters,
+            health: Mutex::new(None),
+        };
+        // Disabled startup does not open or create any diagnostic storage.
+        if enabled {
+            runtime.open(&mut runtime.admission.lock())?;
+        }
+        Ok(runtime)
+    }
+
+    #[cfg(not(unix))]
+    fn open(&self, _admission: &mut Admission) -> Result<(), DiagnosticInitError> {
+        Err(DiagnosticInitError::UnsupportedPlatform)
+    }
+
+    #[cfg(unix)]
+    fn open(&self, admission: &mut Admission) -> Result<(), DiagnosticInitError> {
+        let output = Arc::new(Mutex::new(Some(
+            BoundedWriter::new(&self.root, self.counters.clone(), FILE_BYTES, LINE_BYTES)
+                .map_err(|_| DiagnosticInitError::StorageUnavailable)?,
+        )));
+        let (writer, guard) = NonBlockingBuilder::default()
+            .buffered_lines_limit(1024)
+            .lossy(true)
+            .thread_name("ompws-diagnostics")
+            .finish(GenerationWriter(output.clone()));
+        admission.queue_errors = Some(writer.error_counter());
+        admission.worker = Some(guard);
+        admission.output = Some(output);
+        *self.writer.0.lock() = Some(writer);
+        admission.enabled = true;
+        Ok(())
+    }
+
+    fn close(&self, admission: &mut Admission) {
+        admission.enabled = false;
+        self.writer.0.lock().take();
+        // Keep admission locked through the official bounded drain. No producer
+        // or re-enable can race this generation's retirement.
+        drop(admission.worker.take());
+        #[cfg(unix)]
+        if let Some(output) = admission.output.take() {
+            // WorkerGuard may time out. Revoke its storage under the same lock
+            // used for actual writes, so even a late old worker cannot replay.
+            output.lock().take();
+        }
+        if let Some(errors) = admission.queue_errors.take() {
+            admission.retired_dropped = admission
+                .retired_dropped
+                .saturating_add(errors.dropped_lines() as u64);
+        }
+    }
+
+    fn emit(&self, event: DiagnosticEvent) {
+        let admission = self.admission.lock();
+        if !admission.enabled || admission.stopped {
+            return;
+        }
+        if !valid_event(&event) {
+            increment(&self.counters.rejected_events, 1);
+            return;
+        }
+        emit_with_metadata(event, &self.metadata);
+    }
+
+    fn set_enabled(&self, enabled: bool) {
+        let mut admission = self.admission.lock();
+        if admission.stopped || admission.enabled == enabled {
+            return;
+        }
+        if enabled {
+            if self.open(&mut admission).is_err() {
+                increment(&self.counters.write_failures, 1);
+            }
+        } else {
+            self.close(&mut admission);
+        }
+    }
+
+    fn ack(&self, admission: &Admission, accepted: u16) -> DiagnosticAck {
+        let dropped = admission.retired_dropped.saturating_add(
+            admission
+                .queue_errors
+                .as_ref()
+                .map_or(0, |errors| errors.dropped_lines() as u64),
+        );
+        make_ack(
+            &self.counters,
+            admission.enabled && !admission.stopped,
+            accepted,
+            dropped,
+        )
+    }
+
+    fn record(&self, body: &tauri::ipc::InvokeBody) -> Result<DiagnosticAck, String> {
+        let admission = self.admission.lock();
+        if !admission.enabled || admission.stopped {
+            return Ok(self.ack(&admission, 0));
+        }
+        let result = record_request_body(body, true, &self.counters, |event| {
+            emit_with_metadata(event, &self.metadata)
+        })?;
+        Ok(self.ack(&admission, result.accepted))
+    }
+
+    fn health_event(&self, admission: &Admission) -> DiagnosticEvent {
+        let health = self.ack(admission, 0);
+        let mut event = DiagnosticEvent::new("diagnostics.health", "startup");
+        event.dropped_events = Some(health.dropped_events);
+        event.write_failures = Some(health.write_failures);
+        event.rejected_events = Some(health.rejected_events);
+        event
+    }
+
+    fn record_health(&self) {
+        let admission = self.admission.lock();
+        if admission.enabled && !admission.stopped {
+            emit_with_metadata(self.health_event(&admission), &self.metadata);
+        }
+    }
+
+    fn shutdown(&self) {
+        {
+            let mut admission = self.admission.lock();
+            if admission.stopped {
+                return;
+            }
+            if admission.enabled {
+                // Final health must be admitted before closing the gate.
+                emit_with_metadata(self.health_event(&admission), &self.metadata);
+            }
+            admission.stopped = true;
+            self.close(&mut admission);
+        }
+        if let Some(health) = self.health.lock().take() {
+            let _ = health.stop.send(());
+            let _ = health.thread.join();
+        }
+    }
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static INIT_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(test)]
 fn metadata() -> Cow<'static, Metadata> {
     #[cfg(test)]
     if let Some(value) = test_support::metadata_override() {
@@ -210,46 +442,31 @@ impl Drop for DiagnosticsGuard {
     }
 }
 
-pub fn init(root: &Path) -> Result<DiagnosticsGuard, DiagnosticInitError> {
+pub fn init(root: &Path, enabled: bool) -> Result<DiagnosticsGuard, DiagnosticInitError> {
     if INIT_ATTEMPTED.swap(true, Ordering::AcqRel) {
         return Err(DiagnosticInitError::AlreadyInitialized);
     }
-    let result = init_inner(root);
-    if let Err(error) = result.as_ref() {
-        // No paths, OS messages, or recursive tracing on this failure path.
-        eprintln!("diagnostics_disabled:{}", error.as_str());
+    let result = init_inner(root, enabled);
+    if enabled {
+        if let Err(error) = result.as_ref() {
+            // No paths, OS messages, or recursive tracing on this failure path.
+            eprintln!("diagnostics_disabled:{}", error.as_str());
+        }
     }
     result
 }
 
 #[cfg(not(unix))]
-fn init_inner(_root: &Path) -> Result<DiagnosticsGuard, DiagnosticInitError> {
+fn init_inner(_root: &Path, _enabled: bool) -> Result<DiagnosticsGuard, DiagnosticInitError> {
     Err(DiagnosticInitError::UnsupportedPlatform)
 }
 
 #[cfg(unix)]
-fn init_inner(root: &Path) -> Result<DiagnosticsGuard, DiagnosticInitError> {
-    let writer = BoundedWriter::new(root, counters().clone(), FILE_BYTES, LINE_BYTES)
-        .map_err(|_| DiagnosticInitError::StorageUnavailable)?;
-    let (writer, guard) = NonBlockingBuilder::default()
-        .buffered_lines_limit(1024)
-        .lossy(true)
-        .thread_name("ompws-diagnostics")
-        .finish(writer);
-    let queue_errors = writer.error_counter();
-    let subscriber = tracing_subscriber::registry().with(json_layer(writer));
+fn init_inner(root: &Path, enabled: bool) -> Result<DiagnosticsGuard, DiagnosticInitError> {
+    let runtime = Runtime::new(root, enabled, counters().clone())?;
+    let subscriber = tracing_subscriber::registry().with(json_layer(runtime.writer.clone()));
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|_| DiagnosticInitError::SubscriberConflict)?;
-    let runtime = Runtime {
-        metadata: Metadata {
-            app_run_id: Uuid::new_v4().to_string(),
-            app_pid: std::process::id(),
-        },
-        worker: Mutex::new(Some(guard)),
-        queue_errors,
-        enabled: AtomicBool::new(true),
-        health: Mutex::new(None),
-    };
     // INIT_ATTEMPTED serializes the only writer to this cell.
     let _ = RUNTIME.set(runtime);
     Ok(DiagnosticsGuard { _private: () })
@@ -286,11 +503,23 @@ pub fn operation_span(operation_id: Option<&str>) -> tracing::Span {
 }
 
 pub fn emit(event: DiagnosticEvent) {
-    if !valid_event(&event) {
-        increment(&counters().rejected_events, 1);
+    if let Some(runtime) = RUNTIME.get() {
+        runtime.emit(event);
+        #[cfg(test)]
         return;
     }
-    emit_with_metadata(event, &metadata());
+    // Existing scoped subscriber fixtures never install the process singleton.
+    #[cfg(test)]
+    if valid_event(&event) {
+        emit_with_metadata(event, &metadata());
+    }
+}
+
+/// Called only after the settings transaction succeeds under SAVE_LOCK.
+pub fn set_enabled(enabled: bool) {
+    if let Some(runtime) = RUNTIME.get() {
+        runtime.set_enabled(enabled);
+    }
 }
 
 fn emit_with_metadata(event: DiagnosticEvent, metadata: &Metadata) {
@@ -356,19 +585,6 @@ fn emit_with_metadata(event: DiagnosticEvent, metadata: &Metadata) {
     }
 }
 
-fn enabled() -> bool {
-    RUNTIME
-        .get()
-        .is_some_and(|runtime| runtime.enabled.load(Ordering::Acquire))
-}
-
-fn ack(accepted: u16) -> DiagnosticAck {
-    let queue_dropped = RUNTIME
-        .get()
-        .map_or(0, |r| r.queue_errors.dropped_lines() as u64);
-    make_ack(counters(), enabled(), accepted, queue_dropped)
-}
-
 fn make_ack(
     counters: &Counters,
     enabled: bool,
@@ -400,7 +616,10 @@ struct FrontendDiagnosticBatch {
 
 #[tauri::command]
 pub async fn diagnostics_record(request: tauri::ipc::Request<'_>) -> Result<DiagnosticAck, String> {
-    record_request_body(request.body(), enabled(), counters(), emit)
+    let Some(runtime) = RUNTIME.get() else {
+        return Ok(make_ack(counters(), false, 0, 0));
+    };
+    runtime.record(request.body())
 }
 
 fn record_request_body(
@@ -470,10 +689,7 @@ fn record_batch(
             }
         }
     }
-    let queue_dropped = RUNTIME
-        .get()
-        .map_or(0, |r| r.queue_errors.dropped_lines() as u64);
-    Ok(make_ack(counters, enabled, accepted, queue_dropped))
+    Ok(make_ack(counters, enabled, accepted, 0))
 }
 
 fn frontend_event(input: FrontendDiagnosticInput) -> (Option<String>, DiagnosticEvent) {
@@ -975,12 +1191,9 @@ pub fn install_panic_hook() {
 }
 
 fn record_health() {
-    let health = ack(0);
-    let mut event = DiagnosticEvent::new("diagnostics.health", "startup");
-    event.dropped_events = Some(health.dropped_events);
-    event.write_failures = Some(health.write_failures);
-    event.rejected_events = Some(health.rejected_events);
-    emit(event);
+    if let Some(runtime) = RUNTIME.get() {
+        runtime.record_health();
+    }
 }
 
 pub fn start_health_task() {
@@ -988,7 +1201,7 @@ pub fn start_health_task() {
         return;
     };
     let mut health = runtime.health.lock();
-    if health.is_some() || !runtime.enabled.load(Ordering::Acquire) {
+    if health.is_some() || runtime.admission.lock().stopped {
         return;
     }
     if let Ok(task) = spawn_health_task(Duration::from_secs(30), record_health) {
@@ -1014,20 +1227,9 @@ fn spawn_health_task(
 }
 
 pub fn shutdown() {
-    let Some(runtime) = RUNTIME.get() else {
-        return;
-    };
-    if !runtime.enabled.swap(false, Ordering::AcqRel) {
-        return;
+    if let Some(runtime) = RUNTIME.get() {
+        runtime.shutdown();
     }
-    if let Some(health) = runtime.health.lock().take() {
-        let _ = health.stop.send(());
-        let _ = health.thread.join();
-    }
-    record_health();
-    // Drop outside the mutex: WorkerGuard attempts a bounded drain and flush.
-    let worker = runtime.worker.lock().take();
-    drop(worker);
 }
 
 #[cfg(unix)]
@@ -1351,6 +1553,156 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[cfg(unix)]
+    fn runtime_dispatch(runtime: &Runtime) -> tracing::Dispatch {
+        tracing::Dispatch::new(
+            tracing_subscriber::registry().with(json_layer(runtime.writer.clone())),
+        )
+    }
+
+    #[cfg(unix)]
+    fn runtime_rows(root: &TempRoot) -> Vec<serde_json::Value> {
+        fs::read_to_string(root.diagnostic("events.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_toggle_disabled_initialization_writes_and_counts_nothing() {
+        let root = TempRoot::new();
+        let counters = Arc::new(Counters::default());
+        let runtime = Runtime::new(&root.0, false, counters.clone()).unwrap();
+        let dispatch = runtime_dispatch(&runtime);
+        tracing::dispatcher::with_default(&dispatch, || {
+            runtime.emit(DiagnosticEvent::new("app.started", "startup"));
+            runtime.emit(DiagnosticEvent::new("app.panic", "startup"));
+            runtime.emit(DiagnosticEvent::default());
+            runtime.record_health();
+            let ack = runtime
+                .record(&tauri::ipc::InvokeBody::Raw(vec![0]))
+                .unwrap();
+            assert_eq!(ack.status, DiagnosticAckStatus::Disabled);
+            assert_eq!(ack.accepted, 0);
+            assert_eq!(ack.rejected_events, 0);
+            assert_eq!(ack.dropped_events, 0);
+            runtime.shutdown();
+        });
+        assert_eq!(counters.write_failures.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.rejected_events.load(Ordering::Relaxed), 0);
+        assert!(!root.0.join("diagnostics").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_toggle_off_on_retains_history_and_only_records_future_events() {
+        let root = TempRoot::new();
+        let runtime = Runtime::new(&root.0, false, Arc::default()).unwrap();
+        let dispatch = runtime_dispatch(&runtime);
+        tracing::dispatcher::with_default(&dispatch, || {
+            runtime.emit(DiagnosticEvent::new("app.started", "startup"));
+            runtime.set_enabled(true);
+            runtime.emit(DiagnosticEvent::new("rpc.spawn_started", "rpc"));
+            runtime.set_enabled(false);
+            let before = fs::read(root.diagnostic("events.jsonl")).unwrap();
+            assert_eq!(runtime_rows(&root).len(), 1);
+            runtime.emit(DiagnosticEvent::new("app.panic", "startup"));
+            runtime.emit(DiagnosticEvent::new("app.exit", "startup"));
+            runtime.record_health();
+            let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+                "events": [input()], "droppedEvents": 9
+            }));
+            assert_eq!(runtime.record(&body).unwrap().accepted, 0);
+            assert_eq!(fs::read(root.diagnostic("events.jsonl")).unwrap(), before);
+            runtime.set_enabled(true);
+            assert_eq!(runtime.record(&body).unwrap().accepted, 1);
+            runtime.set_enabled(false);
+            let rows = runtime_rows(&root);
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0]["fields"]["event"], "rpc.spawn_started");
+            assert_eq!(rows[1]["fields"]["event"], "frontend.ipc_finished");
+            let before_exit = fs::read(root.diagnostic("events.jsonl")).unwrap();
+            runtime.shutdown();
+            assert_eq!(
+                fs::read(root.diagnostic("events.jsonl")).unwrap(),
+                before_exit
+            );
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_toggle_retired_generation_cannot_replay_after_reenable() {
+        let root = TempRoot::new();
+        let runtime = Runtime::new(&root.0, true, Arc::default()).unwrap();
+        let dispatch = runtime_dispatch(&runtime);
+        let mut old_queue = runtime.writer.0.lock().as_ref().unwrap().clone();
+        let mut old_output =
+            GenerationWriter(runtime.admission.lock().output.as_ref().unwrap().clone());
+        tracing::dispatcher::with_default(&dispatch, || {
+            runtime.emit(DiagnosticEvent::new("rpc.spawn_started", "rpc"));
+            runtime.set_enabled(false);
+            assert_eq!(runtime_rows(&root).len(), 1);
+            runtime.set_enabled(true);
+            // Model both a retained sender and a worker still holding its sink
+            // after WorkerGuard's bounded drain deadline.
+            old_queue.write_all(b"{\"staleQueue\":true}\n").unwrap();
+            old_output.write_all(b"{\"staleWorker\":true}\n").unwrap();
+            old_output.flush().unwrap();
+            runtime.emit(DiagnosticEvent::new("rpc.resume_started", "rpc"));
+            runtime.set_enabled(false);
+        });
+        let rows = runtime_rows(&root);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["fields"]["event"], "rpc.spawn_started");
+        assert_eq!(rows[1]["fields"]["event"], "rpc.resume_started");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_toggle_admission_waiter_observes_completed_disable() {
+        let root = TempRoot::new();
+        let runtime = Runtime::new(&root.0, true, Arc::default()).unwrap();
+        let dispatch = runtime_dispatch(&runtime);
+        let mut admission = runtime.admission.lock();
+        std::thread::scope(|scope| {
+            let (ready, started) = std::sync::mpsc::channel();
+            let runtime = &runtime;
+            let producer = scope.spawn(move || {
+                tracing::dispatcher::with_default(&dispatch, || {
+                    ready.send(()).unwrap();
+                    runtime.emit(DiagnosticEvent::new("app.panic", "startup"));
+                });
+            });
+            started.recv().unwrap();
+            runtime.close(&mut admission);
+            drop(admission);
+            producer.join().unwrap();
+        });
+        assert!(runtime_rows(&root).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_toggle_enabled_shutdown_keeps_final_health_once() {
+        let root = TempRoot::new();
+        let runtime = Runtime::new(&root.0, true, Arc::default()).unwrap();
+        let dispatch = runtime_dispatch(&runtime);
+        tracing::dispatcher::with_default(&dispatch, || {
+            runtime.emit(DiagnosticEvent::new("app.exit", "startup"));
+            runtime.shutdown();
+            runtime.shutdown();
+            runtime.set_enabled(true);
+            runtime.emit(DiagnosticEvent::new("app.started", "startup"));
+        });
+        let rows = runtime_rows(&root);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["fields"]["event"], "app.exit");
+        assert_eq!(rows[1]["fields"]["event"], "diagnostics.health");
     }
 
     #[test]

@@ -218,6 +218,18 @@ byte rotation and cross-process `flock`; health counters are sampled every 30 se
 Normal exit flushes best-effort; SIGKILL, power loss and overflow can lose records.
 Unavailable or stale evidence is unknown, never evidence of a healthy application.
 
+The **General → Troubleshooting → Local diagnostic records** switch is available
+in both release and development builds. `Settings.diagnostics_enabled`
+(`diagnosticsEnabled` on the wire) defaults to true for existing installations.
+The persisted choice is loaded before diagnostics initialization. A successful
+disable stops new frontend and backend recording immediately, retaining existing
+files; re-enabling records subsequent events only, without replaying an old
+frontend batch or queued completion. Failed settings persistence preserves the
+previous choice. Disabling does not delete evidence, affect business operations,
+or enable any remote telemetry. Historical query results are not proof that
+recording is currently enabled.
+
+
 
 ```rust
 pub enum SessionStatus {
@@ -383,6 +395,7 @@ pub struct UsageSummary { pub available: bool, pub tokens: Option<u64>, pub cost
 
 pub struct Settings {
   pub system_detection: bool,        // default true
+  pub diagnostics_enabled: bool,      // default true; local-only diagnostic capture, persisted and live-applied
   pub smart_context_routing: bool,   // default false
   pub idle_suspend_minutes: u32,     // default 15; 0 = never
   pub default_approval_mode: String, // default "write"
@@ -960,7 +973,8 @@ Previewing a pending command does not submit the command, activate backend plan 
 
 ```rust
 // diagnostics (LEAD): one persistence boundary; safe no-op before initialization
-pub fn diagnostics::init(root: &Path) -> Result<DiagnosticsGuard, DiagnosticInitError>;
+pub fn diagnostics::init(root: &Path, enabled: bool) -> Result<DiagnosticsGuard, DiagnosticInitError>;
+pub fn diagnostics::set_enabled(enabled: bool); // after persisted Settings updates, under the settings save lock
 pub fn diagnostics::emit(event: DiagnosticEvent);
 pub fn diagnostics::operation_span(operation_id: Option<&str>) -> tracing::Span;
 pub fn diagnostics::shutdown(); // idempotent, best-effort normal-exit flush

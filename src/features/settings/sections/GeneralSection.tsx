@@ -236,6 +236,17 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
+			<SettingsCard jump={t("settingsSections.general.troubleshootingTitle")} title={t("settingsSections.general.troubleshootingTitle")}>
+				<ToggleRow
+					fieldId="diagnosticsEnabled"
+					label={<span className="whitespace-nowrap">{t("settingsSections.general.diagnosticsLabel")}</span>}
+					description={t("settingsSections.general.diagnosticsDesc")}
+					checked={settings?.diagnosticsEnabled ?? true}
+					disabled={!settings}
+					onChange={(v) => save({ diagnosticsEnabled: v })}
+				/>
+			</SettingsCard>
+
 			<OmpSections page="general" />
 		</div>
 	);

@@ -63,6 +63,9 @@ export default defineMessages({
 		general: {
 			title: "通用",
 			description: "新会话的默认设置与界面开关",
+			troubleshootingTitle: "故障排查",
+			diagnosticsLabel: "本地诊断记录",
+			diagnosticsDesc: "仅在本机记录错误、状态与耗时，不含聊天内容或密钥，不会上传；记录文件总计约 4 MiB。关闭后立即停止新记录，已有记录保留；重新开启只记录之后的事件。",
 			jumpNewSession: "新会话默认设置",
 			titleNewSession: "新会话默认设置",
 			defaultModelLabel: "全局默认模型",
@@ -322,6 +325,9 @@ export default defineMessages({
 		general: {
 			title: "General",
 			description: "Default settings and UI switches for new sessions",
+			troubleshootingTitle: "Troubleshooting",
+			diagnosticsLabel: "Local diagnostic records",
+			diagnosticsDesc: "Records only errors, status, and timing on this device, without chat content or keys. Nothing is uploaded; files total about 4 MiB. Turning this off immediately stops new records and keeps existing files. Re-enabling records future events only.",
 			jumpNewSession: "New Session Defaults",
 			titleNewSession: "New Session Defaults",
 			defaultModelLabel: "Global Default Model",

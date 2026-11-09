@@ -665,6 +665,8 @@ export interface SessionSnapshot {
 }
 
 export interface Settings {
+	/** Default true: content-free diagnostic records stay on this device. */
+	diagnosticsEnabled: boolean;
 	systemDetection: boolean;
 	smartContextRouting: boolean;
 	/** 0 = never. */

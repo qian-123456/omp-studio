@@ -201,7 +201,10 @@ fn fatal_startup(what: &str, err: &dyn std::fmt::Display) -> ! {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     paths::ensure_dirs().unwrap_or_else(|e| fatal_startup("无法创建数据目录 ~/.omp-workspace", &e));
-    let _diagnostics_guard = diagnostics::init(&paths::data_dir()).ok();
+    let conn = db::open().unwrap_or_else(|e| fatal_startup("无法打开应用数据库", &e));
+    let settings = db::load_settings(&conn);
+    let _diagnostics_guard =
+        diagnostics::init(&paths::data_dir(), settings.diagnostics_enabled).ok();
     diagnostics::install_panic_hook();
     diagnostics::record_app_started();
 
@@ -219,7 +222,7 @@ pub fn run() {
                 let _ = app.emit("native:close-tab", ());
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             diagnostics::start_health_task();
             // Isolated instances (`OMPWS_DATA_DIR`) keep images outside the static
             // `$HOME/.omp-workspace/images` scope in tauri.conf.json; allow the live dir.
@@ -230,10 +233,8 @@ pub fn run() {
                     .asset_protocol_scope()
                     .allow_directory(paths::images_dir(), true);
             }
-            let conn = db::open().unwrap_or_else(|e| fatal_startup("无法打开应用数据库", &e));
             db::ensure_global_workspace(&conn)
                 .unwrap_or_else(|e| fatal_startup("无法初始化全局工作区", &e));
-            let settings = db::load_settings(&conn);
             let state = AppState::new(app.handle().clone(), conn, settings);
             app.manage(state.clone());
             // Rewrite privacy files from the DB before any OMP process spawns.

@@ -76,6 +76,10 @@ fn apply_locked(state: &AppState, settings: Settings) -> Result<Settings, String
         db::save_settings(&conn, &settings)?;
     }
 
+    // The saved preference takes effect only after persistence succeeds, while
+    // SAVE_LOCK still serializes this transition with every settings writer.
+    crate::diagnostics::set_enabled(settings.diagnostics_enabled);
+
     // Update in-memory state; scoped to ensure parking_lot RwLockWriteGuard is dropped immediately.
     {
         let mut mem = state.settings.write();
@@ -887,6 +891,25 @@ mod tests {
         let parsed: Settings = serde_json::from_value(value).unwrap();
         assert_eq!(parsed.send_shortcut, "enter");
         assert_eq!(parsed.follow_up_behavior, "steer");
+    }
+
+    #[test]
+    fn diagnostics_enabled_defaults_true_and_false_persists_in_sqlite() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(value["diagnosticsEnabled"], true);
+        value.as_object_mut().unwrap().remove("diagnosticsEnabled");
+        let mut settings: Settings = serde_json::from_value(value).unwrap();
+        assert!(settings.diagnostics_enabled);
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .unwrap();
+        settings.diagnostics_enabled = false;
+        db::save_settings(&conn, &settings).unwrap();
+        assert!(!db::load_settings(&conn).diagnostics_enabled);
+        settings.diagnostics_enabled = true;
+        db::save_settings(&conn, &settings).unwrap();
+        assert!(db::load_settings(&conn).diagnostics_enabled);
     }
 
     #[test]

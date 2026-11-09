@@ -982,6 +982,9 @@ pub struct SessionSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    /// Default true: record bounded, content-free diagnostics locally.
+    #[serde(default = "default_true")]
+    pub diagnostics_enabled: bool,
     /// Default true.
     pub system_detection: bool,
     /// Default false.
@@ -1144,6 +1147,7 @@ fn default_mobile_ipv6_port() -> u16 {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            diagnostics_enabled: true,
             system_detection: true,
             smart_context_routing: false,
             idle_suspend_minutes: 15,

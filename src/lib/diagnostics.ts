@@ -32,6 +32,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COMMAND = /^[a-z][a-z0-9_]{0,63}$/;
 const RUNTIME = Symbol.for("ompws.frontend-diagnostics.v1");
 interface Runtime {
+	enabled: boolean;
+	generation: number;
 	queue: FrontendDiagnosticInput[];
 	dropped: number;
 	inFlight: boolean;
@@ -45,7 +47,24 @@ type RuntimeHost = { [RUNTIME]?: Runtime };
 function runtime(): Runtime {
 	// A Document owns its queue and listeners, including across module re-evaluation.
 	const host = (typeof document === "undefined" ? globalThis : document) as RuntimeHost;
-	return host[RUNTIME] ??= { queue: [], dropped: 0, inFlight: false, seen: new WeakMap(), closed: false };
+	return host[RUNTIME] ??= { enabled: false, generation: 0, queue: [], dropped: 0, inFlight: false, seen: new WeakMap(), closed: false };
+}
+
+function discardPending(state: Runtime): void {
+	state.generation++;
+	clearTimeout(state.timer);
+	state.timer = undefined;
+	state.queue.length = 0;
+	state.dropped = 0;
+	state.inFlight = false;
+	state.seen = new WeakMap();
+}
+
+/** The settings store supplies the persisted preference; unknown startup state stays quiet. */
+export function setDiagnosticsEnabled(enabled: boolean): void {
+	const state = runtime();
+	state.enabled = enabled;
+	if (!enabled) discardPending(state);
 }
 
 function positive(value: unknown): value is number {
@@ -134,7 +153,7 @@ function safeContext(input: DiagnosticContext): DiagnosticContext {
 }
 
 function schedule(state: Runtime): void {
-	if (state.closed || state.inFlight || state.timer !== undefined || !state.queue.length) return;
+	if (!state.enabled || state.closed || state.inFlight || state.timer !== undefined || !state.queue.length) return;
 	state.timer = setTimeout(() => {
 		state.timer = undefined;
 		flush(state);
@@ -142,13 +161,15 @@ function schedule(state: Runtime): void {
 }
 
 function flush(state: Runtime): void {
-	if (state.closed || state.inFlight || !state.queue.length) return;
+	if (!state.enabled || state.closed || state.inFlight || !state.queue.length) return;
 	clearTimeout(state.timer);
 	state.timer = undefined;
 	const events = state.queue.splice(0, 20);
 	const reportedDrops = state.dropped;
+	const generation = state.generation;
 	state.inFlight = true;
 	const finish = (acknowledged: boolean) => {
+		if (!state.enabled || state.closed || state.generation !== generation) return;
 		// Subtract only the snapshot: overflow may have added drops during this invoke.
 		if (acknowledged) state.dropped = Math.max(0, state.dropped - reportedDrops);
 		else state.dropped += events.length;
@@ -168,6 +189,8 @@ function flush(state: Runtime): void {
 /** Copies only the approved scalar schema; arbitrary input properties never reach IPC. */
 export function recordDiagnostic(input: FrontendDiagnosticInput): void {
 	try {
+		const state = runtime();
+		if (!state.enabled || state.closed) return;
 		if (EVENTS[input.event] !== true || SOURCES[input.source] !== true) return;
 		if (typeof input.occurredAt !== "string" || input.occurredAt.length > 40 || !input.occurredAt.endsWith("Z") || !/^\d{4}-\d\d-\d\dT/.test(input.occurredAt) || !Number.isFinite(Date.parse(input.occurredAt))) return;
 		const event: FrontendDiagnosticInput = {
@@ -175,7 +198,6 @@ export function recordDiagnostic(input: FrontendDiagnosticInput): void {
 		};
 		const frames = safeFrames(input.frames, false);
 		if (frames) event.frames = frames;
-		const state = runtime();
 		if (new TextEncoder().encode(JSON.stringify(event)).byteLength > 4096) { state.dropped++; return; }
 		if (state.queue.length === 100) { state.queue.shift(); state.dropped++; }
 		state.queue.push(event);
@@ -204,11 +226,12 @@ function classify(error: unknown): DiagnosticCode {
 
 export function captureDiagnosticError(source: ErrorSource, error: unknown, context: DiagnosticContext = {}): void {
 	try {
+		const state = runtime();
+		if (!state.enabled || state.closed) return;
 		// Importing ensureLive here would pull the UI/store graph into the capture boundary.
 		try {
 			if (error instanceof Error && error.name === "ResumeCancelledError") return;
 		} catch { /* A hostile name getter does not make an error unreportable. */ }
-		const state = runtime();
 		if ((typeof error === "object" && error !== null) || typeof error === "function") {
 			const last = state.seen.get(error);
 			const now = performance.now();
@@ -228,6 +251,9 @@ export function captureDiagnosticError(source: ErrorSource, error: unknown, cont
 
 /** Preserves the original promise, arguments/options, fulfilled value and rejection identity. */
 export const invokeWithDiagnostics: typeof invoke = <T>(command: string, args?: InvokeArgs, options?: InvokeOptions) => {
+	const state = runtime();
+	if (!state.enabled || state.closed) return invoke<T>(command, args, options);
+	const generation = state.generation;
 	let context: DiagnosticContext | undefined;
 	let quietPoll = false;
 	let correlated = false;
@@ -254,6 +280,7 @@ export const invokeWithDiagnostics: typeof invoke = <T>(command: string, args?: 
 	} catch { /* Metadata failure must still invoke the original business command. */ }
 	const finish = (failed: boolean, error?: unknown) => {
 		try {
+			if (!state.enabled || state.closed || state.generation !== generation) return;
 			if (!context || (error instanceof Error && error.name === "ResumeCancelledError")) return;
 			const durationMs = Math.max(0, performance.now() - started);
 			if (failed || (correlated && !quietPoll) || durationMs >= 2000) {
@@ -280,11 +307,11 @@ export function installGlobalDiagnostics(): () => void {
 		const state = runtime();
 		if (state.dispose) return state.dispose;
 		if (typeof window === "undefined") return () => {};
+		state.closed = false;
 		const target = window;
-		const host = (typeof document === "undefined" ? globalThis : document) as RuntimeHost;
 		const captureOptions = { capture: true };
 		const onError = (event: Event) => {
-			if (state.closed) return;
+			if (!state.enabled || state.closed) return;
 			if (event.target && event.target !== target) {
 				// Resource URLs/element attributes can contain credentials; inspect neither.
 				captureDiagnosticError("resource_error", event);
@@ -299,18 +326,17 @@ export function installGlobalDiagnostics(): () => void {
 			captureDiagnosticError("window_error", error.error ?? event, context);
 		};
 		const onRejection = (event: PromiseRejectionEvent) => {
-			if (!state.closed) captureDiagnosticError("unhandled_rejection", event.reason);
+			if (state.enabled && !state.closed) captureDiagnosticError("unhandled_rejection", event.reason);
 		};
 		target.addEventListener("error", onError, captureOptions);
 		target.addEventListener("unhandledrejection", onRejection);
 		const dispose = () => {
-			if (state.closed) return;
+			if (state.dispose !== dispose) return;
 			state.closed = true;
 			target.removeEventListener("error", onError, captureOptions);
 			target.removeEventListener("unhandledrejection", onRejection);
-			clearTimeout(state.timer);
-			state.queue.length = 0;
-			if (host[RUNTIME] === state) delete host[RUNTIME];
+			discardPending(state);
+			state.dispose = undefined;
 		};
 		state.dispose = dispose;
 		return dispose;

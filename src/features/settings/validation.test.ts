@@ -11,6 +11,7 @@ describe("validateSettingsShape", () => {
 
 	it("accepts valid partial settings", () => {
 		const res = validateSettingsShape({
+			diagnosticsEnabled: false,
 			systemDetection: true,
 			defaultApprovalMode: "yolo",
 			mobilePort: 8080,
@@ -26,6 +27,7 @@ describe("validateSettingsShape", () => {
 		});
 		expect(res.ok).toBe(true);
 		if (res.ok) {
+			expect(res.value.diagnosticsEnabled).toBe(false);
 			expect(res.value.systemDetection).toBe(true);
 			expect(res.value.defaultApprovalMode).toBe("yolo");
 			expect(res.value.mobilePort).toBe(8080);
@@ -126,6 +128,10 @@ describe("validateSettingsShape", () => {
 		expect(validateSettingsShape({ ddnsEnabled: 1 }).ok).toBe(false);
 		expect(validateSettingsShape({ mobileIpv6Enabled: false }).ok).toBe(true);
 		expect(validateSettingsShape({ ddnsEnabled: true }).ok).toBe(true);
+	});
+
+	it.each(["false", 0, null])("rejects a non-boolean diagnostic preference: %s", (diagnosticsEnabled) => {
+		expect(validateSettingsShape({ diagnosticsEnabled }).ok).toBe(false);
 	});
 
 	it("validates ddnsZoneId and ddnsHostname string or null", () => {

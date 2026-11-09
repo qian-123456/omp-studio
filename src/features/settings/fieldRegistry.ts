@@ -66,6 +66,11 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["smart context", "路由", "上下文路由", "智能上下文", "工作区", "关联项目"],
 	},
 	{
+		id: "diagnosticsEnabled",
+		sectionId: "general",
+		keywords: ["diagnostics", "local", "logs", "troubleshooting", "诊断", "本地", "记录", "故障排查", "隐私"],
+	},
+	{
 		id: "quickCaptureShortcut",
 		sectionId: "shortcuts",
 		keywords: ["shortcut", "快捷键", "快速捕获", "快速记录", "全局", "热键"],

@@ -78,3 +78,6 @@ cargo fmt                    # format (CI expects fmt-clean)
   does not prove a crash; missing logs do not prove health. Legacy lifecycle files
   are not the new writer. Never upload diagnostics automatically or touch another
   instance; native acceptance and process-isolation rules above still apply.
+- Release and development users can disable new capture in General →
+  Troubleshooting → Local diagnostic records. Respect that persisted choice;
+  existing files remain historical evidence, not proof recording is enabled.
