@@ -355,8 +355,8 @@ export function ModelMenuContent({
 						className="flex min-w-0 flex-1 items-center justify-between px-2.5 py-1.5 text-left text-xs"
 					>
 						<div className="min-w-0 pr-2">
-							<div className="flex items-center gap-1.5">
-								<span className="break-all font-medium">{e.m.id}</span>
+							<div className="flex flex-wrap items-center gap-1.5">
+								<span className="min-w-0 break-words [overflow-wrap:anywhere] font-medium">{e.m.name || e.m.id}</span>
 								{isTooSmall && (
 									<span
 										className="shrink-0 rounded px-1.5 py-0.2 text-[10px] font-normal border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
@@ -369,8 +369,11 @@ export function ModelMenuContent({
 									</span>
 								)}
 							</div>
+							{e.m.name && e.m.name !== e.m.id && (
+								<div className="break-words [overflow-wrap:anywhere] font-mono text-[10px] text-neutral-500">{e.m.id}</div>
+							)}
 							{e.showProvider && (
-								<div className="break-all text-[10px] text-neutral-500">{e.m.provider}</div>
+								<div className="break-words [overflow-wrap:anywhere] text-[10px] text-neutral-500">{e.m.provider}</div>
 							)}
 						</div>
 						{isSelected && check}
@@ -442,13 +445,13 @@ export function ModelMenuContent({
                     data-model-group={id}
 				onClick={() => setGroup(id)}
 				className={clsx(
-					"flex w-full items-center justify-between gap-1 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+					"flex w-full items-start justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors",
 					active
 						? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)]"
 						: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 				)}
 			>
-				<span className="min-w-0 break-all" title={label}>
+				<span className="min-w-0 whitespace-normal break-normal [overflow-wrap:anywhere]" title={label}>
 					{label}
 				</span>
 				<span className="ml-1 flex shrink-0 items-center gap-0.5 text-[10px] text-neutral-600">
@@ -510,7 +513,7 @@ export function ModelMenuContent({
 			{/* Fixed height so the popover never jumps between groups. */}
 			<div className="flex h-72 min-h-0">
 				{!searching && (
-					<div className="w-36 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
+					<div className="w-[40%] min-w-40 max-w-64 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
 						{hasCommon && groupButton(GROUP_COMMON, t("models.commonGroup"), plainExtras.length + recentModels.length)}
 						{hasRoles && groupButton(GROUP_ROLES, t("models.rolesGroup"), roleExtras.length)}
 						{providers.map(([p, list]) => groupButton(providerGroup(p), p, list.length))}
@@ -590,7 +593,7 @@ export function ModelSelect({
 	icon = true,
 	direction = "down",
 	align = "end",
-	widthClass = "w-[380px]",
+	widthClass = "w-[min(640px,calc(100vw-24px))]",
 	disabled = false,
 	thinking = false,
 	...menu

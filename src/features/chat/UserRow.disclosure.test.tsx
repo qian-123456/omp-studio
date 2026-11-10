@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 
@@ -11,8 +11,15 @@ vi.mock("./imageTokens", async (orig) => ({
 }));
 vi.mock("../../lib/ipc", () => ({
 	validatePath: vi.fn(),
-	rpcSend: vi.fn(async () => ({})),
+	rpcSend: vi.fn(async (_sessionId: string, command: { type: string }) =>
+		command.type === "get_entries" ? { data: { entries: [], leafId: null } } : {}),
 	privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "ok", nativeError: null })),
+	treeNavigate: vi.fn(async () => ({ cancelled: false, editorText: "" })),
+	getTranscript: vi.fn(async () => ({ sessionId: "s1", items: [], nextOffset: 0, reset: true, tailId: null })),
+}));
+vi.mock("../../lib/ensureLive", () => ({
+	ensureLive: vi.fn(async () => useLive.setState({ sessions: { s1: { ...emptySessionLive(), alive: true } } })),
+	isResumeCancelled: () => false,
 }));
 vi.mock("../../lib/events", () => ({
 	onPrivacyChanged: vi.fn(async () => () => {}),
@@ -24,6 +31,13 @@ vi.mock("../privacy/SecretChip", async (orig) => ({
 vi.mock("../../lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 
 import { UserRow } from "./MessageList";
+import { rpcSend, treeNavigate } from "../../lib/ipc";
+import { ensureLive } from "../../lib/ensureLive";
+import { emptySessionLive, useLive } from "../../stores/live";
+import { useComposer } from "../../stores/composer";
+import { useSessions } from "../../stores/sessions";
+import { useTree } from "../../stores/tree";
+import { useTreeEditPending } from "./treeNav";
 
 let heights = { scroll: 40, client: 40 };
 
@@ -131,5 +145,30 @@ describe("UserRow long message inline disclosure", () => {
 		// Collapsed again
 		expect(container.querySelector(".line-clamp-4")).toBeTruthy();
 		expect(screen.getByRole("button", { name: /查看更多|view more/i })).toBeTruthy();
+	});
+});
+
+describe("UserRow cold message edit", () => {
+	it("wakes on pencil click, restores the sent text and releases pending without sending a prompt", async () => {
+		vi.clearAllMocks();
+		useLive.setState({ sessions: { s1: emptySessionLive() } });
+		useSessions.setState({ sessions: {} });
+		useTree.setState({ leaf: {}, resend: {} });
+		useTreeEditPending.setState({ entries: {} });
+		useComposer.setState({ drafts: {} });
+		const original = "修改这条已经发送的消息\n保留第二行";
+		render(<UserRow sessionId="s1" item={userItem(original)} />);
+
+		fireEvent.click(screen.getByRole("button", { name: /编辑并重新发送|Edit and resend/ }));
+		expect(ensureLive).toHaveBeenCalledWith("s1");
+		expect(useTreeEditPending.getState().entries.s1).toBe("u1");
+		await waitFor(() => expect(useComposer.getState().drafts.s1).toBe(original));
+
+		expect(treeNavigate).toHaveBeenCalledWith("s1", "u1");
+		expect(useTree.getState().resend.s1).toEqual({ entryId: "u1", prevLeafId: null });
+		expect(useTreeEditPending.getState().entries.s1).toBeUndefined();
+		expect(screen.queryByRole("status")).toBeNull();
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(rpcSend).not.toHaveBeenCalledWith("s1", expect.objectContaining({ type: "prompt" }));
 	});
 });

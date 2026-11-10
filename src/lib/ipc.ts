@@ -297,7 +297,7 @@ export const forkSession = (parentId: string, entryId?: string, model?: string) 
  * while streaming/busy, `TREE_ENTRY_NOT_FOUND` for an unknown entry.
  */
 export const treeNavigate = (sessionId: string, entryId: string) =>
-	invoke<{ cancelled: boolean; editorText?: string }>("tree_navigate", {
+	invoke<{ cancelled: boolean; aborted?: boolean; editorText?: string }>("tree_navigate", {
 		sessionId,
 		entryId,
 	});

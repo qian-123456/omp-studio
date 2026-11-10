@@ -73,6 +73,45 @@ describe("ModelMenuContent groups", () => {
 	});
 });
 
+describe("ModelMenuContent complete readable catalog", () => {
+	it("keeps every provider reachable and displays the full configured name and ID", () => {
+		const models = Array.from({ length: 45 }, (_, i) => ({
+			...model(`long-configured-provider-${i}`, `opaque-model-id-${i}`),
+			name: `Complete configured model name ${i}`,
+		}));
+		const onSelect = vi.fn();
+		const { container } = render(<ModelMenuContent models={models} onSelect={onSelect} />);
+		expect(container.querySelectorAll("[data-model-group]")).toHaveLength(models.length);
+		for (const entry of models) {
+			const providerButton = screen.getByText(entry.provider, { exact: true }).closest("button");
+			expect(providerButton).not.toBeNull();
+			fireEvent.click(providerButton!);
+			expect(screen.getByText(entry.name)).toBeTruthy();
+			expect(screen.getByText(entry.id)).toBeTruthy();
+		}
+		fireEvent.click(screen.getByRole("button", { name: "Complete configured model name 44 opaque-model-id-44" }));
+		expect(onSelect).toHaveBeenLastCalledWith("long-configured-provider-44/opaque-model-id-44");
+	});
+
+	it("searches full provider, display name and model ID without dropping entries", () => {
+		const models = Array.from({ length: 45 }, (_, i) => ({
+			...model("custom-provider", `opaque-model-${i}`),
+			name: `Readable model name ${i}`,
+		}));
+		const onSelect = vi.fn();
+		const { container } = render(<ModelMenuContent models={models} onSelect={onSelect} />);
+		const search = screen.getByRole("textbox");
+		fireEvent.change(search, { target: { value: "custom-provider" } });
+		expect(container.querySelectorAll("[data-model-key]")).toHaveLength(models.length);
+		fireEvent.change(search, { target: { value: "Readable model name 44" } });
+		expect(screen.getByText("opaque-model-44")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Readable model name 44 opaque-model-44 custom-provider" }));
+		expect(onSelect).toHaveBeenLastCalledWith("custom-provider/opaque-model-44");
+		fireEvent.change(search, { target: { value: "opaque-model-0" } });
+		expect(screen.getByText("Readable model name 0")).toBeTruthy();
+	});
+});
+
 describe("ModelMenuContent selection persistence", () => {
     it("opens a favorite current model in its true provider group", () => {
         useModelSelectPrefs.setState({ recent: ["openai/gpt-5"] });

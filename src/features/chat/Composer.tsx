@@ -225,6 +225,7 @@ import {
 	toModelKey,
 } from "../../lib/models";
 import { ModelMenuContent } from "../../components/ModelSelect";
+import { resolveModelCapabilities } from "../../components/modelSelectLogic";
 import { mergedSuffix, pickToolbarTier, TIER_FULL, TIER_MERGED, TIER_BADGE, TIER_TIGHT } from "./composerToolbar";
 import {
 	buildSlashSections,
@@ -1017,10 +1018,12 @@ export function Composer({
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
 	const currentModelOption = useMemo(
 		() =>
-			models?.find(
-				(m) => current.value && toModelKey(m.provider, m.id) === current.value,
-			) ?? models?.find((m) => m.id === current.id && m.provider === current.provider),
-		[models, current],
+			resolveModelCapabilities(
+				current.value,
+				models,
+				isLocalDraft || planChoice || readonly ? undefined : state.model,
+			),
+		[models, current.value, isLocalDraft, planChoice, readonly, state.model],
 	);
 
 	// Context usage calculations for ContextRing
@@ -1055,11 +1058,11 @@ export function Composer({
 	const thinkingLevels = useMemo(
 		() =>
 			resolveThinkingLevels(
-				isLocalDraft || planChoice ? undefined : (state.model as Record<string, unknown> | undefined)?.thinking,
+				undefined,
 				currentModelOption?.thinking,
 				planChoice?.level ?? localDraft?.thinking ?? stateThinkingLevel,
 			),
-		[isLocalDraft, planChoice, state.model, currentModelOption, stateThinkingLevel, localDraft?.thinking],
+		[planChoice, currentModelOption, stateThinkingLevel, localDraft?.thinking],
 	);
 
 
@@ -3007,7 +3010,7 @@ export function Composer({
 									layer="popover"
 									ignoreRefs={[modelMenuRef]}
 									onDismiss={() => setModelOpen(false)}
-									className="w-[400px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
+									className="w-[min(640px,calc(100vw-24px))] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 								>
 									<ModelMenuContent
 										models={models}

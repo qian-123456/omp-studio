@@ -39,7 +39,7 @@ It works **alongside** the `omp` CLI rather than replacing it: terminal sessions
 - **Visual Trace**: Unfold reasoning/thinking steps, structured tool-call parameters, outputs, and live git diffs.
 - **Cross-surface Annotation**: Highlight any line of code or text in the chat, click annotate, and send it directly back to the input box with precise quotes.
 - **Side Chat**: A lightweight, distraction-free auxiliary dialogue pane for quick questions without polluting your main session context.
-- **Conversation Tree**: Sibling branching, step-back navigation, and edit-resend.
+- **Conversation Tree**: Sibling branching, step-back navigation, and edit-resend. Editing wakes suspended sessions and restores the original text without waiting for background history refreshes.
 - **Plan Mode**: Visual checklist tracking step-by-step agent task planning and execution progress.
 
 #### 3. 🌿 Git Worktree Multi-Agent Parallelism
@@ -60,6 +60,7 @@ It works **alongside** the `omp` CLI rather than replacing it: terminal sessions
 
 #### 6. 🧠 Model Governance & Agent Settings
 - **Unified Providers**: Full support for API Keys, custom OpenAI-compatible base URLs, and OAuth subscriptions.
+- **Readable Model Selection**: A grouped, scrollable two-pane picker keeps provider names and model identifiers accessible; thinking controls use the selected model's catalog and runtime capabilities.
 - **Role Precedence & Fallback Chains**: Assign specialized models for Main, Lightweight, Vision, and Consultant roles, backed by automated retry chains.
 - **Custom Subagents**: Create specialized subagent personas with built-in "Help me draft" assistant.
 - **Privacy Vault**: Mask sensitive API keys, tokens, and corporate credentials before they hit LLMs.
@@ -155,7 +156,7 @@ This fork ignores custom target/build directory paths. Final `./target` outputs 
 - **全链路追踪卡片**：智能体思考过程（Thinking）、工具调用输入参数与执行结果结构化折叠，代码 Diff 实时审查。
 - **跨界面划选批注**：选中聊天记录或代码中任意语句，点击批注即可带着上下文一键反向引用发回输入框。
 - **辅助对话（Side Chat）**：轻量级独立侧聊面板，随时对智能体提出周边问题，完全不污染主会话上下文。
-- **分支对话树**：随时切换同级分支版本，支持历史轮次回溯与编辑重发。
+- **分支对话树**：随时切换同级分支版本，支持历史轮次回溯与编辑重发；编辑会唤醒已挂起的会话，原文回填不再等待后台历史刷新。
 - **计划模式（Plan Mode）**：步骤化展示复杂任务的实施方案，实时勾选推进进度。
 
 #### 3. 🌿 Git Worktree 独立工作树并行开发
@@ -176,6 +177,7 @@ This fork ignores custom target/build directory paths. Final `./target` outputs 
 
 #### 6. 🧠 模型治理与智能体体系
 - **多供应商接入**：原生支持 API Key、自定义 Base URL 兼容网关与 OAuth 订阅账号统一配置。
+- **完整模型选择信息**：可滚动双栏选择器保留供应商名称与模型标识，思考选项依据所选模型的目录和运行时能力显示。
 - **模型角色分工与回退链**：支持为主力、轻量、视觉、深度思考等角色分配最佳模型，并配置自动降级重试回退链。
 - **自定义子代理**：可视化创建与管理专属 Agent，内置“让 AI 帮我写”快速起草智能体设定。
 - **隐私脱敏库**：敏感配置与密钥在发送给大模型前自动占位脱敏，保护企业与个人资产安全。

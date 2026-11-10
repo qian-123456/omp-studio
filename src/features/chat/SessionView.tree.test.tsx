@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptItem, TranscriptPage } from "../../lib/contracts";
 import type * as EventsModule from "../../lib/events";
@@ -10,18 +10,19 @@ import { useSessions } from "../../stores/sessions";
 import { useTree } from "../../stores/tree";
 
 const SID = "tree-session";
-const h = vi.hoisted(() => ({ getTranscript: vi.fn(), treeGet: vi.fn(), treeNavigate: vi.fn() }));
+const h = vi.hoisted(() => ({ getTranscript: vi.fn(), getEntries: vi.fn(), treeNavigate: vi.fn(), ensureLive: vi.fn() }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => ({
 	...(await importOriginal<typeof IpcModule>()),
 	getTranscript: h.getTranscript,
-	treeGet: h.treeGet,
 	treeNavigate: h.treeNavigate,
 	gitSessionTurns: vi.fn(async () => []),
 	rpcPendingUi: vi.fn(async () => []),
-	rpcSend: vi.fn(async () => ({})),
+	rpcSend: vi.fn(async (_sessionId: string, command: { type: string }) =>
+		command.type === "get_entries" ? { data: await h.getEntries() } : {}),
 	privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "ok", nativeError: null })),
 }));
+vi.mock("../../lib/ensureLive", () => ({ ensureLive: h.ensureLive, isResumeCancelled: () => false }));
 vi.mock("../../lib/events", async (importOriginal) => ({
 	...(await importOriginal<typeof EventsModule>()),
 	onTreeNavigated: vi.fn(async () => () => {}),
@@ -42,6 +43,10 @@ vi.mock("./ask/AskPanel", () => ({
 
 import { SessionView } from "./SessionView";
 import { navigateTree, refetchTranscript } from "./treeNav";
+import { UserRow } from "./MessageList";
+import { TreeResendBanner } from "./TreeResendBanner";
+import { useComposer } from "../../stores/composer";
+import { useTreeEditPending } from "./treeNav";
 
 function item(id: string, parentId: string | null, kind: TranscriptItem["kind"], text: string | null = null): TranscriptItem {
 	return {
@@ -63,22 +68,7 @@ const page = (items: TranscriptItem[], nextOffset = 10): TranscriptPage => ({
 	sessionId: SID, items, nextOffset, reset: false, tailId: items[items.length - 1]?.id ?? null,
 });
 
-interface SnapshotNode {
-	entry: TranscriptItem;
-	children: SnapshotNode[];
-}
-
-function tree(entries = [root, model, user, answer, other]): SnapshotNode[] {
-	const nodes = new Map(entries.map((entry) => [entry.id, { entry, children: [] } as SnapshotNode]));
-	const roots: SnapshotNode[] = [];
-	for (const entry of entries) {
-		const node = nodes.get(entry.id)!;
-		const parent = entry.parentId ? nodes.get(entry.parentId) : undefined;
-		if (parent) parent.children.push(node);
-		else roots.push(node);
-	}
-	return roots;
-}
+const entries = (items = [root, model, user, answer, other]) => items;
 
 function setLive(patch: Partial<SessionLive>) {
 	useLive.setState((state) => ({ sessions: { ...state.sessions, [SID]: { ...state.sessions[SID], ...patch } } }));
@@ -89,8 +79,11 @@ beforeEach(() => {
 	vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(800);
 	vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
 	h.getTranscript.mockReset();
-	h.treeGet.mockReset();
+	h.getEntries.mockReset();
 	h.treeNavigate.mockReset();
+	h.ensureLive.mockReset();
+	useTreeEditPending.setState({ entries: {} });
+	useComposer.setState({ drafts: {} });
 	useLive.setState({ sessions: { [SID]: emptySessionLive() } });
 	useSessions.setState({ sessions: {} });
 	useTree.setState({ leaf: {}, resend: {} });
@@ -105,7 +98,7 @@ afterEach(() => {
 describe("SessionView conversation tree history", () => {
 	it("does not let a live tree older than disk hide the newest turn after reopening", async () => {
 		h.getTranscript.mockResolvedValue(page([root, model, user, answer]));
-		h.treeGet.mockResolvedValue({ tree: tree([root, model]), leafId: model.id });
+		h.getEntries.mockResolvedValue({ entries: entries([root, model]), leafId: model.id });
 		setLive({ alive: true });
 		useTree.getState().setLeaf(SID, model.id);
 		const view = render(<SessionView sessionId={SID} />);
@@ -119,7 +112,7 @@ describe("SessionView conversation tree history", () => {
 
 	it("honors an intentional rewind when the tree already knows the later turn", async () => {
 		h.getTranscript.mockResolvedValue(page([root, model, user, answer]));
-		h.treeGet.mockResolvedValue({ tree: tree(), leafId: model.id });
+		h.getEntries.mockResolvedValue({ entries: entries(), leafId: model.id });
 		setLive({ alive: true });
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useLive.getState().sessions[SID].items).toHaveLength(4));
@@ -131,14 +124,14 @@ describe("SessionView conversation tree history", () => {
 
 	it("keeps a completed turn visible when the next tree read fails", async () => {
 		h.getTranscript.mockResolvedValue(page([root, model]));
-		h.treeGet.mockResolvedValue({ tree: tree([root, model]), leafId: model.id });
+		h.getEntries.mockResolvedValue({ entries: entries([root, model]), leafId: model.id });
 		setLive({ alive: true });
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useLive.getState().sessions[SID].items).toHaveLength(2));
 		await waitFor(() => expect(useTree.getState().leaf[SID]).toBe(model.id));
 
 		h.getTranscript.mockResolvedValue(page([user, answer], 20));
-		h.treeGet.mockRejectedValue(new Error("RPC disconnected"));
+		h.getEntries.mockRejectedValue(new Error("RPC disconnected"));
 		act(() => {
 			useLive.getState().reduceFrame({ sessionId: SID, frame: { type: "agent_start" } });
 			useLive.getState().reduceFrame({ sessionId: SID, frame: { type: "agent_end" } });
@@ -150,7 +143,7 @@ describe("SessionView conversation tree history", () => {
 
 	it("shows the first persisted user and answer after a stream advances the leaf", async () => {
 		let leaf = model.id;
-		h.treeGet.mockImplementation(async () => ({ tree: tree(), leafId: leaf }));
+		h.getEntries.mockImplementation(async () => ({ entries: entries(), leafId: leaf }));
 		h.getTranscript.mockImplementation(async (_sid: string, offset?: number) =>
 			offset === undefined ? page([root, model]) : page([user, answer], 20),
 		);
@@ -169,7 +162,7 @@ describe("SessionView conversation tree history", () => {
 
 	it("commits a turn whose start and end arrive before the next render", async () => {
 		let leaf = model.id;
-		h.treeGet.mockImplementation(async () => ({ tree: tree(), leafId: leaf }));
+		h.getEntries.mockImplementation(async () => ({ entries: entries(), leafId: leaf }));
 		h.getTranscript.mockImplementation(async (_sid: string, offset?: number) =>
 			offset === undefined ? page([root, model]) : page([user, answer], 20),
 		);
@@ -195,7 +188,7 @@ describe("SessionView conversation tree history", () => {
 			resolveInitial = resolve;
 		}));
 		h.getTranscript.mockResolvedValue(page([user, answer], 20));
-		h.treeGet.mockImplementation(async () => ({ tree: tree(), leafId: leaf }));
+		h.getEntries.mockImplementation(async () => ({ entries: entries(), leafId: leaf }));
 		setLive({ alive: true, items: [root, model], nextOffset: 10 });
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useTree.getState().leaf[SID]).toBe(model.id));
@@ -213,7 +206,7 @@ describe("SessionView conversation tree history", () => {
 	it("keeps a newer answer when a separate navigation reader returns late", async () => {
 		let leaf = model.id;
 		h.getTranscript.mockResolvedValue(page([root, model]));
-		h.treeGet.mockImplementation(async () => ({ tree: tree(), leafId: leaf }));
+		h.getEntries.mockImplementation(async () => ({ entries: entries(), leafId: leaf }));
 		setLive({ alive: true });
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useLive.getState().sessions[SID].items).toHaveLength(2));
@@ -241,7 +234,7 @@ describe("SessionView conversation tree history", () => {
 
 	it("refreshes a cached pre-prompt leaf when a mounted cold session reconnects", async () => {
 		h.getTranscript.mockResolvedValue(page([root, model, user, answer, other]));
-		h.treeGet.mockResolvedValue({ tree: tree(), leafId: answer.id });
+		h.getEntries.mockResolvedValue({ entries: entries(), leafId: answer.id });
 		useTree.getState().setLeaf(SID, model.id);
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useLive.getState().sessions[SID].items).toHaveLength(5));
@@ -254,7 +247,7 @@ describe("SessionView conversation tree history", () => {
 
 	it("does not hide persisted history behind a stale leaf after suspension", async () => {
 		h.getTranscript.mockResolvedValue(page([root, model]));
-		h.treeGet.mockResolvedValue({ tree: tree(), leafId: model.id });
+		h.getEntries.mockResolvedValue({ entries: entries(), leafId: model.id });
 		setLive({ alive: true });
 		render(<SessionView sessionId={SID} />);
 		await waitFor(() => expect(useTree.getState().leaf[SID]).toBe(model.id));
@@ -267,16 +260,16 @@ describe("SessionView conversation tree history", () => {
 
 	it("ignores an idle tree response that arrives after suspension", async () => {
 		// The project's ES2021 library does not provide Promise.withResolvers.
-		let resolveTree!: (value: { tree: unknown[]; leafId: string }) => void;
-		h.treeGet.mockImplementation(() => new Promise<{ tree: unknown[]; leafId: string }>((resolve) => { resolveTree = resolve; }));
+		let resolveTree!: (value: { entries: TranscriptItem[]; leafId: string }) => void;
+		h.getEntries.mockImplementation(() => new Promise<{ entries: TranscriptItem[]; leafId: string }>((resolve) => { resolveTree = resolve; }));
 		h.getTranscript.mockResolvedValue(page([root, model, user, answer]));
 		setLive({ alive: true });
 		render(<SessionView sessionId={SID} />);
-		await waitFor(() => expect(h.treeGet).toHaveBeenCalled());
+		await waitFor(() => expect(h.getEntries).toHaveBeenCalled());
 		expect(await screen.findByText(answer.text!)).toBeTruthy();
 
 		act(() => setLive({ alive: false }));
-		await act(async () => { resolveTree({ tree: tree(), leafId: model.id }); });
+		await act(async () => { resolveTree({ entries: entries(), leafId: model.id }); });
 		expect(screen.getByText(user.text!)).toBeTruthy();
 		expect(screen.getByText(answer.text!)).toBeTruthy();
 	});
@@ -284,7 +277,7 @@ describe("SessionView conversation tree history", () => {
 	it("keeps an explicitly navigated branch rather than choosing the file tail", async () => {
 		let leaf = other.id;
 		h.getTranscript.mockResolvedValue(page([root, model, user, answer, other]));
-		h.treeGet.mockImplementation(async () => ({ tree: tree(), leafId: leaf }));
+		h.getEntries.mockImplementation(async () => ({ entries: entries(), leafId: leaf }));
 		h.treeNavigate.mockImplementation(async (_sid: string, entryId: string) => {
 			leaf = entryId;
 			return { cancelled: false };
@@ -298,5 +291,38 @@ describe("SessionView conversation tree history", () => {
 		expect(await screen.findByText(user.text!)).toBeTruthy();
 		expect(await screen.findByText(answer.text!)).toBeTruthy();
 		expect(screen.queryByText(other.text!)).toBeNull();
+	});
+
+	it("cancels a cold pencil edit back to the canonical branch, not a null cache or history tail", async () => {
+		let leaf = answer.id;
+		const history = [root, model, user, answer, other];
+		setLive({ alive: false, items: history });
+		useTree.getState().setLeaf(SID, null);
+		h.ensureLive.mockImplementation(async () => { setLive({ alive: true }); });
+		h.getTranscript.mockResolvedValue(page(history));
+		h.getEntries.mockImplementation(async () => {
+			expect(useLive.getState().sessions[SID].alive).toBe(true);
+			return { entries: history, leafId: leaf };
+		});
+		h.treeNavigate.mockImplementation(async (_sid: string, entryId: string) => {
+			leaf = entryId === user.id ? model.id : entryId;
+			return { cancelled: false, editorText: entryId === user.id ? user.text : undefined };
+		});
+		render(<><UserRow sessionId={SID} item={user} /><TreeResendBanner sessionId={SID} /></>);
+
+		fireEvent.click(screen.getByRole("button", { name: /编辑并重新发送|Edit and resend/ }));
+		await waitFor(() => expect(useComposer.getState().drafts[SID]).toBe(user.text));
+		expect(h.ensureLive).toHaveBeenCalledWith(SID);
+		expect(useTree.getState().resend[SID]?.prevLeafId).toBe(answer.id);
+		expect(useTreeEditPending.getState().entries[SID]).toBeUndefined();
+		expect(leaf).toBe(model.id);
+
+		fireEvent.click(screen.getByRole("button", { name: /^(取消|Cancel)$/ }));
+		await waitFor(() => expect(h.treeNavigate).toHaveBeenLastCalledWith(SID, answer.id));
+		await waitFor(() => expect(useTree.getState().leaf[SID]).toBe(answer.id));
+		expect(leaf).toBe(answer.id);
+		expect(leaf).not.toBe(history[history.length - 1].id);
+		expect(useTree.getState().resend[SID]).toBeUndefined();
+		expect(screen.queryByRole("button", { name: /^(取消|Cancel)$/ })).toBeNull();
 	});
 });

@@ -380,13 +380,9 @@ export const UserRow = React.memo(function UserRow({
 						type="button"
 						disabled={Boolean(pendingEdit)}
 						onClick={() => {
-							// Live session: rewind past this message and hand its
-							// text to the composer — the next send creates a sibling
-							// branch and the old path is preserved. A busy live
-							// session refuses with a toast and changes nothing. Fork
-							// drafts and offline sessions keep the inline editor
-							// (there is no process to ask).
-							if (useLive.getState().sessions[sessionId]?.alive) {
+							// Real sessions share the same branch edit, including
+							// idle-suspended sessions that first need to resume.
+							if (!isForkDraftId(sessionId)) {
 								void startTreeResend(sessionId, item.id, userText);
 								return;
 							}

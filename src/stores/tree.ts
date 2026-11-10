@@ -1,6 +1,6 @@
 /**
  * Per-session conversation-tree state (phase 1): the cached current leaf id
- * from `get_tree` plus the "edit & resend" draft banner state. The full entry
+ * from `get_entries` plus the "edit & resend" draft banner state. The full entry
  * tree is not cached — siblings and parent chains are already in the
  * transcript items (`parentId`, §4), only `leafId` is missing there.
  * Entry identities from the confirmed tree guard against filtering newer
@@ -13,7 +13,7 @@
  */
 
 import { create } from "zustand";
-import { treeGet } from "../lib/ipc";
+import { rpcSend } from "../lib/ipc";
 import { useLive } from "./live";
 
 export interface TreeResend {
@@ -29,7 +29,7 @@ interface TreeState {
 	/** Session id → active edit-&-resend draft. */
 	resend: Record<string, TreeResend | undefined>;
 	setLeaf(sessionId: string, leafId: string | null): void;
-	/** Fetch `get_tree` for a live, non-streaming session; silent on failure. */
+	/** Fetch a flat entry/leaf snapshot for a live, idle session; silent on failure. */
 	refreshLeaf(sessionId: string): Promise<void>;
 	startResend(sessionId: string, draft: TreeResend): void;
 	cancelResend(sessionId: string): void;
@@ -38,21 +38,16 @@ interface TreeState {
 const leafRequests = new Map<string, number>();
 const leafEntries = new Map<string, Set<string>>();
 
-interface SnapshotNode {
-	entry: { id: string };
-	children: SnapshotNode[];
+interface EntrySnapshot {
+	entries: { id: string }[];
+	leafId: string | null;
 }
 
-function snapshotEntryIds(tree: unknown[]): Set<string> {
-	const ids = new Set<string>();
-	const pending = [tree as SnapshotNode[]];
-	while (pending.length) {
-		for (const node of pending.pop()!) {
-			ids.add(node.entry.id);
-			if (node.children.length) pending.push(node.children);
-		}
-	}
-	return ids;
+/** Canonical current branch, read directly after resume and before a leaf move. */
+export async function readEntrySnapshot(sessionId: string): Promise<EntrySnapshot> {
+	// The recursive `get_tree` exceeds the RPC JSON depth limit on long histories.
+	const response = await rpcSend(sessionId, { type: "get_entries" }) as { data: EntrySnapshot };
+	return response.data;
 }
 
 export const useTree = create<TreeState>((set, get) => ({
@@ -79,9 +74,9 @@ export const useTree = create<TreeState>((set, get) => ({
 			get().setLeaf(sessionId, null);
 		}
 		try {
-			const data = await treeGet(sessionId);
+			const data = await readEntrySnapshot(sessionId);
 			if (leafRequests.get(sessionId) !== request) return;
-			const ids = snapshotEntryIds(data.tree);
+			const ids = new Set(data.entries.map((entry) => entry.id));
 			const items = useLive.getState().sessions[sessionId]?.items ?? [];
 			if (items.some((item) => !ids.has(item.id))) {
 				get().setLeaf(sessionId, null);

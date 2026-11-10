@@ -2,7 +2,7 @@
  * Pure helpers behind the shared `ModelSelect`: thinking-suffix parse/compose,
  * role → model resolution (omp `modelRoles`), and the recent-models list.
  */
-import { type ModelOption, resolveThinkingLevels, toModelKey } from "../lib/models";
+import { type ModelOption, parseModels, resolveThinkingLevels, toModelKey } from "../lib/models";
 import { tNow } from "../stores/language";
 
 /** Thinking levels accepted as a trailing `:<level>` on a model/role selector. */
@@ -85,6 +85,30 @@ function findModel(selector: string, models: ModelOption[] | null): ModelOption 
 	);
 }
 
+/**
+ * Resolve an exact configured selector, including its optional thinking suffix.
+ * Only metadata for that same provider/model may override the catalog; never
+ * infer capabilities from a similar model name or another provider's entry.
+ */
+export function resolveModelCapabilities(
+	selector: string,
+	models: ModelOption[] | null,
+	liveModel?: unknown,
+): ModelOption | null {
+	const catalog = findModel(selector, models) ?? findModel(parseSelection(selector).selector, models);
+	const live = parseModels([liveModel])[0];
+	const key = catalog ? toModelKey(catalog.provider, catalog.id) : parseSelection(selector).selector;
+	if (!live || toModelKey(live.provider, live.id) !== key) return catalog;
+	return {
+		...live,
+		name: catalog?.name ?? live.name,
+		thinking: live.reasoning === false ? [] : (live.thinking ?? catalog?.thinking),
+		reasoning: live.reasoning ?? catalog?.reasoning,
+		// Saved context-window overrides take effect without restarting the process.
+		contextWindow: catalog?.contextWindow ?? live.contextWindow,
+	};
+}
+
 /** Follow `modelRoles.<role>` (and `@alias` chains) to a concrete selector. */
 function followRole(
 	roles: Record<string, unknown>,
@@ -151,7 +175,7 @@ export function thinkingModelFor(
 ): ModelOption | null {
 	if (!selector || selector.startsWith("__")) return null;
 	const roleId = roleIdOf(selector);
-	if (!roleId) return findModel(selector, models);
+	if (!roleId) return resolveModelCapabilities(selector, models);
 	const r = resolveRole(roles, roleId, models);
 	return r.kind === "auto" ? null : r.model;
 }

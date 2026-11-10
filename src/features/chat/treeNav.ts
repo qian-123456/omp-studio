@@ -6,11 +6,12 @@
 
 import { create } from "zustand";
 import { treeNavigate } from "../../lib/ipc";
+import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
-import { useTree } from "../../stores/tree";
+import { readEntrySnapshot, useTree } from "../../stores/tree";
 import { refreshTranscriptCache } from "../../stores/transcript";
 import { tNow } from "../../stores/language";
 import { errMsg } from "../../lib/dialogs";
@@ -19,7 +20,7 @@ import { isForkDraftId } from "../sessions/forkDraft";
 export const useTreeEditPending = create<{ entries: Record<string, string | undefined> }>(() => ({ entries: {} }));
 
 /** True when a navigate/switch would be refused: mid-answer, waiting on a
- * dialog, or not backed by a live process (fork drafts, offline sessions). */
+ * dialog, or a fork draft. Suspended sessions can resume before navigation. */
 export function treeUnavailable(sessionId: string): boolean {
 	if (isForkDraftId(sessionId)) return true;
 	const status = useSessions.getState().sessions[sessionId]?.status;
@@ -27,7 +28,7 @@ export function treeUnavailable(sessionId: string): boolean {
 		return true;
 	}
 	const live = useLive.getState().sessions[sessionId];
-	return !live?.alive || live.streaming === true;
+	return live?.streaming === true || Boolean(live?.pendingUi.length);
 }
 
 function busyToast(): void {
@@ -39,31 +40,53 @@ export async function refetchTranscript(sessionId: string): Promise<void> {
 	await refreshTranscriptCache(sessionId);
 }
 
-/**
- * Move the leaf to `entryId` (a sibling answer to switch to, or a user entry
- * to restart from). Returns the upstream data on success, null when refused
- * (busy toast shown, nothing changed). Refreshes the transcript + leaf so the
- * path filter re-renders immediately.
- */
-export async function navigateTree(
+/** Resume if needed, then request the canonical leaf move without sending a prompt. */
+async function requestNavigation(
 	sessionId: string,
 	entryId: string,
-): Promise<{ cancelled: boolean; editorText?: string } | null> {
+	capturePreviousLeaf = false,
+): Promise<{ cancelled: boolean; aborted?: boolean; editorText?: string; prevLeafId: string | null } | null> {
 	if (treeUnavailable(sessionId)) {
 		busyToast();
 		return null;
 	}
 	try {
+		if (!useLive.getState().sessions[sessionId]?.alive) await ensureLive(sessionId);
+		// Recovery may have waited for a user decision while the session changed.
+		if (treeUnavailable(sessionId)) {
+			busyToast();
+			return null;
+		}
+		const prevLeafId = capturePreviousLeaf ? (await readEntrySnapshot(sessionId)).leafId : null;
+		if (treeUnavailable(sessionId)) {
+			busyToast();
+			return null;
+		}
 		const data = await treeNavigate(sessionId, entryId);
-		// Other windows learn through `tree:navigated`; this one refetches now.
-		await refetchTranscript(sessionId).catch(() => {});
-		await useTree.getState().refreshLeaf(sessionId);
-		return data;
+		return data.cancelled || data.aborted ? null : { ...data, prevLeafId };
 	} catch (e) {
+		if (isResumeCancelled(e)) return null;
 		if (errMsg(e) === "TREE_BUSY") busyToast();
 		else toast.error(tNow("chatView.tree.navigateFailed", { error: errMsg(e) }));
 		return null;
 	}
+}
+
+/** Switch an answer version and synchronize its transcript and leaf. */
+export async function navigateTree(
+	sessionId: string,
+	entryId: string,
+): Promise<{ cancelled: boolean; editorText?: string } | null> {
+	const data = await requestNavigation(sessionId, entryId);
+	if (!data) return null;
+	await refreshNavigation(sessionId);
+	const { prevLeafId: _previousLeaf, ...result } = data;
+	return result;
+}
+
+async function refreshNavigation(sessionId: string): Promise<void> {
+	await refetchTranscript(sessionId).catch(() => {});
+	await useTree.getState().refreshLeaf(sessionId);
 }
 
 /**
@@ -84,13 +107,15 @@ export async function startTreeResend(
 	useTreeEditPending.setState((s) => ({ entries: { ...s.entries, [sessionId]: entryId } }));
 	let ready = false;
 	try {
-		const prevLeafId = currentLeafId(sessionId);
-		const data = await navigateTree(sessionId, entryId);
+		const data = await requestNavigation(sessionId, entryId, true);
 		if (!data) return false;
 		const text = data.editorText?.trim() ? data.editorText : fallbackText;
-		useTree.getState().startResend(sessionId, { entryId, prevLeafId });
+		useTree.getState().startResend(sessionId, { entryId, prevLeafId: data.prevLeafId });
 		useComposer.getState().setDraft(sessionId, text);
 		ready = true;
+		// Navigation already committed. History synchronization must not keep the
+		// editor disabled after upstream has handed its original text back.
+		void refreshNavigation(sessionId).catch(() => {});
 	} finally {
 		useTreeEditPending.setState((s) => {
 			const { [sessionId]: _entry, ...entries } = s.entries;
@@ -101,11 +126,3 @@ export async function startTreeResend(
 	return ready;
 }
 
-/** Current leaf id: the cached get_tree value, falling back to the transcript
- * tail (correct for sessions never navigated). */
-export function currentLeafId(sessionId: string): string | null {
-	const cached = useTree.getState().leaf[sessionId];
-	if (cached !== undefined) return cached;
-	const items = useLive.getState().sessions[sessionId]?.items ?? [];
-	return items[items.length - 1]?.id ?? null;
-}

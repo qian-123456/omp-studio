@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ModelOption } from "../lib/models";
+import { type ModelOption, resolveThinkingLevels, thinkingChipState } from "../lib/models";
 import {
 	applyThinkingLevel,
 	carryLevel,
@@ -10,6 +10,7 @@ import {
 	pushRecent,
 	removeRecent,
 	resolveRole,
+	resolveModelCapabilities,
 	roleIdOf,
 	thinkingLevelsFor,
 } from "./modelSelectLogic";
@@ -18,6 +19,72 @@ const MODELS: ModelOption[] = [
 	{ provider: "anthropic", id: "haiku", name: "Haiku", thinking: ["low", "high"] },
 	{ provider: "anthropic", id: "opus", name: "Opus", thinking: [] },
 ];
+
+describe("selected model capabilities", () => {
+	const selected: ModelOption = {
+		provider: "sub2api-smart",
+		id: "gpt-6.1-sol",
+		name: "Configured model",
+		reasoning: true,
+		thinking: ["low", "medium", "high", "xhigh", "max"],
+		contextWindow: 272000,
+	};
+
+	it("resolves a configured thinking suffix against the exact provider and model", () => {
+		const otherProvider = { ...selected, provider: "other", reasoning: false, thinking: [] };
+		const resolved = resolveModelCapabilities("sub2api-smart/gpt-6.1-sol:xhigh", [otherProvider, selected]);
+		expect(resolved).toEqual(selected);
+		const levels = resolveThinkingLevels(undefined, resolved?.thinking);
+		expect(thinkingChipState(levels, resolved?.reasoning).kind).toBe("levels");
+		expect(levels).toEqual(["auto", "off", "low", "medium", "high", "xhigh", "max"]);
+	});
+
+	it("uses live reasoning and effort metadata when the catalog is absent or stale", () => {
+		const live = {
+			provider: selected.provider,
+			id: selected.id,
+			reasoning: true,
+			thinking: { mode: "effort", efforts: ["medium", "high"] },
+			contextWindow: 128000,
+		};
+		const stale = { ...selected, reasoning: false, thinking: [] };
+		const resolved = resolveModelCapabilities("sub2api-smart/gpt-6.1-sol", [stale], live);
+		expect(resolved?.reasoning).toBe(true);
+		expect(resolved?.thinking).toEqual(["medium", "high"]);
+		expect(resolved?.contextWindow).toBe(272000);
+		expect(resolveModelCapabilities("sub2api-smart/gpt-6.1-sol", null, live)?.thinking).toEqual(["medium", "high"]);
+	});
+
+	it("does not call a live reasoning model unsupported just because no effort control is configured", () => {
+		const resolved = resolveModelCapabilities("custom/opaque-id", null, {
+			provider: "custom", id: "opaque-id", reasoning: true,
+		});
+		expect(thinkingChipState([], resolved?.reasoning)).toEqual({ kind: "unconfigured" });
+	});
+
+	it("keeps catalog capabilities when a matching live model reports identity only", () => {
+		expect(resolveModelCapabilities("sub2api-smart/gpt-6.1-sol", [selected], {
+			provider: selected.provider, id: selected.id,
+		})).toEqual(selected);
+	});
+
+	it("never borrows live capabilities from another provider or model", () => {
+		for (const live of [{ ...selected, provider: "other" }, { ...selected, id: "different" }]) {
+			expect(resolveModelCapabilities("sub2api-smart/gpt-6.1-sol", [selected], {
+				...live, reasoning: false, thinking: [],
+			})).toEqual(selected);
+		}
+		expect(resolveModelCapabilities("unknown/gpt-6.1-sol", [selected])).toBeNull();
+	});
+
+	it("keeps explicitly unsupported and literal suffixed model IDs authoritative", () => {
+		expect(resolveModelCapabilities("sub2api-smart/gpt-6.1-sol", [selected], {
+			...selected, reasoning: false, thinking: null,
+		})).toMatchObject({ reasoning: false, thinking: [] });
+		const literal = { ...selected, id: "gpt-6.1-sol:high", reasoning: false, thinking: [] };
+		expect(resolveModelCapabilities("sub2api-smart/gpt-6.1-sol:high", [selected, literal])).toEqual(literal);
+	});
+});
 
 describe("parseSelection / composeSelection", () => {
 	it("splits known trailing levels only", () => {
