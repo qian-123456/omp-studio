@@ -23,7 +23,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => ({
 	...(await importOriginal<typeof Ipc>()),
 	createSideChat: h.createSideChat,
 	sideChatAsk: h.sideChatAsk,
-	getTranscript: vi.fn(async () => ({ items: [] })),
+	getTranscript: vi.fn(async (sessionId: string) => ({ sessionId, items: [], nextOffset: 0, reset: false, tailId: null })),
 	acceptSession: vi.fn(async () => undefined),
 	privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "ok", nativeError: null })),
 }));
@@ -54,8 +54,10 @@ vi.mock("../../stores/modelCatalog", () => ({
 	}),
 }));
 vi.mock("../settings/store", () => ({
-	useSettings: (selector: (s: { settings: null }) => unknown) =>
-		selector({ settings: null }),
+	useSettings: Object.assign(
+		(selector: (s: { settings: null }) => unknown) => selector({ settings: null }),
+		{ getState: () => ({ settings: null }) },
+	),
 	ensureSettings: () => {},
 }));
 vi.mock("../sessions/newSession", () => ({ startNewSession: vi.fn() }));
@@ -104,6 +106,7 @@ const typeAndSend = (text: string) => {
 };
 
 let blankId = "";
+const addUserEcho = useLive.getState().addUserEcho;
 
 beforeAll(() => {
 	class RO {
@@ -118,7 +121,7 @@ beforeEach(() => {
 	localStorage.clear();
 	h.createSideChat.mockReset().mockResolvedValue({ sessionId: "child-new" });
 	h.sideChatAsk.mockReset().mockResolvedValue(undefined);
-	h.addUserEcho.mockReset();
+	h.addUserEcho.mockReset().mockImplementation(addUserEcho);
 	useLive.setState({ sessions: {}, addUserEcho: h.addUserEcho });
 	useComposer.setState({
 		annotations: {},
@@ -185,7 +188,7 @@ describe("SideChatPanel blank new chat", () => {
 		expect(useComposer.getState().images[blankId]).toHaveLength(1);
 	});
 
-	it("shows a pending bubble, then asks before committing the echo and bound tab", async () => {
+	it("shows a pending bubble, then registers its echo before asking and binding the tab", async () => {
 		seedAnnotation("p1", "hello quote");
 		let resolveCreate!: (v: { sessionId: string }) => void;
 		const create = {
@@ -258,7 +261,7 @@ describe("SideChatPanel blank new chat", () => {
 			{ id: first.id, path: first.path, marker: "[Image #1]" },
 			{ id: second.id, path: second.path, marker: "[Image #2]" },
 		]);
-		expect(h.addUserEcho.mock.invocationCallOrder[0]).toBeGreaterThan(
+		expect(h.addUserEcho.mock.invocationCallOrder[0]).toBeLessThan(
 			h.sideChatAsk.mock.invocationCallOrder[0]!,
 		);
 	});
@@ -308,7 +311,7 @@ describe("SideChatPanel blank new chat", () => {
 		typeAndSend(draft);
 		await waitFor(() => expect((input() as HTMLTextAreaElement).value).toBe(draft));
 
-		expect(h.addUserEcho).not.toHaveBeenCalled();
+		expect(useLive.getState().sessions["child-new"]?.pendingUserEchoes ?? []).toEqual([]);
 		expect(useSideChatView.getState().openTabs.p1).toEqual([blankId]);
 		expect(useSideChatView.getState().pending).toEqual({});
 		expect(useComposer.getState().annotations[sideChatAnnKey("p1")]).toEqual(annotations);
@@ -328,7 +331,7 @@ describe("SideChatPanel blank new chat", () => {
 		expect(h.sideChatAsk.mock.calls[1]?.[1]).toContain("/kept.png");
 		expect(h.sideChatAsk.mock.calls[1]?.[2]).toContain("keep this quote");
 		expect(h.sideChatAsk.mock.calls[1]?.[2]).toContain("批注：批注内容");
-		expect(h.addUserEcho).toHaveBeenCalledTimes(1);
+		expect(h.addUserEcho).toHaveBeenCalledTimes(2);
 		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", expect.any(String), [
 			{ id: image.id, path: image.path, marker: "[Image #1]" },
 		]);
@@ -349,7 +352,25 @@ describe("SideChatPanel blank new chat", () => {
 		await waitFor(() => expect(useSideChatView.getState().pending).toEqual({}));
 		expect((input() as HTMLTextAreaElement).value).toBe("newer draft");
 		expect(useComposer.getState().sideChatDrafts[blankId]).toBe("newer draft");
-		expect(h.addUserEcho).not.toHaveBeenCalled();
+		expect(useLive.getState().sessions["child-new"]?.pendingUserEchoes ?? []).toEqual([]);
+	});
+
+	it("does not deliver a second first question after switching away and back while creation is pending", async () => {
+		let create!: (value: { sessionId: string }) => void;
+		h.createSideChat.mockReturnValueOnce(new Promise((resolve) => { create = resolve; }));
+		render(<SideChatPanel />);
+		typeAndSend("only send this once");
+		act(() => useSideChatView.getState().openBlankTab("p1"));
+		act(() => useSideChatView.getState().setOpenChild("p1", blankId));
+		expect(screen.getByText("only send this once")).toBeTruthy();
+		fireEvent.change(input(), { target: { value: "next draft" } });
+		fireEvent.keyDown(input(), { key: "Enter" });
+		expect(h.createSideChat).toHaveBeenCalledTimes(1);
+		await act(async () => create({ sessionId: "child-new" }));
+		await waitFor(() => expect(screen.getByTestId("child-view")).toBeTruthy());
+		expect(h.sideChatAsk).toHaveBeenCalledTimes(1);
+		expect(h.sideChatAsk.mock.calls[0]?.[1]).toBe("only send this once");
+		expect(useComposer.getState().drafts["child-new"]).toBe("next draft");
 	});
 
 	it("keeps the draft across unmount/remount", () => {

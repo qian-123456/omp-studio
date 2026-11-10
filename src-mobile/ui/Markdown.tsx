@@ -10,8 +10,11 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components, ExtraProps, Options } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { normalizeMath } from "../../src/features/chat/mathNormalize";
 import { CodeBlock } from "./CodeBlock";
 import { useHighlightPlugins } from "./highlight";
 import { openImage } from "./ImageViewer";
@@ -23,6 +26,7 @@ import {
 	splitStableBlocks,
 } from "./streamingMarkdown";
 import { parseVisualizeInfo, VisualizeBlock } from "./visualize";
+import "katex/dist/katex.min.css";
 import "./markdown.css";
 
 /** Allows http(s), mailto, tel, fragments and relative URLs; rejects javascript:, data:, vbscript: and any other scheme. */
@@ -180,7 +184,16 @@ function MdTable({ children }: ComponentProps<"table">) {
 }
 
 const COMPONENTS: Components = { pre: MdPre, code: MdCode, a: MdLink, img: MdImage, table: MdTable };
-const REMARK_PLUGINS: NonNullable<Options["remarkPlugins"]> = [remarkGfm, remarkCjkFriendly];
+// Match desktop parsing: normalize valid single-dollar spans without treating currency as math.
+const REMARK_PLUGINS: NonNullable<Options["remarkPlugins"]> = [
+	remarkGfm,
+	remarkCjkFriendly,
+	[remarkMath, { singleDollarTextMath: false }],
+];
+const KATEX_PLUGIN: NonNullable<Options["rehypePlugins"]>[number] = [
+	rehypeKatex,
+	{ throwOnError: false, strict: false },
+];
 const urlTransform: NonNullable<Options["urlTransform"]> = (url) => url;
 
 const MarkdownSegment = memo(function MarkdownSegment({
@@ -196,16 +209,18 @@ const MarkdownSegment = memo(function MarkdownSegment({
 	onSendFollowUp?: (prompt: string) => void;
 	visualizeEnabled?: boolean;
 }) {
-	const rehypePlugins = useHighlightPlugins(!streaming);
+	const highlightPlugins = useHighlightPlugins(!streaming);
+	const rehypePlugins = useMemo(() => [KATEX_PLUGIN, ...highlightPlugins], [highlightPlugins]);
+	const normalizedText = useMemo(() => normalizeMath(text), [text]);
 	const ctxValue = useMemo<MarkdownContextValue>(
 		() => ({
-			sourceText: text,
+			sourceText: normalizedText,
 			streaming,
 			sessionId,
 			onSendFollowUp,
 			visualizeEnabled,
 		}),
-		[text, streaming, sessionId, onSendFollowUp, visualizeEnabled],
+		[normalizedText, streaming, sessionId, onSendFollowUp, visualizeEnabled],
 	);
 
 	return (
@@ -216,7 +231,7 @@ const MarkdownSegment = memo(function MarkdownSegment({
 				components={COMPONENTS}
 				urlTransform={urlTransform}
 			>
-				{text}
+				{normalizedText}
 			</ReactMarkdown>
 		</MarkdownContext.Provider>
 	);

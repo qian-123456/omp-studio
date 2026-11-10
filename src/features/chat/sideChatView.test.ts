@@ -40,6 +40,16 @@ describe("trimSideChatItems", () => {
 		const items = [u("1", "hi")];
 		expect(trimSideChatItems(items)).toBe(items);
 	});
+	it("reveals only the extracted boundary question and preserves all other hidden rows", () => {
+		const boundary = { ...u("first", tpl("", "my question")), hidden: true };
+		const hiddenFollowUp = { ...u("hidden-follow-up", "internal note"), hidden: true };
+		const out = trimSideChatItems([u("parent", "inherited"), boundary, hiddenFollowUp], true);
+		expect(out[0]).toMatchObject({ id: "first", text: "my question", hidden: false });
+		expect(out[1]).toBe(hiddenFollowUp);
+		expect(boundary.hidden).toBe(true);
+		const ordinary = [hiddenFollowUp];
+		expect(trimSideChatItems(ordinary)).toBe(ordinary);
+	});
 	it("nested fork: uses the last side-chat prompt", () => {
 		const out = trimSideChatItems([u("1", tpl("", "A")), u("2", "x"), u("3", tpl("", "B"))]);
 		expect(out.map((i) => i.text)).toEqual(["B"]);

@@ -24,6 +24,8 @@ struct Mock {
     extra_pending: Mutex<Vec<Value>>,
     /// HTTP status the fake push service answers with.
     push_status: Mutex<u16>,
+    voice_calls: Mutex<Vec<super::api::voice::AudioPayload>>,
+    voice_result: Mutex<Result<Value, (StatusCode, Value)>>,
 }
 
 impl Backend for Mock {
@@ -126,6 +128,17 @@ impl Backend for Mock {
         self.calls.lock().push(format!("push {}", req.endpoint));
         Ok(*self.push_status.lock())
     }
+    async fn transcribe_audio(
+        &self,
+        audio: super::api::voice::AudioPayload,
+    ) -> super::api::voice::VoiceResult {
+        self.voice_calls.lock().push(audio);
+        self.voice_result
+            .lock()
+            .clone()
+            .map(axum::Json)
+            .map_err(|(status, body)| (status, axum::Json(body)))
+    }
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.bus.subscribe()
     }
@@ -155,6 +168,8 @@ fn harness() -> Harness {
             file: file.to_string_lossy().to_string(),
             extra_pending: Mutex::new(Vec::new()),
             push_status: Mutex::new(201),
+            voice_calls: Mutex::new(Vec::new()),
+            voice_result: Mutex::new(Ok(json!({ "text": "受控转写" }))),
         },
         db: Arc::new(parking_lot::Mutex::new(auth::test_db())),
         shutdown: rx,
@@ -1673,13 +1688,189 @@ async fn presence_and_quota_and_voice_endpoints() {
     let v: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(v["ok"], true);
 
-    // 3. Voice transcription endpoint with empty audio
-    let (s, _, body) = call(&h, post("/api/voice/transcribe", &cookie, json!({}))).await;
-    // Axum json extractor on empty body or voice validation returns structured error or bad request
-    assert!(
-        s == StatusCode::BAD_REQUEST || s == StatusCode::UNPROCESSABLE_ENTITY,
-        "{s}: {body}"
+    // 3. A genuinely empty body is rejected before the transcription backend.
+    let req = Request::post("/api/voice/transcribe")
+        .header(header::COOKIE, &cookie)
+        .header(header::CONTENT_TYPE, "audio/webm")
+        .body(Body::empty())
+        .unwrap();
+    let (s, _, body) = call(&h, req).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"error": {"code": "empty_audio", "message": "音频数据为空"}}),
     );
+    assert!(h.ctx.backend.voice_calls.lock().is_empty());
+}
+
+fn voice_request(cookie: &str, content_type: Option<&str>, body: impl Into<Body>) -> Request<Body> {
+    let mut req = Request::post("/api/voice/transcribe").header(header::COOKIE, cookie);
+    if let Some(content_type) = content_type {
+        req = req.header(header::CONTENT_TYPE, content_type);
+    }
+    req.body(body.into()).unwrap()
+}
+
+#[tokio::test]
+async fn voice_rejections_never_call_transcription_backend() {
+    let h = harness();
+    let (status, _, _) = call(
+        &h,
+        voice_request("", Some("audio/webm"), Body::from("voice")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let cookie = pair(&h).await;
+    for (content_type, body, status, code, message) in [
+        (
+            Some("audio/webm"),
+            Body::empty(),
+            StatusCode::BAD_REQUEST,
+            "empty_audio",
+            "音频数据为空",
+        ),
+        (
+            None,
+            Body::empty(),
+            StatusCode::BAD_REQUEST,
+            "empty_audio",
+            "音频数据为空",
+        ),
+        (
+            Some("application/json"),
+            Body::from("{}"),
+            StatusCode::BAD_REQUEST,
+            "invalid_audio_type",
+            "请求内容必须为音频数据",
+        ),
+        (
+            Some("application/problem+json; charset=utf-8"),
+            Body::from("{}"),
+            StatusCode::BAD_REQUEST,
+            "invalid_audio_type",
+            "请求内容必须为音频数据",
+        ),
+        (
+            Some("audio/webm"),
+            Body::from(vec![0_u8; super::api::voice::MAX_AUDIO_SIZE + 1]),
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            "音频文件大小超出 25MB 限制",
+        ),
+    ] {
+        let (actual_status, _, body) = call(&h, voice_request(&cookie, content_type, body)).await;
+        assert_eq!(actual_status, status, "{body}");
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap(),
+            json!({"error": {"code": code, "message": message}}),
+        );
+        assert!(h.ctx.backend.voice_calls.lock().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn voice_raw_audio_preserves_payload_and_mime_once() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    let audio = b"RIFF\x00\x00\x00\x00WAVEfmt ";
+    for (index, (content_type, expected_type, filename)) in [
+        (
+            Some("audio/webm;codecs=opus"),
+            "audio/webm;codecs=opus",
+            "audio.webm",
+        ),
+        (Some("audio/mp4"), "audio/mp4", "audio.mp4"),
+        (Some("audio/ogg"), "audio/ogg", "audio.ogg"),
+        (Some("audio/wav"), "audio/wav", "audio.wav"),
+        (Some("application/octet-stream"), "audio/wav", "audio.wav"),
+        (None, "audio/wav", "audio.wav"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (status, headers, body) = call(
+            &h,
+            voice_request(&cookie, content_type, Body::from(audio.as_slice())),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap(),
+            json!({"text": "受控转写"})
+        );
+        let calls = h.ctx.backend.voice_calls.lock();
+        assert_eq!(calls.len(), index + 1);
+        assert_eq!(calls[index].bytes.as_ref(), audio);
+        assert_eq!(calls[index].content_type, expected_type);
+        assert_eq!(calls[index].filename, filename);
+    }
+}
+
+#[tokio::test]
+async fn voice_multipart_preserves_audio_and_rejects_non_audio() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    for (content_type, bytes, expected_status) in [
+        ("audio/ogg;codecs=opus", "OggS\u{0}\u{2}", StatusCode::OK),
+        ("application/json", "{}", StatusCode::BAD_REQUEST),
+    ] {
+        let body = format!(
+            "--voice-boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"recording.ogg\"\r\nContent-Type: {content_type}\r\n\r\n{bytes}\r\n--voice-boundary--\r\n"
+        );
+        let (status, _, body) = call(
+            &h,
+            voice_request(
+                &cookie,
+                Some("multipart/form-data; boundary=voice-boundary"),
+                Body::from(body),
+            ),
+        )
+        .await;
+        assert_eq!(status, expected_status, "{body}");
+        if expected_status == StatusCode::OK {
+            assert_eq!(
+                serde_json::from_str::<Value>(&body).unwrap(),
+                json!({"text": "受控转写"})
+            );
+        } else {
+            assert_eq!(
+                serde_json::from_str::<Value>(&body).unwrap(),
+                json!({"error": {"code": "invalid_audio_type", "message": "请求内容必须为音频数据"}}),
+            );
+        }
+    }
+    let calls = h.ctx.backend.voice_calls.lock();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].bytes.as_ref(), b"OggS\x00\x02");
+    assert_eq!(calls[0].filename, "recording.ogg");
+    assert_eq!(calls[0].content_type, "audio/ogg;codecs=opus");
+}
+
+#[tokio::test]
+async fn voice_backend_errors_preserve_exact_status_and_structure() {
+    let h = harness();
+    let cookie = pair(&h).await;
+    for (index, status) in [
+        StatusCode::BAD_REQUEST,
+        StatusCode::BAD_GATEWAY,
+        StatusCode::GATEWAY_TIMEOUT,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = json!({"error": {"code": "controlled_error", "message": "受控失败详情"}});
+        *h.ctx.backend.voice_result.lock() = Err((status, error.clone()));
+        let (actual_status, headers, body) = call(
+            &h,
+            voice_request(&cookie, Some("audio/webm"), Body::from("voice")),
+        )
+        .await;
+        assert_eq!(actual_status, status);
+        assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+        assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), error);
+        assert_eq!(h.ctx.backend.voice_calls.lock().len(), index + 1);
+    }
 }
 
 #[tokio::test]

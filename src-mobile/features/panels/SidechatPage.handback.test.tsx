@@ -65,7 +65,7 @@ beforeEach(() => {
 	localStorage.clear();
 	requests = 0;
 	delayedTranscript = null;
-	transcript = [{ id: "question", kind: "user", text: "比较两个方案" }];
+	transcript = [{ id: "question", kind: "user", text: "Side chat forked from main session\n\n## User question\n比较两个方案" }];
 	useSessions.setState({ list: [thread], byId: { thread }, loaded: true, loading: false });
 	vi.spyOn(apiModule, "api").mockImplementation(async (method, path, body) => {
 		if (method === "GET" && path.endsWith("/sidechats")) return [thread];

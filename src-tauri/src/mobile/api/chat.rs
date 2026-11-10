@@ -17,8 +17,9 @@
 //!   `{text, images?: [{mime, data /*base64, no data: prefix*/}], streamingBehavior?: "steer"|"followUp"}`
 //!   → `{ok: true, streaming: bool}`. Same RPC path as desktop `sendPrompt`: the
 //!   session is resumed if needed, then `{type:"prompt", message, images:[{type:"image",
-//!   data, mimeType}]}`; while a turn is streaming `streamingBehavior` is attached
-//!   (default `followUp`). `text` or ≥1 image required; body ≤ 30 MiB; images must
+//!   data, mimeType}], streamingBehavior}`; the policy is always attached so a turn
+//!   starting during preparation respects the requested queue (default `followUp`).
+//!   Text or ≥1 image required; body ≤ 30 MiB; images must
 //!   be png/jpeg/gif/webp. When plan mode is on (see below) and `text` is not a
 //!   `/command`, the desktop plan prefix is prepended.
 //! - `POST /sessions/{id}/abort` →
@@ -192,7 +193,7 @@ async fn rpc_cmd(state: &AppState, id: &str, command: Value) -> Result<Value, St
 
 /// Resume the session process when needed.
 async fn live(state: &AppState, id: &str) -> Result<(), ApiError> {
-    crate::rpc::ensure_live(state, id, None)
+    crate::rpc::ensure_live(state, id, None, None)
         .await
         .map(|_| ())
         .map_err(bad_gateway)
@@ -295,13 +296,7 @@ async fn send_prompt_live(
     live(state, id).await?;
     let streaming = crate::rpc::get_handle(id)
         .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
-    let mut cmd = json!({"type": "prompt", "message": message});
-    if !images.is_empty() {
-        cmd["images"] = Value::Array(images);
-    }
-    if streaming {
-        cmd["streamingBehavior"] = json!(behavior.unwrap_or("followUp"));
-    }
+    let cmd = crate::rpc::prompt_command(message, images, behavior);
     rpc_cmd(state, id, cmd).await.map_err(bad_gateway)?;
     Ok(streaming)
 }
@@ -2164,6 +2159,74 @@ async fn plan_set<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn prompt_delivery_preserves_queue_policy_across_a_late_turn_start() {
+        use std::sync::atomic::Ordering;
+        use std::sync::Arc;
+        use tokio::sync::mpsc;
+
+        for behavior in [None, Some("steer"), Some("followUp"), Some("aside")] {
+            for turn_started in [false, true] {
+                let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+                let handle = Arc::new(crate::rpc::SessionHandle {
+                    stdin_tx: tx,
+                    ..crate::rpc::SessionHandle::for_test()
+                });
+                let image = json!({"type":"image","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==","mimeType":"image/png"});
+                // The host is idle while it prepares the mobile text and image.
+                assert!(!handle.streaming.load(Ordering::SeqCst));
+                let command =
+                    crate::rpc::prompt_command("Mobile question", vec![image.clone()], behavior);
+                let upstream = handle.clone();
+                let consumer = tokio::spawn(async move {
+                    let line = rx.recv().await.expect("mobile prompt delivered to RPC");
+                    let sent: Value = serde_json::from_str(&line).unwrap();
+                    // Upstream rechecks after asynchronous preparation. A new
+                    // run here must use the user's policy, not refuse or steer
+                    // a non-interrupting aside into a different queue.
+                    upstream.streaming.store(turn_started, Ordering::SeqCst);
+                    let delivered_as = if turn_started {
+                        match sent["streamingBehavior"].as_str() {
+                            Some("steer") => Some("steer"),
+                            Some("followUp") => Some("followUp"),
+                            Some("aside") => Some("aside"),
+                            _ => None,
+                        }
+                    } else {
+                        Some("started")
+                    };
+                    let response = match delivered_as {
+                        Some(_) => {
+                            json!({"type":"response","command":"prompt","id":sent["id"],"success":true})
+                        }
+                        None => {
+                            json!({"type":"response","command":"prompt","id":sent["id"],"success":false,"error":"Agent is busy"})
+                        }
+                    };
+                    upstream
+                        .pending
+                        .resolve(sent["id"].as_str().unwrap(), response);
+                    (
+                        delivered_as,
+                        sent["message"].clone(),
+                        sent["images"].clone(),
+                    )
+                });
+                crate::rpc::send_command(&handle, command)
+                    .await
+                    .expect("mobile prompt accepted");
+                let delivered_as = if turn_started {
+                    behavior.unwrap_or("followUp")
+                } else {
+                    "started"
+                };
+                assert_eq!(
+                    consumer.await.unwrap(),
+                    (Some(delivered_as), json!("Mobile question"), json!([image]))
+                );
+            }
+        }
+    }
 
     #[test]
     fn plan_status_matches_desktop_defaults_and_approved_states() {

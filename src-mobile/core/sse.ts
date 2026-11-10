@@ -81,6 +81,7 @@ export class SseClient {
 	private attempt = 0;
 	private timer: ReturnType<typeof setTimeout> | 0 = 0;
 	private started = false;
+	private probeVersion = 0;
 
 	constructor(private deps: SseDeps) {}
 
@@ -92,6 +93,7 @@ export class SseClient {
 
 	stop(): void {
 		this.started = false;
+		this.probeVersion++;
 		clearTimeout(this.timer);
 		this.timer = 0;
 		this.close();
@@ -127,17 +129,18 @@ export class SseClient {
 
 	private async probeAndConnect(): Promise<void> {
 		if (!this.started || isUnauthorized() || this.es) return;
+		const version = ++this.probeVersion;
 		const conn = useConnection.getState();
 		if (conn.phase !== "open") conn.setPhase("connecting");
 		try {
 			await this.deps.probe();
 		} catch (e) {
-			if (isUnauthorized()) return;
+			if (!this.started || version !== this.probeVersion || isUnauthorized() || this.es) return;
 			useConnection.getState().setPhase("closed", e instanceof Error ? e.message : null);
 			this.scheduleReconnect();
 			return;
 		}
-		if (this.started && !isUnauthorized() && !this.es) this.connect();
+		if (this.started && version === this.probeVersion && !isUnauthorized() && !this.es) this.connect();
 	}
 
 	private connect(): void {

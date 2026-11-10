@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
+use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::Value;
 
 use crate::contracts::ResultBadge;
@@ -163,47 +164,265 @@ pub fn head_fingerprint(bytes: &[u8]) -> u64 {
     hash
 }
 
-/// Read the tail window, widening it if it holds no complete message line.
+/// Read each byte/complete JSONL line at most once while widening the tail.
 pub fn read_tail(path: &Path, size: u64) -> std::io::Result<TailInfo> {
-    let mut f = File::open(path)?;
+    read_tail_from(&mut File::open(path)?, size)
+}
+
+fn read_tail_from(reader: &mut (impl Read + Seek), size: u64) -> std::io::Result<TailInfo> {
     let mut window = TAIL_BYTES;
+    let mut previous_start = size;
+    let mut partial = Vec::new();
+    let mut groups = Vec::new();
+    let mut has_message = false;
+    let mut has_model = false;
     loop {
         let start = size.saturating_sub(window);
-        f.seek(SeekFrom::Start(start))?;
-        let mut buf = Vec::with_capacity((size - start) as usize);
-        (&mut f).take(size - start).read_to_end(&mut buf)?;
-        let body = if start > 0 {
-            match buf.iter().position(|b| *b == b'\n') {
-                Some(i) => &buf[i + 1..],
-                None => &buf[..0],
-            }
+        reader.seek(SeekFrom::Start(start))?;
+        let mut buf = Vec::with_capacity((previous_start - start) as usize + partial.len());
+        (&mut *reader)
+            .take(previous_start - start)
+            .read_to_end(&mut buf)?;
+        // Only the incomplete first line of the previous window is carried
+        // across the boundary. Complete newer lines have already been parsed.
+        buf.append(&mut partial);
+        let body_start = if start == 0 {
+            0
         } else {
-            &buf[..]
+            buf.iter()
+                .position(|b| *b == b'\n')
+                .map_or(buf.len(), |i| i + 1)
         };
-        let info = parse_tail(body);
+        let entries: Vec<_> = buf[body_start..]
+            .split(|b| *b == b'\n')
+            .filter_map(listing_entry)
+            .collect();
+        for entry in &entries {
+            match entry.get("type").and_then(Value::as_str) {
+                Some("message") => {
+                    if let Some(message) = entry.get("message") {
+                        let role = message.get("role").and_then(Value::as_str);
+                        has_message |= matches!(role, Some("assistant" | "user" | "toolResult"));
+                        has_model |= role == Some("assistant")
+                            && message
+                                .get("model")
+                                .and_then(Value::as_str)
+                                .is_some_and(|m| !m.trim().is_empty());
+                    }
+                }
+                Some("model_change") => {
+                    has_model |= entry
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .is_some_and(|m| !m.trim().is_empty());
+                }
+                _ => {}
+            }
+        }
+        groups.push(entries);
         let next = TAIL_FALLBACKS.iter().copied().find(|w| *w > window);
         match next {
-            // Also widen while no model is known: a window of tool results (huge
-            // assistant lines push the last model entry out of 64 KB) would
-            // otherwise list the session with no model at all.
-            Some(w) if (info.last_msg.is_none() || info.model.is_none()) && start > 0 => window = w,
-            _ => return Ok(info),
+            // Preserve recovery of giant message lines and earlier model
+            // entries without re-reading/re-parsing the newer window.
+            Some(w) if (!has_message || !has_model) && start > 0 => {
+                partial.extend_from_slice(&buf[..body_start]);
+                previous_start = start;
+                window = w;
+            }
+            _ => {
+                // Process older groups first: bash calls can pair with results
+                // in a newer window, and newest title/model/exit ordering wins.
+                return Ok(parse_entries(groups.into_iter().rev().flatten()));
+            }
         }
     }
 }
 
-/// Analyse complete JSONL lines of the tail window (in file order).
-pub fn parse_tail(bytes: &[u8]) -> TailInfo {
+/// Discard a JSON value without retaining it, but use normal deserialization
+/// for every string (including nested object keys). `IgnoredAny` uses
+/// serde_json's faster ignore_str path, which accepts invalid UTF-16 escapes
+/// that the transcript's Value parser rejects.
+struct ValidatedDiscard;
+
+impl<'de> serde::Deserialize<'de> for ValidatedDiscard {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct Discard;
+
+        impl<'de> Visitor<'de> for Discard {
+            type Value = ValidatedDiscard;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a valid JSON value")
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+                while map.next_key::<ValidatedDiscard>()?.is_some() {
+                    map.next_value::<ValidatedDiscard>()?;
+                }
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_seq<S: SeqAccess<'de>>(self, mut seq: S) -> Result<Self::Value, S::Error> {
+                while seq.next_element::<ValidatedDiscard>()?.is_some() {}
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                Ok(ValidatedDiscard)
+            }
+        }
+
+        de.deserialize_any(Discard)
+    }
+}
+
+/// Deserialize only the fields consumed by listing. In particular, image
+/// payloads, thinking blocks, usage and arbitrary tool arguments are validated
+/// and skipped rather than allocated as a full serde_json::Value tree.
+#[derive(Clone, Copy)]
+enum ListingShape {
+    Entry,
+    Message,
+    Content,
+    Block,
+    Arguments,
+    Exit,
+    Pending,
+}
+
+impl<'de> DeserializeSeed<'de> for ListingShape {
+    type Value = Value;
+
+    fn deserialize<D: serde::Deserializer<'de>>(self, de: D) -> Result<Value, D::Error> {
+        struct Projection(ListingShape);
+        impl<'de> Visitor<'de> for Projection {
+            type Value = Value;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a listing record")
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Value, M::Error> {
+                let mut fields = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    let child = match (self.0, key.as_str()) {
+                        (ListingShape::Entry, "message") => Some(ListingShape::Message),
+                        (ListingShape::Entry, "data") => Some(ListingShape::Exit),
+                        (ListingShape::Message, "content") => Some(ListingShape::Content),
+                        (ListingShape::Block, "arguments") => Some(ListingShape::Arguments),
+                        (ListingShape::Exit, "pendingToolCalls") => Some(ListingShape::Pending),
+                        _ => None,
+                    };
+                    let scalar = matches!(
+                        (self.0, key.as_str()),
+                        (
+                            ListingShape::Entry,
+                            "type" | "timestamp" | "title" | "model" | "customType"
+                        ) | (
+                            ListingShape::Message,
+                            "role"
+                                | "toolCallId"
+                                | "toolName"
+                                | "model"
+                                | "provider"
+                                | "stopReason"
+                                | "isError"
+                        ) | (ListingShape::Block, "type" | "id" | "name" | "text")
+                            | (ListingShape::Arguments, "command")
+                            | (ListingShape::Exit, "kind")
+                    );
+                    if let Some(shape) = child {
+                        fields.insert(key, map.next_value_seed(shape)?);
+                    } else if scalar {
+                        fields.insert(key, map.next_value()?);
+                    } else {
+                        map.next_value::<ValidatedDiscard>()?;
+                    }
+                }
+                Ok(Value::Object(fields))
+            }
+
+            fn visit_seq<S: SeqAccess<'de>>(self, mut seq: S) -> Result<Value, S::Error> {
+                let mut values = Vec::new();
+                if matches!(self.0, ListingShape::Content) {
+                    while let Some(block) = seq.next_element_seed(ListingShape::Block)? {
+                        values.push(block);
+                    }
+                } else {
+                    while seq.next_element::<ValidatedDiscard>()?.is_some() {
+                        if matches!(self.0, ListingShape::Pending) && values.is_empty() {
+                            // Listing only needs to know whether the array is empty.
+                            values.push(Value::Null);
+                        }
+                    }
+                }
+                Ok(Value::Array(values))
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Value, E> {
+                Ok(if matches!(self.0, ListingShape::Content) {
+                    Value::String(value.to_owned())
+                } else {
+                    Value::Null
+                })
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+        }
+        de.deserialize_any(Projection(self))
+    }
+}
+
+fn listing_entry(line: &[u8]) -> Option<Value> {
+    let mut de = serde_json::Deserializer::from_slice(line);
+    let entry = ListingShape::Entry.deserialize(&mut de).ok()?;
+    de.end().ok()?;
+    Some(entry)
+}
+
+fn parse_entries(entries: impl IntoIterator<Item = Value>) -> TailInfo {
     let mut info = TailInfo::default();
     // Bash tool calls (id -> command) matching the test/build pattern.
     let mut bash_calls: Vec<(String, String)> = Vec::new();
-    for line in bytes.split(|b| *b == b'\n') {
-        if line.is_empty() {
-            continue;
-        }
-        let Ok(v) = serde_json::from_slice::<Value>(line) else {
-            continue;
-        };
+    for v in entries {
         let ts = str_of(&v, "timestamp");
         match v.get("type").and_then(Value::as_str) {
             Some("message") => {
@@ -239,7 +458,7 @@ pub fn parse_tail(bytes: &[u8]) -> TailInfo {
                     Some("assistant") => {
                         let content = msg.get("content").and_then(Value::as_array);
                         let mut has_calls = false;
-                        let mut text = String::new();
+                        let mut text = "";
                         for block in content.into_iter().flatten() {
                             match block.get("type").and_then(Value::as_str) {
                                 Some("toolCall") => {
@@ -255,13 +474,17 @@ pub fn parse_tail(bytes: &[u8]) -> TailInfo {
                                     }
                                 }
                                 Some("text") if text.is_empty() => {
-                                    text = str_of(block, "text").trim().to_string();
+                                    text = block
+                                        .get("text")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or_default()
+                                        .trim();
                                 }
                                 _ => {}
                             }
                         }
                         if !text.is_empty() {
-                            info.last_assistant = Some(snippet(&text, 200));
+                            info.last_assistant = Some(snippet(text, 200));
                         }
                         if let Some(m) = non_empty(msg.get("model")) {
                             // Assistant entries carry the provider separately; keep the
@@ -282,13 +505,13 @@ pub fn parse_tail(bytes: &[u8]) -> TailInfo {
             Some("custom")
                 if v.get("customType").and_then(Value::as_str) == Some("session_exit") =>
             {
-                let data = v.get("data").cloned().unwrap_or(Value::Null);
+                let data = v.get("data").unwrap_or(&Value::Null);
                 let pending = data
                     .get("pendingToolCalls")
                     .and_then(Value::as_array)
                     .is_some_and(|a| !a.is_empty());
                 info.exit = Some(ExitInfo {
-                    kind: str_of(&data, "kind"),
+                    kind: str_of(data, "kind"),
                     pending_tool_calls: pending,
                     after_last_msg: true,
                 });
@@ -447,13 +670,34 @@ pub fn content_text(content: Option<&Value>) -> String {
 
 /// Collapse whitespace and truncate to `max` chars with an ellipsis.
 pub fn snippet(text: &str, max: usize) -> String {
-    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.chars().count() <= max {
-        return flat;
+    let mut out = String::new();
+    let mut count = 0;
+    let mut space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            space = !out.is_empty();
+            continue;
+        }
+        if space {
+            out.push(' ');
+            count += 1;
+            space = false;
+        }
+        out.push(ch);
+        count += 1;
+        if count > max {
+            // Only the bounded normalized prefix is retained, even when an
+            // assistant text block contains megabytes of output.
+            let end = out
+                .char_indices()
+                .nth(max.saturating_sub(1))
+                .map_or(out.len(), |(i, _)| i);
+            out.truncate(end);
+            out.push('…');
+            return out;
+        }
     }
-    let mut s: String = flat.chars().take(max.saturating_sub(1)).collect();
-    s.push('…');
-    s
+    out
 }
 
 fn image_marker_re() -> &'static Regex {
@@ -666,6 +910,323 @@ fn read_up_to(f: &mut File, buf: &mut [u8]) -> std::io::Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_tail(bytes: &[u8]) -> TailInfo {
+        read_tail_from(&mut std::io::Cursor::new(bytes), bytes.len() as u64).unwrap()
+    }
+
+    struct CountingReader {
+        inner: std::io::Cursor<Vec<u8>>,
+        reads: Vec<(u64, usize)>,
+    }
+
+    impl CountingReader {
+        fn new(bytes: Vec<u8>) -> Self {
+            Self {
+                inner: std::io::Cursor::new(bytes),
+                reads: Vec::new(),
+            }
+        }
+
+        fn bytes_read(&self) -> usize {
+            self.reads.iter().map(|(_, size)| size).sum()
+        }
+
+        fn assert_no_rereads(&self) {
+            let mut ranges = self.reads.clone();
+            ranges.sort_unstable_by_key(|(start, _)| *start);
+            for pair in ranges.windows(2) {
+                assert!(
+                    pair[0].0 + pair[0].1 as u64 <= pair[1].0,
+                    "overlapping reads: {pair:?}"
+                );
+            }
+        }
+    }
+
+    impl Read for CountingReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let start = self.inner.position();
+            let size = self.inner.read(buf)?;
+            if size > 0 {
+                self.reads.push((start, size));
+            }
+            Ok(size)
+        }
+    }
+
+    impl Seek for CountingReader {
+        fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+            self.inner.seek(pos)
+        }
+    }
+
+    #[test]
+    fn tail_reader_bounds_io_independently_of_irrelevant_middle() {
+        let suffix = msg(
+            "assistant",
+            r#","model":"p/m","content":[{"type":"text","text":"done"}],"stopReason":"stop""#,
+        );
+        for middle_bytes in [2 * 1024 * 1024, 12 * 1024 * 1024] {
+            let body = format!(
+                "{HEAD}{{\"type\":\"custom\",\"data\":\"{}\"}}\n{suffix}\n",
+                "x".repeat(middle_bytes)
+            );
+            let size = body.len() as u64;
+            let mut reader = CountingReader::new(body.into_bytes());
+            let tail = read_tail_from(&mut reader, size).unwrap();
+            assert_eq!(tail, parse_tail(suffix.as_bytes()));
+            assert_eq!(reader.bytes_read(), TAIL_BYTES as usize);
+            reader.assert_no_rereads();
+        }
+    }
+
+    #[test]
+    fn tail_reader_caps_missing_model_at_existing_fallback_limit() {
+        let suffix = msg("user", r#","content":"pending""#);
+        let body = format!(
+            "{HEAD}{{\"type\":\"custom\",\"data\":\"{}\"}}\n{suffix}\n",
+            "x".repeat(8 * 1024 * 1024)
+        );
+        let size = body.len() as u64;
+        let mut reader = CountingReader::new(body.into_bytes());
+        let tail = read_tail_from(&mut reader, size).unwrap();
+        assert_eq!(tail.last_msg.as_ref().unwrap().role, LastRole::User);
+        assert!(tail.model.is_none());
+        assert_eq!(
+            reader.bytes_read(),
+            *TAIL_FALLBACKS.last().unwrap() as usize
+        );
+        reader.assert_no_rereads();
+    }
+
+    #[test]
+    fn tail_reader_recovers_multimegabyte_assistant_without_retaining_thinking() {
+        let assistant = msg(
+            "assistant",
+            &format!(
+                r#","model":"p/huge","content":[{{"type":"thinking","thinking":"{}"}},{{"type":"text","text":"recovered"}}],"stopReason":"stop""#,
+                r"\uD83D\uDE00".repeat(180 * 1024)
+            ),
+        );
+        let body = format!("{HEAD}{assistant}\n");
+        let size = body.len() as u64;
+        let mut reader = CountingReader::new(body.into_bytes());
+        let tail = read_tail_from(&mut reader, size).unwrap();
+        assert_eq!(tail.last_assistant.as_deref(), Some("recovered"));
+        assert_eq!(tail.model.as_deref(), Some("p/huge"));
+        assert_eq!(tail.state(), TailState::Clean);
+        assert_eq!(reader.bytes_read(), size as usize);
+        reader.assert_no_rereads();
+    }
+
+    #[test]
+    fn widened_tail_parses_once_and_preserves_cross_window_ordering() {
+        let call = msg(
+            "assistant",
+            r#","model":"p/earlier","content":[{"type":"toolCall","id":"b","name":"bash","arguments":{"command":"cargo test","ignored":{"image":"unused"}}}],"stopReason":"toolUse""#,
+        );
+        // The bash call and only model are outside both smaller windows. The
+        // result line itself crosses the initial window boundary.
+        let body = format!(
+            "{HEAD}{call}\n{{\"type\":\"title_change\",\"title\":\"older\"}}\n{{\"type\":\"custom\",\"data\":\"{}\"}}\n{{\"type\":\"message\",\"timestamp\":\"T2\",\"message\":{{\"role\":\"toolResult\",\"toolCallId\":\"b\",\"content\":[{{\"type\":\"text\",\"text\":\"{}\\nCommand exited with code 101\"}}],\"isError\":true}}}}\n{{\"type\":\"custom\",\"customType\":\"session_exit\",\"data\":{{\"kind\":\"signal\",\"pendingToolCalls\":[{{\"large\":\"ignored\"}}]}}}}\n{{\"type\":\"title_change\",\"title\":\"newest\"}}\n",
+            "x".repeat(800 * 1024),
+            "y".repeat(100 * 1024)
+        );
+        let expected = parse_entries(
+            body.as_bytes()
+                .split(|b| *b == b'\n')
+                .filter_map(|line| serde_json::from_slice::<Value>(line).ok()),
+        );
+        let size = body.len() as u64;
+        let mut reader = CountingReader::new(body.into_bytes());
+        let actual = read_tail_from(&mut reader, size).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(actual.model.as_deref(), Some("p/earlier"));
+        assert_eq!(actual.title_change.as_deref(), Some("newest"));
+        assert_eq!(
+            actual
+                .result
+                .as_ref()
+                .map(|result| (result.ok, result.at.as_str())),
+            Some((false, "T2"))
+        );
+        assert!(actual.exit.as_ref().unwrap().after_last_msg);
+        assert_eq!(reader.bytes_read(), size as usize);
+        reader.assert_no_rereads();
+    }
+
+    #[test]
+    fn tail_projection_skips_payload_and_matches_full_value_semantics() {
+        let body = concat!(
+            "{\"type\":\"custom\",\"customType\":\"session_exit\",\"data\":{\"kind\":\"signal\",\"pendingToolCalls\":[{\"id\":\"x\"}]} }\n",
+            "{\"type\":\"message\",\"timestamp\":\"T\",\"usage\":{\"tokens\":123},\"message\":{\"role\":\"assistant\",\"provider\":\"p\",\"model\":\"m\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"not retained\"},{\"type\":\"image\",\"source\":{\"data\":\"not retained\"}},{\"type\":\"text\",\"text\":\"answer\"}],\"stopReason\":\"stop\"}}\n",
+            "{\"type\":\"model_change\",\"model\":\"p/new\"}\n",
+            "{\"type\":\"title_change\",\"title\":\"new\"}\n",
+            // Wrong optional field types remain as permissive as Value parsing.
+            "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"content\":null,\"model\":12,\"stopReason\":false}}\n",
+            "{\"type\":\"custom\",\"customType\":\"session_exit\",\"data\":null}\n"
+        );
+        let expected = parse_entries(
+            body.as_bytes()
+                .split(|b| *b == b'\n')
+                .filter_map(|line| serde_json::from_slice::<Value>(line).ok()),
+        );
+        assert_eq!(parse_tail(body.as_bytes()), expected);
+        assert!(!expected.exit.as_ref().unwrap().pending_tool_calls);
+        let entry = listing_entry(body.lines().nth(1).unwrap().as_bytes()).unwrap();
+        assert!(entry.get("usage").is_none());
+        assert!(entry.pointer("/message/content/0/thinking").is_none());
+        assert!(entry.pointer("/message/content/1/source").is_none());
+        assert!(listing_entry(b"{} trailing").is_none());
+    }
+
+    fn discarded_payload_templates() -> Vec<String> {
+        let assistant = serde_json::json!({
+            "type": "message",
+            "id": "a",
+            "timestamp": "T2",
+            "message": {
+                "role": "assistant",
+                "model": "p/m",
+                "content": [{"type": "text", "text": "done"}],
+                "stopReason": "stop"
+            }
+        });
+        let mut templates = Vec::new();
+        let mut entry = assistant.clone();
+        entry["unused"] = serde_json::json!({"nested": ["PAYLOAD"]});
+        templates.push(entry.to_string());
+        let mut entry = assistant.clone();
+        entry["message"]["unused"] = serde_json::json!([{"nested": "PAYLOAD"}]);
+        templates.push(entry.to_string());
+        let mut entry = assistant.clone();
+        entry["message"]["content"][0]["unused"] = serde_json::json!({"nested": "PAYLOAD"});
+        templates.push(entry.to_string());
+        let mut entry = assistant.clone();
+        entry["message"]["content"][0] =
+            serde_json::json!({"type": "thinking", "thinking": "PAYLOAD"});
+        templates.push(entry.to_string());
+        let mut entry = assistant.clone();
+        entry["message"]["content"][0] =
+            serde_json::json!({"type": "image", "source": {"data": "PAYLOAD"}});
+        templates.push(entry.to_string());
+        let mut entry = assistant.clone();
+        entry["message"]["content"][0] = serde_json::json!({
+            "type": "toolCall", "id": "call", "name": "read",
+            "arguments": {"unused": [{"nested": "PAYLOAD"}]}
+        });
+        templates.push(entry.to_string());
+        let mut entry = assistant;
+        // Nested arrays are not listing content, but must still be validated.
+        entry["message"]["content"] = serde_json::json!([["PAYLOAD"]]);
+        templates.push(entry.to_string());
+        templates.push(
+            serde_json::json!({
+                "type": "custom", "customType": "session_exit",
+                "data": {"kind": "normal", "pendingToolCalls": [{"unused": ["PAYLOAD"]}]}
+            })
+            .to_string(),
+        );
+        templates.push(
+            serde_json::json!({
+                "type": "custom", "customType": "session_exit",
+                "data": {"kind": "normal", "unused": [{"nested": "PAYLOAD"}]}
+            })
+            .to_string(),
+        );
+        // Also exercise keys inside discarded maps, not only their values.
+        templates.push(r#"{"type":"message","message":{"role":"assistant","unused":{"PAYLOAD":null},"stopReason":"stop"}}"#.to_string());
+        templates
+    }
+
+    #[test]
+    fn discarded_values_keep_full_json_unicode_validation() {
+        let values = [
+            (r#""\uD800""#, false),
+            (r#""\uDC00""#, false),
+            (r#""\uD800x""#, false),
+            (r#""\uD800\u0041""#, false),
+            (r#""\uDFFF\uD800""#, false),
+            (r#""\uD800\uDBFF""#, false),
+            (r#""\uD83D\uDE00""#, true),
+            (r#""\uDBFF\uDFFF""#, true),
+            (r#""\u0000\uD7FF\uE000\t\\\"""#, true),
+            (r#""中文😀""#, true),
+        ];
+        for template in discarded_payload_templates() {
+            for (value, valid) in values {
+                let line = template.replace("\"PAYLOAD\"", value);
+                let full = serde_json::from_slice::<Value>(line.as_bytes());
+                assert_eq!(full.is_ok(), valid, "{line}");
+                assert_eq!(listing_entry(line.as_bytes()).is_some(), valid, "{line}");
+                let expected = parse_entries(full);
+                assert_eq!(parse_tail(line.as_bytes()), expected, "{line}");
+            }
+            let mut bytes = template.into_bytes();
+            let offset = bytes
+                .windows(b"PAYLOAD".len())
+                .position(|s| s == b"PAYLOAD")
+                .unwrap();
+            bytes[offset] = 0xff;
+            assert!(serde_json::from_slice::<Value>(&bytes).is_err());
+            assert!(listing_entry(&bytes).is_none());
+        }
+    }
+
+    #[test]
+    fn catalog_scan_and_real_transcript_reject_invalid_discarded_assistant_payloads() {
+        let dir = std::env::temp_dir().join(format!("ompws-validity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("bucket")).unwrap();
+        let path = dir.join("bucket/s.jsonl");
+        let user = r#"{"type":"message","id":"u","timestamp":"T1","message":{"role":"user","content":"pending"}}"#;
+        for template in discarded_payload_templates() {
+            let invalid = template.replace("\"PAYLOAD\"", r#""\uD800""#);
+            let body = format!("{HEAD}{user}\n{invalid}\n");
+            std::fs::write(&path, body).unwrap();
+            let (map, changed) = super::super::scan::scan_files(
+                super::super::scan::list_files(&dir),
+                &super::super::scan::FileMap::new(),
+            );
+            assert_eq!(changed, vec![path.clone()]);
+            let tail = &map[&path].tail;
+            assert_eq!(tail.last_msg.as_ref().unwrap().role, LastRole::User);
+            assert_eq!(tail.state(), TailState::Interrupted);
+            assert!(tail.model.is_none());
+            assert!(tail.last_assistant.is_none());
+            assert!(tail.exit.is_none());
+            let page = super::super::transcript::read_page(&path, "sess-1", 0, None).unwrap();
+            assert_eq!(page.items.len(), 1);
+            assert_eq!(page.items[0].id, "u");
+            assert_eq!(page.items[0].kind, crate::contracts::TranscriptKind::User);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn snippet_matches_normalization_and_truncation_at_boundaries() {
+        for text in [
+            "",
+            " \n ",
+            "a",
+            "a b",
+            " ab\t cd \n ef ",
+            "一 二三\u{2003}四",
+        ] {
+            for max in 0..12 {
+                let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                let expected = if flat.chars().count() <= max {
+                    flat
+                } else {
+                    format!(
+                        "{}…",
+                        flat.chars().take(max.saturating_sub(1)).collect::<String>()
+                    )
+                };
+                assert_eq!(snippet(text, max), expected, "text={text:?}, max={max}");
+            }
+        }
+    }
 
     #[test]
     fn strip_image_markers_removes_image_annotation_headers() {

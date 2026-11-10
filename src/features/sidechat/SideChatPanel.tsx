@@ -15,7 +15,7 @@ import { importImageFile, saveClipboardImage } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { type ModelOption, resolveCurrentModel, resolveThinkingLevels, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
-import { type Annotation, type ComposerImage, annotationImageAttachments, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { type Annotation, type ComposerImage, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -48,7 +48,6 @@ import {
 	isSideChatImagePath,
 	insertSideChatImageMarker,
 	removeSideChatImageToken,
-	sideChatImageAttachments,
 } from "./sideChatAttachments";
 const SketchPad = lazy(() =>
 	import("../chat/sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
@@ -160,13 +159,13 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const sessions = useSessions((s) => s.sessions);
 	const sideChatDrafts = useComposer((s) => s.sideChatDrafts);
 	const setSideChatDraft = useComposer((s) => s.setSideChatDraft);
-	const clearSideChatDraft = useComposer((s) => s.clearSideChatDraft);
 	// The draft belongs to this blank tab.
 	const question = sideChatDrafts[tabId] ?? "";
 	const setQuestion = (val: string) => setSideChatDraft(tabId, val);
-	const [busy, setBusy] = useState(false);
 	/** First message while the session is being created: shown as a pending bubble. */
 	const pendingQuestion = useSideChatView((s) => s.pending[tabId] ?? null);
+	const busy = pendingQuestion !== null;
+	const pendingImages = useSideChatView((s) => s.pendingAttachments[tabId]);
 	const [error, setError] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const backdropRef = useRef<HTMLDivElement | null>(null);
@@ -443,10 +442,6 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const annKey = selectedId ? sideChatAnnKey(selectedId) : "";
 	const stagedAll = useComposer((s) => s.annotations[annKey]) ?? EMPTY_ANNS;
 	const stagedAnns = useMemo(() => textAnnotationsOf(stagedAll), [stagedAll]);
-	const pendingImages = useMemo(() => {
-		const attachments = sideChatImageAttachments(images);
-		return [...attachments, ...annotationImageAttachments(stagedAll, attachments)];
-	}, [images, stagedAll]);
 	// SelectionToolbar bumps this nonce each time it stages into our key.
 	const stagedFocusNonce = useComposer((s) => (annKey ? s.focusNonce[annKey] : 0));
 
@@ -485,11 +480,8 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 		const modelArg = effective.selector
 			? composeSelection(effective.selector, effectiveThinking === "auto" ? null : effectiveThinking)
 			: null;
-		setBusy(true);
 		setError(null);
-		// The input empties at once (the message shows as a pending bubble);
-		// the draft comes back if creation or the first ask fails.
-		clearSideChatDraft(tabId);
+		// The delivery action owns the draft and pending bubble across remounts.
 		if (textareaRef.current) textareaRef.current.style.height = "auto";
 		try {
 			await sendFirstMessage({
@@ -502,12 +494,9 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 			});
 		} catch (err) {
 			const msg = errMsg(err);
-			// The request may settle after the user has started another draft.
-			if (!useComposer.getState().sideChatDrafts[tabId]) setSideChatDraft(tabId, question);
+			// Draft recovery is owned by the delivery, even if this panel unmounts.
 			setError(msg);
 			toast.error(t("sidechat.sendSideChatMessageFailed", { error: msg }));
-		} finally {
-			setBusy(false);
 		}
 	};
 	const canSend =

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { nav } from "../../core/nav";
 import type { PendingEntry } from "../../core/types";
 
@@ -67,13 +68,14 @@ describe("Top Bar (Change 1)", () => {
 		expect(screen.getAllByText("gpt-test").length).toBeGreaterThan(0);
 	});
 
-	it("consumes a queued home prompt after the draft composer mounts", async () => {
+	it("consumes a queued home prompt exactly once after the draft composer mounts in StrictMode", async () => {
 		queueFirstSend("mobile-draft-home", "从首页开始");
 		apiMock.mockImplementation(async (_method: string, path: string) => path.endsWith("/prompt-ex") ? new Promise(() => {}) : {});
-		await act(async () => { render(<ChatPage route={{ name: "chat", path: "/s/mobile-draft-home", params: { id: "mobile-draft-home" }, query: {} }} />); });
+		await act(async () => { render(<StrictMode><ChatPage route={{ name: "chat", path: "/s/mobile-draft-home", params: { id: "mobile-draft-home" }, query: {} }} /></StrictMode>); });
 		expect(screen.getByText("从首页开始")).toBeTruthy();
 		expect(screen.queryByText("会话不存在")).toBeNull();
 		expect(apiMock).toHaveBeenCalledWith("POST", "/sessions/mobile-draft-home/prompt-ex", { text: "从首页开始", images: [] });
+		expect(apiMock.mock.calls.filter(([, path]) => String(path).endsWith("/prompt-ex"))).toHaveLength(1);
 	});
 });
 

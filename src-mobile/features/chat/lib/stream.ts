@@ -45,15 +45,17 @@ export function contentMatch(a: string, b: string): boolean {
 	return x === y || x.startsWith(y) || y.startsWith(x);
 }
 
-/** True once any recent persisted assistant row already carries this content (persisted takeover / dedup). */
-export function contentPersisted(items: readonly Item[], text: string, thinking: string): boolean {
+/** True once a persisted assistant row already carries this content (persisted takeover / dedup). */
+export function contentPersisted(items: readonly Item[], text: string, thinking: string, since?: string | null): boolean {
 	const t = text.trim();
 	const k = thinking.trim();
 	if (!t && !k) return false;
-	for (let i = items.length - 1, n = 0; i >= 0 && n < 32; i--, n++) {
+	for (let i = items.length - 1; i >= 0; i--) {
 		const it = items[i];
 		if (it.role !== "assistant") continue;
-		if (t ? contentMatch(it.text, t) : contentMatch(it.thinking, k)) return true;
+		if (since && it.ts && Date.parse(it.ts) < Date.parse(since)) continue;
+		// A shorter old row is not proof that the retained answer's suffix reached disk.
+		if (t ? it.text.trim().startsWith(t) : it.thinking.trim().startsWith(k)) return true;
 	}
 	return false;
 }

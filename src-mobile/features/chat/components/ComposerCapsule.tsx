@@ -206,7 +206,7 @@ export function ComposerCapsule({
 	const submit = () => {
 		const text = ta.current?.value ?? "";
 		// A stale second click on Send must never become an implicit Stop request.
-		if (!busy && (text.trim() !== "" || hasExtra)) onSend(text);
+		if (!busy && !composing.current && (text.trim() !== "" || hasExtra)) onSend(text);
 	};
 	return (
 		<div

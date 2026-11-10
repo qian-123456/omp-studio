@@ -142,6 +142,226 @@ async fn diagnostic_exit42_retains_original_error_without_stderr_capture() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn resume_model_recovery_preserves_transcript_and_requires_explicit_override() {
+    let mut shell = FakeShell::new(
+        r#"printf '%s\n' "$@" > actual-args
+resume=
+model=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --resume) resume=$2; shift 2 ;;
+        --model) model=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -f "$resume" ] || { printf '%s\n' 'Error: missing resume file' >&2; exit 43; }
+IFS= read -r header < "$resume"
+session=${header#*\"id\":\"}
+session=${session%%\"*}
+if [ -z "$model" ]; then
+    while IFS= read -r entry; do
+        case "$entry" in
+            *'"type":"model_change","provider":"anthropic","modelId":"claude-sonnet"'*) model=anthropic/claude-sonnet ;;
+        esac
+    done < "$resume"
+fi
+if [ -z "$model" ]; then
+    printf '%s\n' '57630 | throw new see(Xn[0]);' 'SessionModelRestoreError: Could not restore model removed/old-model' '    at IQ (/$bunfs/root/omp:57630:123)' >&2
+    exit 42
+fi
+[ "$model" = 'anthropic/claude-sonnet' ] || { printf '%s\n' 'Error: unexpected override' >&2; exit 44; }
+printf '%s\n' '{"type":"ready","supportedProtocolVersions":[2]}'
+while IFS= read -r line; do
+    printf '%s\n' "$line" >> rpc-requests
+    id=${line#*\"id\":\"}
+    id=${id%%\"*}
+    case "$line" in
+        *'"type":"get_state"'*) printf '%s\n' '{"type":"response","id":"'"$id"'","success":true,"data":{"sessionId":"'"$session"'","sessionFile":"'"$resume"'","model":{"provider":"anthropic","id":"claude-sonnet"}}}' ;;
+        *'"type":"set_model"'*)
+            case "$line" in
+                *'"modelId":"claude-sonnet"'*'"provider":"anthropic"'*) ;;
+                *) exit 45 ;;
+            esac
+            printf '%s\n' '{"type":"model_change","provider":"anthropic","modelId":"claude-sonnet"}' >> "$resume"
+            printf '%s\n' '{"type":"response","id":"'"$id"'","success":true}'
+            ;;
+        *) printf '%s\n' '{"type":"response","id":"'"$id"'","success":true}' ;;
+    esac
+done"#,
+    );
+    let transcript = format!(
+        "{{\"type\":\"session\",\"id\":\"{SESSION}\"}}\n\
+         {{\"type\":\"model_change\",\"provider\":\"removed\",\"modelId\":\"old-model\"}}\n\
+         {{\"type\":\"message\",\"message\":{{\"role\":\"user\",\"content\":\"keep my history\"}}}}\n"
+    );
+    let file = shell.root.join("original session.jsonl");
+    std::fs::write(&file, &transcript).unwrap();
+    shell.opts.resume_file = Some(file.to_string_lossy().into_owned());
+    shell.settings.new_session_model = Some("openai/not-a-resume-default".into());
+    let error = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+        .await
+        .err()
+        .expect("unavailable saved model must not silently fall back");
+    let original = error
+        .strip_prefix("SESSION_MODEL_UNAVAILABLE:")
+        .expect("the precise restore error must be recoverable");
+    assert!(original.starts_with("omp stdout closed before ready; exit status: "));
+    assert!(original.contains("42"));
+    assert!(original.ends_with(
+        "\n57630 | throw new see(Xn[0]);\nSessionModelRestoreError: Could not restore model removed/old-model\n    at IQ (/$bunfs/root/omp:57630:123)\n"
+    ));
+    assert_eq!(std::fs::read(&file).unwrap(), transcript.as_bytes());
+    let args = std::fs::read_to_string(shell.root.join("actual-args")).unwrap();
+    assert!(!args.lines().any(|arg| arg == "--model"));
+    let args: Vec<_> = args.lines().collect();
+    let resume = args.iter().position(|arg| *arg == "--resume").unwrap();
+    assert_eq!(args[resume + 1], file.to_str().unwrap());
+    assert!(!shell.root.join("rpc-requests").exists());
+
+    shell.opts.model = Some("anthropic/claude-sonnet".into());
+    let handle = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+        .await
+        .expect("the explicitly chosen model must permit the original resume");
+    assert_eq!(&*handle.session_id.read(), SESSION);
+    assert_eq!(&*handle.session_file.read(), file.to_str().unwrap());
+    stop_handle(&handle).await.unwrap();
+    handle.wait_stdout_closed(Duration::from_secs(2)).await;
+    let persisted = format!(
+        "{transcript}{{\"type\":\"model_change\",\"provider\":\"anthropic\",\"modelId\":\"claude-sonnet\"}}\n"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), persisted.as_bytes());
+    let args = std::fs::read_to_string(shell.root.join("actual-args")).unwrap();
+    let args: Vec<_> = args.lines().collect();
+    let model = args.iter().position(|arg| *arg == "--model").unwrap();
+    assert_eq!(args[model + 1], "anthropic/claude-sonnet");
+    let resume = args.iter().position(|arg| *arg == "--resume").unwrap();
+    assert_eq!(args[resume + 1], file.to_str().unwrap());
+    let requests = std::fs::read_to_string(shell.root.join("rpc-requests")).unwrap();
+    let commands: Vec<Value> = requests
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let types: Vec<_> = commands
+        .iter()
+        .map(|command| command["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        [
+            "negotiate_protocol",
+            "get_state",
+            "set_model",
+            "get_state",
+            "set_subagent_subscription"
+        ]
+    );
+    assert_eq!(commands[2]["provider"], "anthropic");
+    assert_eq!(commands[2]["modelId"], "claude-sonnet");
+    assert!(commands[2].get("persist").is_none());
+    assert!(!types.contains(&"prompt"));
+
+    // Simulate a later idle wake: omp must now restore the model it appended,
+    // without another override or a second model-change record.
+    shell.opts.model = None;
+    let handle = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+        .await
+        .expect("the next ordinary resume must use the persisted recovery choice");
+    stop_handle(&handle).await.unwrap();
+    handle.wait_stdout_closed(Duration::from_secs(2)).await;
+    assert_eq!(std::fs::read(&file).unwrap(), persisted.as_bytes());
+    let args = std::fs::read_to_string(shell.root.join("actual-args")).unwrap();
+    assert!(!args.lines().any(|arg| arg == "--model"));
+    let requests = std::fs::read_to_string(shell.root.join("rpc-requests")).unwrap();
+    assert_eq!(requests.matches("\"type\":\"set_model\"").count(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn resume_model_persistence_failure_never_completes_handshake() {
+    for (model, expected, should_set) in [
+        (json!({"id": "claude-sonnet"}), "model provider", false),
+        (json!({"provider": "anthropic"}), "model id", false),
+        (
+            json!({"provider": "anthropic", "id": "claude-sonnet"}),
+            "model persistence rejected",
+            true,
+        ),
+    ] {
+        let mut shell = FakeShell::new(&format!(
+            r#"printf '%s\n' '{{"type":"ready"}}'
+while IFS= read -r line; do
+    printf '%s\n' "$line" >> rpc-requests
+    id=${{line#*\"id\":\"}}
+    id=${{id%%\"*}}
+    case "$line" in
+        *'"type":"get_state"'*) printf '%s\n' '{{"type":"response","id":"'"$id"'","success":true,"data":{{"sessionId":"{SESSION}","model":{model}}}}}' ;;
+        *'"type":"set_model"'*) printf '%s\n' '{{"type":"response","id":"'"$id"'","success":false,"error":"model persistence rejected"}}' ;;
+        *) printf '%s\n' '{{"type":"response","id":"'"$id"'","success":true}}' ;;
+    esac
+done"#
+        ));
+        let file = shell.root.join("original.jsonl");
+        let transcript = format!("{{\"type\":\"session\",\"id\":\"{SESSION}\"}}\n");
+        std::fs::write(&file, &transcript).unwrap();
+        shell.opts.resume_file = Some(file.to_string_lossy().into_owned());
+        shell.opts.model = Some("anthropic/claude-sonnet".into());
+        let error = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+            .await
+            .err()
+            .expect("a recovery without confirmed persistence must fail");
+        assert!(error.contains(expected), "{error}");
+        assert!(!error.starts_with("SESSION_MODEL_UNAVAILABLE:"));
+        let requests = std::fs::read_to_string(shell.root.join("rpc-requests")).unwrap();
+        assert_eq!(requests.contains("\"type\":\"set_model\""), should_set);
+        assert!(!requests.contains("\"type\":\"set_subagent_subscription\""));
+        assert!(!requests.contains("\"type\":\"prompt\""));
+        assert_eq!(std::fs::read(&file).unwrap(), transcript.as_bytes());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn startup_recovery_signal_accepts_named_fatal_formats_without_changing_diagnostic() {
+    for label in ["error: ", "[Uncaught Exception] ", "[Unhandled Rejection] "] {
+        let diagnostic =
+            format!("{label}SessionModelRestoreError: Could not restore model removed/old-model");
+        let shell = FakeShell::new(&format!("printf '%s\\n' '{diagnostic}' >&2\nexit 42"));
+        let error = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+            .await
+            .err()
+            .expect("the fixture must fail before ready");
+        let original = error.strip_prefix("SESSION_MODEL_UNAVAILABLE:").unwrap();
+        assert!(original.starts_with("omp stdout closed before ready; exit status: "));
+        assert!(original.ends_with(&format!("\n{diagnostic}\n")));
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn startup_recovery_signal_rejects_unrelated_model_and_class_mentions() {
+    for diagnostic in [
+        "Error: provider unavailable for removed/old-model",
+        "Error: Could not restore model registry",
+        "SessionModelRestoreErrorExtra: not the upstream error",
+        "at new SessionModelRestoreError (sdk.ts:123:4)",
+        "error: Could not restore model removed/old-model",
+        "SessionModelRestoreError: a different failure",
+        "SessionModelRestoreError: Could not restore model ",
+        "throw new SessionModelRestoreError(modelSelector)",
+    ] {
+        let shell = FakeShell::new(&format!("printf '%s\\n' '{diagnostic}' >&2\nexit 42"));
+        let error = spawn_with_sink(&shell.opts, &shell.settings, Arc::new(|_| {}))
+            .await
+            .err()
+            .expect("the fixture must fail before ready");
+        assert!(error.starts_with("omp stdout closed before ready; exit status: "));
+        assert!(error.ends_with(&format!("\n{diagnostic}\n")));
+        assert!(!error.contains("SESSION_MODEL_UNAVAILABLE:"));
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn diagnostic_ready_timeout_is_distinct_from_exit() {
     // Resolve the existing login PATH cache before pausing; no environment mutation.
     let _ = augmented_path().await;

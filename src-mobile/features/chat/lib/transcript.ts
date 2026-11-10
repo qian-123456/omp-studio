@@ -85,7 +85,9 @@ export function mergePage(prev: TranscriptState, page?: TranscriptPage | null): 
 		if (stat) stats[r.id] = stat;
 	}
 	const merged = appendUnique(items, fresh);
-	const newUserTexts = fresh.filter((x) => x.role === "user" && x.text).map((x) => x.text.trim());
+	// Overlapping/full-reset pages replay history; an old row cannot acknowledge a new identical send.
+	const knownIds = new Set(prev.items.map((item) => item.id));
+	const newUserTexts = fresh.filter((x) => x.role === "user" && x.text && !knownIds.has(x.id)).map((x) => x.text.trim());
 	const offset = page.nextOffset || base.offset;
 	const tailId = page.tailId ?? null;
 	const changed = !!page.reset || patched || merged !== items || offset !== prev.offset || tailId !== prev.tailId;

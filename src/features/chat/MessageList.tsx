@@ -39,6 +39,7 @@ import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
 import { collectUserImages, queuedEchoIds, useLive, type CommandOutputEntry, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { useComposer } from "../../stores/composer";
 import { useTurnNav } from "../../stores/turnNav";
 import { currentLocateId, useLocate } from "../../stores/locate";
 import { LocatePill } from "./LocatePill";
@@ -136,13 +137,13 @@ import {
 } from "./turnSubagents";
 import { useAnswerStarted } from "./useAnswerStarted";
 import { useScrollRetention } from "./useScrollRetention";
+import { snapshotInItems } from "./streamSnapshot";
+
+type LiveHandoffEvidence = Parameters<typeof snapshotInItems>[0][];
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 /** Viewport height assumed before the scroll element has been measured. */
 const DEFAULT_VIEWPORT_PX = 800;
-/** Safety net: longest the live row outlives its stream when the post-stream
- *  transcript page never lands (failed refresh). */
-const LIVE_HOLD_MS = 10_000;
 /** Window after the live row was last painted in which the committed turn's
  *  first measurement counts as the live→committed hand-off. */
 const HANDOFF_MEASURE_MS = 5000;
@@ -198,6 +199,9 @@ export const UserRow = React.memo(function UserRow({
 	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const quotes = useMemo(() => parseAnnotationQuotes(rawText), [rawText]);
+	const images = useMemo(() => collectUserImages(rawText, item.images), [rawText, item.images]);
+	// Presentation strips attachment markers; replay must retain the original payload.
+	const replayText = rawText.trim() ? rawText : images.map((image, index) => image.marker || `[Image #${index + 1}]`).join(" ");
 	const [expanded, setExpanded] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
@@ -226,7 +230,7 @@ export const UserRow = React.memo(function UserRow({
 				await abortTurn(sessionId);
 				await waitForIdle(sessionId);
 			}
-			await sendPrompt(sessionId, text);
+			await sendPrompt(sessionId, text, { images });
 			closeEditor();
 		} catch (e) {
 			if (!isResumeCancelled(e)) toast.error(t("chat.message.resendFailed", { error: errMsg(e) }));
@@ -236,11 +240,8 @@ export const UserRow = React.memo(function UserRow({
 	};
 
 	const validImages = useMemo(
-		() =>
-			collectUserImages(rawText, item.images).filter(
-				(img): img is ImageAttachment & { path: string } => Boolean(img.path),
-			),
-		[rawText, item.images],
+		() => images.filter((img): img is ImageAttachment & { path: string } => Boolean(img.path)),
+		[images],
 	);
 
 	const collapsible = useLineClampOverflow(textRef, "line-clamp-4", 4, [userText, editing]);
@@ -255,9 +256,41 @@ export const UserRow = React.memo(function UserRow({
 		}
 		return out;
 	}, [rawText]);
+	const editInComposer = async () => {
+		if (!(await startTreeResend(sessionId, item.id, replayText))) return;
+		if (images.length === 0 && fileAttachments.length === 0) return;
+		// Rehydrate real paths into the existing composer contract. Normalize slots
+		// after unresolved images are omitted so tokens cannot point at another file.
+		const referenced = new Set<number>();
+		let text = replayText.replace(
+			/\[(?:Image|图片)\s*#(\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片:\s*([^\]]+)\]/gu,
+			(_marker, number: string | undefined, path: string | undefined) => {
+				const index = validImages.findIndex((image) => number
+					? (image.marker?.match(/#(\d+)/u)?.[1] ?? String(images.indexOf(image) + 1)) === number
+					: image.path === path?.trim());
+				if (index < 0) return t("chatView.queue.attachmentPlaceholder");
+				referenced.add(index);
+				return `🖼️#${index + 1}`;
+			},
+		);
+		for (let i = 0; i < validImages.length; i++) {
+			if (!referenced.has(i)) text = `${text} 🖼️#${i + 1}`.trim();
+		}
+		for (const token of parseInlineFiles(text)) {
+			const index = fileAttachments.findIndex((file) => file.path === token.path);
+			if (index >= 0) text = text.replace(token.match, `📎#${index + 1}`);
+		}
+		const composer = useComposer.getState();
+		composer.setImages(sessionId, validImages.map((image) => ({
+			id: image.id, path: image.path, width: image.width ?? undefined, height: image.height ?? undefined,
+		})));
+		composer.setFiles(sessionId, fileAttachments.map((file) => ({ id: `replay-file-${file.index}`, path: file.path })));
+		composer.setDraft(sessionId, text);
+	};
 	// File-attachment markers render as chips even when they're the only content.
 	const hasFileMarkers = useMemo(() => parseInlineFiles(rawText).length > 0, [rawText]);
 	const showBubble = userText.trim().length > 0 || hasFileMarkers;
+	const showAttachmentPlaceholder = !showBubble && images.length > 0 && validImages.length === 0;
 	return (
 		<div
 			id={`msg-${item.id}`}
@@ -367,6 +400,8 @@ export const UserRow = React.memo(function UserRow({
 						</button>
 					)}
 				</div>
+			) : showAttachmentPlaceholder ? (
+				<div className={USER_BUBBLE_CLASS}>{t("chatView.queue.attachmentPlaceholder")}</div>
 			) : null}
 			{!pending && <div className="flex items-center justify-end gap-1">
 				<div
@@ -383,10 +418,10 @@ export const UserRow = React.memo(function UserRow({
 							// Real sessions share the same branch edit, including
 							// idle-suspended sessions that first need to resume.
 							if (!isForkDraftId(sessionId)) {
-								void startTreeResend(sessionId, item.id, userText);
+								void editInComposer();
 								return;
 							}
-							updateDraft(userText);
+							updateDraft(replayText);
 							setEditing(true);
 						}}
 						className={USER_ACTION_BTN}
@@ -399,14 +434,15 @@ export const UserRow = React.memo(function UserRow({
 					<button
 						type="button"
 						onClick={async () => {
-							if (!userText.trim()) return;
+							if (!replayText.trim()) return;
+							const preview = userText || t("chatView.queue.attachmentPlaceholder");
 							const ok = await confirmDialog(
-								t("chat.message.confirmResend", { text: `${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}` }),
+								t("chat.message.confirmResend", { text: `${preview.slice(0, 100)}${preview.length > 100 ? "…" : ""}` }),
 								{ okLabel: t("chat.message.resend") },
 							);
 							if (!ok) return;
 							try {
-								await sendPrompt(sessionId, userText);
+								await sendPrompt(sessionId, replayText, { images });
 								toast.success(t("chat.message.resendingToast"));
 							} catch (e) {
 								if (!isResumeCancelled(e))
@@ -785,7 +821,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 			})}
 			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
-				block.answerItem.stopReason === "aborted" ? (
+				block.answerItem.stopReason === "aborted" && !answerText ? (
 					<div
 						id={block.renderAnswerAnchor ? `msg-${block.answerItem.id}` : undefined}
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]"
@@ -831,6 +867,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							<span className="italic text-[var(--text-40)]">{t("chat.message.emptyReply")}</span>
 						)}
 					</div>
+					{block.isLastTurnPart && block.answerItem.stopReason === "aborted" && (
+						<p className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]">
+							{block.durationMs ? t("chat.message.stoppedWithTime", { time: formatDurationCompact(block.durationMs) }) : t("chat.message.stopped")}
+						</p>
+					)}
 					{block.isLastTurnPart &&
 						block.answerItem.stopReason === "error" &&
 						isContextOverflowError(block.answerItem.text) && (
@@ -905,6 +946,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	holding,
 	persistedCallIds,
 	persistedRequestTimes,
+	onLiveEvidence,
 }: {
 	sessionId: string;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
@@ -918,6 +960,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	persistedCallIds: ReadonlySet<string>;
 	/** Completed request identities already present in the visible transcript. */
 	persistedRequestTimes: ReadonlySet<number>;
+	/** Last painted content that a new transcript page must fully cover. */
+	onLiveEvidence: (evidence: LiveHandoffEvidence) => void;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -1191,6 +1235,28 @@ const StreamingRow = React.memo(function StreamingRow({
 			: undefined;
 		return { visibleSteps, visiblePlan };
 	}, [steps, statsPlan, persistedCallIds, persistedRequestTimes, liveRequests]);
+	useEffect(() => {
+		if (holding) return;
+		const evidence: LiveHandoffEvidence = [];
+		const proseByRequest = new Map<string | undefined, string[]>();
+		for (const step of liveVisible.visibleSteps) {
+			if (step.kind === "text" || step.kind === "narration") {
+				const prose = proseByRequest.get(step.requestId) ?? [];
+				prose.push(step.text);
+				proseByRequest.set(step.requestId, prose);
+			} else if (step.kind === "tool") {
+				evidence.push({ answerText: "", toolIds: [step.call.id] });
+			}
+		}
+		for (const [requestId, prose] of proseByRequest) {
+			const request = requestId ? liveRequests.find((r) => r.id === requestId) : undefined;
+			evidence.push({
+				answerText: prose.join("\n\n"), toolIds: [],
+				streamingMessage: request ? { role: "assistant", content: [], ...request.sourceTiming } : streamingMessage,
+			});
+		}
+		onLiveEvidence(evidence);
+	}, [holding, liveVisible, liveRequests, streamingMessage, onLiveEvidence]);
 
 	// While `holding` (the stream ended, the transcript has not caught up) the
 	// store is already cleared: keep painting the last live snapshot (already
@@ -1394,6 +1460,38 @@ export function MessageList({
 	const { t } = useT();
 	// Narrow subscriptions — NOT subscribing to whole session object!
 	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
+	const isStreamingActive = useLive(
+		(s) => Boolean(s.sessions[sessionId]?.streaming || s.sessions[sessionId]?.streamingMessage),
+	);
+	const lastPaintedPageRef = useRef(rawItems);
+	const liveEvidenceRef = useRef<LiveHandoffEvidence>([]);
+	const rememberLiveEvidence = useCallback((evidence: LiveHandoffEvidence) => {
+		liveEvidenceRef.current = evidence;
+	}, []);
+	const [hold, setHold] = useState<{ page: TranscriptItem[] } | null>(null);
+	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
+	const [holdSessionId, setHoldSessionId] = useState(sessionId);
+	if (holdSessionId !== sessionId) {
+		// A session switch is not a stream ending: never hold another session's frame.
+		setHoldSessionId(sessionId);
+		setWasStreaming(isStreamingActive);
+		setHold(null);
+	} else if (wasStreaming !== isStreamingActive) {
+		setWasStreaming(isStreamingActive);
+		setHold(isStreamingActive ? null : { page: lastPaintedPageRef.current });
+	}
+	lastPaintedPageRef.current = rawItems;
+	// A new page alone is not completion evidence: a short read may carry only
+	// the beginning of the answer. Reuse snapshot coverage for every painted part.
+	const handoffCovered = hold !== null && hold.page !== rawItems &&
+		liveEvidenceRef.current.every((evidence) => snapshotInItems(evidence, rawItems));
+	const holding = holdSessionId === sessionId && !isStreamingActive && hold !== null && !handoffCovered;
+	useEffect(() => {
+		if (handoffCovered) setHold(null);
+	}, [handoffCovered]);
+	// Keep the previous committed page while its last visible live frame is held,
+	// avoiding a partial new answer beside a second, complete copy of that answer.
+	const visibleItems = holding && hold ? hold.page : rawItems;
 	// The transcript file holds every sibling branch after a navigation; only
 	// the root→leaf path is the live conversation. Unknown leaf (offline
 	// session) → unfiltered, as before tree navigation existed.
@@ -1406,9 +1504,10 @@ export function MessageList({
 	);
 	// Side chats inherit the parent's history; show only their own turns.
 	const isSideChat = useSessions((s) => (s.sessions[sessionId]?.forkDepth ?? 0) > 0);
+	const awaitingSideChatOrigin = useLive((s) => s.sessions[sessionId]?.sideChatInheritedIds !== undefined);
 	const items = useMemo(
-		() => trimSideChatItems(filterToLeafPath(rawItems, treeLeafId), isSideChat),
-		[rawItems, treeLeafId, isSideChat],
+		() => isSideChat && awaitingSideChatOrigin ? EMPTY_ITEMS : trimSideChatItems(filterToLeafPath(visibleItems, treeLeafId), isSideChat),
+		[visibleItems, treeLeafId, isSideChat, awaitingSideChatOrigin],
 	);
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
@@ -1416,46 +1515,7 @@ export function MessageList({
 	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	const flowNotices = useLive((s) => s.sessions[sessionId]?.flowNotices);
 	const modelNotices = useLive((s) => s.sessions[sessionId]?.modelNotices);
-	const isStreamingActive = useLive(
-		(s) =>
-			Boolean(
-				s.sessions[sessionId]?.streaming ||
-					s.sessions[sessionId]?.streamingMessage,
-			),
-	);
-	// Hand-off from the live row to the committed block. The transcript is
-	// fetched only after the stream ends, so for a moment neither the streamed
-	// turn nor its committed twin exists: the live row stays mounted (painting
-	// its last snapshot) until that transcript page lands, then both swap in
-	// one render. Keyed on the page itself (every applied page is a new items
-	// array), not on its content: a page that commits nothing new ends the hold
-	// too, and a slow page never leaves a gap where the finished answer has
-	// vanished and the previous reply sits at the bottom. The timeout only
-	// covers a refresh that never lands.
 	const blocksKey = `${items.length}:${items[items.length - 1]?.id ?? ""}`;
-	const [hold, setHold] = useState<{ page: TranscriptItem[] } | null>(null);
-	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
-	const [holdSessionId, setHoldSessionId] = useState(sessionId);
-	if (holdSessionId !== sessionId) {
-		// A session switch is not a stream ending: never hold another session's frame.
-		setHoldSessionId(sessionId);
-		setWasStreaming(isStreamingActive);
-		setHold(null);
-	} else if (wasStreaming !== isStreamingActive) {
-		setWasStreaming(isStreamingActive);
-		setHold(isStreamingActive ? null : { page: rawItems });
-	}
-	const holding =
-		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.page === rawItems;
-	useEffect(() => {
-		if (!hold) return;
-		if (hold.page !== rawItems) {
-			setHold(null);
-			return;
-		}
-		const timer = window.setTimeout(() => setHold(null), LIVE_HOLD_MS);
-		return () => window.clearTimeout(timer);
-	}, [hold, rawItems]);
 	// In-turn steers render inside StreamingRow at their step position; only
 	// next-turn echoes (or steers orphaned after the stream ends) sit here.
 	const bottomEchoes = useMemo(() => {
@@ -1605,7 +1665,7 @@ export function MessageList({
 	}, [turns]);
 
 	const hasContent =
-		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive || hasUnfinished;
+		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive || holding || hasUnfinished;
 	const isEmptyState = !isLoadingTranscript && !transcriptError && !hasContent;
 	useEffect(() => {
 		onEmptyChange?.(isEmptyState);
@@ -2121,12 +2181,12 @@ export function MessageList({
 			)}
 
 			{/* Error state with retry affordance — plain status text, no tile */}
-			{!isLoadingTranscript && transcriptError && !hasContent && (
-				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
+			{!isLoadingTranscript && transcriptError && (
+				<div role="alert" className={clsx("flex shrink-0 flex-col items-center text-center", hasContent ? "px-6 py-3" : "h-full justify-center p-6")}>
 					<p className="text-[13px] font-medium text-[var(--text-60)]">
 						{t("chat.message.loadTranscriptFailed")}
 					</p>
-					<p className="mt-1 max-w-sm text-[12px] leading-normal text-[var(--status-error)]">
+					<p className="mt-1 max-w-full whitespace-pre-wrap break-words text-[12px] leading-normal text-[var(--status-error)]">
 						{transcriptError}
 					</p>
 					{onRetryTranscript && (
@@ -2252,6 +2312,7 @@ export function MessageList({
 								holding={holding}
 								persistedCallIds={persistedCallIds}
 								persistedRequestTimes={persistedRequestTimes}
+								onLiveEvidence={rememberLiveEvidence}
 							/>
 						</div>
 					)}

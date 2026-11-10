@@ -135,4 +135,21 @@ describe("held queue", () => {
 			["b", "[Image #2]"],
 		]);
 	});
+
+	it("persists cleared-text attachments without merging them until their marker is restored", () => {
+		const image = { id: "image-only", path: "/only.png", marker: "[Image #1]" };
+		useHeldQueue.getState().push(SID, "[Image #1]", [image]);
+		useHeldQueue.getState().update(SID, 0, "");
+		useHeldQueue.setState({ queues: {} });
+		const cleared = heldQueueItems(SID)[0];
+		expect(cleared).toMatchObject({ text: "", images: [image] });
+		expect(mergeHeldItems([cleared])).toEqual({ text: "", images: [] });
+		useHeldQueue.getState().update(SID, 0, "[Image #1]");
+		const item = heldQueueItems(SID)[0];
+		const nextImage = { id: "next-image", path: "/next.png", marker: "[Image #1]" };
+		expect(mergeHeldItems([item, { id: "next", text: "[Image #1: /next.png] next", images: [nextImage] }])).toEqual({
+			text: "[Image #1]\n\n---\n\n[Image #2: /next.png] next",
+			images: [image, { ...nextImage, marker: "[Image #2]" }],
+		});
+	});
 });

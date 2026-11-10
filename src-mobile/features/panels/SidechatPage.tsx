@@ -1,15 +1,16 @@
-import { Camera, CornerDownLeft, ExternalLink, FileText, ImagePlus, MessagesSquare, Paperclip, RefreshCw, Sparkles, Wrench, X } from "lucide-react";
+import { ArrowDown, Camera, CornerDownLeft, ExternalLink, FileText, ImagePlus, MessagesSquare, Paperclip, RefreshCw, Sparkles, X } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage, upload } from "../../core/api";
 import { imageFromBlob } from "../../core/lib/images";
 import { relTime, sessionName } from "../../core/lib/format";
-import { appendUnique, normalizeTranscript } from "../../core/normalize";
+import { isSideChatPrompt, trimSideChatItems } from "../../../src/features/chat/sideChatView";
+import { transcriptImages } from "../../core/normalize";
 import { nav, paths } from "../../core/nav";
 import type { PageProps } from "../../core/nav";
 import { events } from "../../core/sse";
 import { useSessions } from "../../core/stores/sessions";
 import { STATUS_LABEL } from "../../core/types";
-import type { Item, MobileSession, TranscriptPage } from "../../core/types";
+import type { ImageRef, Item, MobileSession, TranscriptPage } from "../../core/types";
 import {
 	BottomSheet,
 	Button,
@@ -32,6 +33,12 @@ import type { ComposerApi } from "../chat/components/ComposerCapsule";
 import { ActionTile } from "../chat/components/Composer";
 import { attachmentBlocker, buildPrompt } from "../chat/lib/prompt";
 import { WorkspacePanelBar } from "./WorkspacePanelBar";
+import { Images } from "../chat/components/TurnView";
+import { Thinking } from "../chat/components/Thinking";
+import { ToolCard, toolState } from "../chat/components/ToolCard";
+import { EMPTY_TRANSCRIPT, mergePage } from "../chat/lib/transcript";
+
+type PendingMessage = { id: number; text: string; images: ImageRef[] };
 
 type SidechatImage = { mime: string; data: string };
 type SidechatMessage = { text: string; imagePaths: string[]; images: SidechatImage[] };
@@ -60,25 +67,29 @@ function handbackReply(items: readonly Item[]): string | null {
 }
 
 const q = encodeURIComponent;
-const FETCH_DEBOUNCE_MS = 400;
+const FETCH_INTERVAL_MS = 400;
 const MAX_ROWS = 80;
 const ICON = { size: 22, strokeWidth: 1.75 } as const;
 
 export function SidechatPage({ route }: PageProps) {
 	const id = route.params.id;
-	const [thread, setThread] = useState<string | null>(null);
+	const [selection, setThread] = useState<{ parentId: string; id: string; initial?: SidechatMessage; draft?: string } | null>(null);
+	const thread = selection?.parentId === id ? selection : null;
 	const closeThread = useCallback(() => setThread(null), []);
 	useLayer(thread !== null, closeThread);
 	return thread ? (
-		<ThreadView parentId={id} threadId={thread} onClose={closeThread} />
+		<ThreadView key={`${id}:${thread.id}`} parentId={id} threadId={thread.id} initial={thread.initial} initialDraft={thread.draft} onClose={closeThread} />
 	) : (
-		<ListView sessionId={id} onOpen={setThread} />
+		<ListView key={id} sessionId={id} onOpen={(threadId, initial, draft) => setThread({ parentId: id, id: threadId, initial, draft })} />
 	);
 }
 
 /* ------------------------------------------------------------------ list */
 
-function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: string) => void }) {
+function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: string, initial?: SidechatMessage, draft?: string) => void }) {
+	const alive = useRef(true);
+	const created = useRef<{ id: string; message: SidechatMessage } | null>(null);
+	useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 	const state = useLoad(
 		async (signal) => {
 			const rows = await api<MobileSession[]>("GET", `/sessions/${q(sessionId)}/sidechats`, undefined, { signal });
@@ -94,13 +105,16 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 		sessionStorage.removeItem(draftKey);
 	}, [draftKey]);
 
-	const create = async ({ text: question, imagePaths }: SidechatMessage): Promise<boolean> => {
+	const create = async (message: SidechatMessage): Promise<boolean> => {
+		const { text: question, imagePaths } = message;
 		try {
 			const info = await api<{ sessionId: string }>("POST", `/sessions/${q(sessionId)}/sidechats`, { question, imagePaths });
+			if (!alive.current) return false;
 			void useSessions.getState().refresh();
-			onOpen(info.sessionId);
+			created.current = { id: info.sessionId, message };
 			return true;
 		} catch (e) {
+			if (!alive.current) return false;
 			toast(`发起失败：${errorMessage(e)}`, { kind: "error" });
 			return false;
 		}
@@ -144,26 +158,40 @@ function ListView({ sessionId, onOpen }: { sessionId: string; onOpen: (id: strin
 					}
 				</LoadGate>
 			</PullToRefresh>
-			<Composer sessionId={sessionId} placeholder="问一个问题，开始辅助对话" onSend={create} initialText={draft} />
+			<Composer sessionId={sessionId} placeholder="问一个问题，开始辅助对话" onSend={create} initialText={draft} onAccepted={(nextDraft) => {
+				if (created.current) onOpen(created.current.id, created.current.message, nextDraft);
+			}} />
 		</div>
 	);
 }
 
 /* ---------------------------------------------------------------- thread */
 
-function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadId: string; onClose: () => void }) {
+function ThreadView({ parentId, threadId, initial, initialDraft, onClose }: { parentId: string; threadId: string; initial?: SidechatMessage; initialDraft?: string; onClose: () => void }) {
 	const session = useSessions((s) => s.byId[threadId]);
 	const [items, setItems] = useState<Item[]>([]);
-	const [pending, setPending] = useState<string[]>([]);
+	const [pending, setPending] = useState<PendingMessage[]>(() => initial ? [{ id: 0, text: initial.text, images: transcriptImages(initial.imagePaths.map((path) => ({ path }))) }] : []);
+	const pendingRef = useRef(pending);
+	const nextPendingId = useRef(0);
+	const seenUsers = useRef(new Set<string>());
+	const transcript = useRef(EMPTY_TRANSCRIPT);
+	const boundaryFound = useRef(false);
 	const [loaded, setLoaded] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const cursor = useRef({ offset: 0, tail: null as string | null });
+	const [runActive, setRunActive] = useState<boolean | null>(initial ? true : null);
+	const [restoredTexts, setRestoredTexts] = useState<string[]>([]);
+	const [showJump, setShowJump] = useState(false);
 	const inflight = useRef(false);
 	const again = useRef(false);
 	const alive = useRef(true);
 	const fetchTimer = useRef(0);
 	const scroller = useRef<HTMLDivElement>(null);
+	const content = useRef<HTMLDivElement>(null);
 	const stick = useRef(true);
+	const updatePending = (next: PendingMessage[]) => {
+		pendingRef.current = next;
+		setPending(next);
+	};
 
 	const [handbackOpen, setHandbackOpen] = useState(false);
 	const [handbackDraft, setHandbackDraft] = useState("");
@@ -180,17 +208,31 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		inflight.current = true;
 		if (summaryRun.current === "terminal") summaryRun.current = "settling";
 		try {
-			const c = cursor.current;
+			const c = transcript.current;
 			const page = await api<TranscriptPage>(
 				"GET",
-				`/sessions/${q(threadId)}/transcript?from=${c.offset}${c.tail ? `&tail=${q(c.tail)}` : ""}`,
+				`/sessions/${q(threadId)}/transcript?from=${c.offset}${c.tailId ? `&tail=${q(c.tailId)}` : ""}`,
 			);
 			if (!alive.current) return;
-			const added = normalizeTranscript(page.items);
-			setItems((prev) => appendUnique(page.reset ? [] : prev, added));
-			cursor.current = { offset: page.nextOffset ?? c.offset, tail: page.tailId ?? null };
-			const users = new Set(added.filter((i) => i.role === "user").map((i) => i.text.trim()));
-			if (users.size) setPending((p) => p.filter((t) => !users.has(t.trim())));
+			// The fork contains parent history until the last side-chat boundary arrives.
+			if (page.reset) boundaryFound.current = false;
+			let start = -1;
+			for (let i = page.items.length - 1; i >= 0; i--) {
+				if (page.items[i].kind === "user" && isSideChatPrompt(page.items[i].text)) { start = i; break; }
+			}
+			const raw = trimSideChatItems(page.items, !boundaryFound.current);
+			if (start >= 0) boundaryFound.current = true;
+			const next = mergePage(transcript.current, { ...page, reset: page.reset || start >= 0, items: raw }).state;
+			transcript.current = next;
+			setItems(next.items);
+			const pool = next.items.filter((it) => it.role === "user" && !seenUsers.current.has(it.id));
+			for (const it of pool) seenUsers.current.add(it.id);
+			updatePending(pendingRef.current.filter((p) => {
+				const match = pool.findIndex((it) => it.text.trim() === p.text.trim());
+				if (match < 0) return true;
+				pool.splice(match, 1);
+				return false;
+			}));
 			setError(null);
 		} catch (e) {
 			if (alive.current) setError(errorMessage(e, "加载失败"));
@@ -207,12 +249,15 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		}
 	}, [threadId]);
 	const scheduleFetch = useCallback(() => {
-		window.clearTimeout(fetchTimer.current);
-		if (!alive.current || document.visibilityState === "hidden") return;
-		fetchTimer.current = window.setTimeout(() => void fetchThread(), FETCH_DEBOUNCE_MS);
+		// Keep a fixed refresh deadline so a continuous token stream cannot defer every read.
+		if (fetchTimer.current || !alive.current || document.visibilityState === "hidden") return;
+		fetchTimer.current = window.setTimeout(() => { fetchTimer.current = 0; void fetchThread(); }, FETCH_INTERVAL_MS);
 	}, [fetchThread]);
 
-	const working = session?.status === "working";
+	const working = runActive ?? (session?.status === "working" || session?.status === "awaiting_answer" || session?.status === "awaiting_approval");
+	useEffect(() => {
+		if (session) setRunActive(session.status === "working" || session.status === "awaiting_answer" || session.status === "awaiting_approval");
+	}, [session?.status]);
 
 	const triggerSummarize = async () => {
 		summaryRun.current = "running";
@@ -281,6 +326,8 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		void fetchThread();
 		const off = events.on("rpc", (d) => {
 			if (d.sessionId !== threadId) return;
+			if (d.frame.type === "agent_start" || d.frame.type === "turn_start") setRunActive(true);
+			if ((d.frame.type === "agent_end" && (d.frame.isTerminal !== false || d.frame.awaitingAsyncWork === true)) || (d.frame.type === "turn_end" && d.frame.isTerminal === true)) setRunActive(false);
 			if (summaryRun.current === "running" && d.frame.type === "agent_end" && d.frame.isTerminal !== false) {
 				summaryRun.current = "terminal";
 			}
@@ -288,6 +335,7 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		});
 		const onVisibility = () => {
 			window.clearTimeout(fetchTimer.current);
+			fetchTimer.current = 0;
 			if (document.visibilityState === "visible") void fetchThread();
 		};
 		document.addEventListener("visibilitychange", onVisibility);
@@ -295,6 +343,7 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 			alive.current = false;
 			off();
 			window.clearTimeout(fetchTimer.current);
+			fetchTimer.current = 0;
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
 	}, [threadId, fetchThread, scheduleFetch]);
@@ -306,15 +355,34 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 		const el = scroller.current;
 		if (el && stick.current) el.scrollTop = el.scrollHeight;
 	}, [items, pending]);
+	useEffect(() => {
+		const el = scroller.current;
+		const body = content.current;
+		if (!el || !body) return;
+		const observer = new ResizeObserver(() => {
+			if (stick.current) el.scrollTop = el.scrollHeight;
+			setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight >= 80);
+		});
+		observer.observe(el);
+		observer.observe(body);
+		return () => observer.disconnect();
+	}, []);
 
-	const send = async ({ text, images }: SidechatMessage): Promise<boolean> => {
+	const send = async ({ text, images, imagePaths }: SidechatMessage): Promise<boolean> => {
+		if (!loaded) return false;
+		const id = ++nextPendingId.current;
+		updatePending([...pendingRef.current, { id, text, images: transcriptImages(imagePaths.map((path) => ({ path }))) }]);
+		stick.current = true;
+		setRunActive(true);
 		try {
 			await api("POST", `/sessions/${q(threadId)}/prompt-ex`, { text, images, ...(working ? { streamingBehavior: "followUp" } : {}) });
-			setPending((p) => [...p, text]);
-			stick.current = true;
+			if (!alive.current) return true;
 			scheduleFetch();
 			return true;
 		} catch (e) {
+			if (!alive.current) return false;
+			updatePending(pendingRef.current.filter((p) => p.id !== id));
+			if (!working) setRunActive(false);
 			toast(`发送失败：${errorMessage(e)}`, { kind: "error" });
 			return false;
 		}
@@ -336,32 +404,53 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 					}
 				/>
 				<WorkspacePanelBar sessionId={parentId} current="sidechat" />
+				<div className="relative flex min-h-0 flex-1 flex-col">
 				<div
 					ref={scroller}
 					onScroll={(e) => {
 						const el = e.currentTarget;
 						stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+						setShowJump(!stick.current);
 					}}
-					className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 pt-2 pb-4"
+					className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2 pb-4"
 				>
+					<div ref={content} className="space-y-5">
 					<h1 className="m-selectable text-m-lg font-medium break-words text-m-text">{handbackTitle}</h1>
 					{!loaded && <Loading />}
 					{loaded && error !== null && items.length === 0 && (
 						<EmptyState title="加载失败" hint={error} action={<Button onClick={() => void fetchThread()}>重试</Button>} />
 					)}
+					{error && items.length > 0 && <div role="alert" className="space-y-2 rounded-m-lg bg-m-danger-bg p-3 text-m-sm text-m-danger [overflow-wrap:anywhere]"><p>{error}</p><Button size="sm" onClick={() => void fetchThread()}>重试加载</Button></div>}
 					{items.length > MAX_ROWS && (
 						<div className="text-center text-m-xs text-m-text-3">只显示最近 {MAX_ROWS} 条，完整记录请打开完整会话</div>
 					)}
 					{visible.map((it) => (
-						<ThreadRow key={it.id} item={it} />
+						<ThreadRow key={it.id} item={it} sessionId={threadId} working={working} />
 					))}
-					{pending.map((t, i) => (
-						<UserBubble key={`p${i}`} text={t} dim />
+					{pending.map((p) => (
+						<UserBubble key={`p${p.id}`} text={p.text} images={p.images} sessionId={threadId} dim />
 					))}
 					{working && <div className="m-shimmer text-m-sm text-m-text-3">思考中</div>}
+					</div>
 				</div>
-				<Composer sessionId={threadId} placeholder="继续追问" onSend={send} working={working} onStop={async () => {
-					try { await api("POST", `/sessions/${q(threadId)}/abort`); }
+				{showJump && <div className="absolute bottom-2 left-1/2 -translate-x-1/2"><IconButton variant="filled" label="回到底部" icon={<ArrowDown size={20} />} onClick={() => { stick.current = true; if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; setShowJump(false); }} /></div>}
+				</div>
+				<Composer sessionId={threadId} placeholder="继续追问" initialText={initialDraft} onSend={send} disabled={!loaded} working={working} restoredTexts={restoredTexts} onStop={async () => {
+					try {
+						const result = await api<{ restoredTexts?: string[] }>("POST", `/sessions/${q(threadId)}/abort`);
+						if (!alive.current) return;
+						const restored = (result.restoredTexts ?? []).map((text) => text.trim()).filter(Boolean);
+						const pool = restored.slice();
+						updatePending(pendingRef.current.filter((p) => {
+							const index = pool.indexOf(p.text.trim());
+							if (index < 0) return true;
+							pool.splice(index, 1);
+							return false;
+						}));
+						if (restored.length) setRestoredTexts(restored);
+						setRunActive(false);
+						scheduleFetch();
+					}
 					catch (e) { toast(`停止失败：${errorMessage(e)}`, { kind: "error" }); }
 				}} />
 			</div>
@@ -420,59 +509,52 @@ function ThreadView({ parentId, threadId, onClose }: { parentId: string; threadI
 	);
 }
 
-function UserBubble({ text, dim = false }: { text: string; dim?: boolean }) {
+function UserBubble({ text, images = [], sessionId, dim = false }: { text: string; images?: ImageRef[]; sessionId: string; dim?: boolean }) {
+	if (!text && !images.length) return null;
 	return (
 		<div className="flex justify-end">
-			<div
-				className={`m-selectable max-w-[85%] rounded-m-lg bg-m-bubble-user-bg px-[18px] py-3 text-m-md break-words whitespace-pre-wrap text-m-bubble-user-text ${dim ? "opacity-60" : ""}`}
-			>
+			<div className={`m-selectable max-w-[85%] rounded-m-lg bg-m-bubble-user-bg px-[18px] py-3 text-m-md break-words whitespace-pre-wrap text-m-bubble-user-text [overflow-wrap:anywhere] ${dim ? "opacity-60" : ""}`}>
 				{text}
+				<Images sessionId={sessionId} images={images} />
 			</div>
 		</div>
 	);
 }
 
-const ThreadRow = memo(function ThreadRow({ item }: { item: Item }) {
-	if (item.role === "user") return item.text ? <UserBubble text={item.text} /> : null;
-	if (item.role !== "assistant") return null;
+const ThreadRow = memo(function ThreadRow({ item, sessionId, working }: { item: Item; sessionId: string; working: boolean }) {
+	if (item.role === "user") return <UserBubble text={item.text} images={item.images} sessionId={sessionId} />;
+	if (item.role !== "assistant" && !item.tools.length) return null;
 	return (
-		<div className="space-y-2">
-			{item.tools.map((t) => (
-				<div key={t.id} className="flex items-start gap-2 text-m-sm text-m-text-3">
-					<Wrench size={16} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-					<span className="min-w-0 break-all">
-						<span className="text-m-text-2">{t.name}</span> {t.intent || argSummary(t.args)}
-					</span>
-				</div>
-			))}
-			{item.text && (
-				<div className="m-selectable text-m-body">
-					<Markdown text={item.text} />
-				</div>
-			)}
+		<div className="min-w-0 space-y-2">
+			{item.thinking && <Thinking id={`side-${sessionId}-${item.id}`} text={item.thinking} live={false} />}
+			{item.tools.map((t) => <ToolCard key={t.id} id={`side-${sessionId}-${t.id}`} tool={t} state={toolState(t, working)} />)}
+			{item.text && <div className="m-selectable text-m-body"><Markdown text={item.text} /></div>}
+			<Images sessionId={sessionId} images={item.images} />
 		</div>
 	);
 });
 
-function argSummary(args: unknown): string {
-	if (!args || typeof args !== "object") return "";
-	const rec = args as Record<string, unknown>;
-	for (const k of ["command", "path", "file_path", "pattern", "query", "url"]) {
-		if (typeof rec[k] === "string") return rec[k] as string;
-	}
-	return "";
-}
-
 /** Child-session adapter: shared IME/voice capsule, real uploads, and no main-chat store mutations. */
-function Composer({ sessionId, placeholder, onSend, initialText = "", working = false, onStop }: {
+function Composer({ sessionId, placeholder, onSend, initialText = "", working = false, disabled = false, restoredTexts, onAccepted, onStop }: {
 	sessionId: string;
 	placeholder: string;
 	onSend: (message: SidechatMessage) => Promise<boolean>;
 	initialText?: string;
 	working?: boolean;
+	disabled?: boolean;
+	restoredTexts?: string[];
+	onAccepted?: (draft: string) => void;
 	onStop?: () => Promise<void>;
 }) {
 	const apiRef = useRef<ComposerApi | null>(null);
+	const editVersion = useRef(0);
+	const sendingText = useRef<{ text: string; version: number } | null>(null);
+	useEffect(() => {
+		if (!restoredTexts?.length) return;
+		const current = apiRef.current?.get() ?? "";
+		const keep = current.trim() && !(sendingText.current?.text === current && sendingText.current.version === editVersion.current && restoredTexts.includes(current.trim()));
+		apiRef.current?.set([...(keep ? [current] : []), ...restoredTexts].join("\n\n"));
+	}, [restoredTexts]);
 	const [sending, setSending] = useState(false);
 	const sendingRef = useRef(false);
 	const [plusOpen, setPlusOpen] = useState(false);
@@ -533,35 +615,43 @@ function Composer({ sessionId, placeholder, onSend, initialText = "", working = 
 		setAtts((prev) => prev.filter((item) => item.id !== att.id));
 	};
 	const submit = async (text: string) => {
-		if (sendingRef.current) return;
+		if (sendingRef.current || disabled) return;
 		const blocker = attachmentBlocker(atts);
 		if (blocker) { toast(blocker, { kind: "error" }); return; }
 		const prompt = buildPrompt(text.trim(), atts);
 		if (!prompt) return;
 		sendingRef.current = true;
+		const version = editVersion.current;
+		sendingText.current = { text, version };
 		setSending(true);
 		try {
 			const ok = await onSend({ text: prompt, imagePaths: atts.flatMap((att) => att.isImage && att.path ? [att.path] : []), images: atts.flatMap((att) => att.image ? [att.image] : []) });
 			if (ok && alive.current) {
-				if (apiRef.current?.get() === text) apiRef.current.clear();
+				if (editVersion.current === version && apiRef.current?.get() === text) apiRef.current.clear();
 				for (const att of atts) if (att.url) URL.revokeObjectURL(att.url);
 				setAtts((prev) => prev.filter((att) => !atts.some((sent) => sent.id === att.id)));
+				onAccepted?.(apiRef.current?.get() ?? "");
 			}
-		} finally { sendingRef.current = false; if (alive.current) setSending(false); }
+		} finally { sendingText.current = null; sendingRef.current = false; if (alive.current) setSending(false); }
 	};
 	const attachments = atts.length > 0 ? (
-		<div className="m-noscrollbar flex gap-2 overflow-x-auto pb-2">
-			{atts.map((att) => <div key={att.id} className="flex w-52 shrink-0 items-center gap-2 rounded-m-md bg-m-surface p-2">
-				{att.isImage ? <img src={att.url} alt={att.name} className="h-12 w-12 rounded-m-sm object-cover" /> : <FileText size={24} className="shrink-0 text-m-text-2" />}
-				<div className="min-w-0 flex-1"><span className="block break-all text-m-xs text-m-text">{att.name}</span><span role="status" className={`block text-m-xs ${att.status === "err" ? "text-m-danger" : "text-m-text-3"}`}>{att.status === "up" ? "上传中" : att.status === "err" ? att.err : "已上传"}</span></div>
-				{att.status === "err" && <IconButton label={`重试上传 ${att.name}`} icon={<RefreshCw size={18} />} disabled={sending} onClick={() => void uploadAtt(att)} />}
-				<IconButton label={`移除 ${att.name}`} icon={<X size={18} />} disabled={sending} onClick={() => removeAtt(att)} />
+		<div className="flex min-w-0 flex-col gap-2 pb-2">
+			{atts.map((att) => <div key={att.id} className="min-w-0 space-y-2 rounded-m-md bg-m-surface p-2">
+				<div className="flex min-w-0 items-center gap-2">
+					{att.isImage ? <img src={att.url} alt={att.name} className="h-12 w-12 shrink-0 rounded-m-sm object-cover" /> : <FileText size={24} className="shrink-0 text-m-text-2" />}
+					<span className="min-w-0 flex-1 text-m-xs text-m-text [overflow-wrap:anywhere]">{att.name}</span>
+				</div>
+				<span role="status" className={`block text-m-xs ${att.status === "err" ? "text-m-danger [overflow-wrap:anywhere]" : "whitespace-nowrap text-m-text-3"}`}>{att.status === "up" ? "上传中" : att.status === "err" ? att.err : "已上传"}</span>
+				<div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
+					{att.status === "err" && <IconButton label={`重试上传 ${att.name}`} icon={<RefreshCw size={18} />} disabled={sending} onClick={() => void uploadAtt(att)} />}
+					<IconButton label={`移除 ${att.name}`} icon={<X size={18} />} disabled={sending} onClick={() => removeAtt(att)} />
+				</div>
 			</div>)}
 		</div>
 	) : undefined;
 	return (
 		<div className="shrink-0 px-4 pt-1" style={{ paddingBottom: "calc(var(--m-safe-bottom) + 8px)" }}>
-			<ComposerCapsule apiRef={apiRef} placeholder={placeholder} initialText={initialText} busy={sending} working={working} hasExtra={atts.length > 0} top={attachments} onPlus={() => setPlusOpen(true)} onSend={(text) => void submit(text)} onStop={onStop ? () => void onStop() : undefined} />
+			<ComposerCapsule apiRef={apiRef} placeholder={placeholder} initialText={initialText} busy={sending || disabled} working={working} hasExtra={atts.length > 0} top={attachments} onInput={() => { editVersion.current++; }} onPlus={() => setPlusOpen(true)} onSend={(text) => void submit(text)} onStop={onStop ? () => void onStop() : undefined} />
 			<input ref={fileAny} type="file" multiple hidden onChange={(e) => pickFiles(e.currentTarget)} />
 			<input ref={fileCamera} type="file" accept="image/png,image/jpeg,image/gif,image/webp" capture="environment" hidden onChange={(e) => pickFiles(e.currentTarget)} />
 			<input ref={fileGallery} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => pickFiles(e.currentTarget)} />

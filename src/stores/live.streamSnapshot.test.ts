@@ -297,6 +297,20 @@ describe("restore as an unfinished row when the backend is idle", () => {
 		expect(useLive.getState().sessions[SID].restoredUnfinished ?? null).toBeNull();
 		expect(loadSnapshot(SID)).toBeNull();
 	});
+
+	it("keeps the retained suffix until a transcript row carries every saved word", () => {
+		const sid = "restore-incomplete-prefix";
+		const opening = "A shared response introduction that is long enough to match. ".repeat(3);
+		const full = `${opening}The ending survived only in retention.`;
+		saveSnapshot(sid, snapOf(full));
+		useLive.setState((s) => ({ sessions: { ...s.sessions, [sid]: { ...empty(), items: [item("partial", opening)] } } }));
+		useLive.getState().hydrateStreamSnapshot(sid);
+		expect(useLive.getState().sessions[sid].restoredUnfinished?.answerText).toBe(full);
+		expect(loadSnapshot(sid)?.answerText).toBe(full);
+		useLive.getState().setItems(sid, [item("complete", full)], 20);
+		expect(useLive.getState().sessions[sid].restoredUnfinished ?? null).toBeNull();
+		expect(loadSnapshot(sid)).toBeNull();
+	});
 });
 
 describe("retention lifecycle", () => {

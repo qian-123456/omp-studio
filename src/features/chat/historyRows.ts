@@ -62,8 +62,12 @@ export function splitAnswerText(text: string, targetPx: number = ANSWER_SLICE_PX
 		const line = lines[i];
 		const m = FENCE_LINE_RE.exec(line);
 		if (m) {
-			if (fence === null) fence = m[1][0];
-			else if (m[1][0] === fence) fence = null;
+			if (fence === null) {
+				// Backtick info strings cannot themselves contain a backtick.
+				if (m[1][0] !== "`" || !line.slice(m[0].length).includes("`")) fence = m[1];
+			} else if (m[1][0] === fence[0] && m[1].length >= fence.length && line.slice(m[0].length).trim() === "") {
+				fence = null;
+			}
 			continue;
 		}
 		if (fence !== null || line.trim() !== "") continue;
@@ -100,7 +104,7 @@ function turnPieces(turn: TurnBlock): Piece[] {
 		}
 	}
 	if (turn.answerItem) {
-		// A stopped turn renders no answer text, so there is nothing to slice.
+		// Keep an interrupted answer together with its stopped indicator.
 		const text = turn.answerItem.text ?? "";
 		const slices = turn.answerItem.stopReason === "aborted" ? [text] : splitAnswerText(text);
 		slices.forEach((slice, index) => {

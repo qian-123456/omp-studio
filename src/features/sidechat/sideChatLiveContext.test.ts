@@ -52,6 +52,7 @@ describe("side chat live context, images, focus and handback", () => {
 		useSideChatView.setState({ openChild: {}, openTabs: {}, pending: {} });
 		rpc.create.mockResolvedValue({ sessionId: "child" });
 		rpc.ask.mockResolvedValue(undefined);
+		rpc.transcript.mockResolvedValue({ sessionId: "child", items: [], nextOffset: 0, reset: false, tailId: null });
 	});
 
 	it("shares streamed prose, running and finished unflushed tools in full, never reasoning", () => {

@@ -8,7 +8,7 @@
 
 import { normalizeThinkContent } from "../lib/thinkTags";
 import { recordDiagnostic } from "../lib/diagnostics";
-import { isSideChatPrompt, sideChatPromptToDisplay } from "../features/chat/sideChatView";
+import { isSideChatPrompt, sideChatPromptToDisplay, trimSideChatItems } from "../features/chat/sideChatView";
 import { resolveCurrentModel } from "../lib/models";
 import {
 	type FallbackInfo,
@@ -25,6 +25,7 @@ import { useSessions } from "./sessions";
 import { pauseHeldAutoSend, useHeldQueue } from "../features/chat/heldQueue";
 import { PLAN_STATUS_KEY, type PlanStatus, parsePlanStatus } from "../features/chat/plan/planStatus";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
+import { invalidateTranscriptCache } from "./transcript";
 import {
 	type PersistedRow,
 	parseLocalRows,
@@ -139,6 +140,8 @@ export interface LiveRequest {
 	 * finished thinking / prose / tool rows where they happened. */
 	parts: LiveRequestPart[];
 	stat: RequestStat;
+	/** Original message times only; metric fallbacks cannot prove persistence. */
+	sourceTiming?: { completedAt?: number; timestamp?: number };
 }
 
 /** One ordered content part of a completed request. */
@@ -208,6 +211,12 @@ export interface SessionLive {
 	/** Optimistic user bubbles waiting for the transcript fetch to confirm
 	 * them (rpc prompt accepted but not yet visible in the jsonl page). */
 	pendingUserEchoes: UserEcho[];
+	/** Inputs whose start already delivered an echo; their end must not deliver another. */
+	startedInputMessages?: string[];
+	/** New side-chat fork's complete inherited entry IDs, until its own first prompt lands. */
+	sideChatInheritedIds?: string[];
+	/** Keep the same boundary when a first-question delivery is retried. */
+	sideChatBaselinePrepared?: boolean;
 	/** From available_commands_update / get_available_commands. */
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
@@ -508,6 +517,17 @@ function newItemsOnly(prev: TranscriptItem[], next: TranscriptItem[]): Transcrip
 	return next.filter((i) => !known.has(i.id));
 }
 
+/** Hidden inherited side-chat history cannot confirm a visible optimistic input. */
+function echoConfirmationItems(sessionId: string, items: TranscriptItem[], inheritedIds?: string[]): TranscriptItem[] {
+	if (inheritedIds !== undefined) {
+		const inherited = new Set(inheritedIds);
+		return trimSideChatItems(items.filter((item) => !inherited.has(item.id)), true);
+	}
+	return useSessions.getState().sessions[sessionId]?.kind === "side"
+		? trimSideChatItems(items, true)
+		: items;
+}
+
 /** Index of the echo that `texts` confirm: an exact (flattened) text match
  * wins over a substring match, so a stale prefix echo never steals the slot
  * of the full message it is contained in. */
@@ -567,6 +587,7 @@ export function queuedEchoIds(
 	const remaining = [...live.ompQueue.steering, ...live.ompQueue.followUp];
 	const ids = new Set<string>();
 	for (const echo of live.pendingUserEchoes) {
+		if (echo.delivered) continue;
 		const i = findEchoIndex(
 			remaining.map((t) => ({ text: t }) as TranscriptItem),
 			[echo.text ?? ""],
@@ -604,11 +625,25 @@ function deliveredInputText(msg: Frame): string | null {
 	return null;
 }
 
-/** Mark the first undelivered held echo matching `text` as delivered. */
+/** Mark the first undelivered echo matching `text` as delivered. */
 function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
-	const i = findEchoIndex(echoes, [text], (e) => !!(e as UserEcho).held && !(e as UserEcho).delivered);
+	const i = findEchoIndex(echoes, [text], (e) => !(e as UserEcho).delivered);
 	if (i < 0) return echoes;
 	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+}
+
+/** One user/skill message has two boundaries but consumes only one queued echo. */
+function deliverInput(live: SessionLive, frame: Frame, text: string): SessionLive {
+	const key = str(frame.messageId) || `text:${text}`;
+	const started = live.startedInputMessages ?? [];
+	const seenStart = started.includes(key);
+	return {
+		...live,
+		startedInputMessages: frame.type === "message_start"
+			? seenStart ? started : [...started, key]
+			: started.filter((id) => id !== key),
+		pendingUserEchoes: seenStart ? live.pendingUserEchoes : markEchoDelivered(live.pendingUserEchoes, text),
+	};
 }
 
 /** The terminal `agent_end` ended because the user stopped the turn. */
@@ -626,6 +661,7 @@ function agentEndAborted(frame: Frame): boolean {
 function unlistedHeldEchoes(echoes: UserEcho[], queue: OmpQueue): UserEcho[] {
 	const remaining = [...queue.steering, ...queue.followUp].map((t) => ({ text: t }) as TranscriptItem);
 	return echoes.filter((echo) => {
+		if (echo.delivered) return false;
 		const i = findEchoIndex(remaining, [echo.text ?? ""]);
 		if (i >= 0) {
 			remaining.splice(i, 1);
@@ -789,11 +825,17 @@ function liveRequestFromMessage(
 		str(msg.responseId) ||
 		str(msg.id) ||
 		`req-${existing.length + 1}`;
+	const completedAt = typeof msg.completedAt === "number" && Number.isFinite(msg.completedAt)
+		? msg.completedAt : undefined;
+	const timestamp = typeof msg.timestamp === "number" && Number.isFinite(msg.timestamp)
+		? msg.timestamp : undefined;
 	return {
 		id,
 		toolCallIds,
 		hasText,
 		parts,
+		sourceTiming: completedAt !== undefined || timestamp !== undefined
+			? { completedAt, timestamp } : undefined,
 		stat: requestStatFromMessage(
 			msg as unknown as Record<string, unknown>,
 			fallbackTs,
@@ -885,16 +927,11 @@ function reduce(
 			const isAssistant = !ended.role || ended.role === "assistant";
 			const deliveredText = deliveredInputText(ended as Frame);
 			if (deliveredText !== null) {
-				return live.pendingUserEchoes.length
-					? {
-							...live,
-							pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, deliveredText),
-						}
-					: live;
+				return deliverInput(live, frame, deliveredText);
 			}
 			if (turnSettled(live)) return live;
 			// Skip ends for messages we never tracked (e.g. user echoes).
-			if (!live.streamingMessage && !isAssistant) return live;
+			if (!isAssistant) return live;
 			const thinkingEndedAt =
 				live.thinkingStartedAt && !live.thinkingEndedAt
 					? ts
@@ -1080,11 +1117,8 @@ function reduce(
 			// A user input entering the conversation = a held echo got delivered.
 			const msg = asFrame(frame.message);
 			const text = deliveredInputText(msg);
-			if (text === null || !live.pendingUserEchoes.length) return live;
-			return {
-				...live,
-				pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, text),
-			};
+			if (text === null) return live;
+			return deliverInput(live, frame, text);
 		}
 		case "extension_ui_request": {
 			const method = str(frame.method);
@@ -1123,8 +1157,8 @@ function reduce(
 		case "retry_fallback_succeeded": {
 			const n = retryNoticeFromFrame(frame);
 			if (!n) return live;
-			// Pending retries stay live. Recovery ends this episode immediately;
-			// it belongs at its chronological history position, not the live tail.
+			// The retry saga's end closes this episode even when a local
+			// continuation failed before it could emit another agent_end.
 			const next: SessionLive = {
 				...live,
 				retryNotices: [
@@ -1132,7 +1166,7 @@ function reduce(
 					{ ...n, id: nextOutputId++, anchor: live.liveRequests.length },
 				].slice(-20),
 			};
-			if ((frame.type === "auto_retry_end" && frame.success === true) || frame.type === "retry_fallback_succeeded") {
+			if (frame.type === "auto_retry_end" || frame.type === "retry_fallback_succeeded") {
 				return { ...next, ...archiveRetry(next, n.ts) };
 			}
 			if (frame.type !== "retry_fallback_applied") return next;
@@ -1201,6 +1235,9 @@ function reduce(
 			};
 		}
 		case "prompt_result": {
+			// A prompt completes independently of the session's current run.
+			// Local commands, rejected queued prompts, or an older run's result
+			// may arrive while another reply streams; agent_end owns settlement.
 			const pendingCommand = live.pendingCommand ?? null;
 			if (/already processing/i.test(str(frame.error))) {
 				return { ...live, streaming: true, pendingCommand: null };
@@ -1213,11 +1250,6 @@ function reduce(
 				return moveLocalEcho(
 					{
 						...live,
-						streaming: false,
-						streamingMessage: null,
-						tools: {},
-						liveRequests: [],
-						...archiveRetry(live, Date.now()),
 						pendingCommand: null,
 						commandOutputs: [
 							...live.commandOutputs,
@@ -1234,15 +1266,8 @@ function reduce(
 					pendingCommand,
 				);
 			}
-			return {
-				...live,
-				streaming: false,
-				streamingMessage: null,
-				tools: {},
-				liveRequests: [],
-				...archiveRetry(live, Date.now()),
-				pendingCommand: null,
-			};
+			const completed = { ...live, pendingCommand: null };
+			return frame.agentInvoked === false ? moveLocalEcho(completed, pendingCommand) : completed;
 		}
 		case "error": {
 			// Transport/process errors (e.g. socket closed) must not leave a turn stuck.
@@ -1341,11 +1366,6 @@ function reduce(
 					}
 					const failed: SessionLive = {
 						...live,
-						streaming: false,
-						streamingMessage: null,
-						tools: {},
-						liveRequests: [],
-						...archiveRetry(live, Date.now()),
 						pendingCommand: null,
 					};
 					if (!pendingCommand || !str(frame.error).trim()) return failed;
@@ -1690,7 +1710,7 @@ export const useLive = create<LiveState>((set) => ({
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const snapshot = !running && live.streaming ? snapshotFromLive(live, Date.now()) : null;
 			const next = running
-				? { ...live, alive: true, processExited: false, exitIntent: undefined }
+				? { ...live, alive: true, processExited: false, exitIntent: undefined, startedInputMessages: [] }
 				: {
 						...live,
 						alive: false,
@@ -1739,6 +1759,7 @@ export const useLive = create<LiveState>((set) => ({
 	setItems: (sessionId, items, nextOffset, tailId) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
+			const confirmation = echoConfirmationItems(sessionId, items, live.sideChatInheritedIds);
 			return {
 				sessions: {
 					...s.sessions,
@@ -1747,9 +1768,10 @@ export const useLive = create<LiveState>((set) => ({
 						items,
 						nextOffset,
 						tailId: tailId ?? null,
+						sideChatInheritedIds: confirmation.length ? undefined : live.sideChatInheritedIds,
 						pendingUserEchoes: reconcileEchoes(
 							live.pendingUserEchoes,
-							newItemsOnly(live.items, items),
+							newItemsOnly(live.items, confirmation),
 						),
 					},
 				},
@@ -1760,15 +1782,21 @@ export const useLive = create<LiveState>((set) => ({
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const known = new Set(live.items.map((i) => i.id));
 			const fresh = items.filter((i) => !known.has(i.id));
+			const merged = [...live.items, ...fresh];
+			const confirmation = echoConfirmationItems(sessionId, merged, live.sideChatInheritedIds);
 			return {
 				sessions: {
 					...s.sessions,
 					[sessionId]: {
 						...live,
-						items: [...live.items, ...fresh],
+						items: merged,
 						nextOffset,
 						tailId: tailId ?? null,
-						pendingUserEchoes: reconcileEchoes(live.pendingUserEchoes, fresh),
+						sideChatInheritedIds: confirmation.length ? undefined : live.sideChatInheritedIds,
+						pendingUserEchoes: reconcileEchoes(
+							live.pendingUserEchoes,
+							newItemsOnly(live.items, confirmation),
+						),
 					},
 				},
 			};
@@ -2246,6 +2274,7 @@ const COMPOSER_PRUNE_GRACE_MS = 30_000;
 export function pruneRemovedSessions(ids: readonly string[]): void {
 	if (ids.length === 0) return;
 	const gone = new Set(ids);
+	invalidateTranscriptCache(ids);
 	leftTranscripts = leftTranscripts.filter((id) => !gone.has(id));
 	for (const id of gone) {
 		streamSnapshotsHydrated.delete(id);
@@ -2304,7 +2333,7 @@ export function pruneRemovedSessions(ids: readonly string[]): void {
 
 // ---- Local rows persistence (docs/ARCHITECTURE.md §6 `local_rows`) ----
 
-const localRowsLoading = new Set<string>();
+const localRowsLoading = new Map<string, symbol>();
 /** Sessions whose stored rows could not be read: never overwrite them. */
 const localRowsReadOnly = new Set<string>();
 /** Dedup digest of the last persisted rows per session (the JSON itself is not kept). */
@@ -2385,15 +2414,20 @@ function mergeLocalRows(sessionId: string, stored: PersistedRow[], readable: boo
 /** Read a session's stored local rows once and merge them into its live state. */
 function loadLocalRows(sessionId: string): void {
 	if (localRowsLoading.has(sessionId)) return;
-	localRowsLoading.add(sessionId);
+	const request = Symbol(sessionId);
+	localRowsLoading.set(sessionId, request);
 	ipcMod ??= import("../lib/ipc");
 	void ipcMod
 		.then((m) => m.localRowsGet(sessionId))
 		.then(
-			(raw) => mergeLocalRows(sessionId, parseLocalRows(raw), true),
+			(raw) => {
+				if (localRowsLoading.get(sessionId) === request) mergeLocalRows(sessionId, parseLocalRows(raw), true);
+			},
 			// Command missing (app not restarted since the update) or DB error:
 			// keep working in memory, leave the stored rows untouched.
-			() => mergeLocalRows(sessionId, [], false),
+			() => {
+				if (localRowsLoading.get(sessionId) === request) mergeLocalRows(sessionId, [], false);
+			},
 		);
 }
 

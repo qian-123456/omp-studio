@@ -107,6 +107,9 @@ pub struct SessionHandle {
     /// only failed after this, so a response printed just before exit still
     /// resolves its caller instead of racing the exit notification.
     pub stdout_closed: watch::Sender<bool>,
+    /// Serializes final stdout frames with the published process-exit boundary.
+    /// OS exit stops commands immediately, but buffered output must still drain.
+    pub output_closed: parking_lot::Mutex<bool>,
     pub streaming: AtomicBool,
     pub alive: AtomicBool,
     /// Last frame or host command, not elapsed wall-clock time alone. Internal
@@ -146,6 +149,7 @@ impl SessionHandle {
             plan_status: parking_lot::Mutex::new(None),
             pending_frames: parking_lot::Mutex::new(Vec::new()),
             stdout_closed,
+            output_closed: parking_lot::Mutex::new(false),
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -382,7 +386,8 @@ pub(crate) fn sink_from_state(state: &AppState) -> OutSink {
 
 /// Emit a frame to the frontend (`rpc:frame`) and the bus (`AppEvent::RpcFrame`).
 fn emit_frame(sink: &OutSink, handle: &SessionHandle, frame: &Value) {
-    if !handle.alive.load(Ordering::SeqCst) {
+    let output_closed = handle.output_closed.lock();
+    if *output_closed {
         return;
     }
     let session_id = handle.session_id.read().clone();
@@ -394,10 +399,24 @@ fn emit_frame(sink: &OutSink, handle: &SessionHandle, frame: &Value) {
             return;
         }
         drop(guard);
-        sink(OutEvent::Frame {
-            session_id,
-            frame: frame.clone(),
-        });
+        emit_identified_frame(sink, handle, session_id, frame);
+        return;
+    }
+    emit_identified_frame(sink, handle, session_id, frame);
+}
+
+/// Keep replacement registration ordered with the last frame from its predecessor.
+fn emit_identified_frame(
+    sink: &OutSink,
+    handle: &SessionHandle,
+    session_id: String,
+    frame: &Value,
+) {
+    let registry = rpc::registry().read();
+    if registry
+        .get(&session_id)
+        .is_some_and(|existing| !std::ptr::eq(existing.as_ref(), handle))
+    {
         return;
     }
     sink(OutEvent::Frame {
@@ -758,10 +777,10 @@ pub async fn send_command(
             command["id"] = json!(id);
             let rx = handle.pending.insert(id.clone());
             observation.dispatched(handle, &id);
-            handle
-                .stdin_tx
-                .send(command.to_string())
-                .map_err(|_| stdin_closed(handle))?;
+            if handle.stdin_tx.send(command.to_string()).is_err() {
+                handle.pending.remove(&id);
+                return Err(stdin_closed(handle));
+            }
             observation.phase = "response";
             if matches!(
                 command.get("type").and_then(Value::as_str),
@@ -829,19 +848,14 @@ pub(crate) async fn send_command_locked(
         if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
             return Err("session process is not running".into());
         }
-        // Recheck after waiting: suspension may have closed stdin while this call
-        // waited for another command to finish.
-        if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
-            return Err("session process is not running".into());
-        }
         let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
         command["id"] = json!(id);
         let rx = handle.pending.insert(id.clone());
         observation.dispatched(handle, &id);
-        handle
-            .stdin_tx
-            .send(command.to_string())
-            .map_err(|_| stdin_closed(handle))?;
+        if handle.stdin_tx.send(command.to_string()).is_err() {
+            handle.pending.remove(&id);
+            return Err(stdin_closed(handle));
+        }
         observation.phase = "response";
         // A long command may produce no inbound frames for minutes (`compact`),
         // so the send itself counts as activity for the idle reaper.
@@ -941,6 +955,27 @@ fn observe_spawn_stage(
     }
 }
 
+fn startup_failure(reason: &str, exit: &str, cwd: &str, stderr: &str) -> String {
+    // Only the upstream error class identifies this recovery path. Model names,
+    // generic provider errors and stack/source mentions must not trigger it.
+    let model_unavailable = stderr.lines().any(|line| {
+        let line = line.trim_start();
+        let line = line
+            .strip_prefix("[Uncaught Exception] ")
+            .or_else(|| line.strip_prefix("[Unhandled Rejection] "))
+            .or_else(|| line.strip_prefix("error: "))
+            .unwrap_or(line);
+        line.strip_prefix("SessionModelRestoreError: Could not restore model ")
+            .is_some_and(|selector| !selector.trim().is_empty())
+    });
+    let prefix = if model_unavailable {
+        "SESSION_MODEL_UNAVAILABLE:"
+    } else {
+        ""
+    };
+    format!("{prefix}{reason}; {exit}; cwd: {cwd}\n{stderr}")
+}
+
 /// Inner spawn used by tests (custom sink) and by `spawn`.
 pub async fn spawn_with_sink(
     opts: &StartOpts,
@@ -1024,6 +1059,7 @@ pub async fn spawn_with_sink(
             plan_status: parking_lot::Mutex::new(None),
             pending_frames: parking_lot::Mutex::new(Vec::new()),
             stdout_closed: stdout_closed_tx,
+            output_closed: parking_lot::Mutex::new(false),
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -1160,7 +1196,7 @@ pub async fn spawn_with_sink(
                     .unwrap_or_else(|| "process has not exited".to_string());
                 let _ = tokio::time::timeout(Duration::from_secs(1), stderr_done_rx).await;
                 let stderr = startup_stderr.lock().clone();
-                return Err(format!("{reason}; {exit}; cwd: {}\n{stderr}", opts.cwd));
+                return Err(startup_failure(reason, &exit, &opts.cwd, &stderr));
             }
         };
         recording_stderr.store(false, Ordering::Relaxed);
@@ -1180,6 +1216,32 @@ pub async fn spawn_with_sink(
         }
         phase = "get_state";
         let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
+        let state_resp = if opts.resume_file.is_some() && opts.model.is_some() {
+            // --model bypasses restore validation, but a concrete CLI override
+            // alone is not persisted. Let omp record its resolved model through
+            // the official RPC before this handle can be registered or prompted.
+            phase = "restore_model";
+            let model = state_resp.get("data").unwrap_or(&state_resp).get("model");
+            let provider = model
+                .and_then(|model| model.get("provider"))
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or("omp did not report the resumed model provider")?;
+            let model_id = model
+                .and_then(|model| model.get("id"))
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or("omp did not report the resumed model id")?;
+            send_command(
+                &handle,
+                json!({"type": "set_model", "provider": provider, "modelId": model_id}),
+            )
+            .await?;
+            phase = "get_state";
+            send_command(&handle, json!({"type": "get_state"})).await?
+        } else {
+            state_resp
+        };
         apply_state(&handle, &state_resp);
         drain_pending_frames(&sink, &handle);
         phase = "subscription";
@@ -1365,8 +1427,8 @@ async fn monitor(
     // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
     let _ = handle.shutdown.send(true);
     let code = status.ok().and_then(|s| s.code());
-    // Resolve buffered command responses before publishing the exit boundary.
-    // A reader that outlives this bounded drain cannot reopen live activity.
+    // Drain every buffered frame before publishing the exit boundary, including
+    // final prompt results and persistence notices flushed immediately before exit.
     handle.fail_pending_after_drain("omp process exited").await;
     handle.streaming.store(false, Ordering::SeqCst);
     handle.pending_ui.lock().clear();
@@ -1374,6 +1436,8 @@ async fn monitor(
 }
 
 fn publish_exit(sink: &OutSink, handle: &Arc<SessionHandle>, code: Option<i32>) {
+    let mut output_closed = handle.output_closed.lock();
+    *output_closed = true;
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
         return;
@@ -1498,6 +1562,12 @@ mod tests {
         let output = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let capture = output.clone();
         let sink: OutSink = Arc::new(move |event| capture.lock().push(event));
+        emit_frame(
+            &sink,
+            &old,
+            &json!({"type":"message_end","messageId":"old"}),
+        );
+        assert!(output.lock().is_empty());
         publish_exit(&sink, &old, Some(0));
         assert!(output.lock().is_empty());
         assert!(Arc::ptr_eq(&rpc::registry().read()[&id], &replacement));
@@ -1520,11 +1590,45 @@ mod tests {
         assert!(!h.streaming.load(Ordering::SeqCst));
         assert!(h.pending_ui.lock().is_empty());
         assert_eq!(rx.await.unwrap()["success"], json!(true));
-        let emitted = Arc::new(parking_lot::Mutex::new(Vec::new()));
-        let output = emitted.clone();
-        let sink: OutSink = Arc::new(move |event| output.lock().push(event));
-        emit_frame(&sink, &h, &json!({"type":"agent_start"}));
-        assert!(emitted.lock().is_empty());
+    }
+
+    #[test]
+    fn final_frames_are_delivered_before_exit_and_never_after_it() {
+        let handle = test_handle();
+        *handle.session_id.write() = format!("drain-{}", uuid::Uuid::new_v4());
+        let output = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let captured = output.clone();
+        let sink: OutSink = Arc::new(move |event| captured.lock().push(event));
+        // The child has exited, but its final JSONL frames are still in stdout.
+        handle.alive.store(false, Ordering::SeqCst);
+        let frames = [
+            json!({"type":"message_end","messageId":"answer","message":{"role":"assistant","content":[{"type":"text","text":"Final answer"}]}}),
+            json!({"type":"prompt_result","id":"prompt","status":"completed","agentInvoked":true,"sessionSettled":true}),
+            json!({"type":"notice","level":"error","source":"session-persistence","message":"Session could not be saved"}),
+        ];
+        for frame in &frames {
+            apply_frame(&handle, frame);
+            emit_frame(&sink, &handle, frame);
+        }
+        publish_exit(&sink, &handle, Some(1));
+        // A reader that missed its bounded drain cannot publish into a closed stream.
+        emit_frame(&sink, &handle, &json!({"type":"agent_start"}));
+        let output = output.lock();
+        assert_eq!(output.len(), frames.len() + 1);
+        for (event, expected) in output.iter().zip(&frames) {
+            let OutEvent::Frame { frame, .. } = event else {
+                panic!("process exit overtook final stdout frame");
+            };
+            assert_eq!(frame, expected);
+        }
+        assert!(matches!(
+            output.last(),
+            Some(OutEvent::Process {
+                running: false,
+                exit_code: Some(1),
+                ..
+            })
+        ));
     }
 
     #[tokio::test]
@@ -1735,10 +1839,25 @@ mod tests {
     async fn send_command_reports_closed_stdin_and_dead_process() {
         // stdin receiver dropped → send fails fast.
         let h = test_handle();
+        *h.session_id.write() = format!("closed-stdin-{}", uuid::Uuid::new_v4());
+        assert!(rpc::idle_suspendable(&h, Duration::ZERO));
         let err = send_command(&h, json!({"type":"get_state"}))
             .await
             .unwrap_err();
         assert_eq!(err, "session stdin closed");
+        assert!(rpc::idle_suspendable(&h, Duration::ZERO));
+        let locked_err = send_command_locked(&h, json!({"type":"get_state"}))
+            .await
+            .unwrap_err();
+        assert_eq!(locked_err, "session stdin closed");
+        assert!(rpc::idle_suspendable(&h, Duration::ZERO));
+        let other = h.pending.insert("unrelated-request".to_string());
+        assert!(send_command(&h, json!({"type":"get_state"})).await.is_err());
+        apply_frame(
+            &h,
+            &json!({"type":"response","id":"unrelated-request","success":true}),
+        );
+        assert_eq!(other.await.unwrap()["success"], true);
 
         h.alive.store(false, Ordering::SeqCst);
         let err = send_command(&h, json!({"type":"get_state"}))
@@ -1771,6 +1890,55 @@ mod tests {
             .unwrap_err();
         writer.await.unwrap();
         assert_eq!(err, "nope");
+    }
+
+    #[tokio::test]
+    async fn prompt_is_delivered_if_a_turn_starts_after_command_preparation() {
+        for turn_started in [false, true] {
+            let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+            let handle = Arc::new(SessionHandle {
+                stdin_tx: tx,
+                ..SessionHandle::for_test()
+            });
+            // Prepared while the host still sees an idle session.
+            assert!(!handle.streaming.load(Ordering::SeqCst));
+            let command = rpc::prompt_command("User question", Vec::new(), None);
+            let upstream = handle.clone();
+            let consumer = tokio::spawn(async move {
+                let line = rx.recv().await.expect("prompt written to upstream");
+                let sent: Value = serde_json::from_str(&line).unwrap();
+                // Mirrors AgentSession.prompt's post-preparation busy check:
+                // no policy refuses the prompt, followUp queues it, idle starts it.
+                if turn_started {
+                    apply_frame(&upstream, &json!({"type":"agent_start"}));
+                }
+                let delivery = if upstream.streaming.load(Ordering::SeqCst) {
+                    match sent["streamingBehavior"].as_str() {
+                        Some("followUp") => Some(("followUp", sent["message"].clone())),
+                        _ => None,
+                    }
+                } else {
+                    Some(("started", sent["message"].clone()))
+                };
+                let response = if delivery.is_some() {
+                    json!({"type":"response","command":"prompt","id":sent["id"],"success":true})
+                } else {
+                    json!({"type":"response","command":"prompt","id":sent["id"],"success":false,"error":"Agent is busy"})
+                };
+                apply_frame(&upstream, &response);
+                delivery
+            });
+            send_command(&handle, command)
+                .await
+                .expect("prompt accepted");
+            assert_eq!(
+                consumer.await.unwrap(),
+                Some((
+                    if turn_started { "followUp" } else { "started" },
+                    json!("User question")
+                ))
+            );
+        }
     }
 
     #[tokio::test]

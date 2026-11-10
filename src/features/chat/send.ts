@@ -16,7 +16,7 @@ import { isLocalDraftId } from "../sessions/pendingSession";
 import { sendFromDraft } from "../sessions/draftSession";
 import { emitPromptSend } from "../../stores/promptSendEvents";
 import { tNow } from "../../stores/language";
-import { heldAutoSendStopToken, pauseHeldAutoSend, resumeHeldAutoSend } from "./heldQueue";
+import { hasPromptPayload, heldAutoSendStopToken, pauseHeldAutoSend, resumeHeldAutoSend } from "./heldQueue";
 import { useStopHint } from "./stopHint";
 
 export interface AbortState {
@@ -55,7 +55,7 @@ export async function sendPrompt(
 	opts?: { steer?: boolean; images?: ImageAttachment[]; onEchoed?: (sessionId?: string) => void },
 ): Promise<void> {
 	const trimmed = text.trim();
-	if (!trimmed) return;
+	if (!hasPromptPayload(trimmed)) throw new Error(tNow("chatView.pendingUi.inputCannotBeEmpty"));
 	const stopToken = heldAutoSendStopToken(sessionId);
 	// Local draft: no process exists yet. Spawn/join the prewarm, apply the
 	// chosen model and thinking level, then send once on the real session

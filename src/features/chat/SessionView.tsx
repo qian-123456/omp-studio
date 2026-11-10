@@ -163,17 +163,25 @@ export function SessionView({
 	useEffect(() => {
 		let cancelled = false;
 		void loadTranscript();
+		let pendingUiChanged = false;
+		const stopPendingWatch = useLive.subscribe((state, previous) => {
+			const current = state.sessions[sessionId];
+			const prev = previous.sessions[sessionId];
+			if (current?.pendingUi !== prev?.pendingUi && (prev || current?.pendingUi.length)) pendingUiChanged = true;
+		});
 
 		rpcPendingUi(sessionId)
 			.then((list) => {
-				if (!cancelled && list.length) setPendingUi(sessionId, list);
+				if (!cancelled && !pendingUiChanged && list.length) setPendingUi(sessionId, list);
 			})
-			.catch(() => {});
+			.catch(() => {})
+			.finally(stopPendingWatch);
 		if (useLive.getState().sessions[sessionId]?.alive) {
 			rpcSend(sessionId, { type: "get_state" }).catch(() => {});
 		}
 		return () => {
 			cancelled = true;
+			stopPendingWatch();
 			transcriptReq.current++;
 		};
 	}, [sessionId, loadTranscript, setPendingUi]);
@@ -248,7 +256,7 @@ export function SessionView({
 			if (document.querySelector(MODAL_SELECTOR)) return;
 			const el = e.target instanceof Element ? e.target : null;
 			if (el?.closest('input, [contenteditable="true"]')) return;
-			if (el?.tagName === "TEXTAREA" && !el.hasAttribute("data-composer")) return;
+			if (el?.tagName === "TEXTAREA" && el.getAttribute("data-composer") !== sessionId) return;
 			claimEscape(e);
 			abortTurn(sessionId)
 				.then(() => toast.info(t("chatView.sessionView.generationAborted")))

@@ -8,8 +8,6 @@
  * prompt as just the user's question (plus the quoted selection, if any).
  */
 
-import type { TranscriptItem } from "../../lib/contracts";
-
 const SIDE_CHAT_MARKERS = [
 	"Side chat forked from main session",
 	// Legacy template (sessions created before the boundary moved to the system prompt).
@@ -51,7 +49,10 @@ export function sideChatPromptToDisplay(text: string): string {
  * side-chat prompt is written to the transcript, everything present is
  * inherited parent history, so show nothing instead of leaking it.
  */
-export function trimSideChatItems(items: TranscriptItem[], isSideChat = false): TranscriptItem[] {
+export function trimSideChatItems<T extends { kind: string; text?: string | null; hidden?: boolean }>(
+	items: T[],
+	isSideChat = false,
+): T[] {
 	let start = -1;
 	for (let i = items.length - 1; i >= 0; i--) {
 		const it = items[i];
@@ -62,6 +63,8 @@ export function trimSideChatItems(items: TranscriptItem[], isSideChat = false): 
 	}
 	if (start < 0) return isSideChat ? [] : items;
 	const out = items.slice(start);
-	out[0] = { ...out[0], text: sideChatPromptToDisplay(out[0].text ?? "") };
+	// The boundary prompt is transport-hidden context, but its extracted
+	// question is the user's real message. Other hidden rows stay hidden.
+	out[0] = { ...out[0], text: sideChatPromptToDisplay(out[0].text ?? ""), hidden: false };
 	return out;
 }

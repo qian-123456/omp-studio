@@ -18,6 +18,8 @@ import { events } from "../../core/sse";
 import { useSessions } from "../../core/stores/sessions";
 import { ChatController } from "./chatStore";
 import { LIVE_SNAPSHOT_KEY, loadLiveEntry, saveLiveMain } from "./lib/liveSnapshot";
+import { loadUnsent, saveUnsent } from "./lib/unsent";
+import { nav } from "../../core/nav";
 
 const ID = "sess-m3m4";
 
@@ -39,8 +41,17 @@ let composerState: Record<string, unknown>;
 let promptExImpl: () => Promise<unknown>;
 let promptExCalls: number;
 
+function deferred<T>() {
+	// Match the phone's ES2021 library target, which lacks Promise.withResolvers.
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (error: unknown) => void;
+	const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+	return { promise, resolve, reject };
+}
+
 function routeApi(method: string, path: string): unknown {
 	const [base] = path.split("?");
+	if (method === "GET" && base === "/sessions") return Promise.resolve(Object.values(useSessions.getState().byId));
 	if (base === `/sessions/${ID}/transcript`) {
 		return transcriptPages.length ? transcriptPages.shift() : { items: [], nextOffset: 0, tailId: null };
 	}
@@ -389,11 +400,12 @@ describe("M4: send() delivery guard by phase", () => {
 describe("ChatController resync", () => {
 	it("keeps the half-streamed live row across resync/refresh and prunes it once the transcript persists it", async () => {
 		composerState = { streaming: true };
+		const messageTimestamp = Date.now();
 		const c = makeController();
 		await settle();
 		await c.send("问题", "followUp");
 		rpc({ type: "agent_start" });
-		rpc(textFrame("回答前半"));
+		rpc({ type: "message_update", message: { role: "assistant", timestamp: messageTimestamp, content: [{ type: "text", text: "回答前半" }] } });
 		await rafTick();
 		expect(c.state.live?.text).toBe("回答前半");
 
@@ -410,7 +422,7 @@ describe("ChatController resync", () => {
 		// message_end landed server-side during the gap; the fetched transcript carries the streamed text.
 		transcriptPages = [
 			{
-				items: [{ id: "a1", kind: "assistant", text: "回答前半", ts: "2026-10-31T10:00:00Z" }],
+				items: [{ id: "a1", kind: "assistant", text: "回答前半", ts: new Date(messageTimestamp).toISOString() }],
 				nextOffset: 2048,
 				tailId: "a1",
 			},
@@ -560,5 +572,316 @@ describe("断流续传: half-answer restore", () => {
 		expect(c2.state.live).toBeNull();
 		expect(c2.state.interrupted).toBeNull();
 		c2.dispose();
+	});
+});
+
+describe("stream lifecycle ordering", () => {
+	it("renders the finalized assistant snapshot instead of its previous partial update", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("partial"));
+		rpc({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "finalized answer" }] } });
+		await rafTick();
+		expect(c.state.segments.map((s) => [s.text, s.streaming])).toEqual([["finalized answer", false]]);
+		expect(c.state.live).toBeNull();
+		c.dispose();
+	});
+
+	it("renders a final assistant even when no streaming update was delivered", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc({ type: "agent_start" });
+		rpc({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "complete answer" }] } });
+		rpc({ type: "agent_end", isTerminal: true });
+		await rafTick();
+		expect(c.state.segments.map((s) => s.text)).toEqual(["complete answer"]);
+		expect(c.state.working).toBe(false);
+		c.dispose();
+	});
+
+	it.each(["user", "toolResult"])("does not close an assistant segment for a %s message_end", async (role) => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("still streaming"));
+		rpc({ type: "message_end", message: { role, content: [{ type: "text", text: "not an assistant" }] } });
+		await rafTick();
+		expect(c.state.live?.text).toBe("still streaming");
+		expect(c.state.segments).toEqual([]);
+		c.dispose();
+	});
+
+	it("does not resurrect working from a composer-state read started before the terminal frame", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("answer"));
+		const { promise, resolve: finish } = deferred<unknown>();
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/composer-state")
+			? promise : routeApi(method, path));
+		const pending = c.loadState();
+		rpc({ type: "agent_end", isTerminal: true });
+		finish({ streaming: true, model: "old" });
+		await pending;
+		await rafTick();
+		expect(c.state.working).toBe(false);
+		expect(c.state.cstate?.model).not.toBe("old");
+		c.dispose();
+	});
+
+	it("keeps the latest composer-state response when requests finish out of order", async () => {
+		const c = makeController();
+		await rafTick();
+		const reads = [deferred<unknown>(), deferred<unknown>()];
+		let readIndex = 0;
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/composer-state")
+			? reads[readIndex++].promise : routeApi(method, path));
+		const older = c.loadState();
+		const newer = c.loadState();
+		reads[1].resolve({ streaming: false, model: "new" });
+		await newer;
+		reads[0].resolve({ streaming: true, model: "old" });
+		await older;
+		expect(c.state.cstate?.model).toBe("new");
+		expect(c.state.working).toBe(false);
+		c.dispose();
+	});
+
+	it("does not overwrite an acknowledged composer mutation with a previously started read", async () => {
+		const c = makeController();
+		await rafTick();
+		const { promise, resolve: finish } = deferred<unknown>();
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/composer-state")
+			? promise : routeApi(method, path));
+		const pending = c.loadState();
+		c.patchState({ planMode: true });
+		finish({ planMode: false });
+		await pending;
+		expect(c.state.cstate?.planMode).toBe(true);
+		c.dispose();
+	});
+
+	it("saves the latest half answer when detached before its animation frame flush", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("the latest half answer"));
+		c.dispose();
+		expect(loadLiveEntry(ID)?.main?.text).toBe("the latest half answer");
+		composerState = { streaming: false };
+		const reopened = makeController();
+		await rafTick();
+		expect(reopened.state.interrupted?.text).toBe("the latest half answer");
+		expect(reopened.state.interrupted?.streaming).toBe(false);
+		reopened.dispose();
+	});
+
+	it("mirrors same-length text corrections rather than treating lengths as content identity", async () => {
+		const c = makeController();
+		await rafTick();
+		let now = Date.now();
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		rpc(textFrame("first"));
+		await rafTick();
+		expect(loadLiveEntry(ID)?.main?.text).toBe("first");
+		now += 650;
+		rpc(textFrame("later"));
+		await rafTick();
+		expect(loadLiveEntry(ID)?.main?.text).toBe("later");
+		c.dispose();
+	});
+
+	it("a late failed prompt response cannot roll back a stream that already started", async () => {
+		const c = makeController();
+		await rafTick();
+		const { promise, reject: fail } = deferred<unknown>();
+		promptExImpl = () => promise;
+		const sending = c.send("question", "followUp");
+		rpc({ type: "agent_start" });
+		rpc(textFrame("accepted answer"));
+		fail(new Error("connection lost after delivery"));
+		await sending;
+		await rafTick();
+		expect(c.state.working).toBe(true);
+		expect(c.state.live?.text).toBe("accepted answer");
+		expect(c.state.delivery?.phase).toBe("unknown");
+		c.dispose();
+	});
+
+	it("a late failed queued-send response cannot resurrect a terminated stream", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("answer"));
+		await rafTick();
+		const { promise, reject: fail } = deferred<unknown>();
+		promptExImpl = () => promise;
+		const sending = c.send("follow-up", "followUp");
+		rpc({ type: "agent_end", isTerminal: true });
+		fail(new Error("connection lost"));
+		await sending;
+		await rafTick();
+		expect(c.state.working).toBe(false);
+		expect(c.state.delivery?.phase).toBe("unknown");
+		c.dispose();
+	});
+
+	it("removes only withdrawn queued optimistic messages when stop restores them to the draft", async () => {
+		const c = makeController();
+		await rafTick();
+		await c.send("active request", "followUp");
+		await c.send("queued follow-up", "followUp");
+		let draft = "existing draft";
+		c.composer = { get: () => draft, set: (text) => { draft = text; } };
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/abort")
+			? { aborted: true, restoredTexts: ["queued follow-up"] } : routeApi(method, path));
+		await c.stop();
+		expect(c.state.optimistic.map((o) => o.text)).toEqual(["active request"]);
+		expect(draft).toBe("existing draft\n\nqueued follow-up");
+		c.dispose();
+	});
+});
+
+describe("refresh and detached response ownership", () => {
+	it("ignores an incremental response superseded by a full refresh and replaces same-id rows", async () => {
+		transcriptPages = [{ items: [{ id: "a", kind: "assistant", text: "before" }], nextOffset: 100, tailId: "a" }];
+		const c = makeController();
+		await rafTick();
+		const oldRead = deferred<TranscriptPage>();
+		let defer = true;
+		apiMock.mockImplementation((method: string, path: string) => {
+			if (path.includes("/transcript?") && defer) { defer = false; return oldRead.promise; }
+			return routeApi(method, path);
+		});
+		const incremental = c.fetchTranscript();
+		transcriptPages = [{ items: [{ id: "a", kind: "assistant", text: "after" }], nextOffset: 200, tailId: "a", reset: false }];
+		await c.refresh();
+		oldRead.resolve({ items: [{ id: "stale", kind: "assistant", text: "obsolete" }], nextOffset: 150, tailId: "stale" });
+		await incremental;
+		await settle();
+		expect(c.state.transcript.items.map((i) => i.text)).toEqual(["after"]);
+		const calls = apiMock.mock.calls.filter(([, path]) => String(path).includes("/transcript?"));
+		expect(calls[calls.length - 1]?.[1]).toContain("from=0");
+		c.dispose();
+	});
+
+	it("keeps the newer leaf when tree requests complete out of order", async () => {
+		const c = makeController();
+		await rafTick();
+		const trees = [deferred<unknown>(), deferred<unknown>()];
+		let treeIndex = 0;
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/tree")
+			? trees[treeIndex++].promise : routeApi(method, path));
+		await c.fetchTranscript();
+		await c.fetchTranscript();
+		trees[1].resolve({ leafId: "new-leaf" });
+		await rafTick();
+		trees[0].resolve({ leafId: "old-leaf" });
+		await rafTick();
+		expect(c.state.leafId).toBe("new-leaf");
+		c.dispose();
+	});
+
+	it("uses an authoritative idle poll to retire a half answer after a missed terminal frame", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("retained answer"));
+		await rafTick();
+		composerState = { streaming: false };
+		await c.loadState();
+		await rafTick();
+		expect(c.state.working).toBe(false);
+		expect(c.state.live).toBeNull();
+		expect(c.state.interrupted?.text).toBe("retained answer");
+		c.dispose();
+	});
+
+	it("persists withdrawn queue text in its original session when stop finishes after detach", async () => {
+		const c = makeController();
+		await rafTick();
+		const abort = deferred<unknown>();
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/abort") ? abort.promise : routeApi(method, path));
+		const stopping = c.stop();
+		c.dispose();
+		saveUnsent(ID, "saved original draft");
+		abort.resolve({ restoredTexts: ["withdrawn queue"] });
+		await stopping;
+		expect(loadUnsent(ID)).toBe("saved original draft\n\nwithdrawn queue");
+		expect(new ChatController(ID).initialText).toBe("saved original draft\n\nwithdrawn queue");
+	});
+
+	it("does not navigate away from a different page when an old slash response creates a session", async () => {
+		const c = makeController();
+		await rafTick();
+		const push = vi.spyOn(nav, "push").mockImplementation(() => {});
+		const replace = vi.spyOn(nav, "replace").mockImplementation(() => {});
+		const slash = deferred<unknown>();
+		apiMock.mockImplementation((method: string, path: string) => path.endsWith("/slash") ? slash.promise : routeApi(method, path));
+		const command = c.runCommand("new", "");
+		c.dispose();
+		slash.resolve({ sessionId: "new-session" });
+		await command;
+		expect(push).not.toHaveBeenCalled();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it("honors steer immediately after agent_start before the animation-frame render", async () => {
+		const c = makeController();
+		await rafTick();
+		rpc({ type: "agent_start" });
+		await c.send("interrupt", "steer");
+		const request = apiMock.mock.calls.find(([, path]) => String(path).endsWith("/prompt-ex"));
+		expect(request?.[2]).toMatchObject({ text: "interrupt", streamingBehavior: "steer" });
+		c.dispose();
+	});
+
+	it("keeps an images-only optimistic preview valid until its persisted row arrives", async () => {
+		const revoke = vi.fn();
+		const original = URL.revokeObjectURL;
+		URL.revokeObjectURL = revoke;
+		const c = makeController();
+		try {
+			await rafTick();
+			c.store.setState({ atts: [{ id: 1, name: "photo.png", isImage: true, status: "ok", path: "/tmp/photo.png", url: "blob:photo" }] });
+			await c.send("", "followUp");
+			expect(c.state.optimistic[0]?.imageUrls).toEqual(["blob:photo"]);
+			expect(revoke).not.toHaveBeenCalledWith("blob:photo");
+			transcriptPages = [{ items: [{ id: "image-user", kind: "user", text: "[Image #1: /tmp/photo.png]" }], nextOffset: 100 }];
+			await c.fetchTranscript();
+			expect(c.state.optimistic).toEqual([]);
+			expect(revoke).toHaveBeenCalledWith("blob:photo");
+		} finally {
+			c.dispose();
+			URL.revokeObjectURL = original;
+		}
+	});
+
+	it("retains an interrupted suffix until a resumed live row actually carries all of it", async () => {
+		saveLiveMain(ID, { text: "answer with its retained suffix", thinking: "", tools: [], at: Date.now() });
+		composerState = { streaming: false };
+		const c = makeController();
+		await rafTick();
+		rpc(textFrame("answer"));
+		await rafTick();
+		expect(c.state.interrupted?.text).toBe("answer with its retained suffix");
+		rpc(textFrame("answer with its retained suffix and continuation"));
+		await rafTick();
+		expect(c.state.interrupted).toBeNull();
+		c.dispose();
+	});
+
+	it("flushes the latest update immediately when a previously queued animation frame becomes hidden", async () => {
+		const hidden = Object.getOwnPropertyDescriptor(document, "hidden");
+		let background = false;
+		Object.defineProperty(document, "hidden", { configurable: true, get: () => background });
+		const c = makeController();
+		try {
+			await rafTick();
+			rpc(textFrame("before background"));
+			background = true;
+			rpc(textFrame("latest background update"));
+			expect(c.state.live?.text).toBe("latest background update");
+			expect(loadLiveEntry(ID)?.main?.text).toBe("latest background update");
+		} finally {
+			c.dispose();
+			if (hidden) Object.defineProperty(document, "hidden", hidden);
+			else Reflect.deleteProperty(document, "hidden");
+		}
 	});
 });

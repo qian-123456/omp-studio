@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand";
+import type { ImageAttachment } from "../../lib/contracts";
 import { useUi } from "../../stores/ui";
 import { holdTranscript } from "../../stores/live";
 
@@ -120,13 +121,15 @@ export interface SideChatViewState {
 	usedAt: Record<string, number>;
 	/** First message of a blank tab, shown as a pending bubble until it is bound (not persisted). */
 	pending: Record<string, string>;
+	/** Attachment snapshot belonging to the pending first message, not the next draft. */
+	pendingAttachments: Record<string, ImageAttachment[]>;
 	/** Show tab `id` (opening it); `null` clears the active tab. */
 	setOpenChild(parentId: string, id: string | null): void;
 	/** Open a new blank tab, activate it, and return its id. */
 	openBlankTab(parentId: string): string;
 	/** The blank tab got its session: swap the id in place, keeping it active if it was. */
 	bindTab(parentId: string, blankId: string, sessionId: string): void;
-	setPending(blankId: string, text: string | null): void;
+	setPending(blankId: string, text: string | null, images?: ImageAttachment[]): void;
 	/** Close one tab (the conversation itself is kept). Closing the last one closes the panel group. */
 	closeTab(parentId: string, id: string): void;
 	/** Drop view memory for removed sessions (as parent or as child tab). */
@@ -209,6 +212,7 @@ function persist(
 export const useSideChatView = create<SideChatViewState>((set) => ({
 	...initialState(),
 	pending: {},
+	pendingAttachments: {},
 	pruneSessions: (ids) =>
 		set((s) => {
 			const gone = new Set(ids);
@@ -254,18 +258,26 @@ export const useSideChatView = create<SideChatViewState>((set) => ({
 	},
 	bindTab: (parentId, blankId, sessionId) =>
 		set((s) => {
+			// A completed send must not reopen a tab the user closed while waiting.
+			if (!s.openTabs[parentId]?.includes(blankId)) return s;
 			const openChild = { ...s.openChild };
 			const openTabs = { ...s.openTabs };
 			openTabs[parentId] = replaceTab(openTabs[parentId] ?? [], blankId, sessionId);
 			if (openChild[parentId] === blankId) openChild[parentId] = sessionId;
 			return persist({ openChild, openTabs, usedAt: s.usedAt }, parentId);
 		}),
-	setPending: (blankId, text) =>
+	setPending: (blankId, text, images = []) =>
 		set((s) => {
 			const pending = { ...s.pending };
-			if (text === null) delete pending[blankId];
-			else pending[blankId] = text;
-			return { pending };
+			const pendingAttachments = { ...s.pendingAttachments };
+			if (text === null) {
+				delete pending[blankId];
+				delete pendingAttachments[blankId];
+			} else {
+				pending[blankId] = text;
+				pendingAttachments[blankId] = images;
+			}
+			return { pending, pendingAttachments };
 		}),
 	closeTab: (parentId, id) => {
 		let emptied = false;

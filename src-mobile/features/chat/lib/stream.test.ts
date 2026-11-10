@@ -31,6 +31,14 @@ describe("reduceFrame", () => {
 		expect(e.state.working).toBe(true);
 	});
 
+	it("takes the final assistant snapshot even when it differs from the last update", () => {
+		const b = reduceFrame(idle, msg("partial"));
+		const e = reduceFrame(b.state, { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "final" }] } });
+		expect(e.state.live?.text).toBe("final");
+		expect(e.state.live?.streaming).toBe(false);
+		expect(e.refetch).toBe(true);
+	});
+
 	it("terminal agent_end stops work, flags the turn end and hands back the dropped live row", () => {
 		const b = reduceFrame(idle, msg("answer"));
 		const e = reduceFrame(b.state, { type: "agent_end", isTerminal: true });
@@ -78,6 +86,19 @@ describe("pruneLive", () => {
 		expect(livePersisted(persisted, live)).toBe(true);
 		expect(livePersisted(persisted, reduceFrame(idle, msg("different")).state.live)).toBe(false);
 	});
+	it("does not let an earlier identical answer acknowledge a newer stream or retained segment", () => {
+		const oldTs = "2026-11-06T10:00:00.000Z";
+		const newTs = "2026-11-06T10:01:00.000Z";
+		const frame = { type: "message_update", message: { role: "assistant", timestamp: Date.parse(newTs), content: [{ type: "text", text: "same answer" }] } };
+		const live = reduceFrame(idle, frame).state.live;
+		const oldRows = normalizeTranscript([{ id: "old", kind: "assistant", text: "same answer", ts: oldTs }]);
+		expect(live?.ts).toBe(newTs);
+		expect(livePersisted(oldRows, live)).toBe(false);
+		expect(contentPersisted(oldRows, "same answer", "", newTs)).toBe(false);
+		const currentRows = normalizeTranscript([{ id: "new", kind: "assistant", text: "same answer", ts: newTs }]);
+		expect(livePersisted(currentRows, live)).toBe(true);
+		expect(contentPersisted(currentRows, "same answer", "", newTs)).toBe(true);
+	});
 	it("clears text and drops resolved tools, keeps unresolved ones", () => {
 		let s = reduceFrame(idle, msg("final answer")).state;
 		s = reduceFrame(s, { type: "tool_execution_start", toolCallId: "c1", toolName: "bash" }).state;
@@ -103,6 +124,8 @@ describe("contentPersisted / contentMatch", () => {
 		expect(contentPersisted(rows, "", "")).toBe(false);
 		expect(contentPersisted(rows, "不同内容", "")).toBe(false);
 		expect(contentPersisted(rows, "", "不存在")).toBe(false);
+		expect(contentPersisted(rows, "final answer with an unseen suffix", "")).toBe(false);
+		expect(contentPersisted(rows, "", "chain of thought with an unseen suffix")).toBe(false);
 	});
 
 	it("dedups a retained segment against any recent assistant row, not only the tail", () => {
@@ -112,6 +135,12 @@ describe("contentPersisted / contentMatch", () => {
 		]);
 		expect(contentPersisted(items, "第一段", "")).toBe(true);
 		expect(contentPersisted(items, "第三段", "")).toBe(false);
+	});
+
+	it("deduplicates earlier retained segments after a long turn persists in one page", () => {
+		const items = normalizeTranscript(Array.from({ length: 40 }, (_, index) => ({ id: `a${index}`, kind: "assistant", text: `segment ${index}` })));
+		expect(contentPersisted(items, "segment 0", "")).toBe(true);
+		expect(contentPersisted(items, "segment 39", "")).toBe(true);
 	});
 
 	it("contentMatch is a two-way prefix containment on trimmed text", () => {

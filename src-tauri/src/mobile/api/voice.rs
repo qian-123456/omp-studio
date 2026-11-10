@@ -21,7 +21,7 @@ pub const MAX_AUDIO_SIZE: usize = 25 * 1024 * 1024;
 /// Timeout for speech-to-text API calls: 60s.
 pub const STT_TIMEOUT: Duration = Duration::from_secs(60);
 
-type VoiceResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
+pub type VoiceResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
 pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
     Router::new().route(
@@ -30,10 +30,11 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
     )
 }
 
-struct AudioPayload {
-    bytes: Bytes,
-    filename: String,
-    content_type: String,
+#[derive(Debug)]
+pub struct AudioPayload {
+    pub(crate) bytes: Bytes,
+    pub(crate) filename: String,
+    pub(crate) content_type: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -63,13 +64,11 @@ async fn extract_multipart(mp: &mut Multipart) -> Result<AudioPayload, (StatusCo
     let mut candidate_filename: Option<String> = None;
     let mut candidate_ct: Option<String> = None;
 
-    while let Ok(Some(field)) = mp.next_field().await {
+    while let Some(field) = mp.next_field().await.map_err(multipart_error)? {
         let field_name = field.name().unwrap_or("").to_string();
         let fname = field.file_name().map(str::to_string);
         let ftype = field.content_type().map(|c| c.to_string());
-        let Ok(data) = field.bytes().await else {
-            continue;
-        };
+        let data = field.bytes().await.map_err(multipart_error)?;
 
         if data.is_empty() {
             continue;
@@ -92,12 +91,29 @@ async fn extract_multipart(mp: &mut Multipart) -> Result<AudioPayload, (StatusCo
 
     let filename = candidate_filename.unwrap_or_else(|| "audio.webm".to_string());
     let content_type = candidate_ct.unwrap_or_else(|| mime_from_filename(&filename).to_string());
+    validate_audio(&bytes, &content_type)?;
 
     Ok(AudioPayload {
         bytes,
         filename,
         content_type,
     })
+}
+
+fn multipart_error(error: axum::extract::multipart::MultipartError) -> (StatusCode, Json<Value>) {
+    if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        structured_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            "音频文件大小超出 25MB 限制",
+        )
+    } else {
+        structured_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_multipart",
+            format!("无法解析 multipart 表单: {error}"),
+        )
+    }
 }
 
 fn extract_raw(
@@ -108,8 +124,12 @@ fn extract_raw(
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
+    validate_audio(&body, ct)?;
 
-    let (filename, content_type) = if !ct.is_empty() && ct != "application/octet-stream" {
+    let generic_type = ct.split(';').next().unwrap_or("").trim();
+    let (filename, content_type) = if !generic_type.is_empty()
+        && !generic_type.eq_ignore_ascii_case("application/octet-stream")
+    {
         let ext = ext_from_mime(ct);
         (format!("audio.{ext}"), ct.to_string())
     } else {
@@ -123,6 +143,37 @@ fn extract_raw(
         filename,
         content_type,
     })
+}
+
+fn validate_audio(bytes: &[u8], content_type: &str) -> Result<(), (StatusCode, Json<Value>)> {
+    if bytes.is_empty() {
+        return Err(structured_error(
+            StatusCode::BAD_REQUEST,
+            "empty_audio",
+            "音频数据为空",
+        ));
+    }
+    if bytes.len() > MAX_AUDIO_SIZE {
+        return Err(structured_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            "音频文件大小超出 25MB 限制",
+        ));
+    }
+    let mime = content_type.split(';').next().unwrap_or("").trim();
+    if mime.eq_ignore_ascii_case("application/json")
+        || mime.eq_ignore_ascii_case("text/json")
+        || mime
+            .rsplit_once('+')
+            .is_some_and(|(_, suffix)| suffix.eq_ignore_ascii_case("json"))
+    {
+        return Err(structured_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_audio_type",
+            "请求内容必须为音频数据",
+        ));
+    }
+    Ok(())
 }
 
 fn ext_from_mime(mime: &str) -> &'static str {
@@ -383,7 +434,7 @@ fn sanitize_stt_url(base_url: &str) -> String {
     }
 }
 
-async fn transcribe<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>, req: Request) -> VoiceResult {
+async fn transcribe<B: Backend>(State(ctx): State<Arc<Ctx<B>>>, req: Request) -> VoiceResult {
     let (parts, body) = req.into_parts();
     let ct = parts
         .headers
@@ -411,7 +462,7 @@ async fn transcribe<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>, req: Request) -
         })?;
         extract_raw(&parts.headers, bytes)?
     };
-    transcribe_audio(audio).await
+    ctx.backend.transcribe_audio(audio).await
 }
 
 #[tauri::command]
@@ -439,22 +490,8 @@ pub async fn voice_transcribe(request: tauri::ipc::Request<'_>) -> Result<String
     Ok(result["text"].as_str().unwrap_or("").to_string())
 }
 
-async fn transcribe_audio(audio: AudioPayload) -> VoiceResult {
-    if audio.bytes.is_empty() {
-        return Err(structured_error(
-            StatusCode::BAD_REQUEST,
-            "empty_audio",
-            "音频数据为空",
-        ));
-    }
-
-    if audio.bytes.len() > MAX_AUDIO_SIZE {
-        return Err(structured_error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "payload_too_large",
-            "音频文件大小超出 25MB 限制",
-        ));
-    }
+pub(crate) async fn transcribe_audio(audio: AudioPayload) -> VoiceResult {
+    validate_audio(&audio.bytes, &audio.content_type)?;
 
     let target = resolve_dictation_role().ok_or_else(|| {
         structured_error(
@@ -465,19 +502,6 @@ async fn transcribe_audio(audio: AudioPayload) -> VoiceResult {
     })?;
 
     let (base_url, api_key) = resolve_provider_credentials(&target.provider);
-    let url = sanitize_stt_url(&base_url);
-
-    let part_file = reqwest::multipart::Part::bytes(audio.bytes.to_vec())
-        .file_name(audio.filename.clone())
-        .mime_str(&audio.content_type)
-        .unwrap_or_else(|_| {
-            reqwest::multipart::Part::bytes(audio.bytes.to_vec()).file_name(audio.filename)
-        });
-
-    let form = reqwest::multipart::Form::new()
-        .part("file", part_file)
-        .text("model", target.model.clone());
-
     let client = reqwest::Client::builder()
         .timeout(STT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
@@ -489,9 +513,34 @@ async fn transcribe_audio(audio: AudioPayload) -> VoiceResult {
                 format!("创建 HTTP 客户端失败: {e}"),
             )
         })?;
+    transcribe_with_provider(audio, target, &base_url, api_key.as_deref(), &client).await
+}
+
+/// Explicit configuration keeps transport tests offline and out of credential resolution.
+async fn transcribe_with_provider(
+    audio: AudioPayload,
+    target: ModelRoleTarget,
+    base_url: &str,
+    api_key: Option<&str>,
+    client: &reqwest::Client,
+) -> VoiceResult {
+    let url = sanitize_stt_url(base_url);
+
+    let audio_len = audio.bytes.len() as u64;
+    let part_file = reqwest::multipart::Part::stream_with_length(audio.bytes.clone(), audio_len)
+        .file_name(audio.filename.clone())
+        .mime_str(&audio.content_type)
+        .unwrap_or_else(|_| {
+            reqwest::multipart::Part::stream_with_length(audio.bytes, audio_len)
+                .file_name(audio.filename)
+        });
+
+    let form = reqwest::multipart::Form::new()
+        .part("file", part_file)
+        .text("model", target.model);
 
     let mut req = client.post(&url).multipart(form);
-    if let Some(k) = &api_key {
+    if let Some(k) = api_key {
         req = req.bearer_auth(k);
     }
 
@@ -645,6 +694,187 @@ modelRoles:
         assert_eq!(
             sanitize_stt_url("https://custom.endpoint/audio/transcriptions"),
             "https://custom.endpoint/audio/transcriptions"
+        );
+    }
+
+    #[derive(Debug)]
+    struct CapturedUpload {
+        authorization: String,
+        content_length: usize,
+        wire_length: usize,
+        fields: Vec<(String, Option<String>, Option<String>, Bytes)>,
+    }
+
+    async fn transport_roundtrip(
+        status: StatusCode,
+        response: &'static str,
+    ) -> (VoiceResult, CapturedUpload) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (capture_tx, capture_rx) = tokio::sync::oneshot::channel();
+        let capture_tx = Arc::new(tokio::sync::Mutex::new(Some(capture_tx)));
+        let app = Router::new().route(
+            "/audio/transcriptions",
+            post(move |req: Request| {
+                let capture_tx = capture_tx.clone();
+                async move {
+                    let (parts, body) = req.into_parts();
+                    let bytes = to_bytes(body, MAX_AUDIO_SIZE).await.unwrap();
+                    let wire_length = bytes.len();
+                    let content_length = parts.headers[header::CONTENT_LENGTH]
+                        .to_str()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let authorization = parts.headers[header::AUTHORIZATION]
+                        .to_str()
+                        .unwrap()
+                        .to_string();
+                    assert!(!parts.headers.contains_key(header::TRANSFER_ENCODING));
+                    let mut multipart = Multipart::from_request(
+                        Request::from_parts(parts, axum::body::Body::from(bytes)),
+                        &(),
+                    )
+                    .await
+                    .unwrap();
+                    let mut fields = Vec::new();
+                    while let Some(field) = multipart.next_field().await.unwrap() {
+                        let name = field.name().unwrap().to_string();
+                        let filename = field.file_name().map(str::to_string);
+                        let content_type = field.content_type().map(str::to_string);
+                        fields.push((name, filename, content_type, field.bytes().await.unwrap()));
+                    }
+                    let captured = CapturedUpload {
+                        authorization,
+                        content_length,
+                        wire_length,
+                        fields,
+                    };
+                    capture_tx
+                        .lock()
+                        .await
+                        .take()
+                        .unwrap()
+                        .send(captured)
+                        .unwrap();
+                    (
+                        status,
+                        [(header::CONTENT_TYPE, "application/json")],
+                        response,
+                    )
+                }
+            }),
+        );
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    stop_rx.await.ok();
+                })
+                .await
+                .unwrap();
+        });
+        // No environment proxy, redirects, resolver or real credentials in this transport seam.
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let result = transcribe_with_provider(
+            AudioPayload {
+                bytes: Bytes::from_static(b"OggS\x00\x02voice"),
+                filename: "recording.ogg".to_string(),
+                content_type: "audio/ogg;codecs=opus".to_string(),
+            },
+            ModelRoleTarget {
+                provider: "offline-fixture".to_string(),
+                model: "fixture-stt".to_string(),
+            },
+            &format!("http://{address}"),
+            Some("fixture-key-not-a-secret"),
+            &client,
+        )
+        .await;
+        drop(client);
+        stop_tx.send(()).unwrap();
+        server.await.unwrap();
+        (result, capture_rx.await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn voice_transport_serializes_audio_and_returns_provider_text() {
+        let (result, captured) =
+            transport_roundtrip(StatusCode::OK, r#"{"text":"离线转写"}"#).await;
+        assert_eq!(result.unwrap().0, json!({"text": "离线转写"}));
+        assert_eq!(
+            captured.authorization,
+            ["Bearer", "fixture-key-not-a-secret"].join(" ")
+        );
+        assert_eq!(captured.content_length, captured.wire_length);
+        assert!(captured.content_length > b"OggS\x00\x02voice".len());
+        assert_eq!(captured.fields.len(), 2);
+        assert_eq!(captured.fields[0].0, "file");
+        assert_eq!(captured.fields[0].1.as_deref(), Some("recording.ogg"));
+        assert_eq!(
+            captured.fields[0]
+                .2
+                .as_deref()
+                .unwrap()
+                .split(';')
+                .map(str::trim)
+                .collect::<Vec<_>>(),
+            ["audio/ogg", "codecs=opus"],
+        );
+        assert_eq!(captured.fields[0].3.as_ref(), b"OggS\x00\x02voice");
+        assert_eq!(captured.fields[0].3.len(), b"OggS\x00\x02voice".len());
+        assert_eq!(captured.fields[1].0, "model");
+        assert_eq!(captured.fields[1].3.as_ref(), b"fixture-stt");
+    }
+
+    #[tokio::test]
+    async fn voice_transport_maps_provider_errors_without_exposing_response_body() {
+        for (status, detail) in [
+            (
+                StatusCode::UNAUTHORIZED,
+                "供应商认证失败：API 密钥无效或未授权",
+            ),
+            (
+                StatusCode::FORBIDDEN,
+                "供应商认证失败：API 密钥无效或未授权",
+            ),
+            (
+                StatusCode::NOT_FOUND,
+                "转写接口不存在：请确认供应商支持 Whisper 转写接口",
+            ),
+            (StatusCode::PAYLOAD_TOO_LARGE, "文件大小超出供应商限制"),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                "供应商调用额度耗尽或请求过于频繁",
+            ),
+            (StatusCode::INTERNAL_SERVER_ERROR, "HTTP 500"),
+        ] {
+            let (result, _) =
+                transport_roundtrip(status, r#"{"error":"do-not-display-provider-body"}"#).await;
+            let (actual_status, Json(body)) = result.unwrap_err();
+            assert_eq!(actual_status, StatusCode::BAD_GATEWAY);
+            assert_eq!(
+                body,
+                json!({"error": {
+                    "code": "transcription_failed",
+                    "message": format!("转写失败 ({detail})"),
+                }})
+            );
+        }
+        let (result, _) = transport_roundtrip(StatusCode::OK, "not-json").await;
+        let (status, Json(body)) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            body,
+            json!({"error": {
+                "code": "invalid_response",
+                "message": "无法解析转写服务返回的 JSON 数据",
+            }})
         );
     }
 }

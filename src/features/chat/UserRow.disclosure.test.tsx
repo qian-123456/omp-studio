@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TranscriptItem } from "../../lib/contracts";
+import type { PathCheck, TranscriptItem } from "../../lib/contracts";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
@@ -10,10 +10,11 @@ vi.mock("./imageTokens", async (orig) => ({
 	getImageTokenPalette: () => ({ hex: "#888" }),
 }));
 vi.mock("../../lib/ipc", () => ({
-	validatePath: vi.fn(),
+	validatePath: vi.fn(async (): Promise<PathCheck> => ({ exists: true, isDir: false, size: 2048 })),
 	rpcSend: vi.fn(async (_sessionId: string, command: { type: string }) =>
 		command.type === "get_entries" ? { data: { entries: [], leafId: null } } : {}),
 	privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "ok", nativeError: null })),
+	imageContentsFromPaths: vi.fn(async () => [{ type: "image", mimeType: "image/png", data: "fixture-image-bytes" }]),
 	treeNavigate: vi.fn(async () => ({ cancelled: false, editorText: "" })),
 	getTranscript: vi.fn(async () => ({ sessionId: "s1", items: [], nextOffset: 0, reset: true, tailId: null })),
 }));
@@ -29,19 +30,31 @@ vi.mock("../privacy/SecretChip", async (orig) => ({
 	PrivacyText: ({ text }: { text: string }) => <>{text}</>,
 }));
 vi.mock("../../lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
+vi.mock("../../lib/dialogs", async (orig) => ({
+	...(await orig<Record<string, unknown>>()),
+	confirmDialog: vi.fn(async () => true),
+}));
 
 import { UserRow } from "./MessageList";
-import { rpcSend, treeNavigate } from "../../lib/ipc";
+import { imageContentsFromPaths, rpcSend, treeNavigate } from "../../lib/ipc";
 import { ensureLive } from "../../lib/ensureLive";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useTree } from "../../stores/tree";
 import { useTreeEditPending } from "./treeNav";
+import { clearEditDraft } from "./editDrafts";
 
 let heights = { scroll: 40, client: 40 };
 
 beforeEach(() => {
+	vi.clearAllMocks();
+	useLive.setState({ sessions: { s1: { ...emptySessionLive(), alive: true } } });
+	useSessions.setState({ sessions: {} });
+	useTree.setState({ leaf: {}, resend: {} });
+	useTreeEditPending.setState({ entries: {} });
+	useComposer.setState({ drafts: {}, images: {}, files: {}, annotations: {} });
+	clearEditDraft("u1");
 	heights = { scroll: 40, client: 40 };
 	vi.stubGlobal(
 		"ResizeObserver",
@@ -170,5 +183,80 @@ describe("UserRow cold message edit", () => {
 		expect(screen.queryByRole("status")).toBeNull();
 		expect(screen.queryByRole("textbox")).toBeNull();
 		expect(rpcSend).not.toHaveBeenCalledWith("s1", expect.objectContaining({ type: "prompt" }));
+	});
+});
+
+describe("UserRow original attachment replay", () => {
+	const image = { id: "blob-1", path: "/blobs/one.png", marker: "[Image #1]", width: 640, height: 480 };
+	const cases = [
+		{ name: "image only", text: "[Image #1]" },
+		{ name: "image and file without prose", text: "[Image #1] [File #1: /files/report.pdf]" },
+	] as const;
+
+	it.each(cases)("resends $name through the real image conversion and prompt wire path", async ({ text }) => {
+		render(<UserRow sessionId="s1" item={{ ...userItem(text), images: [image] }} />);
+		fireEvent.click(screen.getByRole("button", { name: /重新发送此消息|Resend this message/ }));
+		await waitFor(() => expect(rpcSend).toHaveBeenCalledWith("s1", {
+			type: "prompt", message: text,
+			images: [{ type: "image", mimeType: "image/png", data: "fixture-image-bytes" }],
+		}));
+		expect(imageContentsFromPaths).toHaveBeenCalledWith(["/blobs/one.png"]);
+		expect(useLive.getState().sessions.s1.pendingUserEchoes[0].images).toEqual([image]);
+	});
+
+	it.each(cases)("wakes a suspended session and preserves $name in the shared composer", async ({ text }) => {
+		useLive.setState({ sessions: { s1: emptySessionLive() } });
+		render(<UserRow sessionId="s1" item={{ ...userItem(text), images: [image] }} />);
+		fireEvent.click(screen.getByRole("button", { name: /编辑并重新发送|Edit and resend/ }));
+		const hasFile = text.includes("[File");
+		await waitFor(() => expect(useComposer.getState().drafts.s1).toBe(hasFile ? "🖼️#1 📎#1" : "🖼️#1"));
+		expect(ensureLive).toHaveBeenCalledWith("s1");
+		expect(treeNavigate).toHaveBeenCalledWith("s1", "u1");
+		expect(useComposer.getState().images.s1).toEqual([{ id: image.id, path: image.path, width: 640, height: 480 }]);
+		expect(useComposer.getState().files.s1).toEqual(hasFile ? [{ id: "replay-file-1", path: "/files/report.pdf" }] : []);
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(useTreeEditPending.getState().entries.s1).toBeUndefined();
+	});
+
+	it.each(cases)("restores $name into real composer stores after live tree edit", async ({ text }) => {
+		render(<UserRow sessionId="s1" item={{ ...userItem(text), images: [image] }} />);
+		fireEvent.click(screen.getByRole("button", { name: /编辑并重新发送|Edit and resend/ }));
+		const hasFile = text.includes("[File");
+		await waitFor(() => expect(useComposer.getState().drafts.s1).toBe(hasFile ? "🖼️#1 📎#1" : "🖼️#1"));
+		expect(treeNavigate).toHaveBeenCalledWith("s1", "u1");
+		expect(useComposer.getState().images.s1).toEqual([{ id: image.id, path: image.path, width: 640, height: 480 }]);
+		expect(useComposer.getState().files.s1).toEqual(hasFile ? [{ id: "replay-file-1", path: "/files/report.pdf" }] : []);
+		expect(useTree.getState().resend.s1).toEqual({ entryId: "u1", prevLeafId: null });
+		expect(rpcSend).not.toHaveBeenCalledWith("s1", expect.objectContaining({ type: "prompt" }));
+	});
+
+	it("keeps an unavailable historical image visible without fabricating a path or bytes on replay", async () => {
+		const missing = { id: "missing", path: null, marker: "[Image #1]" };
+		const { container } = render(<UserRow sessionId="s1" item={{ ...userItem("[Image #1]"), images: [missing] }} />);
+		expect(screen.getByText(/（附件）|\(Attachment\)/)).toBeTruthy();
+		expect(container.querySelector("img")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /重新发送此消息|Resend this message/ }));
+		await waitFor(() => expect(rpcSend).toHaveBeenCalledWith("s1", { type: "prompt", message: "[Image #1]" }));
+		expect(imageContentsFromPaths).not.toHaveBeenCalled();
+		expect(useLive.getState().sessions.s1.pendingUserEchoes[0].images).toEqual([missing]);
+	});
+
+	it("resends a structured image-only message even when its original text is empty", async () => {
+		render(<UserRow sessionId="s1" item={{ ...userItem(""), images: [image] }} />);
+		fireEvent.click(screen.getByRole("button", { name: /重新发送此消息|Resend this message/ }));
+		await waitFor(() => expect(rpcSend).toHaveBeenCalledWith("s1", {
+			type: "prompt", message: "[Image #1]",
+			images: [{ type: "image", mimeType: "image/png", data: "fixture-image-bytes" }],
+		}));
+		expect(imageContentsFromPaths).toHaveBeenCalledWith(["/blobs/one.png"]);
+	});
+
+	it("does not bind an unavailable image slot to a different real attachment during live edit", async () => {
+		const missing = { id: "missing", path: null, marker: "[Image #1]" };
+		const available = { ...image, marker: "[Image #2]" };
+		render(<UserRow sessionId="s1" item={{ ...userItem("[Image #1] [Image #2]"), images: [missing, available] }} />);
+		fireEvent.click(screen.getByRole("button", { name: /编辑并重新发送|Edit and resend/ }));
+		await waitFor(() => expect(useComposer.getState().drafts.s1).toMatch(/^(?:（附件）|\(Attachment\)) 🖼️#1$/));
+		expect(useComposer.getState().images.s1).toEqual([{ id: image.id, path: image.path, width: 640, height: 480 }]);
 	});
 });

@@ -145,19 +145,26 @@ export function newLiveItem(now: string = new Date().toISOString()): Item {
 /** Text/thinking of a streamed assistant `message` frame. */
 export function extractLive(message: NonNullable<RpcFrame["message"]>): { text: string; thinking: string } {
 	const blocks = Array.isArray(message.content) ? (message.content as unknown[]) : [];
-	let text = "";
-	let thinking = "";
+	const texts: string[] = [];
+	const thoughts: string[] = [];
 	for (const b of blocks) {
-		const block = b as { type?: string; text?: unknown; thinking?: unknown } | null;
+		const block = b as { type?: string; text?: unknown; thinking?: unknown; narration?: unknown } | null;
 		if (!block) continue;
-		if (block.type === "text" && typeof block.text === "string") text += block.text;
+		if (block.type === "text" && typeof block.text === "string" && block.text.trim()) texts.push(block.text);
 		else if (block.type === "thinking" || block.type === "thought") {
 			const t = block.thinking != null ? block.thinking : block.text;
-			if (typeof t === "string") thinking += t;
+			if (typeof t === "string" && t.trim()) (block.narration === true ? texts : thoughts).push(t);
 		}
 	}
-	if (!blocks.length && typeof message.text === "string") text = message.text;
-	return { text, thinking };
+	if (!blocks.length && typeof message.text === "string") texts.push(message.text);
+	if (!texts.length && "errorMessage" in message && typeof message.errorMessage === "string") texts.push(message.errorMessage);
+	return { text: texts.join("\n\n"), thinking: thoughts.join("\n\n") };
+}
+
+function messageTimestamp(message: NonNullable<RpcFrame["message"]>, fallback: string | null): string | null {
+	if (!("timestamp" in message) || typeof message.timestamp !== "number") return fallback;
+	const date = new Date(message.timestamp);
+	return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
 }
 
 export interface LiveUpdate {
@@ -197,11 +204,18 @@ export function applyLiveFrame(live: Item | null, frame: RpcFrame, now?: string)
 			if (!m || (m.role && m.role !== "assistant")) return keep(null);
 			const { text, thinking } = extractLive(m);
 			const base = live ?? newLiveItem(now);
-			if (base === live && base.text === text && base.thinking === thinking) return keep(true);
-			return { live: { ...base, text, thinking }, streaming: true, refetch: false, handled: true };
+			const ts = messageTimestamp(m, base.ts);
+			if (base === live && base.text === text && base.thinking === thinking && base.ts === ts) return keep(true);
+			return { live: { ...base, text, thinking, ts }, streaming: true, refetch: false, handled: true };
 		}
-		case "message_end":
-			return keep(null, true);
+		case "message_end": {
+			const m = frame.message;
+			if (!m || (m.role && m.role !== "assistant")) return keep(null, true);
+			// Finalization hooks may change the final message after its last streaming update.
+			const { text, thinking } = extractLive(m);
+			const base = live ?? newLiveItem(now);
+			return { live: { ...base, text, thinking, ts: messageTimestamp(m, base.ts), streaming: false }, streaming: null, refetch: true, handled: true };
+		}
 		case "tool_execution_start": {
 			const base = live ?? newLiveItem(now);
 			const tool: ToolItem = {
@@ -263,6 +277,8 @@ export function liveIsPersisted(items: readonly Item[], live: Item | null): bool
 	if (!live) return false;
 	const tail = items[items.length - 1];
 	if (!tail || tail.role !== "assistant") return false;
+	// A matching answer from an earlier request cannot acknowledge this stream.
+	if (tail.ts && live.ts && Date.parse(tail.ts) < Date.parse(live.ts)) return false;
 	const liveText = live.text.trim();
 	if (liveText) {
 		const tailText = tail.text.trim();

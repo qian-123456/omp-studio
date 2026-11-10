@@ -84,11 +84,13 @@ pub async fn rpc_start(
 
 /// `cwd`: optional override resume directory (repo main dir after the
 /// worktree was deleted); persisted as `session_meta.cwd_override`.
+/// `model`: explicit user-selected replacement for an unavailable saved model.
 #[tauri::command]
 pub async fn rpc_ensure_live(
     state: tauri::State<'_, AppState>,
     session_id: String,
     cwd: Option<String>,
+    model: Option<String>,
     diagnostic_operation_id: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
     observe_invoke(
@@ -96,7 +98,7 @@ pub async fn rpc_ensure_live(
         Some(&session_id),
         diagnostic_operation_id.as_deref(),
         false,
-        async { crate::rpc::ensure_live(&state, &session_id, cwd).await },
+        async { crate::rpc::ensure_live(&state, &session_id, cwd, model).await },
     )
     .await
 }

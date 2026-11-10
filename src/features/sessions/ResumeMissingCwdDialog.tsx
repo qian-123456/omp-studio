@@ -11,12 +11,11 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
-import { rejectResume, resolveResume } from "../../lib/ensureLive";
+import { rejectResume, resumeSession, RESUME_MISSING_CWD_MODAL } from "../../lib/ensureLive";
 import { isComposing } from "../../lib/hooks";
 import {
 	gitCreateWorktree,
 	gitListBranches,
-	rpcEnsureLive,
 } from "../../lib/ipc";
 import { useUi } from "../../stores/ui";
 import { useT } from "../../stores/language";
@@ -61,7 +60,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 
 	// An unmount for any reason (superseded modal, app teardown) rejects the
 	// pending ensureLive promise.
-	useEffect(() => () => rejectResume(sessionId), [sessionId]);
+	useEffect(() => () => rejectResume(sessionId, undefined, RESUME_MISSING_CWD_MODAL), [sessionId]);
 
 	useEffect(() => {
 		if (confirmBtnRef.current && !confirmBtnRef.current.disabled) {
@@ -108,8 +107,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 		setBusy(true);
 		setError(null);
 		try {
-			const info = await rpcEnsureLive(sessionId, repoRoot);
-			resolveResume(sessionId, info);
+			await resumeSession(sessionId, repoRoot);
 		} catch (err) {
 			setError(errMsg(err));
 			setBusy(false);
@@ -131,8 +129,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 			if (wt.path !== cwd.replace(/\/+$/, "")) {
 				throw new Error(t("sessions.worktreePathMismatch", { path: wt.path }));
 			}
-			const info = await rpcEnsureLive(sessionId);
-			resolveResume(sessionId, info);
+			await resumeSession(sessionId);
 		} catch (err) {
 			setError(errMsg(err));
 			setBusy(false);

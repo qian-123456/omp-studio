@@ -40,6 +40,15 @@ describe("mergePage", () => {
 		expect(b.changed).toBe(false);
 	});
 
+	it.each([false, true])("a replayed user id cannot acknowledge a later identical prompt (reset=%s)", (reset) => {
+		const first = mergePage(EMPTY_TRANSCRIPT, page([user("u1", "repeat")]));
+		const optimistic = [{ id: "new-send", text: "repeat", imageUrls: [] }];
+		const replayed = mergePage(first.state, page([user("u1", "repeat")], { reset }));
+		expect(reconcileOptimistic(optimistic, replayed.newUserTexts)).toEqual(optimistic);
+		const persisted = mergePage(replayed.state, page([user("u2", "repeat")]));
+		expect(reconcileOptimistic(optimistic, persisted.newUserTexts)).toEqual([]);
+	});
+
 	it("reset discards the buffer and stats", () => {
 		const a = mergePage(EMPTY_TRANSCRIPT, page([user("u1", "hi"), asst("a1", "yo")]));
 		const b = mergePage(a.state, page([user("u9", "new")], { reset: true, nextOffset: 10 }));

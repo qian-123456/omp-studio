@@ -81,56 +81,66 @@ export async function runChatBench(host: HTMLElement, opts: BenchOptions = {}): 
 	controller.store.setState({ loaded: true, blocks: buildBlocks(items, {}), transcript: { items, offset: 0, tailId: null, stats: {} } });
 
 	const root = createRoot(host);
-	const t0 = performance.now();
-	flushSync(() =>
-		root.render(
-			<ChatCtx.Provider value={{ controller, openActions: () => {}, openStat: () => {} }}>
-				<div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-					<MessageList sessionId="bench-session" />
-					<Composer sessionId="bench-session" />
-				</div>
-			</ChatCtx.Provider>,
-		),
-	);
-	const mountMs = performance.now() - t0;
-	await frame();
-
 	let stream: ReturnType<typeof setInterval> | undefined;
-	if (opts.streaming) {
-		let text = "";
-		controller.store.setState({ working: true });
-		stream = setInterval(() => {
-			text += "流式输出的一小段文字，";
-			const live: Item = { id: "__live", role: "assistant", kind: "assistant", text, thinking: "", tools: [], images: [], ts: null, streaming: true };
-			controller.store.setState({ live });
-		}, 16);
-	}
-
-	const input = host.querySelector<HTMLTextAreaElement>("textarea");
-	if (!input) throw new Error("composer textarea not found");
-	const samples: number[] = [];
-	if (opts.ime) input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-	for (let i = 0; i < keystrokes; i++) {
-		const start = performance.now();
-		input.value += i % 9 === 0 ? "字" : "a";
-		input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+	try {
+		const t0 = performance.now();
+		flushSync(() =>
+			root.render(
+				<ChatCtx.Provider value={{ controller, openActions: () => {}, openStat: () => {} }}>
+					<div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+						<MessageList sessionId="bench-session" />
+						<Composer sessionId="bench-session" />
+					</div>
+				</ChatCtx.Provider>,
+			),
+		);
+		const mountMs = performance.now() - t0;
 		await frame();
-		samples.push(performance.now() - start);
-		await new Promise((r) => setTimeout(r, 30));
+
+		if (opts.streaming) {
+			let text = "";
+			controller.store.setState({ working: true });
+			stream = setInterval(() => {
+				text += "流式输出的一小段文字，";
+				const live: Item = { id: "__live", role: "assistant", kind: "assistant", text, thinking: "", tools: [], images: [], ts: null, streaming: true };
+				controller.store.setState({ live });
+			}, 16);
+		}
+
+		const input = host.querySelector<HTMLTextAreaElement>("textarea");
+		if (!input) throw new Error("composer textarea not found");
+		const samples: number[] = [];
+		if (opts.ime) input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+		for (let i = 0; i < keystrokes; i++) {
+			const start = performance.now();
+			input.value += i % 9 === 0 ? "字" : "a";
+			input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+			await frame();
+			samples.push(performance.now() - start);
+			await new Promise((r) => setTimeout(r, 30));
+		}
+		if (opts.ime) {
+			input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+			await frame();
+		}
+		const sorted = [...samples].sort((a, b) => a - b);
+		return {
+			turns,
+			keystrokes,
+			streaming: !!opts.streaming,
+			ime: !!opts.ime,
+			p50: percentile(sorted, 50),
+			p95: percentile(sorted, 95),
+			max: sorted[sorted.length - 1] ?? 0,
+			mountMs,
+			samples,
+		};
+	} finally {
+		clearInterval(stream);
+		try {
+			root.unmount();
+		} finally {
+			controller.dispose();
+		}
 	}
-	if (opts.ime) input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
-	clearInterval(stream);
-	root.unmount();
-	const sorted = [...samples].sort((a, b) => a - b);
-	return {
-		turns,
-		keystrokes,
-		streaming: !!opts.streaming,
-		ime: !!opts.ime,
-		p50: percentile(sorted, 50),
-		p95: percentile(sorted, 95),
-		max: sorted[sorted.length - 1] ?? 0,
-		mountMs,
-		samples,
-	};
 }

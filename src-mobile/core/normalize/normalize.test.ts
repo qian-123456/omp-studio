@@ -82,6 +82,26 @@ describe("applyLiveFrame", () => {
 		// identical frame keeps the very same object (no wasted render)
 		expect(applyLiveFrame(u2.live, frame({ type: "message_update", message: { content: [{ type: "text", text: "Hello" }] } })).live).toBe(u2.live);
 	});
+	it("uses the transcript's text/thinking separators and narration classification", () => {
+		const message = { role: "assistant", content: [
+			{ type: "text", text: "first paragraph" },
+			{ type: "text", text: "second paragraph" },
+			{ type: "thinking", thinking: "visible narration", narration: true },
+			{ type: "thinking", thinking: "first thought" },
+			{ type: "thinking", thinking: "second thought" },
+		] };
+		const update = applyLiveFrame(null, { type: "message_update", message });
+		expect(update.live?.text).toBe("first paragraph\n\nsecond paragraph\n\nvisible narration");
+		expect(update.live?.thinking).toBe("first thought\n\nsecond thought");
+		const persisted = normalizeTranscript([t({ id: "a", kind: "assistant", text: "first paragraph\n\nsecond paragraph\n\nvisible narration", thinking: "first thought\n\nsecond thought" })]);
+		expect(liveIsPersisted(persisted, update.live)).toBe(true);
+	});
+	it("shows a final error message even when no text content was streamed", () => {
+		const message = { role: "assistant", content: [], errorMessage: "provider request failed" };
+		const ended = applyLiveFrame(null, { type: "message_end", message });
+		expect(ended.live?.text).toBe("provider request failed");
+		expect(ended.refetch).toBe(true);
+	});
 	it("ignores user-role message updates", () => {
 		const live = newLiveItem();
 		expect(applyLiveFrame(live, frame({ type: "message_update", message: { role: "user", content: [] } })).live).toBe(live);

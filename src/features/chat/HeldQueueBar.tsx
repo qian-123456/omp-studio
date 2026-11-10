@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Minus, Send, Trash2, X } fr
 import { useState } from "react";
 import { confirmDialog } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { useHeldItems, useHeldQueue } from "./heldQueue";
+import { hasPromptPayload, useHeldItems, useHeldQueue } from "./heldQueue";
 import { useT } from "../../stores/language";
 import { drainNext, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
 export function HeldQueueBar({
@@ -28,6 +28,10 @@ export function HeldQueueBar({
 
 	const sendMerged = async () => {
 		if (streaming) return;
+		if (!items.some((item) => hasPromptPayload(item.text))) {
+			toast.error(t("chatView.pendingUi.inputCannotBeEmpty"));
+			return;
+		}
 		setSending(true);
 		try {
 			if (await drainNext(sessionId)) toast.success(t("chat.heldQueue.mergedSuccess"));
@@ -39,12 +43,14 @@ export function HeldQueueBar({
 	const sendOne = async (index: number) => {
 		if (streaming || sending) return;
 		const item = items[index];
-		if (!item || !item.text.trim()) return;
+		if (!item) return;
+		if (!hasPromptPayload(item.text)) {
+			toast.error(t("chatView.pendingUi.inputCannotBeEmpty"));
+			return;
+		}
 		setSending(true);
 		try {
-			await sendQueuedNow(sessionId, { ...item, text: item.text.trim() }, false);
-			// The shared sender retains failed/skipped items and removes successes by ID.
-			if (!(useHeldQueue.getState().queues[sessionId] ?? []).some((queued) => queued.id === item.id)) {
+			if (await sendQueuedNow(sessionId, item, false)) {
 				toast.success(t("chat.heldQueue.sentSuccess"));
 			}
 		} finally {
@@ -74,7 +80,9 @@ export function HeldQueueBar({
 			okLabel: t("common.delete"),
 		});
 		if (ok) {
-			remove(sessionId, index);
+			const indexNow = (useHeldQueue.getState().queues[sessionId] ?? []).findIndex((queued) => queued.id === item.id);
+			if (indexNow < 0) return;
+			remove(sessionId, indexNow);
 			toast.info(t("chat.heldQueue.deletedSuccess"));
 		}
 	};

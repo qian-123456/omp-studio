@@ -488,11 +488,13 @@ fn omp_terminal_guard(session_id: &str) -> Result<(), String> {
 /// persisted as `session_meta.cwd_override` and the catalog meta is recomputed.
 /// `cwd = None`: resume in the transcript/override cwd; when that directory no
 /// longer exists this fails with `CWD_MISSING:<cwd>` instead of spawning.
+/// `model`: only an explicit user choice; None preserves the saved model.
 /// Fails with `SESSION_HELD:<pid>` when another process holds the file.
 pub async fn ensure_live(
     state: &AppState,
     session_id: &str,
     cwd: Option<String>,
+    model: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
     let started = std::time::Instant::now();
     let mut reused = true;
@@ -542,16 +544,14 @@ pub async fn ensure_live(
                     .into_owned()
             }
         };
-        // Single-writer takeover: an external omp holding the file must exit (and
-        // flush its session_exit record) before our RPC child loads it.
-        if let Some(meta) = catalog::get(state, session_id).await {
-            terminate_session_holder(&meta).await;
-        }
+        // Ordinary resume never terminates an external writer. `start` refuses the
+        // held file with SESSION_HELD; only explicit `takeover_external` may stop it.
         let info = start(
             state,
             &StartOpts {
                 cwd,
                 resume_file: Some(file),
+                model,
                 ..Default::default()
             },
         )
@@ -581,15 +581,13 @@ pub async fn ensure_live(
     result
 }
 
-/// The omp `prompt` command: `images` are native `ImageContent` blocks
-/// (`{type:"image", data(base64), mimeType}`); `followUp` while a turn runs.
-pub(crate) fn prompt_command(text: &str, streaming: bool, images: &[Value]) -> Value {
-    let mut command = json!({"type": "prompt", "message": text});
+/// The omp `prompt` command: `images` are native `ImageContent` blocks.
+/// Always carry the busy-turn policy: a turn can start after the host's cached
+/// streaming check or while upstream prepares the prompt and its images.
+pub(crate) fn prompt_command(text: &str, images: Vec<Value>, behavior: Option<&str>) -> Value {
+    let mut command = json!({"type": "prompt", "message": text, "streamingBehavior": behavior.unwrap_or("followUp")});
     if !images.is_empty() {
-        command["images"] = Value::Array(images.to_vec());
-    }
-    if streaming {
-        command["streamingBehavior"] = json!("followUp");
+        command["images"] = Value::Array(images);
     }
     command
 }
@@ -624,10 +622,9 @@ pub async fn send_prompt_with_images(
     text: &str,
     images: &[Value],
 ) -> Result<(), String> {
-    let info = ensure_live(state, session_id, None).await?;
+    let info = ensure_live(state, session_id, None, None).await?;
     let handle = refresh_privacy(state, &info.session_id).await?;
-    let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
-    let command = prompt_command(text, streaming, images);
+    let command = prompt_command(text, images.to_vec(), None);
     handle.touch();
     process::send_command(&handle, command).await?;
     state.emit(AppEvent::PromptSent {
@@ -766,7 +763,7 @@ pub async fn takeover_external(
     if let Some(meta) = meta.as_ref() {
         terminate_session_holder(meta).await;
     }
-    ensure_live(state, session_id, None).await
+    ensure_live(state, session_id, None, None).await
 }
 
 async fn terminate_session_holder(meta: &SessionMeta) {

@@ -27,10 +27,14 @@ export function ThreadFindBar({ sessionId }: { sessionId: string }) {
 function Bar({ sessionId }: { sessionId: string }) {
 	const { t } = useT();
 	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY);
+	const awaitingFirstPrompt = useLive((s) => s.sessions[sessionId]?.sideChatInheritedIds !== undefined);
 	// The message list hides a side chat's inherited parent history; search must
 	// count the same visible items or it reports hits that can never be located.
 	const isSideChat = useSessions((s) => (s.sessions[sessionId]?.forkDepth ?? 0) > 0);
-	const items = useMemo(() => visibleFindItems(rawItems, isSideChat), [rawItems, isSideChat]);
+	const items = useMemo(
+		() => visibleFindItems(rawItems, isSideChat, awaitingFirstPrompt),
+		[rawItems, isSideChat, awaitingFirstPrompt],
+	);
 	const query = useThreadFind((s) => s.query);
 	const index = useThreadFind((s) => s.index);
 	const count = useThreadFind((s) => s.matches.length);

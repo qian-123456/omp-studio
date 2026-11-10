@@ -47,6 +47,11 @@ pub trait Backend: Send + Sync + 'static {
         &self,
         req: super::push::PushHttp,
     ) -> impl Future<Output = Result<u16, String>> + Send;
+    /// Transcribe validated audio; implementations explicitly own provider access.
+    fn transcribe_audio(
+        &self,
+        audio: super::api::voice::AudioPayload,
+    ) -> impl Future<Output = super::api::voice::VoiceResult> + Send;
     fn subscribe(&self) -> broadcast::Receiver<AppEvent>;
     /// Full app state for feature slices under `api/`. `None` in test mocks.
     fn app_state(&self) -> Option<&AppState> {
@@ -80,7 +85,7 @@ impl Backend for AppBackend {
         crate::rpc::send_prompt(&self.0, id, text).await
     }
     async fn resume(&self, id: &str) -> Result<serde_json::Value, String> {
-        let info = crate::rpc::ensure_live(&self.0, id, None).await?;
+        let info = crate::rpc::ensure_live(&self.0, id, None, None).await?;
         serde_json::to_value(info).map_err(|e| e.to_string())
     }
     async fn start_process(&self, opts: &StartOpts) -> Result<LiveSessionInfo, String> {
@@ -93,6 +98,12 @@ impl Backend for AppBackend {
     }
     async fn push_http(&self, req: super::push::PushHttp) -> Result<u16, String> {
         super::push::http_post(req).await
+    }
+    async fn transcribe_audio(
+        &self,
+        audio: super::api::voice::AudioPayload,
+    ) -> super::api::voice::VoiceResult {
+        super::api::voice::transcribe_audio(audio).await
     }
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.0.bus.subscribe()

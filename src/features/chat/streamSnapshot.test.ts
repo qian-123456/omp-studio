@@ -241,6 +241,23 @@ describe("snapshotInItems (dedup against the transcript)", () => {
 		} };
 		expect(snapshotInItems(snap, [item({ text: `${opening}The previous response ended here.` })], true)).toBe(false);
 	});
+
+	it.each([false, true])("a shorter persisted prefix cannot consume the retained suffix (active=%s)", (active) => {
+		const prefix = "The response opening is shared. ".repeat(4);
+		const snap = { answerText: `${prefix}Only the retained snapshot contains this ending.`, toolIds: ["tool-1"], streamingMessage: {
+			role: "assistant", content: [], timestamp: NOW - 1000, completedAt: NOW,
+		} };
+		const partial = item({ text: prefix, completedAt: NOW, toolCalls: [{ id: "tool-1", name: "read", args: {}, intent: null }] });
+		expect(snapshotInItems(snap, [partial], active)).toBe(false);
+		expect(snapshotInItems(snap, [{ ...partial, text: `${snap.answerText} Now complete.` }], active)).toBe(true);
+	});
+
+	it("an older equal answer does not consume a later interrupted reply", () => {
+		const text = "This exact response was repeated in a later turn.";
+		const snap = { answerText: text, toolIds: [], streamingMessage: { ...textMsg(text), timestamp: NOW } };
+		expect(snapshotInItems(snap, [item({ text, ts: new Date(NOW - 1000).toISOString() })])).toBe(false);
+		expect(snapshotInItems(snap, [item({ text, completedAt: NOW + 1000 })])).toBe(true);
+	});
 });
 
 describe("snapshotContinues / mergeSnapshotIntoLive (live reattach)", () => {

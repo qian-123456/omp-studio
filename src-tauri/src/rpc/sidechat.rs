@@ -477,7 +477,7 @@ mod tests {
         std::fs::write(&png, &bytes).unwrap();
         let blocks = rpc::image_blocks_from_paths(&[png.to_str().unwrap().to_string()]).unwrap();
         // This is exactly the frame `send_prompt_with_images` writes to omp.
-        let cmd = rpc::prompt_command("hello", false, &blocks);
+        let cmd = rpc::prompt_command("hello", blocks, None);
         assert_eq!(cmd["type"], "prompt");
         assert_eq!(cmd["images"][0]["type"], "image");
         assert_eq!(cmd["images"][0]["mimeType"], "image/png");
@@ -485,9 +485,11 @@ mod tests {
             .decode(cmd["images"][0]["data"].as_str().unwrap())
             .unwrap();
         assert_eq!(sent, bytes);
-        assert!(rpc::prompt_command("x", false, &[]).get("images").is_none());
+        assert!(rpc::prompt_command("x", Vec::new(), None)
+            .get("images")
+            .is_none());
         assert_eq!(
-            rpc::prompt_command("x", true, &[])["streamingBehavior"],
+            rpc::prompt_command("x", Vec::new(), None)["streamingBehavior"],
             "followUp"
         );
         let _ = std::fs::remove_dir_all(&dir);

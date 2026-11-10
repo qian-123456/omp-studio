@@ -64,13 +64,14 @@ export function QueuedBubbles({
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
 	const held = useHeldItems(sessionId);
 	const busy = useQueuedBusy((s) => s.busy);
+	const preparing = useQueuedBusy((s) => s.preparing[sessionId]);
 	const remove = useHeldQueue((s) => s.remove);
 	const queuedEchoes = useMemo(() => {
 		if (!ompQueue) return EMPTY_ECHOES;
 		const ids = queuedEchoIds({ pendingUserEchoes: echoes, ompQueue });
 		return echoes.filter((e) => ids.has(e.id));
 	}, [echoes, ompQueue]);
-	if (queuedEchoes.length === 0 && held.length === 0) return null;
+	if (queuedEchoes.length === 0 && held.length === 0 && !preparing?.length) return null;
 	return (
 		<div className={className}>
 			{queuedEchoes.map((e) => {
@@ -110,6 +111,9 @@ export function QueuedBubbles({
 					/>
 				);
 			})}
+			{preparing?.filter((item) => !held.some((current) => current.id === item.id)).map((item) => (
+				<QueuedBubble key={`preparing-${item.id}`} text={item.text} images={item.images} />
+			))}
 			{held.map((item, i) => (
 				<QueuedBubble
 					key={item.id}

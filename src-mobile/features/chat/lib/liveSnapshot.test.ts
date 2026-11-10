@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Unit tests for the half-answer mirror: roundtrip, slot moves, corruption and eviction. */
 import { beforeEach, describe, expect, it } from "vitest";
-import { LIVE_SNAPSHOT_KEY, clearLiveMain, clearLiveStale, loadLiveEntry, saveLiveMain, stashLiveStale } from "./liveSnapshot";
+import { LIVE_SNAPSHOT_KEY, clearLiveMain, clearLiveStale, loadLiveEntry, saveLiveMain, snapshotToItem, stashLiveStale } from "./liveSnapshot";
 
 /** Realistic timestamps: entries older than MAX_AGE are evicted on every write. */
 const body = (text: string, at = Date.now()) => ({ text, thinking: "", tools: [], at });
@@ -16,6 +16,14 @@ describe("liveSnapshot", () => {
 		saveLiveMain("s1", body("半句"));
 		expect(loadLiveEntry("s1")?.main?.text).toBe("半句");
 		expect(loadLiveEntry("s1")?.stale).toBeUndefined();
+	});
+
+	it("preserves the message timestamp across save and restore", () => {
+		const ts = "2026-11-06T10:00:00.000Z";
+		saveLiveMain("s1", { ...body("same answer"), ts });
+		const saved = loadLiveEntry("s1")?.main;
+		expect(saved?.ts).toBe(ts);
+		expect(snapshotToItem(saved!, false).ts).toBe(ts);
 	});
 
 	it("stashLiveStale moves the content out of the streaming slot; clearLiveStale drops the entry", () => {

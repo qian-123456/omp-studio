@@ -313,9 +313,6 @@ const env = {
 	...process.env,
 	VITE_PORT: String(port),
 	OMPWS_DATA_DIR: dataDir,
-	...(sh("sh", ["-c", "command -v sccache"]).status === 0
-		? { RUSTC_WRAPPER: "sccache" }
-		: {}),
 };
 const devUrl = JSON.stringify({ build: { devUrl: `http://localhost:${port}` } });
 const child = spawn("pnpm", ["tauri", "dev", "-c", devUrl], {

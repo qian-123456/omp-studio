@@ -1,6 +1,7 @@
 //! Temporary, deliberately isolated LAN camera receiver. No mobile-workbench routes
 //! or credentials are shared with this listener.
 use std::{
+    future::Future,
     io::{Cursor, Write},
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
@@ -550,12 +551,23 @@ async fn bind_camera_listener(
     ip: Ipv4Addr,
     data_dir: &Path,
 ) -> Result<tokio::net::TcpListener, String> {
-    let port_path = data_dir.join("camera-port");
-    let bind_saved = |port| async move {
+    bind_camera_listener_with(data_dir, |port| async move {
         tokio::net::TcpListener::bind((ip, port))
             .await
             .map_err(|e| format!("无法启动拍照服务，端口 {port} 不可用: {e}"))
-    };
+    })
+    .await
+}
+
+async fn bind_camera_listener_with<B, F>(
+    data_dir: &Path,
+    mut bind: B,
+) -> Result<tokio::net::TcpListener, String>
+where
+    B: FnMut(u16) -> F,
+    F: Future<Output = Result<tokio::net::TcpListener, String>>,
+{
+    let port_path = data_dir.join("camera-port");
     let read_port = || -> Result<Option<u16>, String> {
         let contents = match std::fs::read_to_string(&port_path) {
             Ok(contents) => contents,
@@ -573,11 +585,11 @@ async fn bind_camera_listener(
         Ok(Some(port))
     };
     if let Some(port) = read_port()? {
-        return bind_saved(port).await;
+        return bind(port).await;
     }
 
     std::fs::create_dir_all(data_dir).map_err(|e| format!("无法保存拍照端口: {e}"))?;
-    let listener = bind_saved(0).await?;
+    let listener = bind(0).await?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let temp = data_dir.join(format!(".camera-port-{}.tmp", Uuid::new_v4()));
     let result = write_temporary(&temp, port.to_string().as_bytes())
@@ -588,7 +600,7 @@ async fn bind_camera_listener(
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             drop(listener);
             let port = read_port()?.ok_or("保存的拍照端口不存在")?;
-            bind_saved(port).await
+            bind(port).await
         }
         Err(e) => Err(format!("无法保存拍照端口: {e}")),
     }
@@ -1278,25 +1290,123 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn camera_port_is_persisted_and_collision_or_corruption_is_explicit() {
+    async fn camera_port_is_persisted_and_collision_is_explicit() {
         let dir = std::env::temp_dir().join(format!("omp-camera-port-test-{}", Uuid::new_v4()));
         let ip = Ipv4Addr::LOCALHOST;
         let first = bind_camera_listener(ip, &dir).await.unwrap();
         let port = first.local_addr().unwrap().port();
         assert_ne!(port, 0);
+        let port_path = dir.join("camera-port");
         assert_eq!(
-            std::fs::read_to_string(dir.join("camera-port")).unwrap(),
+            std::fs::read_to_string(&port_path).unwrap(),
             port.to_string()
         );
-        assert!(bind_camera_listener(ip, &dir).await.is_err());
+        let error = bind_camera_listener(ip, &dir).await.unwrap_err();
+        assert!(error.contains(&format!("端口 {port} 不可用")), "{error}");
+        assert_eq!(
+            std::fs::read_to_string(&port_path).unwrap(),
+            port.to_string()
+        );
+        // Keep the real listener held through the collision and persistence checks.
         drop(first);
-        let second = bind_camera_listener(ip, &dir).await.unwrap();
-        assert_eq!(second.local_addr().unwrap().port(), port);
-        drop(second);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn camera_saved_port_is_the_only_bind_request_and_failure_preserves_config() {
+        let dir = std::env::temp_dir().join(format!("omp-camera-port-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let port_path = dir.join("camera-port");
+        let saved = format!(" {port}\n");
+        std::fs::write(&port_path, &saved).unwrap();
+        let mut held = Some(listener);
+        let mut requests = Vec::new();
+        // Supply the already-held socket: this tests port selection, not OS rebind timing.
+        let reopened = bind_camera_listener_with(&dir, |requested| {
+            requests.push(requested);
+            std::future::ready(Ok(held.take().unwrap()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(requests, [port]);
+        assert_eq!(reopened.local_addr().unwrap().port(), port);
+        assert_eq!(std::fs::read_to_string(&port_path).unwrap(), saved);
+
+        requests.clear();
+        let error = bind_camera_listener_with(&dir, |requested| {
+            requests.push(requested);
+            std::future::ready(Err("saved port bind failed".to_string()))
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(error, "saved port bind failed");
+        assert_eq!(requests, [port]);
+        assert_eq!(std::fs::read_to_string(&port_path).unwrap(), saved);
+        drop(reopened);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn camera_corrupt_saved_port_fails_before_binding() {
+        let dir = std::env::temp_dir().join(format!("omp-camera-port-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let port_path = dir.join("camera-port");
         for invalid in ["", "0", "65536", "123x"] {
-            std::fs::write(dir.join("camera-port"), invalid).unwrap();
-            assert!(bind_camera_listener(ip, &dir).await.is_err());
+            std::fs::write(&port_path, invalid).unwrap();
+            let mut requests = Vec::new();
+            let error = bind_camera_listener_with(&dir, |requested| {
+                requests.push(requested);
+                std::future::ready(Err("bind must not run".to_string()))
+            })
+            .await
+            .unwrap_err();
+            assert_eq!(error, "保存的拍照端口无效");
+            assert!(requests.is_empty());
+            assert_eq!(std::fs::read_to_string(&port_path).unwrap(), invalid);
         }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn camera_concurrent_port_publisher_winner_is_honored() {
+        let dir = std::env::temp_dir().join(format!("omp-camera-port-test-{}", Uuid::new_v4()));
+        let candidate = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let winner = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let winner_port = winner.local_addr().unwrap().port();
+        assert_ne!(candidate.local_addr().unwrap().port(), winner_port);
+        let port_path = dir.join("camera-port");
+        let mut candidate = Some(candidate);
+        let mut winner = Some(winner);
+        let mut requests = Vec::new();
+        let listener = bind_camera_listener_with(&dir, |requested| {
+            requests.push(requested);
+            let listener = if requested == 0 {
+                // Another instance publishes after our initial missing-file read.
+                write_temporary(&port_path, winner_port.to_string().as_bytes()).unwrap();
+                candidate.take().unwrap()
+            } else {
+                winner.take().unwrap()
+            };
+            std::future::ready(Ok(listener))
+        })
+        .await
+        .unwrap();
+        assert_eq!(requests, [0, winner_port]);
+        assert_eq!(listener.local_addr().unwrap().port(), winner_port);
+        assert_eq!(
+            std::fs::read_to_string(&port_path).unwrap(),
+            winner_port.to_string()
+        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        drop(listener);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

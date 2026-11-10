@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 import { estimateBlockHeight } from "./blockEstimate";
@@ -86,6 +89,21 @@ describe("splitAnswerText", () => {
 			const fences = s.split("\n").filter((l) => l.startsWith("```")).length;
 			expect(fences % 2).toBe(0);
 		}
+	});
+
+	it.each([
+		["````markdown", "```", "````"],
+		["~~~~markdown", "~~~", "~~~~"],
+		["```markdown", "```not-a-closer", "```"],
+	])("keeps code rendering intact with opener %s and inner fence %s", (open, inner, close) => {
+		const code = `${open}\n${paragraphs(8, "literal-code-")}\n${inner}\n\n${paragraphs(8, "still-code-")}\n${close}`;
+		const text = `${paragraphs(10)}\n\n${code}\n\n${paragraphs(10, "after-")}`;
+		const slices = splitAnswerText(text);
+		expect(slices.join("\n")).toBe(text);
+		const expected = renderToStaticMarkup(createElement(ReactMarkdown, { children: text }));
+		const actual = slices.map((slice) => renderToStaticMarkup(createElement(ReactMarkdown, { children: slice }))).join("");
+		const codeBlockPattern = /<pre><code[\s\S]*?<\/code><\/pre>/g;
+		expect(actual.match(codeBlockPattern)).toEqual(expected.match(codeBlockPattern));
 	});
 
 	it("does not cut where a list continues across the blank line", () => {

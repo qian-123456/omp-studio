@@ -111,29 +111,31 @@ pnpm tauri dev
 pnpm build:app
 ```
 
-#### Optional local Cargo fork trial
+#### Local Rust builds: official Cargo + Kache
 
-The opt-in helper uses an independent, pinned [huacnlee/cargo](https://github.com/huacnlee/cargo) **0.102.0-9** installation at `~/.local/share/omp-workspace/cargo-fork/0.102.0-9/bin/cargo`. The executable is not included in this repository: obtain that version from the upstream releases and install it manually at this location. The helper fails with installation guidance if it is missing or not executable, and rejects a different fork version. It never installs, downloads, or updates tools, and does not replace global Cargo.
+Local builds on this Mac use official Cargo (the rustup proxy at `~/.cargo/bin/cargo`) with pinned Kache **2.0.0** installed at `~/.local/share/omp-workspace/kache/2.0.0/bin/kache`. There is no alternate Cargo installation or opt-in build command. Use the regular `pnpm tauri dev`, `pnpm dev:preview`, and `pnpm build:app` commands above.
 
-```bash
-trial_home="$PWD/.cache/cargo-fork-test-home"
-mkdir -p "$trial_home/.omp/agent/skills"
-node scripts/with-cargo-fork.mjs env HOME="$trial_home" \
-  CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" \
-  PI_CODING_AGENT_DIR="$trial_home/.omp/agent" OMP_PROFILE= PI_PROFILE= \
-  OMP_DICTATION_MODEL= OMP_SPEECH_MODEL= \
-  cargo test --manifest-path src-tauri/Cargo.toml --lib --locked -- --test-threads=1
-node scripts/with-cargo-fork.mjs pnpm tauri dev
-node scripts/with-cargo-fork.mjs pnpm build:app
+The user's Cargo configuration is the single source of compiler-cache selection. Configure `~/.cargo/config.toml` (or `$CARGO_HOME/config.toml` when explicitly using a different Cargo home) with an **absolute** executable path; Cargo does not expand `~` in this value:
+
+```toml
+[build]
+rustc-wrapper = "/absolute/path/to/.local/share/omp-workspace/kache/2.0.0/bin/kache"
 ```
 
-Only the invoked command and its descendants receive the pinned binary directory first on `PATH`, `CARGO_FORK_AUTO_UPDATE=0`, and empty `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER` values to disable compiler wrappers, including wrappers from global Cargo configuration, for clean measurements. The caller's working directory, arguments, standard input/output, and exit outcome are preserved; the calling shell is unchanged. Existing package commands and build configuration remain unchanged.
+Install the matching `kache-engine` beside `kache`. Tool installation and user configuration are managed separately; repository launchers never download or update tools. This Mac's Kache configuration uses a permanent shared local-only store at `~/.local/share/omp-workspace/kache-cache`, a 10 GiB blob budget, and no automatic target-directory deletion. The cache budget is not a hard limit on peak build disk use; official Cargo still keeps final outputs in each worktree's target directory.
 
-For this trial only, the child environment also sets `CARGO_BUILD_GC_ENABLED=true`, `CARGO_BUILD_GC_MAX_SIZE="16 GiB"` for project build artifacts, `CARGO_BUILD_GC_SHARED_MAX_SIZE="10 GiB"` for shared artifacts, and `CARGO_BUILD_GC_FREQUENCY=always`. These are post-build cleanup targets, not a hard limit on peak disk use. Cleanup applies to the fork's shared stores, not just the current command's newly created files; no global Cargo configuration is written and official Cargo outside the helper is unchanged.
+All project Tauri entry points run through `scripts/tauri.mjs`, which puts `$CARGO_HOME/bin` (defaulting to the official `~/.cargo/bin`) first on `PATH`, selects its Cargo executable (`cargo.exe` on Windows), and **removes** inherited `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER`, `CARGO_BUILD_RUSTC_WRAPPER`, and `CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER` overrides so the user's Cargo configuration wins. Removing these variables is intentional: an empty `RUSTC_WRAPPER` would disable the configured cache. `scripts/open-worktree.mjs` uses this same entry point.
 
-The test example uses an otherwise empty, task-owned home and matching agent directory, preserving the real Cargo and Rustup locations. It clears profile and voice-model overrides so endpoint tests cannot pick up personal transcription settings, and runs this trial's port-sensitive library tests serially without changing normal test settings. Do not point the synthetic home at an existing profile or copy credentials into it.
+For direct Cargo commands, remove old wrapper overrides in the calling shell first:
 
-This fork ignores custom target/build directory paths. Final `./target` outputs remain per-worktree, while intermediate artifacts are shared across worktrees. Do not assume existing Cargo caches have been migrated. Retain existing application bundles, application data, and acceptance evidence during the trial. Roll back simply by stopping use of the helper; no cache or data deletion is required. This is a local experimental choice, not adoption for CI or release policy.
+```bash
+source ~/.cargo/env
+unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER \
+  CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+New worktrees need the current tracked launchers and package commands; uncommitted main-checkout changes do not propagate through `git worktree add`. Existing running applications do not need restarting for this configuration change, but already-loaded agent instructions and custom shell commands may still contain obsolete wrapper exports. Clear those exports before issuing direct Cargo commands. Fingerprinted statechart audit documents and saved evidence describe their historical baseline, not the current cache policy. CI release builds keep their existing official-Cargo policy.
 
 ---
 

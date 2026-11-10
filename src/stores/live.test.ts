@@ -276,6 +276,7 @@ describe("live reducer — liveRequests", () => {
 		expect(reqs[0].stat.durationMs).toBe(6967);
 		expect(reqs[0].stat.ttftMs).toBe(2400);
 		expect(reqs[0].stat.completedAt).toBe(assistantMessage.completedAt);
+		expect(reqs[0].sourceTiming).toEqual({ completedAt: assistantMessage.completedAt });
 		expect(reqs[0].stat.startedAt).toBe(assistantMessage.completedAt - 6967);
 		expect(reqs[0].stat.usage).toEqual({
 			input: 2,
@@ -285,6 +286,22 @@ describe("live reducer — liveRequests", () => {
 			totalTokens: 31000,
 			cost: 0.069,
 		});
+	});
+
+	it.each([
+		{ timing: { timestamp: 1000 }, expected: { timestamp: 1000 } },
+		{ timing: { timestamp: 1000, completedAt: 2000 }, expected: { timestamp: 1000, completedAt: 2000 } },
+		{ timing: {}, expected: undefined },
+		{ timing: { timestamp: Number.NaN, completedAt: Number.POSITIVE_INFINITY }, expected: undefined },
+	])("preserves only original finite message timing: $timing", ({ timing, expected }) => {
+		frame({
+			type: "message_end",
+			timestamp: 9000,
+			message: { role: "assistant", content: [{ type: "text", text: "complete answer" }], ...timing },
+		});
+		const request = live().liveRequests[0];
+		expect(request.stat.completedAt).toEqual(expect.any(Number));
+		expect(request.sourceTiming).toEqual(expected);
 	});
 
 	it("records requests seen without a streaming snapshot, in order", () => {
@@ -1163,15 +1180,17 @@ describe("live reducer — retry event sequence", () => {
 		expect(live().retryHistory).toHaveLength(1);
 	});
 
-	it("keeps a later failed retry live without reopening a recovered episode", () => {
+	it("keeps a later retry failure visible in its own finished episode", () => {
 		frame({ type: "turn_start" });
 		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "old network failure" });
 		frame({ type: "auto_retry_end", attempt: 1, success: true });
 		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "new network failure" });
 		frame({ type: "auto_retry_end", attempt: 1, success: false, finalError: "new network failure" });
-		expect(live().retryNotices?.some((notice) => notice.text.includes("old network failure"))).toBe(false);
-		expect(live().retryNotices?.some((notice) => notice.tone === "error" && notice.text.includes("new network failure"))).toBe(true);
+		expect(live().retryNotices).toEqual([]);
+		expect(live().retryHistory).toHaveLength(2);
 		expect(live().retryHistory?.[0].notices.some((notice) => notice.text.includes("old network failure"))).toBe(true);
+		expect(live().retryHistory?.[1].notices.some((notice) => notice.tone === "error" && notice.text.includes("new network failure"))).toBe(true);
+		expect(live().retryHistory?.[1].notices.some((notice) => notice.text.includes("old network failure"))).toBe(false);
 	});
 });
 
@@ -1195,5 +1214,88 @@ describe("structured narration", () => {
 			{ kind: "thinking", text: "private reasoning", durationMs: undefined },
 			{ kind: "text", text: "answer" },
 		]);
+	});
+});
+
+describe("live reducer — independent message and prompt boundaries", () => {
+	it.each(["custom", "toolResult", "system"])("an injected %s end does not erase the surrounding reply", (role) => {
+		const reply = { role: "assistant", content: [{ type: "text", text: "still answering" }] };
+		frame({ type: "agent_start" });
+		frame({ type: "message_update", messageId: "reply", message: reply });
+		frame({ type: "message_end", messageId: "injected", message: { role, content: "notification" } });
+		expect(live().streamingMessage).toEqual(reply);
+		expect(live().liveRequests).toEqual([]);
+		frame({ type: "message_end", messageId: "reply", message: reply });
+		expect(live().liveRequests[0].parts).toContainEqual({ kind: "text", text: "still answering" });
+	});
+
+	it.each([
+		{ type: "prompt_result", agentInvoked: false, status: "completed", sessionSettled: false },
+		{ type: "prompt_result", agentInvoked: false, status: "error", error: "command failed" },
+		{ type: "prompt_result", agentInvoked: true, status: "completed", sessionSettled: false },
+		{ type: "response", command: "prompt", success: false, error: "input hook rejected" },
+	])("a separate prompt outcome preserves the current run: $type $status", (outcome) => {
+		frame({ type: "agent_start" });
+		const reply = { role: "assistant", content: [{ type: "text", text: "current answer" }] };
+		frame({ type: "message_update", message: reply });
+		frame({ type: "tool_execution_start", toolCallId: "active", toolName: "read" });
+		useLive.getState().noteCommandSent(SID, "custom");
+		frame(outcome);
+		expect(live().streaming).toBe(true);
+		expect(live().streamingMessage).toEqual(reply);
+		expect(live().tools.active.status).toBe("running");
+		frame({ type: "agent_end", isTerminal: true });
+		expect(live().streaming).toBe(false);
+	});
+
+	it.each([true, false])("one input start/end delivers one of two equal queued messages (id=%s)", (withId) => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "continue", undefined, true);
+		useLive.getState().addUserEcho(SID, "continue", undefined, true);
+		const [first, second] = live().pendingUserEchoes.map((echo) => echo.id);
+		const input = { ...(withId ? { messageId: "input-1" } : {}), message: { role: "user", content: "continue" } };
+		frame({ type: "message_start", ...input });
+		frame({ type: "message_end", ...input });
+		expect([...queuedEchoIds(live())]).toEqual([second]);
+		frame({ type: "queue_update", steering: [], followUp: ["continue"] });
+		expect([...queuedEchoIds(live())]).toEqual([second]);
+		frame({ type: "queue_update", steering: [], followUp: [] });
+		expect(live().pendingUserEchoes.find((echo) => echo.id === first)?.delivered).toBe(true);
+		// The next input can still deliver the other copy when its start was missed.
+		frame({ type: "message_end", messageId: "input-2", message: input.message });
+		expect([...queuedEchoIds(live())]).toEqual([]);
+	});
+
+	it("a completed local-only command retains its bubble without waiting for a transcript row", () => {
+		useLive.getState().addUserEcho(SID, "/custom hello");
+		useLive.getState().noteCommandSent(SID, "custom");
+		frame({ type: "prompt_result", agentInvoked: false, status: "completed" });
+		expect(live().pendingUserEchoes).toEqual([]);
+		expect(live().localEchoes?.map((echo) => echo.text)).toEqual(["/custom hello"]);
+	});
+
+	it("an already-delivered duplicate cannot steal the queued copy's slot during abort", () => {
+		useComposer.setState({ drafts: {} });
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "repeat", undefined, true);
+		useLive.getState().addUserEcho(SID, "repeat", undefined, true);
+		const ids = live().pendingUserEchoes.map((echo) => echo.id);
+		frame({ type: "message_start", messageId: "input-a", message: { role: "user", content: "repeat" } });
+		frame({ type: "message_end", messageId: "input-a", message: { role: "user", content: "repeat" } });
+		frame({ type: "queue_update", steering: [], followUp: ["repeat"] });
+		frame({ type: "agent_end", isTerminal: true, aborted: true });
+		expect(live().pendingUserEchoes.map((echo) => echo.id)).toEqual(ids);
+		expect(useComposer.getState().drafts[SID]).toBeUndefined();
+	});
+
+	it("an idle prompt already delivered cannot be requeued by a later equal follow-up", () => {
+		const sent = useLive.getState().addUserEcho(SID, "repeat");
+		frame({ type: "agent_start" });
+		frame({ type: "message_start", messageId: "ordinary", message: { role: "user", content: "repeat" } });
+		frame({ type: "message_end", messageId: "ordinary", message: { role: "user", content: "repeat" } });
+		const queued = useLive.getState().addUserEcho(SID, "repeat");
+		frame({ type: "queue_update", steering: [], followUp: ["repeat"] });
+		expect([...queuedEchoIds(live())]).toEqual([queued]);
+		expect(queuedEchoIds(live()).has(sent!)).toBe(false);
 	});
 });

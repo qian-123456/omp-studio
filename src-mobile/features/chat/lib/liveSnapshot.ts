@@ -28,6 +28,8 @@ export interface LiveSnapshotBody {
 	thinking: string;
 	tools: ToolItem[];
 	at: number;
+	/** Message timestamp retained from its live frame, when available. */
+	ts?: string | null;
 }
 
 interface Entry {
@@ -73,7 +75,7 @@ const asBody = (v: unknown): LiveSnapshotBody | null => {
 	const b = v as Partial<LiveSnapshotBody>;
 	if (typeof b.text !== "string" || typeof b.thinking !== "string" || !Array.isArray(b.tools)) return null;
 	const tools = b.tools.filter((t): t is ToolItem => !!t && typeof t === "object" && typeof (t as ToolItem).id === "string");
-	return { text: b.text, thinking: b.thinking, tools, at: typeof b.at === "number" ? b.at : 0 };
+	return { text: b.text, thinking: b.thinking, tools, at: typeof b.at === "number" ? b.at : 0, ...(typeof b.ts === "string" ? { ts: b.ts } : {}) };
 };
 
 /** The saved entry for one session, or null. Corrupted data is treated as absent. */
@@ -96,6 +98,7 @@ export function saveLiveMain(id: string, body: LiveSnapshotBody, storage: Storag
 		thinking: body.thinking.length > MAX_THINKING ? body.thinking.slice(-MAX_THINKING) : body.thinking,
 		tools: body.tools.slice(-MAX_TOOLS).map((t) => ({ ...t, result: t.result.length > MAX_TOOL_RESULT ? t.result.slice(0, MAX_TOOL_RESULT) : t.result })),
 		at: body.at,
+		...(typeof body.ts === "string" ? { ts: body.ts } : {}),
 	};
 	const entry: Entry = { ...book[id], main: capped };
 	if (JSON.stringify(entry).length > MAX_ENTRY_JSON) entry.main = { ...capped, tools: [] };
@@ -132,12 +135,13 @@ export const clearLiveStale = (id: string, storage: Storage | null = store()): v
 	write(storage, book, Date.now());
 };
 
-/** Rebuild a live-shaped Item from a snapshot: text/thinking/tools only, no invented metadata. */
+/** Rebuild a live-shaped Item from recorded content and message time, with no invented metadata. */
 export function snapshotToItem(b: LiveSnapshotBody, streaming: boolean): Item {
 	const item = emptyItem(LIVE_ID, "assistant", "assistant");
 	item.text = b.text;
 	item.thinking = b.thinking;
 	item.tools = b.tools;
+	item.ts = b.ts ?? null;
 	item.streaming = streaming;
 	return item;
 }

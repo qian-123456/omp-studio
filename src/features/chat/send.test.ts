@@ -15,15 +15,17 @@ globalThis.localStorage = {
 const rpcSend = vi.fn();
 const ensureLive = vi.fn();
 const confirmDialog = vi.fn();
+const imageContentsFromPaths = vi.fn();
+const toastError = vi.fn();
 
 vi.mock("../../lib/ipc", () => ({
 	rpcSend: (...a: unknown[]) => rpcSend(...a),
-	imageContentsFromPaths: async (paths: string[]) =>
-		paths.map(() => ({ type: "image", data: "AAAA", mimeType: "image/png" })),
+	imageContentsFromPaths: (...args: unknown[]) => imageContentsFromPaths(...args),
 	takeoverExternal: vi.fn(),
 	privacyClassify: vi.fn(),
 	privacyMark: vi.fn(),
 }));
+vi.mock("../../lib/toast", () => ({ toast: { error: (...args: unknown[]) => toastError(...args) } }));
 vi.mock("../../lib/dialogs", () => ({
 	confirmDialog: (...a: unknown[]) => confirmDialog(...a),
 	errMsg: String,
@@ -41,10 +43,12 @@ import { ResumeCancelledError, isResumeCancelled } from "../../lib/ensureLive";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useComposer } from "../../stores/composer";
+import { tNow } from "../../stores/language";
 import { abortTurn, interruptAndWait, sendPrompt, useAbortState } from "./send";
 import { heldQueueItems, isHeldAutoSendPaused, resumeHeldAutoSend, useHeldQueue } from "./heldQueue";
-import { drainNext } from "./QueuedBar";
+import { drainNext, sendQueuedNow } from "./QueuedBar";
 import { useStopHint } from "./stopHint";
+import { deferred } from "./slash/compaction";
 
 const SID = "s1";
 const echoes = () => useLive.getState().sessions[SID]?.pendingUserEchoes ?? [];
@@ -55,6 +59,11 @@ beforeEach(() => {
 	rpcSend.mockReset().mockResolvedValue(undefined);
 	ensureLive.mockReset().mockResolvedValue({});
 	confirmDialog.mockReset();
+	imageContentsFromPaths.mockReset().mockImplementation(async (paths: string[]) =>
+		paths.map(() => ({ type: "image", data: "AAAA", mimeType: "image/png" })),
+	);
+	toastError.mockReset();
+	mem.clear();
 	useLive.setState({ sessions: {} });
 	useSessions.setState({ sessions: {} });
 });
@@ -89,6 +98,66 @@ describe("sendPrompt rollback", () => {
 		expect(isResumeCancelled(err)).toBe(true);
 		expect(echoes()).toHaveLength(0);
 		expect(rpcSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("held image payload validation", () => {
+	it.each(["individual", "merged"] as const)("refuses a blank %s payload, then sends repaired native images and restores a failed attempt once", async (mode) => {
+		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true } } });
+		const image = { id: "image-only", path: "/image.png", marker: "[Image #1]" };
+		const queue = useHeldQueue.getState();
+		queue.push(SID, "[Image #1: /image.png] old text", [image]);
+		queue.update(SID, 0, "");
+		const item = heldQueueItems(SID)[0];
+		expect(await (mode === "individual" ? sendQueuedNow(SID, item, false) : drainNext(SID))).toBe(false);
+		expect(heldQueueItems(SID)).toEqual([item]);
+		expect(rpcSend).not.toHaveBeenCalled();
+		expect(imageContentsFromPaths).not.toHaveBeenCalled();
+		expect(echoes()).toEqual([]);
+		if (mode === "individual") expect(toastError).toHaveBeenCalledWith(expect.stringContaining(tNow("chatView.pendingUi.inputCannotBeEmpty")));
+		const marker = "[Image #1: /image.png]";
+		queue.update(SID, 0, marker);
+		const repaired = heldQueueItems(SID)[0];
+		const request = deferred<void>();
+		rpcSend.mockReturnValueOnce(request.promise);
+		const sending = mode === "individual" ? sendQueuedNow(SID, item, false) : drainNext(SID);
+		await vi.waitFor(() => expect(rpcSend).toHaveBeenCalledTimes(1));
+		expect(imageContentsFromPaths).toHaveBeenCalledWith(["/image.png"]);
+		expect(rpcSend).toHaveBeenCalledWith(SID, { type: "prompt", message: marker, images: [{ type: "image", data: "AAAA", mimeType: "image/png" }] });
+		expect(echoes()).toMatchObject([{ text: marker, images: [image] }]);
+		request.reject(new Error("RPC unavailable"));
+		expect(await sending).toBe(false);
+		expect(echoes()).toEqual([]);
+		expect(heldQueueItems(SID)).toEqual([repaired]);
+		expect(toastError).toHaveBeenCalledWith(expect.stringContaining("RPC unavailable"));
+		expect(await (mode === "individual" ? sendQueuedNow(SID, item, false) : drainNext(SID))).toBe(true);
+		expect(rpcSend).toHaveBeenCalledTimes(2);
+		expect(heldQueueItems(SID)).toEqual([]);
+		expect(echoes()).toMatchObject([{ text: marker, images: [image] }]);
+	});
+
+	it("refuses a conversion failure before echoing and retries the original image", async () => {
+		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true } } });
+		const image = { id: "unreadable", path: "/unreadable.png" };
+		useHeldQueue.getState().push(SID, "[Image #1]", [image]);
+		const item = heldQueueItems(SID)[0];
+		imageContentsFromPaths.mockRejectedValueOnce(new Error("image unavailable"));
+		expect(await sendQueuedNow(SID, item, false)).toBe(false);
+		expect(heldQueueItems(SID)).toEqual([item]);
+		expect(echoes()).toEqual([]);
+		expect(rpcSend).not.toHaveBeenCalled();
+		expect(toastError).toHaveBeenCalledWith(expect.stringContaining("image unavailable"));
+		expect(await sendQueuedNow(SID, item, false)).toBe(true);
+		expect(rpcSend.mock.calls[0][1]).toEqual({ type: "prompt", message: "[Image #1]", images: [{ type: "image", data: "AAAA", mimeType: "image/png" }] });
+		expect(heldQueueItems(SID)).toEqual([]);
+	});
+
+	it.each([{ images: undefined }, { images: [{ id: "image", path: "/image.png" }] }])("rejects blank text before echoing even with images $images", async ({ images }) => {
+		const onEchoed = vi.fn();
+		await expect(sendPrompt(SID, "   ", { images, onEchoed })).rejects.toThrow(tNow("chatView.pendingUi.inputCannotBeEmpty"));
+		expect(onEchoed).not.toHaveBeenCalled();
+		expect(rpcSend).not.toHaveBeenCalled();
+		expect(echoes()).toEqual([]);
 	});
 });
 

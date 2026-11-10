@@ -24,15 +24,23 @@ export interface DraftBook<A = unknown> {
 	stash(id: string, text: string, atts: A[]): boolean;
 	/** Mount: unsent content of this draft, if any. */
 	restore(id: string): DraftStashEntry<A> | null;
-	/** First prompt accepted: forget the old id, remember the optimistic text for the real id. */
+	/** First prompt accepted: move the latest unsent stash and remember the first-message echo. */
 	handoff(from: string, to: string, text: string): void;
 	/** Mount of the real session page: consumes the handoff if it targets `id` (only once). */
 	takeHandoff(id: string): Handoff | null;
+	/** Observe late uploads and the target session when this id hands off ownership. */
+	subscribe(id: string, listener: (entry: DraftStashEntry<A> | Handoff) => void): () => void;
+	/** An upload belongs to its attachment, even after the containing stash moves to another id. */
+	replaceAttachment(attachment: A, updated: A): void;
 	forget(id: string): void;
 }
 
 export function createDraftBook<A = unknown>(): DraftBook<A> {
 	const stash = new Map<string, DraftStashEntry<A>>();
+	const listeners = new Map<string, Set<(entry: DraftStashEntry<A> | Handoff) => void>>();
+	const notify = (id: string, entry: DraftStashEntry<A> | Handoff) => {
+		for (const listener of listeners.get(id) ?? []) listener(entry);
+	};
 	let handoff: Handoff | null = null;
 	return {
 		stash(id, text, atts) {
@@ -43,8 +51,13 @@ export function createDraftBook<A = unknown>(): DraftBook<A> {
 		},
 		restore: (id) => stash.get(id) ?? null,
 		handoff(from, to, text) {
-			stash.delete(from);
 			handoff = { id: to, text };
+			if (from !== to) {
+				const entry = stash.get(from);
+				if (entry) stash.set(to, entry);
+				stash.delete(from);
+				notify(from, handoff);
+			}
 		},
 		takeHandoff(id) {
 			if (!handoff || handoff.id !== id) {
@@ -54,6 +67,23 @@ export function createDraftBook<A = unknown>(): DraftBook<A> {
 			const h = handoff;
 			handoff = null;
 			return h;
+		},
+		subscribe(id, listener) {
+			let group = listeners.get(id);
+			if (!group) listeners.set(id, group = new Set());
+			group.add(listener);
+			return () => {
+				group.delete(listener);
+				if (!group.size) listeners.delete(id);
+			};
+		},
+		replaceAttachment(attachment, updated) {
+			for (const [id, entry] of stash) {
+				if (!entry.atts.includes(attachment)) continue;
+				const next = { ...entry, atts: entry.atts.map((a) => a === attachment ? updated : a) };
+				stash.set(id, next);
+				notify(id, next);
+			}
 		},
 		forget: (id) => void stash.delete(id),
 	};
@@ -100,7 +130,7 @@ export function draftActivityBody(active: boolean, meaningful: boolean): { activ
 /**
  * Debounced trailing call (first meaningful edit prewarms omp). Timer functions are injectable for tests.
  */
-export function createDebounce(fn: () => void, ms: number, timers: { set: typeof setTimeout; clear: typeof clearTimeout } = { set: setTimeout, clear: clearTimeout }) {
+export function createDebounce(fn: () => void, ms: number, timers: { set: typeof setTimeout; clear: typeof clearTimeout } = { set: setTimeout.bind(globalThis), clear: clearTimeout.bind(globalThis) }) {
 	let t: ReturnType<typeof setTimeout> | null = null;
 	return {
 		call() {

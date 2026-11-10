@@ -188,4 +188,64 @@ describe("SseClient", () => {
 		expect(FakeES.all).toHaveLength(0);
 		expect(useConnection.getState().phase).toBe("unauthorized");
 	});
+
+	it("keeps a healthy stream open when an older resume probe fails", async () => {
+		let rejectOld!: (error: Error) => void;
+		let finishLatest!: () => void;
+		probe
+			.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOld = reject; }))
+			.mockImplementationOnce(() => new Promise<void>((resolve) => { finishLatest = resolve; }));
+		const received: unknown[] = [];
+		bus.on("rpc", (event) => received.push(event));
+		client.start();
+		client.resume("visible");
+		finishLatest();
+		await vi.advanceTimersByTimeAsync(0);
+		const stream = FakeES.all[0];
+		stream.readyState = 1;
+		stream.emit("hello", {});
+		rejectOld(new Error("outdated network failure"));
+		await vi.advanceTimersByTimeAsync(60_000);
+		stream.emit("rpc", { sessionId: "s", frame: { type: "agent_end" } });
+		expect(useConnection.getState()).toMatchObject({ phase: "open", error: null });
+		expect(received).toEqual([{ sessionId: "s", frame: { type: "agent_end" } }]);
+		expect(probe).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not publish a stopped probe failure into a restarted connection", async () => {
+		let rejectOld!: (error: Error) => void;
+		let finishLatest!: () => void;
+		probe
+			.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOld = reject; }))
+			.mockImplementationOnce(() => new Promise<void>((resolve) => { finishLatest = resolve; }));
+		client.start();
+		client.stop();
+		client.start();
+		rejectOld(new Error("stopped connection failure"));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(useConnection.getState()).toMatchObject({ phase: "connecting", error: null });
+		finishLatest();
+		await vi.advanceTimersByTimeAsync(0);
+		FakeES.all[0].emit("hello", {});
+		expect(useConnection.getState()).toMatchObject({ phase: "open", error: null });
+	});
+
+	it("does not open a stream from a stopped probe after a newer probe failed", async () => {
+		let finishOld!: () => void;
+		probe
+			.mockImplementationOnce(() => new Promise<void>((resolve) => { finishOld = resolve; }))
+			.mockRejectedValueOnce(new Error("current network failure"))
+			.mockResolvedValue(undefined);
+		client.start();
+		client.stop();
+		client.start();
+		await vi.advanceTimersByTimeAsync(0);
+		finishOld();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(FakeES.all).toEqual([]);
+		expect(useConnection.getState()).toMatchObject({ phase: "closed", error: "current network failure" });
+		await vi.advanceTimersByTimeAsync(1000);
+		FakeES.all[0].emit("hello", {});
+		expect(useConnection.getState()).toMatchObject({ phase: "open", error: null });
+	});
 });

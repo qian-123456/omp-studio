@@ -3,6 +3,8 @@
 	font-size: var(--m-fs-body);
 	line-height: var(--m-lh-body);
 	color: var(--m-text);
+	min-width: 0;
+	max-width: 100%;
 	overflow-wrap: anywhere;
 }
 /* Quieter variant for in-between text inside an expanded step list. */
@@ -78,6 +80,13 @@
 .m-md th { background: var(--m-surface); font-weight: 500; white-space: nowrap; }
 .m-md tr:last-child td { border-bottom: 0; }
 .m-md input[type="checkbox"] { margin-right: 0.4em; }
+
+/* KaTeX does not wrap: keep wide display formulas inside the message column. */
+.m-md .katex-display {
+	max-width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
 
 /* highlight.js tokens: semantic vars only so both schemes work */
 .m-md .hljs-comment,

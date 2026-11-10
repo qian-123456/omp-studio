@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
+import { fireEvent } from "@testing-library/react";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sendPrompt, toast } = vi.hoisted(() => ({
+const { sendPrompt, confirmDialog, toast } = vi.hoisted(() => ({
 	sendPrompt: vi.fn(),
+	confirmDialog: vi.fn(),
 	toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 vi.mock("./send", () => ({ sendPrompt: (...args: unknown[]) => sendPrompt(...args) }));
 vi.mock("../../lib/toast", () => ({ toast }));
+vi.mock("../../lib/dialogs", () => ({ confirmDialog, errMsg: String }));
 vi.mock("../../lib/ipc", () => ({ rpcSend: vi.fn() }));
 vi.mock("../settings/store", () => ({
 	useSettings: Object.assign(() => false, { getState: () => ({ settings: { queueAutoSend: false } }) }),
@@ -26,7 +29,7 @@ let container: HTMLDivElement;
 
 function click(label: string, index = 0) {
 	const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("button"));
-	const button = buttons.filter((candidate) => candidate.getAttribute("aria-label") === label)[index];
+	const button = buttons.filter((candidate) => candidate.getAttribute("aria-label") === label || candidate.textContent === label)[index];
 	expect(button).toBeDefined();
 	act(() => button.click());
 }
@@ -34,6 +37,7 @@ function click(label: string, index = 0) {
 beforeEach(() => {
 	localStorage.clear();
 	sendPrompt.mockReset();
+	confirmDialog.mockReset();
 	vi.clearAllMocks();
 	// React's act environment flag is a test-only global, absent from DOM typings.
 	const testGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
@@ -113,5 +117,79 @@ describe("HeldQueueBar individual send versus Composer batch reservation", () =>
 		}
 		expect(useQueuedBusy.getState().busy[item.id]).toBeUndefined();
 		expect(sendPrompt).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("held queue deferred mutations", () => {
+	it.each(["success", "failure"] as const)("preserves a visible edit made during an individual %s and sends it on retry", async (outcome) => {
+		const request = deferred<void>();
+		sendPrompt.mockReturnValueOnce(request.promise);
+		const image = { id: "image", path: "/held.png", marker: "[Image #1]" };
+		useHeldQueue.getState().push(SID, "old payload", [image]);
+		const original = heldQueueItems(SID)[0];
+		act(() => root.render(createElement(HeldQueueBar, { sessionId: SID, streaming: false })));
+		click(tNow("chat.heldQueue.reviewOneByOne"));
+		click(tNow("chat.heldQueue.sendThis"));
+		const textarea = container.querySelector("textarea")!;
+		fireEvent.change(textarea, { target: { value: "new unsent payload" } });
+		expect(textarea.value).toBe("new unsent payload");
+		expect(sendPrompt).toHaveBeenCalledWith(SID, "old payload", { steer: false, images: [image] });
+		await act(async () => {
+			if (outcome === "success") request.resolve();
+			else request.reject(new Error("delivery failed"));
+			await request.promise.catch(() => {});
+		});
+		expect(heldQueueItems(SID)).toEqual([{ ...original, text: "new unsent payload" }]);
+		expect(container.querySelector("textarea")?.value).toBe("new unsent payload");
+		expect(useQueuedBusy.getState().busy[original.id]).toBeUndefined();
+		if (outcome === "failure") {
+			expect(toast.success).not.toHaveBeenCalled();
+			expect(toast.error).toHaveBeenCalledTimes(1);
+		}
+		sendPrompt.mockResolvedValueOnce(undefined);
+		await act(async () => { click(tNow("chat.heldQueue.sendThis")); });
+		expect(sendPrompt).toHaveBeenLastCalledWith(SID, "new unsent payload", { steer: false, images: [image] });
+		expect(heldQueueItems(SID)).toEqual([]);
+		expect(container.querySelector("textarea")).toBeNull();
+	});
+
+	it.each([false, true])("never deletes C when B confirmation outlives A removal (B already removed: %s)", async (alreadyRemoved) => {
+		const request = deferred<void>();
+		const confirmation = deferred<boolean>();
+		sendPrompt.mockReturnValueOnce(request.promise);
+		confirmDialog.mockReturnValueOnce(confirmation.promise);
+		for (const text of ["A", "B", "C"]) useHeldQueue.getState().push(SID, text);
+		const original = heldQueueItems(SID).slice();
+		act(() => root.render(createElement(HeldQueueBar, { sessionId: SID, streaming: false })));
+		click(tNow("chat.heldQueue.reviewOneByOne"));
+		click(tNow("chat.heldQueue.sendThis"));
+		click(tNow("chat.heldQueue.deleteThis"), 1);
+		expect(confirmDialog.mock.calls[0][0]).toContain("B");
+		if (alreadyRemoved) act(() => useHeldQueue.getState().remove(SID, 1));
+		await act(async () => { request.resolve(); await request.promise; });
+		expect(Array.from(container.querySelectorAll("textarea"), (textarea) => textarea.value)).toEqual(alreadyRemoved ? ["C"] : ["B", "C"]);
+		await act(async () => { confirmation.resolve(true); await confirmation.promise; });
+		expect(heldQueueItems(SID)).toEqual([original[2]]);
+		expect(Array.from(container.querySelectorAll("textarea"), (textarea) => textarea.value)).toEqual(["C"]);
+		expect(toast.info).toHaveBeenCalledTimes(alreadyRemoved ? 0 : 1);
+	});
+
+	it.each(["individual", "merged"] as const)("refuses a cleared image item through the %s action and retains it for repair", async (mode) => {
+		const image = { id: "image", path: "/held.png", marker: "[Image #1]" };
+		useHeldQueue.getState().push(SID, "[Image #1: /held.png] old text", [image]);
+		act(() => root.render(createElement(HeldQueueBar, { sessionId: SID, streaming: false })));
+		click(tNow("chat.heldQueue.reviewOneByOne"));
+		fireEvent.change(container.querySelector("textarea")!, { target: { value: "" } });
+		expect(heldQueueItems(SID)[0].images).toEqual([image]);
+		await act(async () => { click(tNow(mode === "individual" ? "chat.heldQueue.sendThis" : "chat.heldQueue.sendButton")); });
+		expect(sendPrompt).not.toHaveBeenCalled();
+		expect(heldQueueItems(SID)[0]).toMatchObject({ text: "", images: [image] });
+		expect(toast.error).toHaveBeenCalledWith(tNow("chatView.pendingUi.inputCannotBeEmpty"));
+		expect(toast.success).not.toHaveBeenCalled();
+		fireEvent.change(container.querySelector("textarea")!, { target: { value: "[Image #1]" } });
+		await act(async () => { click(tNow(mode === "individual" ? "chat.heldQueue.sendThis" : "chat.heldQueue.sendButton")); });
+		expect(sendPrompt).toHaveBeenCalledWith(SID, "[Image #1]", mode === "individual" ? { steer: false, images: [image] } : { images: [image], onEchoed: expect.any(Function) });
+		expect(heldQueueItems(SID)).toEqual([]);
+		expect(container.querySelector("textarea")).toBeNull();
 	});
 });

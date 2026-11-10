@@ -118,7 +118,7 @@ pub fn scan_files(
     (map, changed)
 }
 
-/// Parse one file. Appended files reuse the cached head; only the tail is re-read.
+/// Parse one file. Changed files read the head once to validate cached metadata.
 pub fn parse_file(
     path: &Path,
     size: u64,
@@ -130,19 +130,14 @@ pub fn parse_file(
     // title slot) can keep or grow the size, and reusing the cached head would
     // pin the old title/session id forever. Compare the head window instead of
     // trusting the length.
+    let bytes = parse::read_head_bytes(path).ok()?;
+    let head_hash = parse::head_fingerprint(&bytes);
     let reuse = prev.filter(|p| {
-        size >= p.size
-            && !p.head.id.is_empty()
-            && p.head_hash != 0
-            && parse::read_head_bytes(path)
-                .is_ok_and(|bytes| parse::head_fingerprint(&bytes) == p.head_hash)
+        size >= p.size && !p.head.id.is_empty() && p.head_hash != 0 && p.head_hash == head_hash
     });
-    let (head, head_hash) = match reuse {
-        Some(p) => (p.head.clone(), p.head_hash),
-        None => {
-            let bytes = parse::read_head_bytes(path).ok()?;
-            (parse::parse_head(&bytes)?, parse::head_fingerprint(&bytes))
-        }
+    let head = match reuse {
+        Some(p) => p.head.clone(),
+        None => parse::parse_head(&bytes)?,
     };
     let tail = parse::read_tail(path, size).ok()?;
     let needs_first_user =
@@ -817,6 +812,92 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[test]
+    fn deterministic_multibucket_scan_lifecycle() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("ompws-scan-fixture-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let padding = format!(
+            "{{\"type\":\"custom\",\"data\":\"{}\"}}\n",
+            "x".repeat(3 * 1024 * 1024)
+        );
+        for n in 0..36 {
+            let bucket = dir.join(format!("bucket-{n}"));
+            std::fs::create_dir(&bucket).unwrap();
+            let mut file = std::fs::File::create(bucket.join("s.jsonl")).unwrap();
+            writeln!(file, "{{\"type\":\"title\",\"title\":\"fixture-{n}\"}}").unwrap();
+            writeln!(file, "{{\"type\":\"session\",\"id\":\"s-{n}\",\"cwd\":\"/fixture\",\"timestamp\":\"T0\"}}").unwrap();
+            file.write_all(padding.as_bytes()).unwrap();
+            writeln!(file, "{{\"type\":\"message\",\"timestamp\":\"T1\",\"message\":{{\"role\":\"assistant\",\"model\":\"fixture/model\",\"content\":[{{\"type\":\"text\",\"text\":\"done\"}}],\"stopReason\":\"stop\"}}}}").unwrap();
+        }
+        let files = list_files(&dir);
+        let metadata_bytes: u64 = files.iter().map(|f| f.1).sum();
+        let start = std::time::Instant::now();
+        let (map, changed) = scan_files(files.clone(), &FileMap::new());
+        eprintln!("deterministic scan: {} buckets/files, {metadata_bytes} aggregate metadata bytes, {:?} cold", files.len(), start.elapsed());
+        assert_eq!(map.len(), 36);
+        assert_eq!(changed.len(), 36);
+        for entry in map.values() {
+            assert_eq!(entry.tail.last_assistant.as_deref(), Some("done"));
+            assert_eq!(entry.tail.model.as_deref(), Some("fixture/model"));
+            assert_eq!(entry.tail.state(), parse::TailState::Clean);
+        }
+        // The cache must work even when opening the files would fail: no body
+        // reads are permitted for an unchanged metadata snapshot.
+        let held = dir.join("held");
+        std::fs::rename(dir.join("bucket-0"), &held).unwrap();
+        let (cached, changed) = scan_files(files, &map);
+        assert!(changed.is_empty());
+        for (path, entry) in &cached {
+            assert!(Arc::ptr_eq(entry, &map[path]));
+        }
+        assert_eq!(cached.len(), 36);
+        std::fs::rename(held, dir.join("bucket-0")).unwrap();
+
+        let path = dir.join("bucket-0/s.jsonl");
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        writeln!(file, "{{\"type\":\"title_change\",\"title\":\"appended\"}}").unwrap();
+        writeln!(file, "{{\"type\":\"custom\",\"customType\":\"session_exit\",\"data\":{{\"kind\":\"normal\",\"pendingToolCalls\":[\"c\"]}}}}").unwrap();
+        let (appended, changed) = scan_files(list_files(&dir), &cached);
+        assert_eq!(changed, vec![path.clone()]);
+        let entry = appended.get(&path).unwrap();
+        assert_eq!(entry.tail.title_change.as_deref(), Some("appended"));
+        assert_eq!(entry.tail.state(), parse::TailState::Interrupted);
+
+        let original = std::fs::read(&path).unwrap();
+        let rewritten = String::from_utf8(original)
+            .unwrap()
+            .replacen("fixture-0", "rewrote-0", 1);
+        std::fs::write(&path, &rewritten).unwrap();
+        let mut snapshot = list_files(&dir);
+        // Deterministically model the changed mtime even on coarse filesystems.
+        snapshot.iter_mut().find(|f| f.0 == path).unwrap().2 += std::time::Duration::from_secs(1);
+        let (rewritten_map, changed) = scan_files(snapshot, &appended);
+        assert_eq!(changed, vec![path.clone()]);
+        assert_eq!(
+            rewritten_map[&path].head.slot_title.as_deref(),
+            Some("rewrote-0")
+        );
+        std::fs::write(
+            &path,
+            "{\"type\":\"session\",\"id\":\"replacement\",\"cwd\":\"/new\"}\n",
+        )
+        .unwrap();
+        let (shrunk, changed) = scan_files(list_files(&dir), &rewritten_map);
+        assert_eq!(changed, vec![path.clone()]);
+        assert_eq!(shrunk[&path].head.id, "replacement");
+        assert!(shrunk[&path].tail.last_msg.is_none());
+        std::fs::remove_file(&path).unwrap();
+        let (deleted, changed) = scan_files(list_files(&dir), &shrunk);
+        assert!(changed.is_empty());
+        assert_eq!(deleted.len(), 35);
+        assert!(!deleted.contains_key(&path));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     /// An in-place rewrite of the first lines that keeps the size must invalidate
     /// the cached head: the old title slot would otherwise win over the new one.
     #[test]
@@ -887,7 +968,7 @@ mod tests {
         let (_, changed) = scan_files(list_files(&dir), &map);
         let warm = t1.elapsed();
         eprintln!(
-            "real scan: {n} files ({} MB), parsed {} in {cold:?} cold; warm rescan {warm:?} ({} reparsed)",
+            "real scan: {n} files ({} MB aggregate metadata size), parsed {} in {cold:?} cold; warm rescan {warm:?} ({} reparsed)",
             bytes / 1_000_000,
             map.len(),
             changed.len()

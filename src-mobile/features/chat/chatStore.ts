@@ -29,11 +29,11 @@ import {
 	stashLiveStale,
 	type LiveSnapshotBody,
 } from "./lib/liveSnapshot";
-import { contentMatch, contentPersisted, livePersisted, pruneLive, reduceFrame, type StreamState } from "./lib/stream";
+import { contentPersisted, livePersisted, pruneLive, reduceFrame, type StreamState } from "./lib/stream";
 import { EMPTY_TRANSCRIPT, mergePage, reconcileOptimistic, transcriptQuery, type OptimisticMsg, type TranscriptState } from "./lib/transcript";
 import { buildBlocks, reuseBlocks, type Block } from "./lib/turns";
 import { filterToLeafPath, treeVersions, type TreeVersions } from "./lib/tree";
-import { clearUnsent, loadUnsent } from "./lib/unsent";
+import { clearUnsent, loadUnsent, saveUnsent } from "./lib/unsent";
 import type { Goal } from "./components/GoalSheet";
 
 export interface Attachment {
@@ -171,6 +171,11 @@ export class ChatController {
 	private rafId = 0;
 	private fetching = false;
 	private fetchAgain = false;
+	private stateSequence = 0;
+	/** Invalidates state reads and failed-send rollbacks when newer session activity arrives. */
+	private activitySequence = 0;
+	private transcriptRevision = 0;
+	private treeSequence = 0;
 	private fetchTimer: ReturnType<typeof setTimeout> | undefined;
 	private stateTimer: ReturnType<typeof setInterval> | undefined;
 	private approvalTimer: ReturnType<typeof setTimeout> | undefined;
@@ -187,8 +192,8 @@ export class ChatController {
 	/** Bounded retry counter for the fetch that should let persisted rows take over retained segments. */
 	private segRetry = 0;
 	private segSeq = 0;
-	/** Last mirrored snapshot signature / time, for the throttled half-answer persistence. */
-	private snapSig = "";
+	/** Last mirrored row / time, for the throttled half-answer persistence. */
+	private snapLive: Item | null = null;
 	private snapAt = 0;
 	/** Half-answer mirrors read at construction, resolved once the first transcript + composer state land. */
 	private restoreMain: LiveSnapshotBody | null = null;
@@ -197,6 +202,10 @@ export class ChatController {
 	private disposed = false;
 	/** First prompt carried over from a draft; re-registered if this page is torn down before it persisted (StrictMode, fast back). */
 	private handoffText: string | null = null;
+	/** Draft-book ownership follows unsent content to the real session, not the submitted snapshot. */
+	private ownsDraftStash = false;
+	private draftTransferred = false;
+	private draftTarget: string | null = null;
 	private offs: Array<() => void> = [];
 	private touchDraft: ReturnType<typeof createDebounce>;
 	private askProgress = new Map<string, AskReplayProgress>();
@@ -214,6 +223,9 @@ export class ChatController {
 		const working = status === "working" || !!handoff;
 		this.stream = { live: null, working };
 		this.initialText = stash ? stash.text : loadUnsent(id);
+		this.lastText = this.initialText;
+		this.ownsDraftStash = isDraftId(id) || !!stash;
+		this.attSeq = Math.max(0, ...((stash?.atts as Attachment[] | undefined) ?? []).map((a) => a.id));
 		if (handoff) {
 			this.lastSend = Date.now();
 			this.handoffText = handoff.text;
@@ -238,6 +250,25 @@ export class ChatController {
 			delivery: loadDelivery(id),
 			acceptedPlan: null,
 		}));
+		if (this.ownsDraftStash) {
+			this.offs.push(draftBook.subscribe(id, (entry) => {
+				if ("id" in entry) {
+					this.draftTransferred = true;
+					this.draftTarget = entry.id;
+					this.touchDraft.cancel();
+					this.set({ delivery: null });
+					this.offs.push(draftBook.subscribe(entry.id, (next) => {
+						if ("atts" in next) this.set({ atts: next.atts as Attachment[] });
+					}));
+					const route = nav.getRoute();
+					if (!this.disposed && route.name === "chat" && route.params.id === this.id) {
+						nav.replace(paths.chat(entry.id));
+					}
+					return;
+				}
+				this.set({ atts: entry.atts as Attachment[] });
+			}));
+		}
 		this.touchDraft = createDebounce(() => this.draftActivity(true), DRAFT_ACTIVITY_DEBOUNCE_MS);
 	}
 
@@ -281,6 +312,7 @@ export class ChatController {
 	}
 
 	dispose(): void {
+		if (this.stream.live) this.maybeSaveSnapshot(this.stream.live, true);
 		this.disposed = true;
 		for (const off of this.offs) off();
 		this.offs = [];
@@ -294,11 +326,13 @@ export class ChatController {
 			draftBook.handoff(this.id, this.id, pendingHandoff);
 		}
 		const { atts } = this.state;
-		if (isDraftId(this.id)) {
+		for (const o of this.state.optimistic) for (const url of o.imageUrls) URL.revokeObjectURL(url);
+		for (const a of this.state.delivery?.atts ?? []) if (a.url) URL.revokeObjectURL(a.url);
+		if (this.ownsDraftStash && !this.draftTransferred) {
 			const text = this.composer?.get() ?? this.lastText;
 			const meaningful = draftBook.stash(this.id, text, atts);
 			this.draftActivity(false, meaningful);
-		} else {
+		} else if (!this.draftTransferred) {
 			for (const a of atts) if (a.url) URL.revokeObjectURL(a.url);
 		}
 	}
@@ -309,13 +343,21 @@ export class ChatController {
 		return (this.composer?.get() ?? this.lastText ?? this.initialText).trim() !== "" || this.state.atts.length > 0;
 	}
 	private draftActivity(active: boolean, meaningful?: boolean): void {
-		if (!isDraftId(this.id)) return;
+		if (!isDraftId(this.id) || this.draftTransferred) return;
 		const m = meaningful ?? this.draftMeaningful();
 		api("POST", `/sessions/${this.id}/draft-activity`, draftActivityBody(active, m)).catch(() => {});
 	}
 	/** Called on every edit; debounced so the first meaningful edit prewarms omp. */
 	noteEdit(): void {
-		if (isDraftId(this.id)) this.touchDraft.call();
+		this.stashUnsent();
+		if (isDraftId(this.id) && !this.draftTransferred) this.touchDraft.call();
+	}
+	private stashUnsent(): void {
+		if (this.ownsDraftStash && !this.disposed) {
+			const text = this.composer?.get() ?? this.lastText;
+			draftBook.stash(this.draftTarget ?? this.id, text, this.state.atts);
+			if (this.draftTarget) saveUnsent(this.draftTarget, text);
+		}
 	}
 
 	/* ------------------------------------------------------------ transcript */
@@ -334,10 +376,12 @@ export class ChatController {
 			return;
 		}
 		this.fetching = true;
+		const revision = this.transcriptRevision;
+		const fromStart = this.state.transcript.offset === 0;
 		try {
 			const page = await api<TranscriptPage>("GET", `/sessions/${this.id}/transcript?${transcriptQuery(this.state.transcript)}`);
-			if (this.disposed) return;
-			this.applyPage(page);
+			if (this.disposed || revision !== this.transcriptRevision) return;
+			this.applyPage(fromStart ? { ...page, reset: true } : page);
 		} catch (e) {
 			console.warn("[chat] transcript", e);
 			if (!this.state.loaded) this.set({ loaded: true });
@@ -353,7 +397,7 @@ export class ChatController {
 			}
 			// The leaf pointer can move without any byte appended
 			// (navigate_tree): re-read it whenever the conversation is idle.
-			if (!this.state.working) void this.fetchTree();
+			if (!this.stream.working) void this.fetchTree();
 		}
 	}
 
@@ -361,13 +405,14 @@ export class ChatController {
 		const prev = this.state;
 		const r = mergePage(prev.transcript, page);
 		const optimistic = reconcileOptimistic(prev.optimistic, r.newUserTexts);
+		this.releaseOptimisticImages(prev.optimistic, optimistic);
 		let live = this.stream.live;
 		// The streamed copy is now on disk: stop mirroring it, the persisted row takes over.
 		if (livePersisted(r.state.items, live)) clearLiveMain(this.id);
 		live = pruneLive(r.state.items, live);
 		let segments = prev.segments;
 		if (segments.length) {
-			const kept = segments.filter((seg) => !contentPersisted(r.state.items, seg.text, seg.thinking));
+			const kept = segments.filter((seg) => !contentPersisted(r.state.items, seg.text, seg.thinking, seg.ts));
 			if (kept.length !== segments.length) {
 				segments = kept;
 				this.segRetry = 0;
@@ -379,7 +424,7 @@ export class ChatController {
 			this.scheduleFetch(600);
 		}
 		const interrupted = prev.interrupted;
-		if (interrupted && contentPersisted(r.state.items, interrupted.text, interrupted.thinking)) {
+		if (interrupted && contentPersisted(r.state.items, interrupted.text, interrupted.thinking, interrupted.ts)) {
 			// A data source now carries the interrupted content: dedup it away.
 			this.set({ interrupted: null });
 			clearLiveStale(this.id);
@@ -396,6 +441,16 @@ export class ChatController {
 		});
 	}
 
+	private releaseOptimisticImages(before: readonly OptimisticMsg[], after: readonly OptimisticMsg[]): void {
+		if (before === after) return;
+		const kept = new Set(after.map((o) => o.id));
+		const recovering = new Set((this.state.delivery?.atts ?? []).map((a) => a.url));
+		for (const o of before) {
+			if (kept.has(o.id)) continue;
+			for (const url of o.imageUrls) if (!recovering.has(url)) URL.revokeObjectURL(url);
+		}
+	}
+
 	private scheduleFetch(ms: number): void {
 		clearTimeout(this.fetchTimer);
 		this.fetchTimer = setTimeout(() => void this.fetchTranscript(), ms);
@@ -403,10 +458,12 @@ export class ChatController {
 
 	/** Refresh the cached leaf pointer and re-filter the view when it moved. */
 	private async fetchTree(): Promise<void> {
-		if (isDraftId(this.id) || this.disposed || this.state.working) return;
+		if (isDraftId(this.id) || this.disposed || this.stream.working) return;
+		const sequence = ++this.treeSequence;
+		const activity = this.activitySequence;
 		try {
 			const r = await api<{ leafId?: string | null }>("GET", `/sessions/${this.id}/tree`);
-			if (this.disposed) return;
+			if (this.disposed || sequence !== this.treeSequence || activity !== this.activitySequence) return;
 			const leafId = r.leafId ?? null;
 			if (leafId === this.state.leafId) return;
 			this.set({ leafId });
@@ -418,6 +475,7 @@ export class ChatController {
 
 	/** Pull-to-refresh / resync: re-read everything from byte 0 and reconcile live state. */
 	async refresh(): Promise<void> {
+		++this.transcriptRevision;
 		this.keepLiveForResync();
 		this.set({ transcript: { ...this.state.transcript, offset: 0, tailId: null } });
 		await Promise.all([this.fetchTranscript(), this.loadState(), this.loadPendings(), useSessions.getState().refresh().catch(() => [])]);
@@ -454,7 +512,7 @@ export class ChatController {
 		this.stream = { live: null, working: false };
 		this.scheduleFlush();
 		if (stale.text.trim() || stale.thinking.trim()) {
-			stashLiveStale(this.id, { text: stale.text, thinking: stale.thinking, tools: stale.tools, at: Date.now() });
+			stashLiveStale(this.id, { text: stale.text, thinking: stale.thinking, tools: stale.tools, ts: stale.ts, at: Date.now() });
 			this.set({ interrupted: { ...stale, streaming: false } });
 		}
 	}
@@ -474,11 +532,11 @@ export class ChatController {
 		if (this.disposed) return;
 		const items = this.state.transcript.items;
 		if (stale) {
-			if (contentPersisted(items, stale.text, stale.thinking)) clearLiveStale(this.id);
+			if (contentPersisted(items, stale.text, stale.thinking, stale.ts)) clearLiveStale(this.id);
 			else this.set({ interrupted: snapshotToItem(stale, false) });
 		}
 		if (!main) return;
-		if (contentPersisted(items, main.text, main.thinking)) {
+		if (contentPersisted(items, main.text, main.thinking, main.ts)) {
 			// The message did persist: nothing was lost, drop the mirror.
 			clearLiveMain(this.id);
 			return;
@@ -490,7 +548,7 @@ export class ChatController {
 			this.stream = { live: snapshotToItem(main, true), working: true };
 			this.liveSeq++;
 			this.staleLiveSeq = this.liveSeq; // stale unless a frame confirms the stream
-			this.snapSig = "";
+			this.snapLive = null;
 			this.scheduleFlush();
 			return;
 		}
@@ -513,20 +571,21 @@ export class ChatController {
 		if (frame.type.startsWith("extension_ui")) void this.loadPendings();
 		const step = reduceFrame(this.stream, frame);
 		if (!step.handled) return;
+		++this.activitySequence;
 		let live = step.state.live;
 		let segments = this.state.segments;
-		if (frame.type === "message_end" && live && (live.text.trim() || live.thinking.trim())) {
+		if (frame.type === "message_end" && (!frame.message?.role || frame.message.role === "assistant") && live && (live.text.trim() || live.thinking.trim())) {
 			// Segment finished: retain it as a completed segment instead of leaving it as the live
 			// row, so the next segment's first snapshot frame cannot overwrite it wholesale (the
 			// transcript only carries it after the debounced fetch lands).
-			segments = [...segments, { ...live, id: `__seg${++this.segSeq}` }].slice(-MAX_SEGMENTS);
+			segments = [...segments, { ...live, id: `__seg${++this.segSeq}`, streaming: false }].slice(-MAX_SEGMENTS);
 			live = null;
 			this.segRetry = 0;
-			this.snapSig = "";
+			this.snapLive = null;
 		}
 		if (step.dropped) {
 			// Terminal end dropped a row that never saw message_end: retain it the same way.
-			segments = [...segments, { ...step.dropped, id: `__seg${++this.segSeq}` }].slice(-MAX_SEGMENTS);
+			segments = [...segments, { ...step.dropped, id: `__seg${++this.segSeq}`, streaming: false }].slice(-MAX_SEGMENTS);
 			live = null;
 			this.segRetry = 0;
 		}
@@ -545,7 +604,12 @@ export class ChatController {
 
 	/** Coalesce stream renders to at most one per animation frame (immediate when the page is hidden: rAF stalls). */
 	private scheduleFlush(): void {
-		if (this.rafId) return;
+		const hidden = typeof document !== "undefined" && document.hidden;
+		if (this.rafId) {
+			if (!hidden) return;
+			cancelAnimationFrame(this.rafId);
+			this.rafId = 0;
+		}
 		const run = () => {
 			this.rafId = 0;
 			if (this.disposed) return;
@@ -554,26 +618,26 @@ export class ChatController {
 			if (s.live !== live || s.working !== working) this.set({ live, working });
 			if (live) {
 				// A later data source carrying the interrupted content dedups it away.
-				if (s.interrupted && live.text.trim() && contentMatch(live.text, s.interrupted.text)) {
+				if (s.interrupted && contentPersisted([live], s.interrupted.text, s.interrupted.thinking, s.interrupted.ts)) {
 					this.set({ interrupted: null });
 					clearLiveStale(this.id);
 				}
 				this.maybeSaveSnapshot(live);
 			}
 		};
-		if (typeof document !== "undefined" && document.hidden) run();
+		if (hidden) run();
 		else this.rafId = requestAnimationFrame(run);
 	}
 
 	/** Mirror the streaming half answer to local storage (throttled, content-capped, best-effort). */
-	private maybeSaveSnapshot(live: Item): void {
-		const sig = `${live.text.length}|${live.thinking.length}|${live.tools.length}`;
-		if (sig === this.snapSig) return;
+	private maybeSaveSnapshot(live: Item, force = false): void {
+		if (!live.text && !live.thinking && !live.tools.length) return;
+		if (!force && live === this.snapLive) return;
 		const now = Date.now();
-		if (now - this.snapAt < LIVE_SNAPSHOT_THROTTLE_MS) return;
+		if (!force && now - this.snapAt < LIVE_SNAPSHOT_THROTTLE_MS) return;
 		this.snapAt = now;
-		this.snapSig = sig;
-		saveLiveMain(this.id, { text: live.text, thinking: live.thinking, tools: live.tools, at: now });
+		this.snapLive = live;
+		saveLiveMain(this.id, { text: live.text, thinking: live.thinking, tools: live.tools, ts: live.ts, at: now });
 	}
 
 	private setWorking(working: boolean): void {
@@ -582,6 +646,7 @@ export class ChatController {
 	}
 
 	private onSessionChanged(): void {
+		++this.activitySequence;
 		const s = useSessions.getState().byId[this.id];
 		if (s && s.status !== "working" && !this.stream.live && Date.now() - this.lastSend > 4000) this.setWorking(false);
 		else if (s && s.status === "working") this.setWorking(true);
@@ -591,9 +656,12 @@ export class ChatController {
 	/* ------------------------------------------------------------ composer state / pending */
 
 	async loadState(): Promise<void> {
+		if (this.disposed) return;
+		const sequence = ++this.stateSequence;
+		const activity = this.activitySequence;
 		try {
 			const st = await api<ComposerState>("GET", `/sessions/${this.id}/composer-state`);
-			if (this.disposed) return;
+			if (this.disposed || sequence !== this.stateSequence || activity !== this.activitySequence) return;
 			const prev = this.state.cstate;
 			if (st.thinkingLevel == null && prev?.thinkingLevel) st.thinkingLevel = prev.thinkingLevel;
 			const authoritative = Object.prototype.hasOwnProperty.call(st, "planStatus");
@@ -607,13 +675,18 @@ export class ChatController {
 			// A resync-kept or restored live row is stale once the server proves the turn is over
 			// (explicit `streaming: false`) without any frame refreshing it in between.
 			this.composerIdle = st.streaming === false;
-			if (this.composerIdle) this.dropStaleLive();
+			if (this.composerIdle) {
+				// A missed terminal frame must not leave a stable live row spinning forever.
+				if (Date.now() - this.lastSend > 4000) this.keepLiveForResync();
+				this.dropStaleLive();
+			}
 		} catch (e) {
 			console.warn("[chat] composer-state", e);
 		}
 	}
 
 	patchState(p: Partial<ComposerState>): void {
+		++this.stateSequence;
 		this.set({ cstate: { ...(this.state.cstate ?? {}), ...p } });
 	}
 
@@ -790,15 +863,22 @@ export class ChatController {
 	/* ------------------------------------------------------------ send / stop / slash */
 
 	async stop(): Promise<void> {
+		++this.activitySequence;
 		try {
 			// Stop like Esc in omp's TUI: queued steer/follow-up inputs are
 			// withdrawn and handed back instead of running after the abort.
 			const r = await api<{ aborted?: boolean; restoredTexts?: string[] }>("POST", `/sessions/${this.id}/abort`);
 			const restored = (r.restoredTexts ?? []).map((t) => t.trim()).filter(Boolean);
+			const optimistic = reconcileOptimistic(this.state.optimistic, restored);
+			this.releaseOptimisticImages(this.state.optimistic, optimistic);
+			this.set({ optimistic });
 			if (restored.length) {
 				// Withdrawn texts go back after the existing draft (desktop `restoreTextsToDraft` order).
-				const cur = this.composer?.get() ?? this.lastText ?? "";
-				this.composer?.set([...(cur.trim() ? [cur] : []), ...restored].join("\n\n"));
+				const cur = this.disposed ? loadUnsent(this.id) : this.composer?.get() ?? this.lastText;
+				const text = [...(cur.trim() ? [cur] : []), ...restored].join("\n\n");
+				this.lastText = text;
+				saveUnsent(this.id, text);
+				if (!this.disposed) this.composer?.set(text);
 				toast(`已停止，撤回 ${restored.length} 条排队消息`, { kind: "success" });
 			} else {
 				toast("已发送停止请求");
@@ -821,7 +901,7 @@ export class ChatController {
 			return false;
 		}
 		const s = this.state;
-		const intent = sendIntent(text, s.atts.length, s.working);
+		const intent = sendIntent(text, s.atts.length, this.stream.working);
 		if (intent === "none") return false;
 		if (intent === "stop") {
 			// A double-tap on ↑ must not land on the ■ it just turned into.
@@ -874,7 +954,7 @@ export class ChatController {
 
 	private async sendPrompt(text: string, behavior: StreamBehavior): Promise<boolean> {
 		const id = this.id;
-		const wasWorking = this.state.working;
+		const wasWorking = this.stream.working;
 		const prompt = buildPrompt(text, this.state.atts);
 		const savedAtts = this.state.atts;
 		const delivery: PromptDeliveryState = { text, prompt, atts: savedAtts, phase: "sending" };
@@ -884,17 +964,21 @@ export class ChatController {
 		this.set({ delivery });
 		const opt: OptimisticMsg = { id: `o${++this.optSeq}`, text: prompt, imageUrls: savedAtts.filter((a) => a.isImage && a.url).map((a) => a.url) };
 		this.composer?.set("");
+		this.lastText = "";
 		clearUnsent(id);
 		this.lastSend = Date.now();
+		const activity = ++this.activitySequence;
 		this.stream = { ...this.stream, working: true };
 		this.set({ atts: [], optimistic: [...this.state.optimistic, opt], working: true });
+		this.stashUnsent();
 		let r: { sessionId?: string };
 		try {
 			r = await api<{ sessionId?: string }>("POST", `/sessions/${id}/prompt-ex`, buildPromptBody(prompt, wasWorking, behavior));
 		} catch (e) {
 			// HTTP failure is ambiguous even when the server reports a validation-like error.
-			this.stream = { ...this.stream, working: wasWorking };
-			this.set({ delivery: { ...delivery, phase: "unknown" }, optimistic: this.state.optimistic.filter((o) => o.id !== opt.id), working: wasWorking });
+			// A frame or session update received after dispatch owns the working flag now.
+			if (activity === this.activitySequence) this.stream = { ...this.stream, working: wasWorking };
+			this.set({ delivery: { ...delivery, phase: "unknown" }, optimistic: this.state.optimistic.filter((o) => o.id !== opt.id), working: this.stream.working });
 			toast(`送达状态未知：${errorMessage(e)}。请核对记录后再决定是否重发`, { kind: "error" });
 			return true;
 		}
@@ -902,18 +986,28 @@ export class ChatController {
 		catch { toast("消息已送达，但无法清理本地发送记录。刷新后请先核对，勿盲目重发", { kind: "error" }); }
 		this.set({ delivery: null });
 		if (r && r.sessionId && r.sessionId !== id) {
+			// A disposed draft may have remounted while HTTP was pending; its current book entry wins.
+			if (!this.disposed) this.stashUnsent();
 			draftBook.handoff(id, r.sessionId, prompt);
+			this.draftTransferred = true;
+			const unsent = draftBook.restore(r.sessionId);
+			if (unsent) saveUnsent(r.sessionId, unsent.text);
 			useSessions.getState().refresh().catch(() => {});
-			if (!this.disposed) nav.replace(paths.chat(r.sessionId));
+			const route = nav.getRoute();
+			if (!this.disposed && route.name === "chat" && route.params.id === id) nav.replace(paths.chat(r.sessionId));
 			return true;
 		}
-		for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
+		// The optimistic bubble still owns its preview URLs until persistence takes over.
+		if (this.disposed || !this.state.optimistic.some((o) => o.id === opt.id)) {
+			for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
+		}
 		this.scheduleFetch(300);
 		return true;
 	}
 
 	/** Execute `/name args` through the server: shows `output` locally, follows `sessionId` for /new and /fork. */
 	async runCommand(name: string, args: string, restore?: string): Promise<boolean> {
+		++this.activitySequence;
 		const id = this.id;
 		this.lastSend = Date.now();
 		const fork = name === "fork" ? this.state.forkFrom : null;
@@ -922,12 +1016,12 @@ export class ChatController {
 		try {
 			const r = await api<{ output?: string; sessionId?: string; forwarded?: boolean }>("POST", `/sessions/${id}/slash`, body);
 			if (r.output && !this.disposed) this.set({ localOut: [...this.state.localOut, { id: ++this.outSeq, name, text: r.output }] });
-			if (r.forwarded) {
+			if (r.forwarded && !this.disposed) {
 				this.setWorking(true);
 				this.scheduleFetch(300);
 			}
 			if (fork) this.set({ forkFrom: null });
-			if (r.sessionId && r.sessionId !== id) {
+			if (r.sessionId && r.sessionId !== id && !this.disposed) {
 				if (isDraftId(id)) nav.replace(paths.chat(r.sessionId));
 				else nav.push(paths.chat(r.sessionId));
 			}
@@ -1107,16 +1201,19 @@ export class ChatController {
 			this.set({ atts: [...this.state.atts, att] });
 			this.noteEdit();
 			upload<{ path: string }>(`/sessions/${this.id}/upload`, f, { name: att.name })
-				.then((r) => this.patchAtt(att.id, { status: "ok", path: r.path }))
+				.then((r) => this.patchAtt(att, { status: "ok", path: r.path }))
 				.catch((e: unknown) => {
-					this.patchAtt(att.id, { status: "err", err: errorMessage(e) });
+					this.patchAtt(att, { status: "err", err: errorMessage(e) });
 					toast(`上传失败：${errorMessage(e)}`, { kind: "error" });
 				});
 		}
 	}
-	private patchAtt(id: number, p: Partial<Attachment>): void {
-		if (this.disposed && !isDraftId(this.id)) return;
-		this.set({ atts: this.state.atts.map((a) => (a.id === id ? { ...a, ...p } : a)) });
+	private patchAtt(attachment: Attachment, p: Partial<Attachment>): void {
+		const updated = { ...attachment, ...p };
+		// The original page may be disposed or handed off; update only the stash still owning this object.
+		draftBook.replaceAttachment(attachment, updated);
+		if (this.disposed || this.draftTransferred) return;
+		this.set({ atts: this.state.atts.map((a) => a === attachment ? updated : a) });
 	}
 	removeAtt(id: number): void {
 		const a = this.state.atts.find((x) => x.id === id);

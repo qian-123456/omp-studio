@@ -115,6 +115,7 @@ describe("held queue drain", () => {
 			SID,
 			"[Image #1: /a.png] first\n\n---\n\n[Image #2: /b.png] second",
 			{
+				onEchoed: expect.any(Function),
 				images: [
 					{ id: "a", path: "/a.png", marker: "[Image #1]" },
 					{ id: "b", path: "/b.png", marker: "[Image #2]" },

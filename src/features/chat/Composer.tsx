@@ -368,7 +368,6 @@ export function Composer({
 		[text],
 	);
 	const setDraft = useComposer((s) => s.setDraft);
-	const clearDraft = useComposer((s) => s.clearDraft);
 
 	// Command chip: an atomic `/name` pinned to the input start; the draft
 	// holds only its arguments and `serializeChip` restores `/name args` on
@@ -494,7 +493,6 @@ export function Composer({
 		(s) => s.annotations[sessionId] ?? EMPTY_LIST,
 	);
 	const addAnnotation = useComposer((s) => s.addAnnotation);
-	const clearAnnotations = useComposer((s) => s.clearAnnotations);
 	const composerImages = useComposer(
 		(s) => s.images[sessionId] ?? EMPTY_LIST,
 	);
@@ -503,8 +501,6 @@ export function Composer({
 	);
 	const addImage = useComposer((s) => s.addImage);
 	const addFile = useComposer((s) => s.addFile);
-	const clearImages = useComposer((s) => s.clearImages);
-	const clearFiles = useComposer((s) => s.clearFiles);
 	const textAnnotations = useMemo(() => textAnnotationsOf(annotations), [annotations]);
 	// Quote annotations alone are a sendable message (formatWithAnnotations
 	// handles empty text); only a fully empty composer turns ▶ into resume.
@@ -1132,7 +1128,7 @@ export function Composer({
 			return true;
 		}
 		try {
-			if (!live?.alive) await ensureLive(sessionId);
+			if (!live?.alive) await ensureLive(sessionId, notify ? `${payload.provider}/${payload.modelId}` : undefined);
 			const prep = await prepareSessionForModelSelection(sessionId);
 			if (prep.status === "failed") throw new Error(prep.error);
 			const cur = useLive.getState().sessions[sessionId];
@@ -1530,6 +1526,8 @@ export function Composer({
 	};
 	const submit = async (action: FollowUpAction) => {
 		const raw = text;
+		const currentSessionImages = useComposer.getState().images[sessionId] ?? [];
+		const currentSessionFiles = useComposer.getState().files[sessionId] ?? [];
 		// A local draft hands its composer state to the real session before the echo.
 		let inputOwner = sessionId;
 		if (!hasPayload || busy || useTreeEditPending.getState().entries[sessionId]) return;
@@ -1539,249 +1537,300 @@ export function Composer({
 			setTimeout(() => setOverflowHighlighted(false), 2000);
 			return;
 		}
-		if (planIntent && !planMode) {
-			// `/plan` picked alongside other chips: enable plan mode first, the prompt (and any
-			// `/skill:` chip) then runs inside the plan turn. A failed enable keeps the draft,
-			// the chips and the pending intent so the user can simply retry.
-			const target = await setPlanMode(true);
-			if (!target) return;
-			inputOwner = target;
-			setPlanIntent(false);
-		}
-		// Chip + args serialize to the exact `/name args` the user would have
-		// typed — history, masking and dispatch all run on that form.
-		const trimmedRaw = serializeChip(chip, raw).trim();
-		// Privacy: replace marked / auto / accepted ranges with placeholders.
-		// The draft and local history keep the real text; everything sent is masked.
-		const maskedRaw = maskText(raw, privacy.highlights);
-		const trimmedMasked = serializeChip(chip, maskedRaw, inlineRange ? "fuzzy" : "exact").trim();
-		const sentSecrets = replacedEntries(privacy.highlights);
-		const sessionEntryIds = privacy.sessionEntryIds;
-		const markScopes = privacy.draft.scopes;
-		const finishPrivacySend = () => {
-			privacy.reset();
-			if (sentSecrets.length === 0) return;
-			setLibraryPromptArmed(true);
-			void linkSentSecrets(inputOwner, sentSecrets, sessionEntryIds, markScopes);
-		};
-		setArgHintLine(null);
-		const slashImages = useComposer.getState().images[inputOwner] ?? [];
-		const slashAttachments: ImageAttachment[] = slashImages.map((img, i) => ({
-			id: img.id || `img-${i + 1}`,
-			path: img.path,
-			marker: `[Image #${i + 1}]`,
-			width: img.width,
-			height: img.height,
-		}));
-		const currentSessionImages = slashImages;
-		if (trimmedRaw.startsWith("/")) {
-			// Registry command (/fork, /status, …) — run natively or forward.
-			setBusy(true);
-			// Clear the serialized chip before a draft materializes, so the
-			// transferred composer state does not carry it to the real session.
-			const sentChip = chip;
-			setChip(null);
-			try {
-				// A draft becomes a real session first unless the command is UI-only.
-				const target = inputOwner === sessionId
-					? await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "")
-					: inputOwner;
-				inputOwner = target;
-				const outcome = await runSlashInput(
-					target,
-					expandImageTokens(trimmedMasked, slashImages),
-					makeSlashDeps(),
-				);
-				if (outcome === "keep") {
-					if (inputOwner === sessionId) setChip(sentChip);
-					return;
+		// Observe the in-flight operation, not the mounted view: a replacement draft can
+		// have identical text, including after a local-draft handoff or an unmount.
+		const relinquishedDrafts = new Set<string>();
+		const stopWatchingDraft = useComposer.subscribe((state, previous) => {
+			if (state.drafts === previous.drafts) return;
+			for (const owner in state.drafts) {
+				const current = state.drafts[owner];
+				const before = previous.drafts[owner];
+				if (current !== before && before?.startsWith(raw) && !current.startsWith(raw)) {
+					relinquishedDrafts.add(owner);
 				}
-				if (outcome === null) {
-					// Unknown `/x`: send to omp so its own builtins still run. The
-					// command stays first; file markers and quote blocks follow it.
-					pushHistory(trimmedRaw);
-					const slashFiles = useComposer.getState().files[target] ?? [];
-					const command = expandFilesForSend(
-						expandImagesForSend(trimmedMasked, slashImages, "suffix"),
-						slashFiles,
-						"suffix",
-					);
-					const quoteBlocks = formatWithAnnotations("", textAnnotations);
-					await sendSlashPrompt(
-						target,
-						quoteBlocks ? `${command.trimEnd()}\n\n${quoteBlocks}` : command,
-						[...slashAttachments, ...annotationImageAttachments(textAnnotations, slashAttachments)],
-					);
-					finishPrivacySend();
-					setChip(null);
-					clearDraft(target);
-					clearAnnotations(target);
-					clearImages(target);
-					clearFiles(target);
-				} else {
-					// A native command ran: nothing was sent, so attachments and
-					// quotes stay for the next real message. A registry command
-					// that forwarded a prompt (/plan, /goal, …) already carried the
-					// image paths inline, so those images are consumed.
-					finishPrivacySend();
-					setChip(null);
-					clearDraft(target);
-					if (outcome === "sent") clearImages(target);
-				}
-			} catch (err) {
-				// Restore only while this composer still owns the input; a
-				// materialized draft keeps its args via the transferred text.
-				if (inputOwner === sessionId) setChip(sentChip);
-				if (!isResumeCancelled(err))
-					toast.error(t("composer.sendFailed", { error: errMsg(err) }));
-			} finally {
-				setBusy(false);
 			}
-			return;
-		}
-		let outgoingRaw = expandImagesForSend(maskedRaw, currentSessionImages);
-
-		// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself;
-		// deleted tokens still ship their path so nothing silently drops out.
-		const currentSessionFiles = useComposer.getState().files[inputOwner] ?? [];
-		outgoingRaw = expandFilesForSend(outgoingRaw, currentSessionFiles);
-
-		const mainImageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
-			id: img.id || `img-${i + 1}`,
-			path: img.path,
-			marker: `[Image #${i + 1}]`,
-			width: img.width,
-			height: img.height,
-		}));
-		// Annotation-owned images ship as real attachments (deduped by path) next to the
-		// main ones; the `[图片: path]` references are written by formatWithAnnotations.
-		const imageAttachments: ImageAttachment[] = [
-			...mainImageAttachments,
-			...annotationImageAttachments(textAnnotations, mainImageAttachments),
-		];
-
-		const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
-		const message = formatted;
-		let outgoingMessage = message;
-		let outgoingImages = imageAttachments;
-		let heldBatch: ReadyHeldBatch | null = null;
-		let heldRestored = false;
-		// Queue (and a plain send that raced turn-end while streaming): hold locally
-		// (ARCHITECTURE §11 B); the post-turn HeldQueueBar sends it with its image attachments.
-		if (action === "queue" || (action === "send" && streaming)) {
-			pushHeld(inputOwner, message, imageAttachments);
-			pushHistory(raw.trim());
-			finishPrivacySend();
-			clearDraft(inputOwner);
-			clearAnnotations(inputOwner);
-			clearImages(inputOwner);
-			clearFiles(inputOwner);
-			return;
-		}
-		setBusy(true);
-		// Release the input as soon as the message is echoed into the thread; the
-		// resume/RPC awaits below can take seconds. Restore everything if the send fails.
-		const prevAnnotations = annotations;
-		let released = false;
-		const releaseComposer = (targetId = inputOwner) => {
-			released = true;
-			inputOwner = targetId;
-			const store = useComposer.getState();
-			const cur = store.drafts[targetId] ?? "";
-			if (cur === raw) {
-				clearDraft(targetId);
-				clearAnnotations(targetId);
-				clearImages(targetId);
-				clearFiles(targetId);
+		});
+		const ownsSubmittedDraft = (targetId: string) =>
+			!relinquishedDrafts.has(sessionId) && !relinquishedDrafts.has(targetId);
+		try {
+			if (planIntent && !planMode) {
+				// `/plan` picked alongside other chips: enable plan mode first, the prompt (and any
+				// `/skill:` chip) then runs inside the plan turn. A failed enable keeps the draft,
+				// the chips and the pending intent so the user can simply retry.
+				const target = await setPlanMode(true);
+				if (!target) return;
+				inputOwner = target;
+				setPlanIntent(false);
+			}
+			// Chip + args serialize to the exact `/name args` the user would have
+			// typed — history, masking and dispatch all run on that form.
+			const trimmedRaw = serializeChip(chip, raw).trim();
+			// Privacy: replace marked / auto / accepted ranges with placeholders.
+			// The draft and local history keep the real text; everything sent is masked.
+			const maskedRaw = maskText(raw, privacy.highlights);
+			const trimmedMasked = serializeChip(chip, maskedRaw, inlineRange ? "fuzzy" : "exact").trim();
+			const sentSecrets = replacedEntries(privacy.highlights);
+			const sessionEntryIds = privacy.sessionEntryIds;
+			const markScopes = privacy.draft.scopes;
+			const finishPrivacySend = () => {
+				privacy.reset();
+				if (sentSecrets.length === 0) return;
+				setLibraryPromptArmed(true);
+				void linkSentSecrets(inputOwner, sentSecrets, sessionEntryIds, markScopes);
+			};
+			setArgHintLine(null);
+			const slashImages = currentSessionImages;
+			const slashAttachments: ImageAttachment[] = slashImages.map((img, i) => ({
+				id: img.id || `img-${i + 1}`,
+				path: img.path,
+				marker: `[Image #${i + 1}]`,
+				width: img.width,
+				height: img.height,
+			}));
+			let prevAnnotations = textAnnotations;
+			let annotationOwner = sessionId;
+			const adoptAnnotationOwner = (targetId: string) => {
+				if (targetId === annotationOwner) return;
+				// Draft handoff preserves attachment objects but assigns fresh annotation ids.
+				const transferred = [...(useComposer.getState().annotations[targetId] ?? [])];
+				prevAnnotations = prevAnnotations.map((submitted) => {
+					const value = JSON.stringify({ ...submitted, id: undefined });
+					const index = transferred.findIndex((current) => JSON.stringify({ ...current, id: undefined }) === value);
+					return index < 0 ? submitted : transferred.splice(index, 1)[0];
+				});
+				annotationOwner = targetId;
+			};
+			let released = false;
+			// Attachment numbers belong to the current lists, not necessarily the submitted
+			// prefix: edits can remove old attachments before an async send finishes.
+			const remapDraftAttachments = (
+				draft: string,
+				beforeImages: typeof currentSessionImages,
+				afterImages: typeof currentSessionImages,
+				beforeFiles: typeof currentSessionFiles,
+				afterFiles: typeof currentSessionFiles,
+			) => {
+				const replacements = [
+					...getImageTokenRanges(draft).map((range) => ({
+						...range,
+						index: afterImages.indexOf(beforeImages[range.num - 1]),
+					})),
+					...getFileTokenRanges(draft).map((range) => ({
+						...range,
+						index: afterFiles.indexOf(beforeFiles[range.num - 1]),
+					})),
+				].sort((a, b) => b.start - a.start);
+				for (const range of replacements) {
+					const token = range.index < 0 ? " " : range.token.replace(/#\d+/, `#${range.index + 1}`);
+					draft = draft.slice(0, range.start) + token + draft.slice(range.end);
+				}
+				return draft;
+			};
+			const releaseComposer = (targetId = inputOwner, consumeImages = true, consumeFiles = true, consumeAnnotations = true) => {
+				adoptAnnotationOwner(targetId);
+				released = true;
+				inputOwner = targetId;
+				const store = useComposer.getState();
+				const images = store.images[targetId] ?? [];
+				const files = store.files[targetId] ?? [];
+				const remainingImages = consumeImages ? images.filter((i) => !currentSessionImages.includes(i)) : images;
+				const remainingFiles = consumeFiles ? files.filter((f) => !currentSessionFiles.includes(f)) : files;
+				const cur = store.drafts[targetId] ?? "";
+				const rest = ownsSubmittedDraft(targetId) ? remainingDraft(cur, raw, 0, 0) : cur;
+				setDraft(targetId, remapDraftAttachments(rest, images, remainingImages, files, remainingFiles));
+				if (consumeImages) store.setImages(targetId, remainingImages);
+				if (consumeFiles) store.setFiles(targetId, remainingFiles);
+				if (consumeAnnotations) {
+					// An edited annotation is a new immutable value: its unsent revision stays.
+					for (const a of store.annotations[targetId] ?? []) {
+						if (prevAnnotations.includes(a)) store.removeAnnotation(targetId, a.id);
+					}
+				}
+			};
+			const restoreComposer = (retryRaw = raw) => {
+				if (!released) return;
+				const store = useComposer.getState();
+				const images = store.images[inputOwner] ?? [];
+				const files = store.files[inputOwner] ?? [];
+				const restoredImages = [...currentSessionImages, ...images.filter((i) => !currentSessionImages.includes(i))];
+				const restoredFiles = [...currentSessionFiles, ...files.filter((f) => !currentSessionFiles.includes(f))];
+				const cur = remapDraftAttachments(store.drafts[inputOwner] ?? "", images, restoredImages, files, restoredFiles);
+				setDraft(inputOwner, mergeFailedDraft(retryRaw, cur, 0, 0));
+				store.setImages(inputOwner, restoredImages);
+				store.setFiles(inputOwner, restoredFiles);
+				for (const a of prevAnnotations) {
+					if (!(store.annotations[inputOwner] ?? []).some((current) => current.id === a.id)) {
+						const { id: _id, ...value } = a;
+						addAnnotation(inputOwner, value);
+					}
+				}
+			};
+			if (trimmedRaw.startsWith("/")) {
+				// Registry command (/fork, /status, …) — run natively or forward.
+				setBusy(true);
+				// Clear the serialized chip before a draft materializes, so the
+				// transferred composer state does not carry it to the real session.
+				const sentChip = chip;
+				setChip(null);
+				const restoreSlash = () => {
+					const currentChip = loadChip(inputOwner);
+					const unchanged = ownsSubmittedDraft(inputOwner) &&
+						(useComposer.getState().drafts[inputOwner] ?? "") === raw && !currentChip;
+					if (unchanged) {
+						if (inputOwner === sessionId) setChip(sentChip);
+						else setDraft(inputOwner, serializeChip(sentChip, raw));
+						return;
+					}
+					// A failed slash has not consumed quotes: keep their identities for retry.
+					releaseComposer(inputOwner, true, true, false);
+					// Keep both commands as text if a newer chip already owns the input.
+					if (currentChip) {
+						setDraft(inputOwner, serializeChip(currentChip, useComposer.getState().drafts[inputOwner] ?? ""));
+						saveChip(inputOwner, null);
+						if (inputOwner === sessionId) setChip(null);
+					}
+					restoreComposer(serializeChip(sentChip, raw));
+				};
+				try {
+					// A draft becomes a real session first unless the command is UI-only.
+					const target = inputOwner === sessionId
+						? await slashTarget(/^\/([^\s/]+)/.exec(trimmedRaw)?.[1] ?? "")
+						: inputOwner;
+					inputOwner = target;
+					const outcome = await runSlashInput(
+						target,
+						expandImageTokens(trimmedMasked, slashImages),
+						makeSlashDeps(),
+					);
+					if (outcome === "keep") {
+						restoreSlash();
+						return;
+					}
+					if (outcome === null) {
+						// Unknown `/x`: send to omp so its own builtins still run. The
+						// command stays first; file markers and quote blocks follow it.
+						pushHistory(trimmedRaw);
+						const command = expandFilesForSend(
+							expandImagesForSend(trimmedMasked, slashImages, "suffix"),
+							currentSessionFiles,
+							"suffix",
+						);
+						const quoteBlocks = formatWithAnnotations("", textAnnotations);
+						await sendSlashPrompt(
+							target,
+							quoteBlocks ? `${command.trimEnd()}\n\n${quoteBlocks}` : command,
+							[...slashAttachments, ...annotationImageAttachments(textAnnotations, slashAttachments)],
+						);
+						finishPrivacySend();
+						releaseComposer(target);
+					} else {
+						// A native command ran: nothing was sent, so attachments and
+						// quotes stay for the next real message. A registry command
+						// that forwarded a prompt (/plan, /goal, …) already carried the
+						// image paths inline, so those images are consumed.
+						finishPrivacySend();
+						releaseComposer(target, outcome === "sent", false, false);
+					}
+				} catch (err) {
+					restoreSlash();
+					if (!isResumeCancelled(err))
+						toast.error(t("composer.sendFailed", { error: errMsg(err) }));
+				} finally {
+					setBusy(false);
+				}
 				return;
 			}
-			// Typed while the send was in flight: keep the new input and drop
-			// only what this send consumed (sent attachments + their tokens).
-			const nImg = currentSessionImages.length;
-			const nFile = currentSessionFiles.length;
-			setDraft(targetId, remainingDraft(cur, raw, nImg, nFile));
-			if (nImg > 0) {
-				const sentIds = new Set(currentSessionImages);
-				store.setImages(targetId, (store.images[targetId] ?? []).filter((i) => !sentIds.has(i)));
-			}
-			if (nFile > 0) {
-				const sentIds = new Set(currentSessionFiles);
-				store.setFiles(targetId, (store.files[targetId] ?? []).filter((f) => !sentIds.has(f)));
-			}
-			for (const a of prevAnnotations) store.removeAnnotation(targetId, a.id);
-		};
-		const restoreComposer = () => {
-			if (!released) return;
-			const store = useComposer.getState();
-			const cur = store.drafts[inputOwner] ?? "";
-			// Typed while the send was in flight: the original goes first, the
-			// newer draft follows with its attachment tokens shifted past ours.
-			setDraft(
-				inputOwner,
-				cur === raw
-					? raw
-					: mergeFailedDraft(raw, cur, currentSessionImages.length, currentSessionFiles.length),
-			);
-			store.setImages(inputOwner, [
-				...currentSessionImages,
-				...(store.images[inputOwner] ?? []).filter((i) => !currentSessionImages.includes(i)),
-			]);
-			store.setFiles(inputOwner, [
-				...currentSessionFiles,
-				...(store.files[inputOwner] ?? []).filter((f) => !currentSessionFiles.includes(f)),
-			]);
-			for (const { id: _id, ...a } of prevAnnotations) addAnnotation(inputOwner, a);
-		};
-		try {
-			// Interrupt: abort and wait for the turn to stop. If it keeps running,
-			// hold the message rather than dropping it.
-			const idle =
-				action === "interrupt" && streaming
-					? await interruptAndWait(inputOwner, INTERRUPT_WAIT_MS)
-					: true;
-			if (idle) {
-				heldBatch = takeReadyHeldBatch(inputOwner, true);
-				if (heldBatch) {
-					const merged = mergeHeldItems([
-						{ id: "composer-send", text: message, images: imageAttachments },
-						...heldBatch.items,
-					]);
-					outgoingMessage = merged.text;
-					outgoingImages = merged.images;
-				}
-				await sendPrompt(inputOwner, outgoingMessage, {
-					steer: action === "steer",
-					images: outgoingImages,
-					onEchoed: releaseComposer,
-				});
-				// Cancelled takeover returns without echoing: keep the draft and queue for retry.
-				if (!released) {
-					if (heldBatch) {
-						restoreReadyHeldBatch(inputOwner, heldBatch);
-						heldRestored = true;
-					}
-					return;
-				}
-			} else {
+			let outgoingRaw = expandImagesForSend(maskedRaw, currentSessionImages);
+
+			// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself;
+			// deleted tokens still ship their path so nothing silently drops out.
+			outgoingRaw = expandFilesForSend(outgoingRaw, currentSessionFiles);
+
+			const mainImageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
+				id: img.id || `img-${i + 1}`,
+				path: img.path,
+				marker: `[Image #${i + 1}]`,
+				width: img.width,
+				height: img.height,
+			}));
+			// Annotation-owned images ship as real attachments (deduped by path) next to the
+			// main ones; the `[图片: path]` references are written by formatWithAnnotations.
+			const imageAttachments: ImageAttachment[] = [
+				...mainImageAttachments,
+				...annotationImageAttachments(textAnnotations, mainImageAttachments),
+			];
+
+			const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
+			const message = formatted;
+			let outgoingMessage = message;
+			let outgoingImages = imageAttachments;
+			let heldBatch: ReadyHeldBatch | null = null;
+			let heldRestored = false;
+			// Queue (and a plain send that raced turn-end while streaming): hold locally
+			// (ARCHITECTURE §11 B); the post-turn HeldQueueBar sends it with its image attachments.
+			if (action === "queue" || (action === "send" && streaming)) {
 				pushHeld(inputOwner, message, imageAttachments);
-				toast.error(t("composer.interruptTimeout"));
-				// Same persistent banner as a stop-button timeout: the interrupt
-				// never got acknowledged either.
-				useStopHint.getState().show(sessionId);
+				pushHistory(raw.trim());
+				finishPrivacySend();
 				releaseComposer();
+				return;
 			}
-			pushHistory(raw.trim());
-			finishPrivacySend();
-		} catch (err) {
-			restoreComposer();
-			if (heldBatch && !heldRestored) {
-				restoreReadyHeldBatch(inputOwner, heldBatch);
-				heldRestored = true;
+			setBusy(true);
+			// Release the input as soon as the message is echoed into the thread; the
+			// resume/RPC awaits below can take seconds. Restore everything if the send fails.
+			try {
+				// Interrupt: abort and wait for the turn to stop. If it keeps running,
+				// hold the message rather than dropping it.
+				const idle =
+					action === "interrupt" && streaming
+						? await interruptAndWait(inputOwner, INTERRUPT_WAIT_MS)
+						: true;
+				if (idle) {
+					heldBatch = takeReadyHeldBatch(inputOwner, true);
+					if (heldBatch) {
+						const merged = mergeHeldItems([
+							{ id: "composer-send", text: message, images: imageAttachments },
+							...heldBatch.items,
+						]);
+						outgoingMessage = merged.text;
+						outgoingImages = merged.images;
+					}
+					await sendPrompt(inputOwner, outgoingMessage, {
+						steer: action === "steer",
+						images: outgoingImages,
+						onEchoed: releaseComposer,
+					});
+					// Cancelled takeover returns without echoing: keep the draft and queue for retry.
+					if (!released) {
+						if (heldBatch) {
+							restoreReadyHeldBatch(inputOwner, heldBatch);
+							heldRestored = true;
+						}
+						return;
+					}
+				} else {
+					pushHeld(inputOwner, message, imageAttachments);
+					toast.error(t("composer.interruptTimeout"));
+					// Same persistent banner as a stop-button timeout: the interrupt
+					// never got acknowledged either.
+					useStopHint.getState().show(sessionId);
+					releaseComposer();
+				}
+				pushHistory(raw.trim());
+				finishPrivacySend();
+			} catch (err) {
+				restoreComposer();
+				if (heldBatch && !heldRestored) {
+					restoreReadyHeldBatch(inputOwner, heldBatch);
+					heldRestored = true;
+				}
+				if (!isResumeCancelled(err)) toast.error(t("composer.sendFailed", { error: errMsg(err) }));
+			} finally {
+				if (heldBatch) releaseReadyHeldBatch(inputOwner);
+				setBusy(false);
 			}
-			if (!isResumeCancelled(err)) toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 		} finally {
-			if (heldBatch) releaseReadyHeldBatch(inputOwner);
-			setBusy(false);
+			stopWatchingDraft();
 		}
 	};
 

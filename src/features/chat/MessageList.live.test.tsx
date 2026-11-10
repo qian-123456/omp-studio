@@ -4,12 +4,13 @@
  * 「正在处理」 header, and a session switch never paints the previous
  * session's held live frame.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 import { emptySessionLive, useLive } from "../../stores/live";
 
+import { useSessions } from "../../stores/sessions";
 vi.mock("../../lib/ipc", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../../lib/ipc")>()),
 	rpcSend: vi.fn(async () => ({})),
@@ -60,11 +61,11 @@ const streamingMessage = (thinking: string) =>
 		content: [{ type: "thinking", thinking }],
 	}) as never;
 
-const mount = (sessionId: string) => {
+const mount = (sessionId: string, props: { transcriptError?: string; onRetryTranscript?: () => void } = {}) => {
 	const scrollRef = createRef<HTMLDivElement>();
 	return render(
 		<div ref={scrollRef}>
-			<MessageList sessionId={sessionId} scrollRef={scrollRef} />
+			<MessageList sessionId={sessionId} scrollRef={scrollRef} {...props} />
 		</div>,
 	);
 };
@@ -82,6 +83,7 @@ beforeEach(() => {
 	vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(800);
 	vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
 	useLive.setState({ sessions: {} });
+	useSessions.setState({ sessions: {} });
 });
 afterEach(cleanup);
 
@@ -201,7 +203,7 @@ describe("MessageList live turn", () => {
 		expect(screen.getAllByText("最终答案")).toHaveLength(1);
 	});
 
-	it("keeps the finished answer painted until a slow transcript page lands, then ends on any page", () => {
+	it("keeps the finished answer across empty pages until its full text is committed", () => {
 		vi.useFakeTimers();
 		try {
 			useLive.setState({
@@ -226,11 +228,15 @@ describe("MessageList live turn", () => {
 				vi.advanceTimersByTime(5000);
 			});
 			expect(container.querySelector("#msg-live")).not.toBeNull();
-			// A page with nothing new still ends the hold: the turn committed nothing.
+			// A successful but empty read cannot replace text already shown to the user.
 			act(() => {
 				useLive.getState().appendItems("s1", [], 20);
 			});
+			expect(container.querySelector("#msg-live")).not.toBeNull();
+			expect(screen.getByText("最终答案")).toBeTruthy();
+			act(() => useLive.getState().appendItems("s1", [item({ id: "a2", kind: "assistant", text: "最终答案" })], 30));
 			expect(container.querySelector("#msg-live")).toBeNull();
+			expect(screen.getAllByText("最终答案")).toHaveLength(1);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -393,5 +399,200 @@ describe("live narration visibility", () => {
 		const second = screen.getByText("second spoken update");
 		expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /正在思考|已思考/ })).toBeNull();
+	});
+});
+
+describe("committed stopped answers", () => {
+	it("keeps a nonempty aborted answer readable beside its stopped indicator", () => {
+		useLive.setState({ sessions: { s1: { ...emptySessionLive(), items: [
+			item({ id: "u1", kind: "user", text: "Explain", ts: "2026-11-01T12:00:00.000Z" }),
+			item({ id: "a1", kind: "assistant", text: "Partial generated answer remains readable", stopReason: "aborted", ts: "2026-11-01T12:00:03.000Z" }),
+		] } } });
+		mount("s1");
+		expect(screen.getByText("Partial generated answer remains readable")).toBeTruthy();
+		expect(screen.getByText(/^已停止|^Stopped/)).toBeTruthy();
+		expect(screen.queryByText(/空回复|Empty reply/)).toBeNull();
+	});
+
+	it("shows the stopped indicator rather than an empty reply for a blank aborted answer", () => {
+		useLive.setState({ sessions: { s1: { ...emptySessionLive(), items: [
+			item({ id: "u1", kind: "user", text: "Explain", ts: "2026-11-01T12:00:00.000Z" }),
+			item({ id: "a1", kind: "assistant", text: "", stopReason: "aborted", ts: "2026-11-01T12:00:03.000Z" }),
+		] } } });
+		mount("s1");
+		expect(screen.getByText(/^已停止|^Stopped/)).toBeTruthy();
+		expect(screen.queryByText(/空回复|Empty reply/)).toBeNull();
+	});
+});
+
+describe("history read failure with retained content", () => {
+	it.each(["cached", "pending"] as const)("keeps %s content visible with the full error and an operable retry", (source) => {
+		if (source === "cached") {
+			useLive.setState({ sessions: { s1: { ...emptySessionLive(), items: [item({ id: "u1", kind: "user", text: "Retained cached question" })] } } });
+		} else {
+			useLive.getState().addUserEcho("s1", "Retained pending question");
+		}
+		const retry = vi.fn();
+		const error = "History unavailable: permission denied\nThe cached messages are still available.";
+		mount("s1", { transcriptError: error, onRetryTranscript: retry });
+		expect(screen.getByText(`Retained ${source} question`)).toBeTruthy();
+		expect(screen.getByRole("alert").textContent).toContain(error);
+		fireEvent.click(screen.getByRole("button", { name: /重试加载|Retry loading/ }));
+		expect(retry).toHaveBeenCalledOnce();
+		expect(screen.getByText(`Retained ${source} question`)).toBeTruthy();
+	});
+});
+
+describe("new side chat inherited history boundary", () => {
+	it.each([false, true])("keeps pending and live content while waiting for its own boundary (nested=%s)", (nested) => {
+		const inherited = nested ? [
+			item({ id: "parent-boundary", kind: "user", text: "Side chat forked from main session\n## User question\nInherited parent question" }),
+			item({ id: "parent-answer", kind: "assistant", text: "Inherited parent answer" }),
+		] : [];
+		useSessions.setState({ sessions: { child: { id: "child", forkDepth: 2 } as never } });
+		useLive.setState({ sessions: { child: {
+			...emptySessionLive(), alive: true, streaming: true, items: inherited,
+			sideChatInheritedIds: inherited.map((row) => row.id),
+			streamingMessage: { role: "assistant", content: [{ type: "text", text: "Current committed child answer" }] } as never,
+		} } });
+		useLive.getState().addUserEcho("child", "Current child question");
+		mount("child");
+		expect(screen.getByText("Current child question")).toBeTruthy();
+		expect(screen.getByText("Current committed child answer")).toBeTruthy();
+		expect(screen.queryByText("Inherited parent question")).toBeNull();
+		expect(screen.queryByText("Inherited parent answer")).toBeNull();
+		act(() => {
+			useLive.getState().reduceFrame({ sessionId: "child", frame: { type: "agent_end" } });
+			useLive.getState().appendItems("child", [
+				item({ id: "own-boundary", kind: "user", hidden: true, text: "Side chat forked from main session\n## User question\nCurrent child question" }),
+				item({ id: "own-answer", kind: "assistant", text: "Current committed child answer" }),
+			], 20);
+		});
+		expect(useLive.getState().sessions.child.sideChatInheritedIds).toBeUndefined();
+		expect(screen.getAllByText("Current child question")).toHaveLength(1);
+		expect(screen.getByText("Current committed child answer")).toBeTruthy();
+		expect(screen.queryByText("Inherited parent question")).toBeNull();
+		expect(screen.queryByText("Inherited parent answer")).toBeNull();
+	});
+});
+
+describe("agent_end answer handoff", () => {
+	it.each(["message_update", "message_end"] as const)("keeps %s prose readable after real agent_end until delayed history arrives", (frameType) => {
+		vi.useFakeTimers();
+		try {
+			useLive.getState().setItems("s1", [item({ id: "u1", kind: "user", text: "Explain the result" })], 1);
+			useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+			useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: frameType, message: { role: "assistant", id: "answer-request", completedAt: 2000, stopReason: "stop", content: [{ type: "text", text: "The final visible answer" }] } } });
+			const { container } = mount("s1");
+			expect(screen.getByText("The final visible answer")).toBeTruthy();
+			act(() => useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_end" } }));
+			act(() => vi.advanceTimersByTime(30_000));
+			expect(screen.getAllByText("The final visible answer")).toHaveLength(1);
+			expect(container.querySelector("#msg-live")).not.toBeNull();
+			act(() => useLive.getState().appendItems("s1", [], 2));
+			expect(screen.getAllByText("The final visible answer")).toHaveLength(1);
+			act(() => useLive.getState().setItems("s1", [
+				item({ id: "u1", kind: "user", text: "Explain the result" }),
+				item({ id: "persisted-answer", kind: "assistant", text: "The final visible", completedAt: 2000 }),
+			], 2));
+			expect(screen.getAllByText("The final visible answer")).toHaveLength(1);
+			expect(screen.queryByText("The final visible")).toBeNull();
+			expect(container.querySelector("#msg-live")).not.toBeNull();
+			act(() => useLive.getState().setItems("s1", [
+				item({ id: "u1", kind: "user", text: "Explain the result" }),
+				item({ id: "persisted-answer", kind: "assistant", text: "The final visible answer", completedAt: 2000 }),
+			], 3));
+			expect(screen.getAllByText("The final visible answer")).toHaveLength(1);
+			expect(container.querySelector("#msg-live")).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps completed request prose beside a failed history read and retries without blanking it", () => {
+		vi.useFakeTimers();
+		try {
+			useLive.getState().setItems("s1", [item({ id: "u1", kind: "user", text: "Explain the result" })], 1);
+			useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+			useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "message_end", message: { role: "assistant", id: "answer-request", completedAt: 2000, stopReason: "stop", content: [{ type: "text", text: "Answer waiting for history" }] } } });
+			const scrollRef = createRef<HTMLDivElement>();
+			const retry = vi.fn(() => {
+				useLive.getState().appendItems("s1", [item({ id: "persisted-answer", kind: "assistant", text: "Answer waiting for history", completedAt: 2000 })], 2);
+			});
+			const view = (error: string | null) => (
+				<div ref={scrollRef}><MessageList sessionId="s1" scrollRef={scrollRef} transcriptError={error} onRetryTranscript={retry} /></div>
+			);
+			const { rerender, container } = render(view(null));
+			expect(screen.getByText("Answer waiting for history")).toBeTruthy();
+			act(() => useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_end" } }));
+			rerender(view("History read failed: disk is unavailable"));
+			act(() => vi.advanceTimersByTime(30_000));
+			expect(screen.getByText("Answer waiting for history")).toBeTruthy();
+			expect(screen.getByRole("alert").textContent).toContain("History read failed: disk is unavailable");
+			fireEvent.click(screen.getByRole("button", { name: /重试加载|Retry loading/ }));
+			expect(retry).toHaveBeenCalledOnce();
+			rerender(view(null));
+			expect(screen.getAllByText("Answer waiting for history")).toHaveLength(1);
+			expect(screen.queryByRole("alert")).toBeNull();
+			expect(container.querySelector("#msg-live")).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("waits for every completed request's full multipart prose, not only the final answer", () => {
+		const question = item({ id: "u1", kind: "user", text: "Explain the result" });
+		useLive.getState().setItems("s1", [question], 1);
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "message_end", message: { role: "assistant", id: "earlier-request", completedAt: 1000, content: [
+			{ type: "text", text: "Earlier first part" }, { type: "text", text: "Earlier second part" },
+		] } } });
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "message_end", message: { role: "assistant", id: "final-request", completedAt: 2000, content: [{ type: "text", text: "Final complete answer" }] } } });
+		const { container } = mount("s1");
+		expect(screen.getByText("Final complete answer")).toBeTruthy();
+		act(() => useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_end" } }));
+		const answer = item({ id: "persisted-answer", kind: "assistant", text: "Final complete answer", completedAt: 2000 });
+		act(() => useLive.getState().setItems("s1", [question, answer], 2));
+		expect(container.querySelector("#msg-live")).not.toBeNull();
+		expect(screen.getByText("Earlier first part")).toBeTruthy();
+		expect(screen.getByText("Earlier second part")).toBeTruthy();
+		expect(screen.getAllByText("Final complete answer")).toHaveLength(1);
+		act(() => useLive.getState().setItems("s1", [question,
+			item({ id: "earlier-prose", kind: "assistant", text: "Earlier first part\n\nEarlier second part", completedAt: 1000 }), answer,
+		], 3));
+		expect(container.querySelector("#msg-live")).toBeNull();
+		expect(screen.getAllByText("Earlier first part")).toHaveLength(1);
+		expect(screen.getAllByText("Earlier second part")).toHaveLength(1);
+		expect(screen.getAllByText("Final complete answer")).toHaveLength(1);
+	});
+
+	it("hands off once when agent_end and the complete transcript page arrive in the same React batch", () => {
+		const question = item({ id: "u1", kind: "user", text: "Explain the result" });
+		useLive.getState().setItems("s1", [question], 1);
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "message_end", message: { role: "assistant", id: "request", completedAt: 2000, content: [{ type: "text", text: "Answer committed in the same batch" }] } } });
+		const { container } = mount("s1");
+		expect(screen.getAllByText("Answer committed in the same batch")).toHaveLength(1);
+		act(() => {
+			useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_end" } });
+			useLive.getState().appendItems("s1", [item({ id: "answer", kind: "assistant", text: "Answer committed in the same batch", completedAt: 2000 })], 2);
+		});
+		expect(screen.getAllByText("Answer committed in the same batch")).toHaveLength(1);
+		expect(container.querySelector("#msg-live")).toBeNull();
+	});
+
+	it.each([undefined, 1000])("does not treat display-stat fallback timing as a completedAt identity (timestamp=%s)", (timestamp) => {
+		const question = item({ id: "u1", kind: "user", text: "Explain the result" });
+		useLive.getState().setItems("s1", [question], 1);
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "message_end", message: { role: "assistant", id: "request", ...(timestamp === undefined ? {} : { timestamp }), content: [{ type: "text", text: "Full answer without completion metadata" }] } } });
+		const { container } = mount("s1");
+		act(() => useLive.getState().reduceFrame({ sessionId: "s1", frame: { type: "agent_end" } }));
+		act(() => useLive.getState().setItems("s1", [question, item({ id: "answer", kind: "assistant", text: "without completion metadata", completedAt: null, ts: new Date(2000).toISOString() })], 2));
+		expect(screen.getAllByText("Full answer without completion metadata")).toHaveLength(1);
+		expect(container.querySelector("#msg-live")).not.toBeNull();
+		act(() => useLive.getState().setItems("s1", [question, item({ id: "answer", kind: "assistant", text: "Full answer without completion metadata", completedAt: null, ts: new Date(2000).toISOString() })], 3));
+		expect(screen.getAllByText("Full answer without completion metadata")).toHaveLength(1);
+		expect(container.querySelector("#msg-live")).toBeNull();
 	});
 });

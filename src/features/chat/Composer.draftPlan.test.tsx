@@ -163,6 +163,69 @@ describe("Composer plan chip on a new-chat draft", () => {
 	});
 });
 
+
+describe("submitted annotation ownership after draft handoff", () => {
+	it("consumes transferred quotes without discarding quotes added after submission", async () => {
+		const { transferDraft } = await vi.importActual<typeof DraftSessionModule>("../sessions/draftSession");
+		h.materialize.mockImplementation(async (id) => {
+			transferDraft(id, REAL);
+			useComposer.getState().addAnnotation(REAL, { source: "message", text: "next quote" });
+			return REAL;
+		});
+		useComposer.getState().addAnnotation(DRAFT, { source: "message", text: "submitted quote" });
+		useComposer.getState().setDraft(DRAFT, "/zzunknown task");
+		render(<Composer sessionId={DRAFT} />);
+		fireEvent.keyDown(ta(DRAFT), { key: "Enter" });
+		await waitFor(() => expect(useComposer.getState().drafts[REAL]).toBe(""));
+		expect(useComposer.getState().annotations[REAL]?.map((annotation) => annotation.text)).toEqual(["next quote"]);
+		const commands = h.rpcSend.mock.calls.map(([, command]) => command);
+		const prompt = commands.find((command) => command !== null && typeof command === "object" && "type" in command && command.type === "prompt");
+		expect(prompt).toEqual(expect.objectContaining({ message: expect.stringContaining("submitted quote") }));
+		expect(prompt).toEqual(expect.objectContaining({ message: expect.not.stringContaining("next quote") }));
+	});
+	it.each(["source", "target"] as const)("keeps retyped identical input in the %s during a late slash handoff", async (phase) => {
+		const { transferDraft } = await vi.importActual<typeof DraftSessionModule>("../sessions/draftSession");
+		let handoff!: () => void;
+		const materializing = new Promise<void>((resolve) => { handoff = resolve; });
+		let finish!: (value: Record<string, unknown>) => void;
+		const pending = new Promise<Record<string, unknown>>((resolve) => { finish = resolve; });
+		h.materialize.mockImplementation(async (id) => {
+			await materializing;
+			transferDraft(id, REAL);
+			return REAL;
+		});
+		h.rpcSend.mockImplementation((_sid, command) =>
+			command !== null && typeof command === "object" && "type" in command && command.type === "prompt"
+				? pending : Promise.resolve({}),
+		);
+		const submitted = "/zzunknown same 📎#1";
+		useComposer.getState().addFile(DRAFT, "/old.txt");
+		useComposer.getState().setDraft(DRAFT, submitted);
+		render(<Composer sessionId={DRAFT} />);
+		fireEvent.keyDown(ta(DRAFT), { key: "Enter" });
+		await waitFor(() => expect(h.materialize).toHaveBeenCalled());
+		if (phase === "target") {
+			await act(async () => { handoff(); });
+			await waitFor(() => expect(h.rpcSend).toHaveBeenCalledWith(REAL, expect.objectContaining({ type: "prompt" })));
+			cleanup();
+			render(<Composer sessionId={REAL} />);
+		}
+		const owner = phase === "source" ? DRAFT : REAL;
+		fireEvent.change(ta(owner), { target: { value: "" } });
+		act(() => { useComposer.getState().addFile(owner, "/new.txt"); });
+		fireEvent.change(ta(owner), { target: { value: submitted } });
+		if (phase === "source") {
+			await act(async () => { handoff(); });
+			await waitFor(() => expect(h.rpcSend).toHaveBeenCalledWith(REAL, expect.objectContaining({ type: "prompt" })));
+		}
+		await act(async () => { finish({}); });
+		expect(useComposer.getState().drafts[REAL]).toBe(submitted);
+		expect(useComposer.getState().files[REAL]?.map((file) => file.path)).toEqual(["/new.txt"]);
+		h.rpcSend.mockResolvedValue({});
+	});
+});
+
+
 describe("plan tab auto-open", () => {
 	const setPlan = (plan: { enabled: boolean; version: number } | undefined) =>
 		act(() => {

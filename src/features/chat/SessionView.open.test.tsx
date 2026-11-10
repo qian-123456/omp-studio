@@ -3,15 +3,18 @@
  * Opening a session must not clear its live items first: with a pending echo
  * for a just-sent message, an older history page must not consume that echo.
  */
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as IpcModule from "../../lib/ipc";
+import type * as SendModule from "./send";
 import { emptySessionLive, useLive } from "../../stores/live";
 
 const SID = "s1";
 
 const h = vi.hoisted(() => ({
 	getTranscript: vi.fn(),
+	rpcPendingUi: vi.fn(),
+	abortTurn: vi.fn(async () => {}),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => {
@@ -20,7 +23,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		...orig,
 		getTranscript: h.getTranscript,
 		gitSessionTurns: vi.fn(async () => []),
-		rpcPendingUi: vi.fn(async () => []),
+		rpcPendingUi: h.rpcPendingUi,
 		rpcSend: vi.fn(async () => ({})),
 	};
 });
@@ -29,10 +32,10 @@ vi.mock("../../lib/events", () => ({
 }));
 vi.mock("./ChatTrace", () => ({ ChatTrace: () => null }));
 vi.mock("./AnnotationMarkers", () => ({ AnnotationMarkers: () => null }));
-vi.mock("./Composer", () => ({ Composer: () => null }));
+vi.mock("./Composer", () => ({ Composer: ({ sessionId }: { sessionId: string }) => <textarea data-testid={`composer-${sessionId}`} data-composer={sessionId} /> }));
 vi.mock("./HeldQueueBar", () => ({ HeldQueueBar: () => null }));
 vi.mock("./MessageList", () => ({ MessageList: () => null }));
-vi.mock("./PendingUiCard", () => ({ PendingUiCard: () => null }));
+vi.mock("./PendingUiCard", () => ({ PendingUiCard: ({ req }: { req: { request?: { id?: string } } }) => <div>{req.request?.id}</div> }));
 vi.mock("./SelectionToolbar", () => ({ SelectionToolbar: () => null }));
 vi.mock("./share/ShareSelectionBar", () => ({ ShareSelectionBar: () => null }));
 vi.mock("./subagents/TopCapsule", () => ({ TopCapsule: () => null }));
@@ -41,6 +44,7 @@ vi.mock("./ask/AskPanel", () => ({
 	useAskRouting: () => ({ route: null, awaiting: false, submit: () => {}, cancel: () => {} }),
 }));
 
+vi.mock("./send", async (importOriginal) => ({ ...(await importOriginal<typeof SendModule>()), abortTurn: h.abortTurn }));
 import { SessionView } from "./SessionView";
 
 const userItem = (id: string, text: string) =>
@@ -54,6 +58,8 @@ const userItem = (id: string, text: string) =>
 
 beforeEach(() => {
 	h.getTranscript.mockReset();
+	h.rpcPendingUi.mockReset().mockResolvedValue([]);
+	h.abortTurn.mockClear();
 	useLive.setState({ sessions: {} });
 });
 
@@ -75,5 +81,37 @@ describe("SessionView open", () => {
 		await waitFor(() => expect(useLive.getState().sessions[SID].items).toHaveLength(1));
 		// The older history item does not consume the echo.
 		expect(useLive.getState().sessions[SID].pendingUserEchoes).toHaveLength(1);
+	});
+
+	it("a slow pending-dialog snapshot cannot resurrect an answered dialog", async () => {
+		let finish!: (list: unknown[]) => void;
+		h.getTranscript.mockResolvedValue({ items: [], nextOffset: 0, reset: false });
+		h.rpcPendingUi.mockReturnValueOnce(new Promise<unknown[]>((resolve) => { finish = resolve; }));
+		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true, streaming: true } } });
+		render(<SessionView sessionId={SID} />);
+		act(() => {
+			useLive.getState().reduceFrame({ sessionId: SID, frame: { type: "extension_ui_request", id: "old-dialog", method: "confirm" } });
+			useLive.getState().dismissUi(SID, "old-dialog");
+		});
+		await act(async () => { finish([{ sessionId: SID, request: { id: "old-dialog", method: "confirm" }, receivedAt: "t" }]); });
+		expect(useLive.getState().sessions[SID].pendingUi).toEqual([]);
+		expect(screen.queryByText("old-dialog")).toBeNull();
+	});
+
+	it("Escape in a side composer never interrupts the main session", async () => {
+		h.getTranscript.mockResolvedValue({ items: [], nextOffset: 0, reset: false });
+		useLive.setState({ sessions: {
+			main: { ...emptySessionLive(), alive: true, streaming: true },
+			side: { ...emptySessionLive(), alive: true, streaming: true },
+		} });
+		render(<><SessionView sessionId="main" /><SessionView sessionId="side" compact /></>);
+		const side = screen.getByTestId("composer-side");
+		side.focus();
+		fireEvent.keyDown(side, { key: "Escape" });
+		expect(h.abortTurn).not.toHaveBeenCalled();
+		const main = screen.getByTestId("composer-main");
+		main.focus();
+		fireEvent.keyDown(main, { key: "Escape" });
+		await waitFor(() => expect(h.abortTurn).toHaveBeenCalledExactlyOnceWith("main"));
 	});
 });

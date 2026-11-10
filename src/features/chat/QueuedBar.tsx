@@ -10,7 +10,7 @@ import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { useSettings } from "../settings/store";
 import { dropEchoesForTexts, isFlowBusy, restoreTextsToDraft, useLive } from "../../stores/live";
-import { type HeldItem, heldQueueItems, isHeldAutoSendPaused, mergeHeldItems, useHeldQueue } from "./heldQueue";
+import { type HeldItem, hasPromptPayload, heldQueueItems, isHeldAutoSendPaused, mergeHeldItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 
 const EMPTY_LIST: HeldItem[] = [];
@@ -29,7 +29,7 @@ export function takeReadyHeldBatch(sid: string, allowStreaming = false): ReadyHe
 	if (live && (isFlowBusy(live) || (!allowStreaming && live.streaming))) return null;
 	const originalItems = heldQueueItems(sid);
 	const busy = useQueuedBusy.getState().busy;
-	const items = originalItems.filter((item) => item.text.trim() && !(item.id in busy));
+	const items = originalItems.filter((item) => hasPromptPayload(item.text) && !(item.id in busy));
 	if (items.length === 0) return null;
 	draining.add(sid);
 	const ids = new Set(items.map((item) => item.id));
@@ -47,15 +47,17 @@ export function restoreReadyHeldBatch(sid: string, batch: ReadyHeldBatch): void 
 
 export function releaseReadyHeldBatch(sid: string): void {
 	draining.delete(sid);
+	setPreparing(sid, EMPTY_LIST);
 }
 
 /** Send all ready queued items for `sid` as one prompt. */
 export async function drainNext(sid: string): Promise<boolean> {
 	const batch = takeReadyHeldBatch(sid);
 	if (!batch) return false;
+	setPreparing(sid, batch.items);
 	const { text, images } = mergeHeldItems(batch.items);
 	try {
-		await sendPrompt(sid, text, images.length ? { images } : undefined);
+		await sendPrompt(sid, text, { ...(images.length ? { images } : {}), onEchoed: () => setPreparing(sid, EMPTY_LIST) });
 		return true;
 	} catch (err) {
 		restoreReadyHeldBatch(sid, batch);
@@ -101,7 +103,7 @@ export function useQueueAutoSend(sid: string, streaming: boolean): boolean {
 }
 
 /** Per-item in-flight state of the queue actions (send-now / remove / promote). */
-export const useQueuedBusy = create<{ busy: Record<string, true> }>(() => ({ busy: {} }));
+export const useQueuedBusy = create<{ busy: Record<string, true>; preparing: Record<string, HeldItem[]> }>(() => ({ busy: {}, preparing: {} }));
 const setBusy = (id: string, on: boolean) =>
 	useQueuedBusy.setState((s) => {
 		if (on === (id in s.busy)) return s;
@@ -111,20 +113,34 @@ const setBusy = (id: string, on: boolean) =>
 		return { busy };
 	});
 
+/** Reserved items stay visible until their real optimistic echo takes over. */
+const setPreparing = (sid: string, items: HeldItem[]) =>
+	useQueuedBusy.setState((state) => {
+		if (items.length === 0 && !state.preparing[sid]) return state;
+		const preparing = { ...state.preparing };
+		if (items.length) preparing[sid] = items;
+		else delete preparing[sid];
+		return { preparing };
+	});
+
 /** Send queued item `i` now (steer or normal follow-up); removed only on success.
  * A second call while one is in flight, or for an item the turn-end drain
  * already took, sends nothing. */
-export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean): Promise<void> {
-	if (draining.has(sid) || item.id in useQueuedBusy.getState().busy) return;
-	if (!(useHeldQueue.getState().queues[sid] ?? EMPTY_LIST).some((x) => x.id === item.id)) return;
+export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean): Promise<boolean> {
+	if (draining.has(sid) || item.id in useQueuedBusy.getState().busy) return false;
+	const snapshot = (useHeldQueue.getState().queues[sid] ?? EMPTY_LIST).find((queued) => queued.id === item.id);
+	if (!snapshot) return false;
 	setBusy(item.id, true);
 	try {
-		await sendPrompt(sid, item.text, { steer, ...(item.images?.length ? { images: item.images } : {}) });
+		await sendPrompt(sid, snapshot.text, { steer, ...(snapshot.images?.length ? { images: snapshot.images } : {}) });
 		const q = useHeldQueue.getState();
-		const idx = (q.queues[sid] ?? EMPTY_LIST).findIndex((x) => x.id === item.id);
+		// Edits replace the item object but retain its ID; never consume that newer version.
+		const idx = (q.queues[sid] ?? EMPTY_LIST).findIndex((queued) => queued === snapshot);
 		if (idx >= 0) q.remove(sid, idx);
+		return true;
 	} catch (err) {
 		if (!isResumeCancelled(err)) toast.error(tNow("chatView.queue.sendFailed", { error: errMsg(err) }));
+		return false;
 	} finally {
 		setBusy(item.id, false);
 	}

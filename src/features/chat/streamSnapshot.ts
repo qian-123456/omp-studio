@@ -255,15 +255,15 @@ export function clearSnapshot(sessionId: string): void {
 
 const norm = (t: string): string => t.replace(/\s+/g, " ").trim();
 
-/** Below this length a loose `includes` match is too easy to fake. */
+/** Short legacy snapshots without timing need an exact match, not a common opening. */
 const MIN_PREFIX_LEN = 16;
 
 /**
  * True when `items` (a transcript page) already carries the snapshot's
  * content: the in-flight text appears in some assistant item, or (when the
  * message had no text yet) one of its tool calls was committed.
- * Active reconciliation additionally requires temporal evidence and the full
- * saved prefix; uncertain active prose is retained rather than discarded.
+ * Every match must contain the complete saved prefix. Timing, when present,
+ * excludes older replies; active prose without timing is retained.
  */
 export function snapshotInItems(
 	snap: Pick<StreamSnapshot, "answerText" | "toolIds"> & Partial<Pick<StreamSnapshot, "streamingMessage">>,
@@ -272,34 +272,28 @@ export function snapshotInItems(
 ): boolean {
 	const prefix = norm(snap.answerText);
 	if (prefix) {
-		const probe = prefix.slice(0, 80);
-		const loose = probe.length >= MIN_PREFIX_LEN;
 		for (const item of items) {
 			if (item.kind !== "assistant") continue;
 			const text = norm(item.text ?? "");
 			if (!text) continue;
-			if (active) {
-				// Entry IDs/timestamps are not message identities. An older answer
-				// sharing this opening must never discard a newer in-flight reply.
-				const completedAt = snap.streamingMessage?.completedAt;
-				if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
-					if (item.completedAt !== completedAt) continue;
-				} else {
-					const startedAt = snap.streamingMessage?.timestamp;
-					if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) continue;
-					const itemTime = typeof item.completedAt === "number" && Number.isFinite(item.completedAt)
-						? item.completedAt : Date.parse(item.ts);
-					if (!Number.isFinite(itemTime) || itemTime < startedAt) continue;
-				}
-				if (text.startsWith(prefix)) return true;
-				continue;
+			// A committed tool call or a shared opening cannot prove that every
+			// saved word reached disk. Keep the remainder until the full text lands.
+			const completedAt = snap.streamingMessage?.completedAt;
+			const startedAt = snap.streamingMessage?.timestamp;
+			if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
+				if (item.completedAt !== completedAt) continue;
+			} else if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
+				const itemTime = typeof item.completedAt === "number" && Number.isFinite(item.completedAt)
+					? item.completedAt : Date.parse(item.ts);
+				if (!Number.isFinite(itemTime) || itemTime < startedAt) continue;
+			} else {
+				if (active) continue;
+				if (prefix.length < MIN_PREFIX_LEN && text !== prefix) continue;
 			}
-			if (loose ? text.includes(probe) || probe.includes(text) : text === prefix) {
-				return true;
-			}
+			if (text.startsWith(prefix)) return true;
 		}
 	}
-	if ((!prefix || active) && snap.toolIds.length > 0) {
+	if (!prefix && snap.toolIds.length > 0) {
 		const ids = new Set(snap.toolIds);
 		for (const item of items) {
 			for (const call of item.toolCalls ?? []) {

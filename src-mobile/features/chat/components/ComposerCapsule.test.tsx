@@ -69,6 +69,19 @@ describe("ComposerCapsule", () => {
 		expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(false);
 	});
 
+	it("does not submit an unfinished IME candidate through the send button", async () => {
+		const onSend = vi.fn();
+		render(<ComposerCapsule initialText="原文" placeholder="消息" onPlus={() => {}} onSend={onSend} />);
+		const field = screen.getByRole("textbox");
+		fireEvent.compositionStart(field);
+		fireEvent.input(field, { target: { value: "原文ni" } });
+		fireEvent.click(screen.getByRole("button", { name: "发送" }));
+		expect(onSend).not.toHaveBeenCalled();
+		await act(async () => { fireEvent.compositionEnd(field, { target: { value: "原文你" } }); await frame(); });
+		fireEvent.click(screen.getByRole("button", { name: "发送" }));
+		expect(onSend).toHaveBeenCalledExactlyOnceWith("原文你");
+	});
+
 	it("inserts voice text at the caret and does not send", async () => {
 		const onSend = vi.fn();
 		render(<ComposerCapsule initialText="前后" placeholder="消息" onPlus={() => {}} onSend={onSend} />);

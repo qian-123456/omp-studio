@@ -2,7 +2,7 @@
  * Side-chat actions shared by the panel, the tab context menu and `/btw`.
  *
  * Send flow (nothing ever starts without a user-typed message):
- *   blank tab: pending bubble -> create (once) -> first ask -> echo + bind.
+ *   blank tab: pending bubble -> create (once) -> echo + first ask -> bind.
  *   Failed asks keep the blank composer and created session for a first-ask retry.
  *   Bound tab, later messages: echo + `sendPrompt` (done by the thread view).
  */
@@ -16,11 +16,12 @@ import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
 import { expandImagesForSend } from "../chat/imageTokens";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { prepareSideChatFirstPrompt } from "../../stores/transcript";
 import { useUi } from "../../stores/ui";
 import { sideChatDefaultModelArg } from "./modelDefault";
 import { HANDBACK_ACTION_KEY, appendToDraft, handbackAnnotation } from "./handbackLogic";
 import { isSideChatBusy, prefillHandbackFromExisting, useHandback } from "./handbackRun";
-import { sideChatImageAttachments } from "./sideChatAttachments";
+import { removeSideChatImageToken, sideChatImageAttachments } from "./sideChatAttachments";
 import { openNewSideChat, useSideChatView } from "./viewStore";
 
 export interface FirstMessageInput {
@@ -100,15 +101,34 @@ export function liveTurnContext(parentId: string): string | undefined {
 // Keep it across failures so retrying does not create another side chat or use
 // the ordinary send path, which would omit the first-question boundary prompt.
 const firstQuestionSessions = new Map<string, string>();
+const firstMessagesInFlight = new Map<string, Promise<void>>();
 useSideChatView.subscribe(({ openTabs }) => {
 	for (const tabId of firstQuestionSessions.keys()) {
 		if (!Object.values(openTabs).some((tabs) => tabs.includes(tabId))) firstQuestionSessions.delete(tabId);
 	}
 });
 
-/** Send a blank tab's first question; failures leave all staged input intact. */
-export async function sendFirstMessage(input: FirstMessageInput): Promise<void> {
-	const { parentId, tabId, annotations, images = [] } = input;
+/** A tab owns one first-message delivery, even across panel unmounts and remounts. */
+export function sendFirstMessage(input: FirstMessageInput): Promise<void> {
+	const existing = firstMessagesInFlight.get(input.tabId);
+	if (existing) return existing;
+	let resolve!: () => void;
+	let reject!: (error: unknown) => void;
+	const delivery = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+	firstMessagesInFlight.set(input.tabId, delivery);
+	void deliverFirstMessage(input).then(() => {
+		firstMessagesInFlight.delete(input.tabId);
+		resolve();
+	}, (error: unknown) => {
+		firstMessagesInFlight.delete(input.tabId);
+		reject(error);
+	});
+	return delivery;
+}
+
+/** Failed deliveries leave staged input intact and remove only their own optimistic echo. */
+async function deliverFirstMessage(input: FirstMessageInput): Promise<void> {
+	const { parentId, tabId, annotations = [], images = [] } = input;
 	const imageAttachments = sideChatImageAttachments(images);
 	const { question, selection } = firstMessageParts(input.text, annotations, images.length);
 	const promptQuestion = expandImagesForSend(
@@ -126,7 +146,14 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 	);
 	const view = useSideChatView.getState();
 	const shown = sideChatEchoText(question, selection);
-	view.setPending(tabId, shown);
+	const allAttachments = [
+		...imageAttachments,
+		...annotationImageAttachments(annotations, imageAttachments),
+	];
+	const context = liveTurnContext(parentId);
+	const originalDraft = useComposer.getState().sideChatDrafts[tabId] ?? input.text;
+	useComposer.getState().clearSideChatDraft(tabId);
+	view.setPending(tabId, shown, allAttachments);
 	try {
 		let sessionId = firstQuestionSessions.get(tabId);
 		if (!sessionId) {
@@ -134,21 +161,46 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 			sessionId = info.sessionId;
 			firstQuestionSessions.set(tabId, sessionId);
 		}
-		const allAttachments = [
-			...imageAttachments,
-			...annotationImageAttachments(annotations ?? [], imageAttachments),
-		];
+		await prepareSideChatFirstPrompt(sessionId);
+		// Register before IPC can emit agent_start or the first transcript page.
+		// Otherwise the already-delivered first question is mistaken for queued input.
+		const echoId = useLive.getState().addUserEcho(sessionId, shown, allAttachments);
 		// Real image bytes go with the prompt (backend builds native ImageContent);
 		// a failure rejects here, keeps the draft and never downgrades to text-only.
 		const imagePaths = allAttachments.flatMap((a) => (typeof a.path === "string" && a.path ? [a.path] : []));
-		await sideChatAsk(sessionId, promptQuestion, selection, liveTurnContext(parentId), imagePaths);
-		// Only accepted messages become user echoes or consume staged attachments.
-		useLive.getState().addUserEcho(sessionId, shown, allAttachments);
+		try {
+			await sideChatAsk(sessionId, promptQuestion, selection, context, imagePaths);
+		} catch (error) {
+			if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
+			throw error;
+		}
 		await useSessions.getState().load().catch(() => {});
+		const composer = useComposer.getState();
+		let newerDraft = composer.sideChatDrafts[tabId] ?? "";
+		const currentImages = composer.images[tabId] ?? [];
+		const remainingImages = currentImages.filter((image) => !images.includes(image));
+		// Consume only the sent immutable snapshots. Renumber surviving tokens from
+		// their current attachment positions so a newer image never inherits a sent token.
+		for (let index = currentImages.length - 1; index >= 0; index--) {
+			if (images.includes(currentImages[index]) && /🖼️\s*#\d+/u.test(newerDraft)) {
+				newerDraft = removeSideChatImageToken(newerDraft, index + 1);
+			}
+		}
+		if (newerDraft) composer.setDraft(sessionId, newerDraft);
+		if (remainingImages.length) composer.setImages(sessionId, remainingImages);
+		composer.clearSideChatDraft(tabId);
+		composer.clearImages(tabId);
+		for (const annotation of annotations) {
+			if (composer.annotations[sideChatAnnKey(parentId)]?.includes(annotation)) {
+				composer.removeAnnotation(sideChatAnnKey(parentId), annotation.id);
+			}
+		}
 		view.bindTab(parentId, tabId, sessionId);
 		firstQuestionSessions.delete(tabId);
-		if (annotations?.length) useComposer.getState().clearAnnotations(sideChatAnnKey(parentId));
-		if (images.length > 0) useComposer.getState().clearImages(tabId);
+	} catch (error) {
+		const composer = useComposer.getState();
+		if (!composer.sideChatDrafts[tabId]) composer.setSideChatDraft(tabId, originalDraft);
+		throw error;
 	} finally {
 		view.setPending(tabId, null);
 	}

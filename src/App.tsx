@@ -73,6 +73,11 @@ const ResumeMissingCwdDialog = lazy(() =>
 		default: m.ResumeMissingCwdDialog,
 	})),
 );
+const ResumeMissingModelDialog = lazy(() =>
+	import("./features/sessions/ResumeMissingModelDialog").then((m) => ({
+		default: m.ResumeMissingModelDialog,
+	})),
+);
 const SettingsOverlay = lazy(() =>
 	import("./features/settings/SettingsOverlay").then((m) => ({ default: m.SettingsOverlay })),
 );
@@ -451,6 +456,7 @@ export default function App() {
 				<ShareImageDialog />
 				<NewSessionDialog />
 				<ResumeMissingCwdDialog />
+				<ResumeMissingModelDialog />
 				<SettingsOverlay />
 			</Suspense>
 		</div>

@@ -212,8 +212,8 @@ export const heatmapDiagnose = (prompt: string, model: string | null) =>
 export const rpcStart = (opts: StartOpts) =>
 	invoke<LiveSessionInfo>("rpc_start", { opts });
 
-export const rpcEnsureLive = (sessionId: string, cwd?: string) =>
-	invoke<LiveSessionInfo>("rpc_ensure_live", { sessionId, cwd: cwd ?? null });
+export const rpcEnsureLive = (sessionId: string, cwd?: string, model?: string) =>
+	invoke<LiveSessionInfo>("rpc_ensure_live", { sessionId, cwd: cwd ?? null, model: model ?? null });
 
 export const rpcSend = (sessionId: string, command: unknown) =>
 	invoke<unknown>("rpc_send", { sessionId, command });

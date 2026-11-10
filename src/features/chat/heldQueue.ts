@@ -12,6 +12,11 @@ export interface HeldItem {
 	images?: ImageAttachment[];
 }
 
+/** Delivery needs text or an existing attachment marker to correlate its transcript echo. */
+export function hasPromptPayload(text: string): boolean {
+	return text.trim() !== "";
+}
+
 let nextHeldId = 1;
 export function generateHeldId(): string {
 	return `held-${Date.now()}-${nextHeldId++}-${Math.random().toString(36).slice(2, 7)}`;
@@ -120,7 +125,7 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 		dismissed: {},
 		push: (sid, text, images) => {
 			const t = text.trim();
-			if (!t) return;
+			if (!hasPromptPayload(t)) return;
 			const item: HeldItem = { id: generateHeldId(), text: t };
 			if (images && images.length > 0) item.images = images;
 			write(sid, [...items(sid), item]);
@@ -247,7 +252,7 @@ export function mergeHeldItems(list: HeldItem[]): {
 	const images: ImageAttachment[] = [];
 	for (const item of list) {
 		const t = item.text.trim();
-		if (!t) continue;
+		if (!hasPromptPayload(t)) continue;
 		const offset = images.length;
 		texts.push(
 			offset === 0

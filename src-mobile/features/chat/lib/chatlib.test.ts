@@ -153,11 +153,37 @@ describe("draft book", () => {
 		b.stash("mobile-draft-1", "x", []);
 		b.handoff("mobile-draft-1", "real-1", "first prompt");
 		expect(b.restore("mobile-draft-1")).toBeNull();
+		expect(b.restore("real-1")).toEqual({ text: "x", atts: [] });
 		expect(b.takeHandoff("other")).toBeNull();
 		expect(b.takeHandoff("real-1")).toBeNull(); // a mismatching mount cleared it
 		b.handoff("mobile-draft-1", "real-1", "first prompt");
 		expect(b.takeHandoff("real-1")).toEqual({ id: "real-1", text: "first prompt" });
 		expect(b.takeHandoff("real-1")).toBeNull();
+	});
+	it("moves attachment ownership and routes late upload completion only to its current stash", () => {
+		const b = createDraftBook<{ name: string; status: string }>();
+		const image = { name: "new.png", status: "up" };
+		const removed = { name: "removed.png", status: "up" };
+		const source = vi.fn(() => {
+			expect(b.restore("real")).toEqual({ text: "new unsent", atts: [image] });
+			expect(b.takeHandoff("real")).toEqual({ id: "real", text: "first sent" });
+		});
+		const target = vi.fn();
+		const offSource = b.subscribe("draft", source);
+		const offTarget = b.subscribe("real", target);
+		b.stash("draft", "new unsent", [image]);
+		b.handoff("draft", "real", "first sent");
+		expect(source).toHaveBeenCalledWith({ id: "real", text: "first sent" });
+		b.replaceAttachment(removed, { ...removed, status: "ok" });
+		expect(target).not.toHaveBeenCalled();
+		b.replaceAttachment(image, { ...image, status: "ok" });
+		expect(target).toHaveBeenCalledWith({ text: "new unsent", atts: [{ name: "new.png", status: "ok" }] });
+		expect(b.restore("draft")).toBeNull();
+		b.handoff("real", "real", "first sent");
+		expect(b.restore("real")?.atts).toEqual([{ name: "new.png", status: "ok" }]);
+		expect(b.takeHandoff("real")).toEqual({ id: "real", text: "first sent" });
+		offSource();
+		offTarget();
 	});
 	it("builds the draft-activity body", () => {
 		expect(draftActivityBody(true, false)).toEqual({ active: true, meaningful: false });

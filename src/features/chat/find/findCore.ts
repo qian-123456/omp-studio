@@ -33,7 +33,9 @@ export function matchOffsets(text: string, query: string): number[] {
 export function visibleFindItems(
 	items: readonly TranscriptItem[],
 	isSideChat: boolean,
+	awaitingFirstPrompt = false,
 ): TranscriptItem[] {
+	if (isSideChat && awaitingFirstPrompt) return [];
 	return filterVisibleItems(trimSideChatItems([...items], isSideChat), false);
 }
 

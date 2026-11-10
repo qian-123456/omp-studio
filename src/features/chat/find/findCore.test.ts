@@ -36,6 +36,13 @@ describe("visibleFindItems", () => {
 		expect(computeMatches(visible, "为什么")).toHaveLength(1);
 	});
 
+	it("does not count an inherited nested side prompt while awaiting its own first boundary", () => {
+		const inherited = [item("parent-side", "user", "Side chat forked from main session\n\n## User question\n\ninherited parent question", true)];
+		expect(computeMatches(visibleFindItems(inherited, true, true), "inherited")).toEqual([]);
+		const own = item("own", "user", "Side chat forked from main session\n\n## User question\n\nmy new question", true);
+		expect(computeMatches(visibleFindItems([...inherited, own], true, false), "my new question")).toEqual([{ itemId: "own", occurrence: 0 }]);
+	});
+
 	it("keeps ordinary sessions untouched and never mutates the input", () => {
 		const items = [item("a", "user", "hello"), item("b", "assistant", "hi")];
 		const visible = visibleFindItems(items, false);

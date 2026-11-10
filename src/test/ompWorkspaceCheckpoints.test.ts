@@ -202,28 +202,56 @@ describe("checkpoint extension registered handlers", () => {
 
 	it("prunes expired snapshot pairs but preserves undone history and pending notices", async () => {
 		const f = fixture();
-		let clock = 1000;
-		vi.spyOn(Date, "now").mockImplementation(() => clock++);
-		let first = "";
-		let before = "";
-		for (let i = 0; i < 51; i++) {
+		const clock = vi.spyOn(Date, "now").mockReturnValue(1050);
+		try {
+			const before = git(f.cwd, "rev-parse", "HEAD");
+			f.edit("existing snapshot\n");
+			git(f.cwd, "add", "f.txt");
+			const tree = git(f.cwd, "write-tree");
+			const after = git(f.cwd, "commit-tree", tree, "-p", before, "-m", "existing snapshot");
+			git(f.cwd, "read-tree", "HEAD");
+			f.edit("base\n");
+
+			const first = "t1000";
+			const undoneRef = `refs/omp/undone/sess1/${first}`;
+			const pairRefs = (turnId: string) => [
+				`refs/omp/turns/sess1/${turnId}/before`,
+				`refs/omp/turns/sess1/${turnId}/after`,
+			];
+			const existing = Array.from({ length: 50 }, (_, i) => pairRefs(`t${1000 + i}`));
+			const updates = existing.flatMap(([beforeRef, afterRef]) => [
+				`create ${beforeRef} ${before}`,
+				`create ${afterRef} ${after}`,
+			]);
+			updates.push(`create ${undoneRef} ${before}`);
+			execFileSync("git", ["update-ref", "--stdin"], {
+				cwd: f.cwd,
+				input: `${updates.join("\n")}\n`,
+				env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+			});
+			expect(refs(f.cwd)).toEqual([...existing.flat(), undoneRef].sort());
+
 			f.fire("agent_start");
-			f.edit(`turn ${i}\n`);
+			f.edit("turn 50\n");
 			await f.fire("agent_end");
-			if (i === 0) {
-				first = String(f.entries[0].data.turnId);
-				before = String(f.entries[0].data.before);
-				git(f.cwd, "update-ref", `refs/omp/undone/sess1/${first}`, before);
+
+			expect(f.entries).toHaveLength(1);
+			expect(f.entries[0]).toMatchObject({
+				customType: "omp-workspace.turn-checkpoint",
+				data: { turnId: "t1050", files: [{ path: "f.txt", status: "M" }] },
+			});
+			const retained = [...existing.slice(1).flat(), ...pairRefs("t1050"), undoneRef].sort();
+			expect(refs(f.cwd)).toEqual(retained);
+			expect(git(f.cwd, "rev-parse", undoneRef)).toBe(before);
+			for (const [index, ref] of pairRefs("t1050").entries()) {
+				expect(git(f.cwd, "rev-parse", ref)).toBe(f.entries[0].data[index === 0 ? "before" : "after"]);
 			}
+			const notice = f.fire("before_agent_start") as { message: { content: string } };
+			expect(notice.message.content).toContain(`The user undid your turn ${first}`);
+			expect(f.entries[f.entries.length - 1]).toEqual({ customType: "omp-workspace.turn-undo-notified", data: { v: 1, turnId: first } });
+		} finally {
+			clock.mockRestore();
+			rmSync(f.cwd, { recursive: true, force: true });
 		}
-		const retained = refs(f.cwd);
-		expect(f.entries).toHaveLength(51);
-		expect(retained.filter((ref) => ref.startsWith("refs/omp/turns/"))).toHaveLength(100);
-		expect(retained).not.toContain(`refs/omp/turns/sess1/${first}/before`);
-		expect(retained).not.toContain(`refs/omp/turns/sess1/${first}/after`);
-		expect(git(f.cwd, "rev-parse", `refs/omp/undone/sess1/${first}`)).toBe(before);
-		const notice = f.fire("before_agent_start") as { message: { content: string } };
-		expect(notice.message.content).toContain(`The user undid your turn ${first}`);
-		expect(f.entries[f.entries.length - 1]).toEqual({ customType: "omp-workspace.turn-undo-notified", data: { v: 1, turnId: first } });
 	}, 30_000);
 });

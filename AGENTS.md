@@ -35,7 +35,7 @@ cargo clippy                 # lint (must be clean)
 cargo fmt                    # format (CI expects fmt-clean)
 ```
 
-`sccache` is installed; export `RUSTC_WRAPPER=sccache` in your shell for cross-worktree compile cache.
+Use official Cargo from `~/.cargo/bin` with Kache selected by the user's Cargo configuration (`~/.cargo/config.toml`, `[build].rustc-wrapper` pointing to the installed Kache executable). This Mac uses pinned Kache 2.0.0 and a shared local-only cache across worktrees. Do not export compiler-wrapper overrides; for direct `cargo` commands, first run `unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER`. The project Tauri launcher clears those inherited overrides and puts the official rustup proxy first on `PATH`; `pnpm tauri`, `pnpm dev:preview`, `pnpm build:app`, and `open-worktree.mjs` all use it. No alternate Cargo installation or opt-in wrapper is needed.
 
 **Live dev app check.** Frontend changes require visually checking the live window (no white screen). If blank, run `touch index.html` to force Vite full-reload or use skill `omp-workspace-native-ui-acceptance`. Avoid concurrent edits to mutually-imported files while live app is watching.
 
