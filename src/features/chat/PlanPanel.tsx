@@ -25,6 +25,7 @@ import {
 	diffPlanLines,
 	effectiveExecMode,
 	type PlanExecMode,
+	type PlanSection,
 	type PlanStatus,
 	planSections,
 } from "./plan/planStatus";
@@ -146,7 +147,8 @@ function PlanReview({
 	const content = plan.content ?? "";
 	// The full document (incl. its `# title`) renders in the body; no separate title header.
 	const body = content;
-	const sections = useMemo(() => planSections(content), [content]);
+	const sectionRanges = useMemo(() => planSections(content), [content]);
+	const sections = useMemo(() => sectionRanges.map((section) => section.title), [sectionRanges]);
 	const prevContent = useMemo(
 		() => trackPrevContent(sessionId, content, plan.prevContent),
 		[sessionId, content, plan.prevContent],
@@ -176,7 +178,7 @@ function PlanReview({
 		return { total: list.length, list };
 	}, [annotations, planUrl]);
 
-	// Scroll spy over the rendered `##` headings.
+	// The CommonMark section index and rendered h2 elements share document order.
 	const headings = () => Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-plan-body] h2") ?? []);
 	useEffect(() => {
 		const el = scrollRef.current;
@@ -197,10 +199,11 @@ function PlanReview({
 		const h = headings()[i];
 		const el = scrollRef.current;
 		if (!h || !el) return;
-		el.scrollTo({ top: h.offsetTop - 8, behavior: "smooth" });
+		const top = el.scrollTop + h.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientTop - 8;
+		el.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
 	};
 	const sectionNotes = (i: number) =>
-		pendingBySection.list.filter((a) => sectionOf(content, a.text, sections) === i).length;
+		pendingBySection.list.filter((a) => sectionOf(content, a.text, sectionRanges) === i).length;
 
 	// 放大: remember the width to go back to.
 	const rightWidth = useUi((s) => s.rightWidth);
@@ -244,13 +247,13 @@ function PlanReview({
 				</div>
 			)}
 			<div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5">
-				<div className="flex items-center gap-1.5">
+				<div className="flex flex-col gap-1.5">
 					{sections.length > 0 && !showDiff && (
-						<div className="min-w-0 flex-1 @min-[640px]:hidden">
+						<div className="min-w-0 w-full @min-[640px]:hidden">
 							<TocPill sections={sections} current={curSection} notes={sectionNotes} onJump={jump} />
 						</div>
 					)}
-					<div className="ml-auto flex shrink-0 items-center gap-1.5">
+					<div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
 						{prevContent !== null && !revising && (
 							<HeadButton
 								on={showDiff}
@@ -323,10 +326,12 @@ function PlanReview({
 }
 
 /** Section index a quoted text falls into (by its first occurrence in the plan). */
-function sectionOf(content: string, quote: string, sections: string[]): number {
+function sectionOf(content: string, quote: string, sections: PlanSection[]): number {
 	const at = content.indexOf(quote.split("\n")[0] ?? quote);
 	if (at < 0) return -1;
-	return Math.min(planSections(content.slice(0, at)).length, sections.length) - 1;
+	let current = -1;
+	for (let i = 0; i < sections.length && sections[i].from <= at; i++) current = i;
+	return current;
 }
 
 function HeadButton({
@@ -394,6 +399,7 @@ function TocList({
 						// biome-ignore lint/suspicious/noArrayIndexKey: headings may repeat; order is the identity
 						key={i}
 						type="button"
+						aria-current={i === current ? "location" : undefined}
 						onClick={() => onJump(i)}
 						className={clsx(
 							"flex w-full items-start gap-2 rounded-[7px] px-2 py-1.5 text-left text-[12px] transition-colors",
@@ -402,7 +408,7 @@ function TocList({
 								: "text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]",
 						)}
 					>
-						<span className="min-w-[18px] shrink-0 font-mono text-[11px] leading-5 text-[var(--text-30)]">
+						<span className="min-w-[18px] shrink-0 whitespace-nowrap font-mono text-[11px] leading-5 text-[var(--text-30)]">
 							{String(i + 1).padStart(2, "0")}
 						</span>
 						<span className="min-w-0 flex-1 leading-5 break-words">{title}</span>
@@ -435,15 +441,18 @@ function TocPill(props: {
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
-				className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--ghost-hover)] px-2.5 py-0.5 text-left text-[12px] text-[var(--text)] transition-colors hover:bg-[var(--ghost-active,var(--ghost-hover))]"
+				className="flex w-full items-start gap-1.5 rounded-[7px] bg-[var(--ghost-hover)] px-2.5 py-1 text-left text-[12px] leading-5 text-[var(--text)] transition-colors hover:bg-[var(--ghost-active,var(--ghost-hover))]"
 			>
 				<span className="shrink-0 whitespace-nowrap text-[var(--text-30)]">{t("chatView.plan.toc")}</span>
-				{cur && (
-					<span className="min-w-0 break-words">
-						{String(props.current + 1).padStart(2, "0")} {cur}
-					</span>
+				{cur !== undefined && (
+					<>
+						<span className="shrink-0 whitespace-nowrap text-[var(--text-30)]">
+							{String(props.current + 1).padStart(2, "0")}
+						</span>
+						<span className="min-w-0 flex-1 break-words">{cur}</span>
+					</>
 				)}
-				<ChevronDown size={11} className={clsx("shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
+				<ChevronDown size={11} className={clsx("mt-1 shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
 			</button>
 			<FloatingLayer
 				anchor={open ? btnRef.current : null}

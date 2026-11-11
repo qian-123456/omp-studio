@@ -135,6 +135,56 @@ describe("plan extension lifecycle", () => {
 		}
 	});
 
+	it.each([
+		["stop", "completed", null],
+		["aborted", "failed", "aborted"],
+		["error", "failed", "error"],
+	] as const)("keeps continuing execution persisted until terminal %s", async (reason, status, error) => {
+		for (const willContinue of [undefined, false]) {
+			const root = newRoot();
+			const t = await reviewed(root);
+			await t.action("approve keep");
+			const executing = t.lastState();
+			const persistedCount = t.pi.appendEntry.mock.calls.length;
+
+			for (const intermediateReason of ["stop", "error"]) {
+				await t.fire("agent_end", { messages: [asst(intermediateReason)], willContinue: true });
+				expect(t.status().approved).toMatchObject({ status: "executing", error: null });
+				expect(t.pi.appendEntry).toHaveBeenCalledTimes(persistedCount);
+				expect(t.lastState()).toEqual(executing);
+			}
+
+			const reloaded = await boot(root, [t.lastState()]);
+			expect(reloaded.status().approved).toMatchObject({ status: "executing", error: null });
+
+			const terminal = { messages: [asst(reason)], ...(willContinue === undefined ? {} : { willContinue }) };
+			await t.fire("agent_end", terminal);
+			expect(t.status().approved).toMatchObject({ status, error });
+			expect(t.lastState().data).toMatchObject({ approved: { status, ...(error === null ? {} : { error }) } });
+			await reloaded.fire("agent_end", terminal);
+			expect(reloaded.status().approved).toMatchObject({ status, error });
+		}
+	});
+
+	it.each([undefined, false])("defers planning reminders until a terminal boundary (%s)", async (willContinue) => {
+		const t = await boot(newRoot());
+		await t.action("enable");
+		for (const reason of ["stop", "error"]) {
+			await t.fire("agent_end", { messages: [asst(reason)], willContinue: true });
+			expect(t.pi.sendMessage).not.toHaveBeenCalled();
+		}
+
+		const terminal = { messages: [asst("stop")], ...(willContinue === undefined ? {} : { willContinue }) };
+		await t.fire("agent_end", terminal);
+		expect(t.pi.sendMessage).toHaveBeenCalledTimes(1);
+		expect(t.pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "ompws-plan-reminder", display: false }),
+			{ triggerTurn: true },
+		);
+		await t.fire("agent_end", terminal);
+		expect(t.pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps the approved state across a reload and then completes it", async () => {
 		const root = newRoot();
 		const t = await reviewed(root);

@@ -3,6 +3,8 @@
  * frames under `PLAN_STATUS_KEY`, plus the `/plan-action` commands the review
  * panel sends back. */
 
+import { commonmarkLanguage } from "@codemirror/lang-markdown";
+
 /** setStatus key the plan extension publishes its JSON state under. */
 export const PLAN_STATUS_KEY = "ompws-plan";
 
@@ -143,17 +145,53 @@ export function effectiveExecMode(mode: PlanExecMode, status: Pick<PlanStatus, "
 	return mode === "keep" && status.keepDisabled ? "compact" : mode;
 }
 
-/** `## ` section titles of a plan body (code fences skipped), in order. */
-export function planSections(md: string): string[] {
-	const out: string[] = [];
-	let fenced = false;
-	for (const line of md.split("\n")) {
-		if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-		else if (!fenced) {
-			const m = line.match(/^##\s+(.+?)\s*#*\s*$/);
-			if (m) out.push(m[1]);
-		}
-	}
+export interface PlanSection {
+	title: string;
+	/** Source range of the heading, including its line's quote/list prefix. */
+	from: number;
+	to: number;
+}
+
+/** Rendered level-two headings, in document order, with their source positions. */
+export function planSections(md: string): PlanSection[] {
+	const out: PlanSection[] = [];
+	const tree = commonmarkLanguage.parser.parse(md);
+	tree.iterate({
+		enter(node) {
+			if (node.name !== "ATXHeading2" && node.name !== "SetextHeading2") return;
+			const marks = node.node.getChildren("HeaderMark");
+			const atx = node.name === "ATXHeading2";
+			const start = atx ? marks[0].to : node.from;
+			const end = atx
+				? (marks.length > 1 ? marks[marks.length - 1].from : node.to)
+				: md.lastIndexOf("\n", marks[0].from - 1);
+			let title = "";
+			let cursor = start;
+			// Keep the visible inline text, not Markdown delimiters or link targets.
+			tree.iterate({
+				from: start,
+				to: end,
+				enter(part) {
+					if (part.from < start || part.to > end) return;
+					const marker = part.name === "EmphasisMark" || part.name === "CodeMark" ||
+						part.name === "LinkMark" || part.name === "QuoteMark" || part.name === "HTMLTag";
+					const target = part.name === "URL" &&
+						(part.node.parent?.name === "Link" || part.node.parent?.name === "Image");
+					if (!marker && !target && part.name !== "Escape") return;
+					title += md.slice(cursor, part.from);
+					cursor = part.name === "Escape" ? part.from + 1 : part.to;
+					return false;
+				},
+			});
+			title += md.slice(cursor, end);
+			out.push({
+				title: title.trim().replace(/\s+/g, " "),
+				from: md.lastIndexOf("\n", node.from - 1) + 1,
+				to: node.to,
+			});
+			return false;
+		},
+	});
 	return out;
 }
 

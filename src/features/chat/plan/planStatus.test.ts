@@ -26,9 +26,67 @@ describe("parsePlanStatus", () => {
 	});
 });
 
+describe("plan section index", () => {
+	it("keeps longer and mismatched code fences from producing phantom sections", () => {
+		const md = [
+			"## Before",
+			"",
+			"````markdown",
+			"```",
+			"## Inside shorter backticks",
+			"~~~",
+			"## Inside mixed fence",
+			"````",
+			"",
+			"~~~markdown",
+			"```",
+			"## Inside tildes",
+			"~~~",
+			"",
+			"## After",
+		].join("\n");
+		expect(planSections(md).map((section) => section.title)).toEqual(["Before", "After"]);
+	});
+
+	it("includes legal zero-to-three-space headings but not indented code", () => {
+		const md = [
+			"## Zero", "", " ## One", "", "  ## Two", "", "   ## Three", "",
+			"    ## Indented code", "", "\t## Tab-indented code",
+		].join("\n");
+		expect(planSections(md).map((section) => section.title)).toEqual(["Zero", "One", "Two", "Three"]);
+	});
+
+	it("indexes Setext, quoted and list headings in the same source order as rendered h2 elements", () => {
+		const md = [
+			"# Title", "", "Setext", "continuation", "---", "",
+			"> Quoted", "> continuation", "> ---", "",
+			"- ## Listed", "", "  Nested Setext", "  ---", "",
+			"## Final",
+		].join("\n");
+		const sections = planSections(md);
+		expect(sections.map((section) => section.title)).toEqual([
+			"Setext continuation", "Quoted continuation", "Listed", "Nested Setext", "Final",
+		]);
+		expect(sections.map((section) => md.slice(section.from, section.to))).toEqual([
+			"Setext\ncontinuation\n---",
+			"> Quoted\n> continuation\n> ---",
+			"- ## Listed",
+			"  Nested Setext\n  ---",
+			"## Final",
+		]);
+	});
+
+	it("uses visible inline text rather than heading delimiters, emphasis markers or link targets", () => {
+		const md = "## A **bold** [link](https://example.test) and `code` \\! ##";
+		expect(planSections(md)).toEqual([
+			{ title: "A bold link and code !", from: 0, to: md.length },
+		]);
+	});
+});
+
 describe("plan helpers", () => {
 	it("lists ## sections outside code fences", () => {
-		expect(planSections("# T\n## A\n```\n## not\n```\n## B ##")).toEqual(["A", "B"]);
+		expect(planSections("# T\n## A\n```\n## not\n```\n## B ##").map((section) => section.title)).toEqual(["A", "B"]);
 	});
 
 	it("falls back from keep to compact when context is full", () => {

@@ -563,11 +563,11 @@ export default function planMode(pi: Pi) {
 		return undefined;
 	});
 
-	pi.on("agent_end", (e: { messages?: unknown }, ctx: Ctx) => {
+	pi.on("agent_end", (e: { messages?: unknown; willContinue?: boolean }, ctx: Ctx) => {
 		if (isSub) return;
 		if (!s.enabled) {
-			// The approved plan's execution turn finished: report how it ended.
-			if (s.approved?.status === "executing") {
+			// Only terminal settles finish execution; retry/background continuations are still working.
+			if (s.approved?.status === "executing" && e?.willContinue !== true) {
 				const end = turnEnd(e?.messages);
 				s.approved = { ...s.approved, status: end === "ok" ? "completed" : "failed", error: end === "ok" ? undefined : end };
 				persist();
@@ -578,7 +578,7 @@ export default function planMode(pi: Pi) {
 		const found = refreshPlan(ctx);
 		persist();
 		publish(ctx);
-		if (shouldRemind(found, reminders, e?.messages)) {
+		if (e?.willContinue !== true && shouldRemind(found, reminders, e?.messages)) {
 			reminders += 1;
 			pi.sendMessage({ customType: REMINDER_TYPE, content: PLAN_REMINDER, display: false }, { triggerTurn: true });
 		}
