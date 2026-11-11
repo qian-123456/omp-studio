@@ -300,7 +300,7 @@ function PlanReview({
 						<TocList sections={sections} current={curSection} notes={sectionNotes} onJump={jump} />
 					</nav>
 				)}
-				<div ref={scrollRef} className={clsx("min-w-0 flex-1 overflow-y-auto px-6 pt-1", approved ? "pb-6" : "pb-24")}>
+				<div ref={scrollRef} className={clsx("relative min-w-0 flex-1 overflow-y-auto px-6 pt-1", approved ? "pb-6" : "pb-24")}>
 					{showDiff && prevContent !== null ? (
 						<DiffView before={prevContent} after={content} />
 					) : (
@@ -308,11 +308,11 @@ function PlanReview({
 							<Markdown text={body} sessionId={sessionId} />
 						</div>
 					)}
+					{!showDiff && !revising && !approved && (
+						<SelectionToolbar sessionId={sessionId} containerRef={scrollRef} compact docFile={planUrl} />
+					)}
 				</div>
 			</div>
-			{!showDiff && !revising && !approved && (
-				<SelectionToolbar sessionId={sessionId} containerRef={scrollRef} compact docFile={planUrl} />
-			)}
 			{!approved && (
 				<ApprovalDock
 					sessionId={sessionId}
