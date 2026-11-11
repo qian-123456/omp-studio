@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { BacklogItem, BacklogStatus, SessionMeta, SessionStatus, Workspace } from "../../lib/contracts";
 import {
 	appendToDraft,
@@ -7,7 +7,6 @@ import {
 	captureProjectOptions,
 	resolveCaptureProject,
 	byCreatedDesc,
-	dispatchGroups,
 	EMPTY_SEARCH,
 	effectiveScope,
 	filterIdeas,
@@ -19,9 +18,7 @@ import {
 	partitionByPhase,
 	rangeSelection,
 	searchIdeas,
-	sessionOptionLabel,
 	splitByProject,
-	splitSent,
 	scopeOptions,
 	tabCounts,
 	trashDaysLeft,
@@ -55,27 +52,6 @@ const sessionMeta = (overrides: Partial<SessionMeta> = {}): SessionMeta => ({
 	mode: "code",
 	groupId: null,
 	...overrides,
-});
-
-describe("sessionOptionLabel", () => {
-	it("uses a meaningful session title", () => {
-		expect(sessionOptionLabel(sessionMeta({ title: "修复登录流程" }))).toBe("修复登录流程");
-	});
-
-	it("prefers the last assistant snippet over a generic title and caps long snippets", () => {
-		const snippet = "Implemented login validation, error handling, regression tests, and compatibility checks for edge cases";
-		expect(sessionOptionLabel(sessionMeta({ title: "会话 12345678", lastAssistant: snippet }))).toBe(`${snippet.slice(0, 39)}…`);
-	});
-
-	it("falls back to a short ID when the title is the raw ID", () => {
-		expect(sessionOptionLabel(sessionMeta({ title: "12345678-90ab-cdef" }))).toBe("会话 12345678");
-	});
-
-	it("keeps a useful session label prefix", () => {
-		expect(sessionOptionLabel(sessionMeta({ label: "#115.2", title: "修复登录流程" }))).toBe(
-			"[#115.2] 修复登录流程",
-		);
-	});
 });
 
 const item = (
@@ -256,22 +232,6 @@ describe("splitByProject", () => {
 	});
 });
 
-describe("splitSent", () => {
-	const rows = [
-		item("a", "inbox", "/p/a", "2026-01-01T00:00:00Z"),
-		item("b", "inbox", "/p/b", "2026-01-02T00:00:00Z"),
-		item("c", "inbox", "/p/a", "2026-01-03T00:00:00Z"),
-	];
-	it("keeps sent items out of later sends, whatever the grouping", () => {
-		const { remaining, sent } = splitSent(rows, new Set(["a", "c"]));
-		expect(remaining.map((i) => i.id)).toEqual(["b"]);
-		expect(sent.map((i) => i.id)).toEqual(["a", "c"]);
-		expect(splitByProject(remaining).map((g) => g.map((i) => i.id))).toEqual([["b"]]);
-		expect(splitSent(rows, new Set()).remaining).toEqual(rows);
-		expect(splitSent(rows, new Set(["a", "b", "c"])).remaining).toEqual([]);
-	});
-});
-
 describe("filterIdeas", () => {
 	it("a project root keeps only that project's items in order; null keeps all", () => {
 		expect(filterIdeas(nonFinished, "/p/a").map((i) => i.id)).toEqual(["new-here", "old-here"]);
@@ -414,55 +374,6 @@ describe("tab membership", () => {
 
 	it("badge count excludes trashed items", () => {
 		expect(needsAttentionCount(all, sessionMap)).toBe(2);
-	});
-});
-
-describe("dispatchGroups", () => {
-	const batch = [
-		item("a", "inbox", "/p/a", "2026-01-01T00:00:00Z"),
-		item("b", "inbox", "/p/a", "2026-01-02T00:00:00Z"),
-	];
-
-	it("retries failed status writes without resending a delivered group", async () => {
-		let failFirstStatusWrite = true;
-		const sendGroup = vi.fn(async (_group: BacklogItem[]) => "session-1");
-		const updateStatus = vi.fn(async (id: string, _sessionId: string) => {
-			if (id === "a" && failFirstStatusWrite) {
-				failFirstStatusWrite = false;
-				throw new Error("database unavailable");
-			}
-		});
-
-		const first = await dispatchGroups([batch], new Set(), new Map(), sendGroup, updateStatus);
-		expect(first.sentIds).toEqual(new Set(["a", "b"]));
-		expect(first.pendingStatusUpdates).toEqual(new Map([["a", "session-1"]]));
-		expect(first.statusErrors).toEqual({ a: expect.any(Error) });
-		expect(splitSent(batch, first.sentIds).remaining).toEqual([]);
-
-		const retry = await dispatchGroups([], first.sentIds, first.pendingStatusUpdates, sendGroup, updateStatus, first.firstSession);
-		expect(retry.pendingStatusUpdates).toEqual(new Map());
-		expect(retry.statusErrors).toEqual({});
-		expect(retry.firstSession).toBe("session-1");
-		expect(sendGroup).toHaveBeenCalledTimes(1);
-		expect(updateStatus.mock.calls).toEqual([
-			["a", "session-1"],
-			["b", "session-1"],
-			["a", "session-1"],
-		]);
-	});
-
-	it("does not mark or update items when prompt delivery fails", async () => {
-		const sendError = new Error("session unavailable");
-		const sendGroup = vi.fn(async () => {
-			throw sendError;
-		});
-		const updateStatus = vi.fn(async () => {});
-
-		const result = await dispatchGroups([batch], new Set(), new Map(), sendGroup, updateStatus);
-		expect(result.sentIds).toEqual(new Set());
-		expect(result.pendingStatusUpdates).toEqual(new Map());
-		expect(result.sendErrors).toEqual({ a: sendError });
-		expect(updateStatus).not.toHaveBeenCalled();
 	});
 });
 

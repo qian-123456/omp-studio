@@ -38,6 +38,7 @@ function props(over: Partial<IdeaRowProps> = {}): IdeaRowProps {
 		editingKind: "idea",
 		editingProject: "",
 		canFill: false,
+		opening: false,
 		onToggle: vi.fn(),
 		onEditKindChange: vi.fn(),
 		onEditProjectChange: vi.fn(),
@@ -45,7 +46,7 @@ function props(over: Partial<IdeaRowProps> = {}): IdeaRowProps {
 		onSaveEdit: vi.fn(),
 		onCancelEdit: vi.fn(),
 		onFill: vi.fn(),
-		onDispatch: vi.fn(),
+		onOpenInNewSession: vi.fn(),
 		onOpenSession: vi.fn(),
 		...over,
 	};
@@ -67,5 +68,24 @@ describe("IdeaRow while multi-selecting", () => {
 		render(<IdeaRow {...props({ selecting: false, checked: false })} />);
 		expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "删除" })).toBeTruthy();
+	});
+
+	it("keeps compact draft actions together and disables only new conversation while opening", () => {
+		const p = props({ selecting: false, checked: false, canFill: true, opening: true });
+		render(<IdeaRow {...p} />);
+		const fill = screen.getByRole("button", { name: "填入当前" }) as HTMLButtonElement;
+		const open = screen.getByRole("button", { name: "新会话" }) as HTMLButtonElement;
+		expect(fill.disabled).toBe(false);
+		expect(open.disabled).toBe(true);
+		expect(fill.title).toBe("填入当前会话输入框");
+		expect(open.title).toBe("在新会话中准备草稿，确认后再发送");
+		expect(fill.classList.contains("whitespace-nowrap")).toBe(true);
+		expect(open.classList.contains("whitespace-nowrap")).toBe(true);
+		expect(fill.parentElement).toBe(open.parentElement);
+		fireEvent.click(fill);
+		fireEvent.click(open);
+		expect(p.onFill).toHaveBeenCalledTimes(1);
+		expect(p.onOpenInNewSession).not.toHaveBeenCalled();
+		expect(p.onToggle).not.toHaveBeenCalled();
 	});
 });

@@ -2,11 +2,14 @@ import { Lightbulb } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { BacklogItem } from "../../lib/contracts";
+import { errMsg } from "../../lib/dialogs";
+import { toast } from "../../lib/toast";
+import { usePendingSession } from "../sessions/pendingSession";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useT } from "../../stores/language";
 import { useBacklog } from "./backlogStore";
-import { DispatchDialog } from "./DispatchDialog";
+import { openIdeasInDrafts } from "./openIdeasInDrafts";
 import { IdeasPanel } from "./IdeasPanel";
 import { needsAttentionCount } from "./ideasLogic";
 
@@ -17,11 +20,13 @@ export function IdeasCapsule() {
 	const load = useBacklog((s) => s.load);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const sessions = useSessions((s) => s.sessions);
-	const currentProject = selectedSessionId ? (sessions[selectedSessionId]?.cwd ?? null) : null;
+	const pendingProject = usePendingSession((s) => s.selectedId ? (s.drafts[s.selectedId]?.cwd ?? null) : null);
+	const currentProject = (selectedSessionId ? sessions[selectedSessionId]?.cwd : null) ?? pendingProject;
 
 	// Reopen the popover after a reload if an unsaved edit was in progress.
 	const [open, setOpen] = useState(() => useBacklog.getState().editBuffer !== null);
-	const [dispatching, setDispatching] = useState<BacklogItem[] | null>(null);
+	const [opening, setOpening] = useState(false);
+	const openingRef = useRef(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	useEffect(() => {
@@ -29,6 +34,30 @@ export function IdeasCapsule() {
 	}, [load]);
 
 	const badgeCount = useMemo(() => needsAttentionCount(items, sessions), [items, sessions]);
+
+	const openInNewSession = async (batch: BacklogItem[]): Promise<boolean> => {
+		if (openingRef.current || batch.length === 0) return false;
+		openingRef.current = true;
+		setOpening(true);
+		try {
+			const result = await openIdeasInDrafts(batch, currentProject);
+			if (result.error) {
+				toast.error(t("backlog.openDraftFailed", { error: result.error }));
+				return false;
+			}
+			toast.success(result.draftIds.length === 1
+				? t("backlog.openedDraftSingle")
+				: t("backlog.openedDraftMultiple", { count: result.draftIds.length }));
+			setOpen(false);
+			return true;
+		} catch (error) {
+			toast.error(t("backlog.openDraftFailed", { error: errMsg(error) }));
+			return false;
+		} finally {
+			openingRef.current = false;
+			setOpening(false);
+		}
+	};
 
 	return (
 		<div className="relative flex items-center">
@@ -63,16 +92,10 @@ export function IdeasCapsule() {
 				<IdeasPanel
 					items={items}
 					currentProject={currentProject}
-					onDispatch={(batch) => {
-						setOpen(false);
-						setDispatching(batch);
-					}}
+					opening={opening}
+					onOpenInNewSession={openInNewSession}
 				/>
 			</FloatingLayer>
-
-			{dispatching && (
-				<DispatchDialog items={dispatching} currentProject={currentProject} onClose={() => setDispatching(null)} />
-			)}
 		</div>
 	);
 }

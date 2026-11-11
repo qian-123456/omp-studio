@@ -5,6 +5,10 @@ import type { BacklogKind } from "../../lib/contracts";
 export const PILL_PRIMARY =
 	"inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent)] px-3 py-1 text-[11px] font-medium text-[var(--bg)] shadow-sm transition-all hover:bg-[var(--accent-hover)] active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-dim)] disabled:shadow-none disabled:active:scale-100";
 
+/** Light accent pill for repeated draft actions, without a solid primary fill. */
+export const PILL_ACCENT =
+	"inline-flex shrink-0 items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] active:bg-[color-mix(in_srgb,var(--accent)_24%,transparent)] disabled:cursor-not-allowed disabled:opacity-40";
+
 /** Bordered secondary pill action. */
 export const PILL_OUTLINE =
 	"inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 py-1 text-[11px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40";

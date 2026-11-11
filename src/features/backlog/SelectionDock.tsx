@@ -1,20 +1,21 @@
-import { Check, CornerDownLeft, RotateCcw, Send, Trash2, Undo2, X } from "lucide-react";
+import { Check, CornerDownLeft, MessageCircle, RotateCcw, Trash2, Undo2, X } from "lucide-react";
 import type { IdeaPhase } from "./ideasLogic";
 import { useT } from "../../stores/language";
-import { PILL_DANGER, PILL_OUTLINE, PILL_PRIMARY, PILL_SUCCESS } from "./ideaStyles";
+import { PILL_ACCENT, PILL_DANGER, PILL_OUTLINE, PILL_SUCCESS } from "./ideaStyles";
 
 export interface SelectionDockProps {
 	phase: IdeaPhase;
 	count: number;
 	allSelected: boolean;
 	canFill: boolean;
+	opening: boolean;
 	onToggleAll: () => void;
 	onClear: () => void;
 	onDelete: () => void;
 	onReopen: () => void;
 	onDone: () => void;
 	onFill: () => void;
-	onDispatch: () => void;
+	onOpenInNewSession: () => void;
 	onRestore: () => void;
 	onPurge: () => void;
 }
@@ -68,22 +69,22 @@ export function SelectionDock(p: SelectionDockProps) {
 							</button>
 						)}
 						{p.phase === "pending" && (
-							<>
+							<span className="flex shrink-0 items-center gap-1.5">
 								<button
 									type="button"
 									disabled={!p.canFill}
 									onClick={p.onFill}
-									className={PILL_OUTLINE}
-									title={p.canFill ? t("backlog.fillComposerDockTooltip") : t("backlog.noSessionSelectedTooltip")}
+									className={`${PILL_OUTLINE} whitespace-nowrap`}
+									title={p.canFill ? t("backlog.fillCurrentTooltip") : t("backlog.noSessionSelectedTooltip")}
 								>
 									<CornerDownLeft className="h-3 w-3" />
-									{t("backlog.fillComposer")}
+									{t("backlog.fillCurrent")}
 								</button>
-								<button type="button" onClick={p.onDispatch} className={PILL_PRIMARY}>
-									<Send className="h-3 w-3" />
-									{t("backlog.dispatch")}
+								<button type="button" disabled={p.opening} onClick={p.onOpenInNewSession} className={`${PILL_ACCENT} whitespace-nowrap`} title={t("backlog.openInNewSessionTooltip")}>
+									<MessageCircle className="h-3 w-3" />
+									{t("backlog.openInNewSession")}
 								</button>
-							</>
+							</span>
 						)}
 					</>
 				)}

@@ -48,11 +48,13 @@ const EMPTY_TEXT_KEYS: Record<IdeaPhase, string> = {
 export function IdeasPanel({
 	items,
 	currentProject,
-	onDispatch,
+	onOpenInNewSession,
+	opening,
 }: {
 	items: BacklogItem[];
 	currentProject: string | null;
-	onDispatch: (items: BacklogItem[]) => void;
+	onOpenInNewSession: (items: BacklogItem[]) => Promise<boolean>;
+	opening: boolean;
 }) {
 	const { t } = useT();
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -218,6 +220,7 @@ export function IdeasPanel({
 			editingKind={editingKind}
 			editingProject={editingProject ?? item.projectDir ?? ""}
 			canFill={!!composerId}
+			opening={opening}
 			onToggle={(shift) => toggleChecked(item.id, shift)}
 			onEditKindChange={setEditingKind}
 			onEditProjectChange={setEditingProject}
@@ -225,7 +228,7 @@ export function IdeasPanel({
 			onSaveEdit={() => void saveEdit(item.id)}
 			onCancelEdit={cancelEdit}
 			onFill={() => fill([item])}
-			onDispatch={() => onDispatch([item])}
+			onOpenInNewSession={() => void onOpenInNewSession([item])}
 			onOpenSession={selectSession}
 		/>
 	);
@@ -319,15 +322,17 @@ export function IdeasPanel({
 					count={selected.length}
 					allSelected={allSelected}
 					canFill={!!composerId}
+					opening={opening}
 					onToggleAll={toggleAll}
 					onClear={clearSelection}
 					onDelete={() => void afterBatch(() => deleteIdeas(selectedIds))}
 					onReopen={() => void afterBatch(() => setIdeasStatus(selectedIds, "inbox"))}
 					onDone={() => void afterBatch(() => setIdeasStatus(selectedIds, "done"))}
 					onFill={() => fill(selectedItems)}
-					onDispatch={() => {
-						onDispatch(selectedItems);
-						clearSelection();
+					onOpenInNewSession={() => {
+						void onOpenInNewSession(selectedItems).then((ok) => {
+							if (ok) clearSelection();
+						});
 					}}
 					onRestore={() => void afterBatch(() => restoreIdeas(selectedIds))}
 					onPurge={() =>

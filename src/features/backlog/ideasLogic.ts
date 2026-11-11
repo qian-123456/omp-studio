@@ -174,70 +174,6 @@ export function rangeSelection(
 	return orderedIds.slice(start, end + 1);
 }
 
-export function splitSent(
-	items: BacklogItem[],
-	sentIds: ReadonlySet<string>,
-): { remaining: BacklogItem[]; sent: BacklogItem[] } {
-	const remaining: BacklogItem[] = [];
-	const sent: BacklogItem[] = [];
-	for (const it of items) (sentIds.has(it.id) ? sent : remaining).push(it);
-	return { remaining, sent };
-}
-export interface DispatchAttemptResult {
-	sentIds: Set<string>;
-	pendingStatusUpdates: Map<string, string>;
-	sendErrors: Record<string, unknown>;
-	statusErrors: Record<string, unknown>;
-	firstSession: string | null;
-}
-
-/** Send unsent groups once, then retry only the backlog status writes for delivered items. */
-export async function dispatchGroups(
-	groups: BacklogItem[][],
-	sentIds: ReadonlySet<string>,
-	pendingStatusUpdates: ReadonlyMap<string, string>,
-	sendGroup: (group: BacklogItem[]) => Promise<string>,
-	updateStatus: (id: string, sessionId: string) => Promise<void>,
-	previousSession: string | null = null,
-): Promise<DispatchAttemptResult> {
-	const nextSentIds = new Set(sentIds);
-	const nextStatusUpdates = new Map(pendingStatusUpdates);
-	const sendErrors: Record<string, unknown> = {};
-	let firstSession: string | null = previousSession;
-
-	for (const group of groups) {
-		const groupKey = group[0]?.id ?? "";
-		try {
-			const sessionId = await sendGroup(group);
-			firstSession ??= sessionId;
-			for (const item of group) {
-				nextSentIds.add(item.id);
-				nextStatusUpdates.set(item.id, sessionId);
-			}
-		} catch (error) {
-			sendErrors[groupKey] = error;
-		}
-	}
-
-	const statusErrors: Record<string, unknown> = {};
-	for (const [id, sessionId] of nextStatusUpdates) {
-		try {
-			await updateStatus(id, sessionId);
-			nextStatusUpdates.delete(id);
-		} catch (error) {
-			statusErrors[id] = error;
-		}
-	}
-
-	return {
-		sentIds: nextSentIds,
-		pendingStatusUpdates: nextStatusUpdates,
-		sendErrors,
-		statusErrors,
-		firstSession,
-	};
-}
-
 /**
  * Group by projectRoot(projectDir) (null = its own group);
  * groups ordered by first appearance, input order kept inside each group.
@@ -325,28 +261,6 @@ export function formatAddedTime(iso: string, now: Date = new Date()): string {
 	if (d.getFullYear() !== now.getFullYear()) return `${d.getFullYear()}-${md} ${hm}`;
 	const sameDay = d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 	return sameDay ? hm : `${md} ${hm}`;
-}
-
-const SESSION_OPTION_SNIPPET_LENGTH = 40;
-
-/** Concise label for a session option, preferring recent context over generated titles. */
-export function sessionOptionLabel(meta: SessionMeta): string {
-	const title = meta.title.trim();
-	const genericPrefix = /^(?:会话|Session)\s+(.+)$/.exec(title)?.[1];
-	const isGenericTitle = title === meta.id || (genericPrefix !== undefined && meta.id.startsWith(genericPrefix));
-	const snippet = meta.lastAssistant?.trim().replace(/\s+/g, " ");
-	let displayTitle: string;
-
-	if (isGenericTitle && snippet) {
-		displayTitle = snippet.length > SESSION_OPTION_SNIPPET_LENGTH
-			? `${snippet.slice(0, SESSION_OPTION_SNIPPET_LENGTH - 1).trimEnd()}…`
-			: snippet;
-	} else {
-		displayTitle = title && title !== meta.id ? title : tNow("backlog.sessionPrefix", { id: meta.id.slice(0, 8) });
-	}
-
-	const label = meta.label.trim();
-	return `${label ? `[${label}] ` : ""}${displayTitle}`;
 }
 
 /** Picker value meaning "file under no project" (stored projectDir = null). */

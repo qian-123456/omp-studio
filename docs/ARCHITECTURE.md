@@ -1459,9 +1459,12 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Consumers drop non-awaiting sessions whose `updated_at` is older than `inbox_window_hours`; archived sessions excluded. Open `schedule_run` todos (定时任务, from `todos_list`) are also shown by the inbox page and counted in the sidebar 收件箱 badge — frontend only; the Dock badge (`inbox_badge_count`) stays sessions-only.
 - `InboxPage`: tabs 全部 / 未读 / 中断 / 待回复 with counts; 全部 groups 待回复 → 报错 / 中断 → 已完成，未查看 → 运行中. Compact two-line
   rows (symbol, title, project · branch, time; one-line snippet), click opens the session, no inline actions; gear → Settings `"inbox"`.
-- `IdeasCapsule`: top-bar pill 「想法」 with the count of `inbox`-status backlog items; dropdown: quick add, all non-closed items
-  (current project first by `project_dir` vs selected session cwd), 填入当前会话, 派发 (existing/new session), 进行中 items show the
-  linked session's status and a done checkbox, collapsed 已完成 section.
+- `IdeasCapsule`: top-bar ideas popover with pending + review attention counts, quick capture, project filters and phase tabs.
+  Ideas can append to the current composer or prefill editable local conversation drafts (one per project, opening the first).
+  Neither action sends a prompt or changes idea status; delivery is recorded only after an explicit composer send succeeds.
+  Existing draft text and attachments are preserved. Database and IPC contracts, including mobile dispatch, are unchanged.
+  Card edit/delete controls reserve space beside the content and appear on hover or keyboard focus. Footer metadata stays left,
+  with compact draft actions together on the right (wrapping as a group only when needed); “New chat” uses a light accent tint.
 - `useInboxBadge()`: sidebar 收件箱 badge from `useSessions` via the same attention + window rule as the Dock badge, plus open `schedule_run` todos.
 - `TopCapsule`: subagent capsule; shows the selected session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
 - `SettingsPage`: navigation organized into 6 groups (`NAV_GROUPS` in `navigation.ts`):
