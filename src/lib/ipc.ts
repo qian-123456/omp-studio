@@ -33,7 +33,7 @@ import type {
 	MobileDevice,
 	MobileDeviceWork,
 	MobileStatus,
-	Model,
+	ModelCatalogSnapshot,
 	ModelContextWindowEdit,
 	ModelKindEntry,
 	ModelProbeKind,
@@ -187,7 +187,7 @@ export const activityUsage = () => invoke<ActivityUsage>("activity_usage");
 export const sessionSnapshot = (sessionId: string) =>
 	invoke<SessionSnapshot>("session_snapshot", { sessionId });
 
-export const listModels = () => invoke<Model[]>("list_models");
+export const listModels = () => invoke<ModelCatalogSnapshot>("list_models");
 export const listWorkspaceFiles = (cwd: string) =>
 	invoke<string[]>("list_workspace_files", { cwd });
 export const rescanSessions = () => invoke<void>("rescan_sessions");

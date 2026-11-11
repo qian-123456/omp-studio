@@ -1042,6 +1042,13 @@ export interface Model {
 	reasoning?: boolean | null;
 }
 
+/** CLI success does not certify that every available provider was returned. */
+export interface ModelCatalogSnapshot {
+	models: Model[];
+	source: "cli";
+	completeness: "unverified";
+}
+
 /** models.yml `providers.<providerId>.modelOverrides.<modelId>.contextWindow`; null deletes. */
 export interface ModelContextWindowEdit {
 	providerId: string;

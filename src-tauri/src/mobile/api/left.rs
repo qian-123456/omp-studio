@@ -1932,10 +1932,12 @@ async fn roles_get<B: Backend>(
         .map_err(bad_gateway)?;
     let models = crate::catalog::commands::list_models(st.app.state::<AppState>())
         .await
-        .unwrap_or_default();
+        .map_err(bad_gateway)?;
     Ok(Json(json!({
         "snapshot": snapshot,
-        "models": models,
+        "models": models.models,
+        "catalogSource": models.source,
+        "catalogCompleteness": models.completeness,
     })))
 }
 

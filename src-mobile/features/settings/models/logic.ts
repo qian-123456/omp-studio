@@ -11,6 +11,8 @@ export interface RoleLayer {
 export interface RolesResponse {
 	snapshot?: { global?: RoleLayer; project?: RoleLayer | null };
 	models?: CatalogModel[];
+	catalogSource?: "cli";
+	catalogCompleteness?: "unverified";
 }
 
 /* ------------------------------------------------------------------ roles */

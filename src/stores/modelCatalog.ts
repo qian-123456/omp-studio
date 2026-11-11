@@ -38,7 +38,7 @@ export function readCachedModels(): Model[] | null {
 				reasoning: typeof o.reasoning === "boolean" ? o.reasoning : undefined,
 			});
 		}
-		return out.length > 0 ? out : null;
+		return parsed.length === 0 || out.length > 0 ? out : null;
 	} catch {
 		return null;
 	}
@@ -53,62 +53,95 @@ function writeCachedModels(models: Model[]): void {
 }
 
 interface ModelCatalogState {
-	/** Raw `list_models` result; null = never loaded. */
+	/** Last-known catalog, not a guarantee of current provider availability. */
 	models: Model[] | null;
 	loading: boolean;
-	/** Re-fetch the catalog; concurrent calls share one in-flight request. */
-	refresh: () => Promise<void>;
+	status: "idle" | "unverified" | "stale" | "failed";
+	error: string | null;
+	/** Ordinary opens deduplicate. Confirmed mutations evict affected providers
+	 * from memory/cache and supersede every request started before the mutation. */
+	refresh: (invalidateProviders?: readonly string[]) => Promise<void>;
 }
 
 let inflight: Promise<void> | null = null;
+let generation = 0;
+const cachedModels = readCachedModels();
 
-/** App-wide model catalog (`omp models --json`), refreshed whenever a picker opens. */
-export const useModelCatalog = create<ModelCatalogState>((set) => ({
-	models: readCachedModels(),
+export const useModelCatalog = create<ModelCatalogState>((set, get) => ({
+	models: cachedModels,
 	loading: false,
-	refresh: () => {
-		inflight ??= (async () => {
-			set({ loading: true });
+	status: cachedModels === null ? "idle" : "stale",
+	error: null,
+	refresh: (invalidateProviders) => {
+		if (invalidateProviders === undefined && inflight) return inflight;
+		const current = ++generation;
+		if (invalidateProviders !== undefined) {
+			const affected = new Set(invalidateProviders);
+			const previous = get().models;
+			if (previous !== null) {
+				const models = previous.filter((model) => !affected.has(model.provider));
+				set({ models, status: "stale" });
+				writeCachedModels(models);
+			}
+		}
+		set({ loading: true, error: null });
+		// Keep one last-known snapshot, not a union claiming missing entries valid.
+		const publish = (list: Model[]): boolean => {
+			if (current !== generation) return false;
+			const keys = new Set(list.map((m) => `${m.provider}\0${m.id}`));
+			if (get().models?.some((m) => !keys.has(`${m.provider}\0${m.id}`))) {
+				set({ status: "stale", error: tNow("models.catalogShrink") });
+				return false;
+			}
+			set({ models: list, status: "unverified", error: null });
+			writeCachedModels(list);
+			return true;
+		};
+		const request = (async () => {
 			try {
-				let list = await listModels();
-				if (Array.isArray(list) && list.length > 0) {
-					set({ models: list });
-					writeCachedModels(list);
-					const rules = loadRules();
-					const providerWindows = loadProviderWindows();
-					let writing = false;
-					if (rules.length > 0 || Object.keys(providerWindows).length > 0) {
-						try {
-							const overrides = await ompModelsContextWindowOverrides();
-							const explicit = new Set(overrides.map((o) => `${o.providerId}\0${o.modelId}`));
-							const edits = list.flatMap((model) => {
-								const window = providerWindows[model.provider] ?? pickRule(rules, model.id)?.contextWindow;
-								return window != null && !explicit.has(`${model.provider}\0${model.id}`)
-									? [{ providerId: model.provider, modelId: model.id, contextWindow: window }]
-									: [];
-							});
-							if (edits.length > 0) {
-								writing = true;
-								await ompModelsSetContextWindows(edits, true);
-								list = await listModels();
-								if (list.length > 0) {
-									set({ models: list });
-									writeCachedModels(list);
-								}
-							}
-						} catch (error) {
-							toast.error(tNow(writing ? "settingsSectionsContext.context.writeFailed" : "settingsSectionsContext.context.readOverridesFailed", { error: errMsg(error) }));
+				const snapshot = await listModels();
+				const list = snapshot.models;
+				if (!publish(list)) return;
+				const rules = loadRules();
+				const providerWindows = loadProviderWindows();
+				let writing = false;
+				if (rules.length > 0 || Object.keys(providerWindows).length > 0) {
+					try {
+						const overrides = await ompModelsContextWindowOverrides();
+						if (current !== generation) return;
+						const explicit = new Set(overrides.map((o) => `${o.providerId}\0${o.modelId}`));
+						const edits = list.flatMap((model) => {
+							const window = providerWindows[model.provider] ?? pickRule(rules, model.id)?.contextWindow;
+							return window != null && !explicit.has(`${model.provider}\0${model.id}`)
+								? [{ providerId: model.provider, modelId: model.id, contextWindow: window }]
+								: [];
+						});
+						if (edits.length > 0) {
+							writing = true;
+							await ompModelsSetContextWindows(edits, true);
+							if (current !== generation) return;
+							publish((await listModels()).models);
 						}
+					} catch (error) {
+						if (current !== generation) return;
+						set({ status: "stale", error: tNow("models.catalogRefreshFailed", { error: errMsg(error) }) });
+						toast.error(tNow(writing ? "settingsSectionsContext.context.writeFailed" : "settingsSectionsContext.context.readOverridesFailed", { error: errMsg(error) }));
 					}
 				}
-			} catch {
-				// Keep the previous catalog on failure.
+			} catch (error) {
+				if (current === generation) set({
+					status: get().models === null ? "failed" : "stale",
+					error: tNow("models.catalogRefreshFailed", { error: errMsg(error) }),
+				});
 			} finally {
-				inflight = null;
-				set({ loading: false });
+				if (current === generation) {
+					inflight = null;
+					set({ loading: false });
+				}
 			}
 		})();
-		return inflight;
+		inflight = request;
+		return request;
 	},
 }));
 

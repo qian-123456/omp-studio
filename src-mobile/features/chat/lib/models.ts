@@ -15,6 +15,8 @@ export interface ModelFacts {
 export interface ModelsResponse extends ModelFacts {
 	models: ModelOpt[];
 	live?: boolean;
+	catalogSource?: "cli";
+	catalogCompleteness?: "unverified";
 }
 
 export const THINK_DESC: Record<string, string> = {

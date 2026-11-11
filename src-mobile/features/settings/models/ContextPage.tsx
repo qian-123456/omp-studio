@@ -108,6 +108,7 @@ export function SettingsContextPage() {
 			error={error}
 			onRetry={reload}
 		>
+			<div role="status" className="px-4 pt-3 text-m-xs text-m-text-3">OMP 未提供完整性证明；列表可能不完整，模型可用性尚未验证。</div>
 			<div className="relative px-4 pt-3">
 				<Search size={20} strokeWidth={1.75} className="pointer-events-none absolute top-[26px] left-8 text-m-text-3" aria-hidden />
 				<TextField

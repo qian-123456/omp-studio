@@ -31,7 +31,7 @@ vi.mock("../../../lib/ipc", () => ({
 	modelReplaceUndo: undoMock,
 	modelProbe: probeMock,
 	modelKindCatalog: kindCatalogMock,
-	listModels: listModelsMock,
+	listModels: async () => ({ models: await listModelsMock(), source: "cli", completeness: "unverified" }),
 }));
 vi.mock("./store", () => ({ invalidateAfterModelReplace: invalidateMock }));
 
@@ -133,7 +133,7 @@ async function pickTarget(selector: string, tab?: string) {
 	const provider = selector.slice(0, selector.indexOf("/"));
 	fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${provider}\\s*\\d`) }));
 	const id = selector.slice(selector.indexOf("/") + 1);
-	fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`) }));
+	fireEvent.click(await screen.findByRole("button", { name: new RegExp(id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }));
 }
 
 /** Scan → pick X → pick Y from the catalogue → preview. */
@@ -563,7 +563,7 @@ describe("target kinds", () => {
 		expect(screen.queryByRole("button", { name: "exa" })).toBeNull();
 
 		fireEvent.click(screen.getByRole("tab", { name: "搜索服务" }));
-		await screen.findByRole("button", { name: "exa" });
+		await screen.findByRole("button", { name: /exa/i });
 		expect(screen.getByTitle("web")).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "gpt-5" })).toBeNull();
 	});

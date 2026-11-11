@@ -29,11 +29,24 @@ const ROLE_EXTRAS = [
 beforeEach(() => {
 	localStorage.clear();
 	useModelSelectPrefs.setState({ recent: [], dismissedGuides: [] });
-	useModelCatalog.setState({ loading: false, refresh: async () => {} });
+	useModelCatalog.setState({ loading: false, status: "idle", error: null, refresh: async () => {} });
 });
 afterEach(cleanup);
 
 describe("ModelMenuContent groups", () => {
+	it("shows a failed no-cache read instead of an endless loading indicator", () => {
+		useModelCatalog.setState({ status: "failed", error: "模型目录刷新失败：MODEL_CATALOG_EXIT_FAILED" });
+		render(<ModelMenuContent models={null} onSelect={() => {}} />);
+		expect(screen.getByRole("alert").textContent).toContain("MODEL_CATALOG_EXIT_FAILED");
+		expect(screen.queryByText("加载模型列表中…")).toBeNull();
+	});
+
+	it("labels retained picker options as last-known and unconfirmed", () => {
+		useModelCatalog.setState({ status: "stale", error: "缺少既有条目，已保留上次列表" });
+		render(<ModelMenuContent models={MODELS} onSelect={() => {}} />);
+		expect(screen.getByRole("status").textContent).toContain("已保留上次列表");
+		expect(screen.getByRole("button", { name: /anthropic/ })).toBeTruthy();
+	});
 	it("lists role extras under their own 角色 tab, not under 常用", () => {
 		const onSelect = vi.fn();
 		render(

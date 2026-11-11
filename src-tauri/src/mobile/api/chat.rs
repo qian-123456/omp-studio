@@ -1988,7 +1988,9 @@ async fn models_get<B: Backend>(
         .await
         .map_err(bad_gateway)?;
     let mut out = model_facts(state, &meta, &id).await;
-    out["models"] = serde_json::to_value(models).unwrap_or(Value::Null);
+    out["models"] = serde_json::to_value(models.models).unwrap_or(Value::Null);
+    out["catalogSource"] = json!(models.source);
+    out["catalogCompleteness"] = json!(models.completeness);
     Ok(Json(out))
 }
 

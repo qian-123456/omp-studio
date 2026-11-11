@@ -5,7 +5,7 @@ const listModels = vi.fn<() => Promise<Model[]>>();
 const readOverrides = vi.fn(async () => [] as { providerId: string; modelId: string; contextWindow: number }[]);
 const writeOverrides = vi.fn(async (_entries: unknown, _onlyIfAbsent: boolean) => {});
 vi.mock("../lib/ipc", () => ({
-	listModels: () => listModels(),
+	listModels: async () => ({ models: await listModels(), source: "cli", completeness: "unverified" }),
 	ompModelsContextWindowOverrides: () => readOverrides(),
 	ompModelsSetContextWindows: (entries: unknown, onlyIfAbsent: boolean) => writeOverrides(entries, onlyIfAbsent),
 }));
@@ -142,15 +142,103 @@ describe("useModelCatalog", () => {
 		expect(store.getState().models).toEqual([OPUS, HAIKU]);
 	});
 
-	it("keeps the previous list on failure or empty result", async () => {
+	it("retains a last-known snapshot with an explicit stale status on failure or shrinking empty read", async () => {
 		storage[KEY] = JSON.stringify([OPUS]);
 		const store = await loadStore();
 		listModels.mockRejectedValueOnce(new Error("boom"));
 		await store.getState().refresh();
 		expect(store.getState().models).toEqual([OPUS]);
+		expect(store.getState().status).toBe("stale");
+		expect(store.getState().error).toContain("boom");
 		listModels.mockResolvedValueOnce([]);
 		await store.getState().refresh();
 		expect(store.getState().models).toEqual([OPUS]);
 		expect(store.getState().loading).toBe(false);
+		expect(store.getState().status).toBe("stale");
+		expect(store.getState().error).toContain("缺少既有条目");
+	});
+
+	it("rejects unchanged 24-provider to 4-provider successful shrink without evicting memory or cache", async () => {
+		const full = Array.from({ length: 24 }, (_, i) => ({ provider: `p${i}`, id: "m", name: `M${i}` }));
+		storage[KEY] = JSON.stringify(full);
+		const store = await loadStore();
+		listModels.mockResolvedValueOnce(full.slice(0, 4));
+		await store.getState().refresh();
+		expect(store.getState().models?.map(({ provider, id }) => `${provider}/${id}`))
+			.toEqual(full.map(({ provider, id }) => `${provider}/${id}`));
+		expect(JSON.parse(storage[KEY])).toEqual(full);
+		expect(store.getState().status).toBe("stale");
+		expect(store.getState().error).toContain("缺少既有条目");
+		expect(writeOverrides).not.toHaveBeenCalled();
+	});
+
+	it("reports failed initial reads without inventing a database subset or cache", async () => {
+		const store = await loadStore();
+		listModels.mockRejectedValueOnce(new Error("MODEL_CATALOG_EXIT_FAILED"));
+		await store.getState().refresh();
+		expect(store.getState()).toMatchObject({ models: null, status: "failed", loading: false });
+		expect(store.getState().error).toContain("MODEL_CATALOG_EXIT_FAILED");
+		expect(storage[KEY]).toBeUndefined();
+	});
+
+	it("represents an initial successful empty catalog deliberately and reloads its empty cache", async () => {
+		const store = await loadStore();
+		listModels.mockResolvedValueOnce([]);
+		await store.getState().refresh();
+		expect(store.getState()).toMatchObject({ models: [], status: "unverified", error: null });
+		expect(JSON.parse(storage[KEY])).toEqual([]);
+		expect((await loadStore()).getState().models).toEqual([]);
+	});
+
+	it("labels an initial nonempty CLI read unverified rather than complete", async () => {
+		const store = await loadStore();
+		listModels.mockResolvedValueOnce([OPUS]);
+		await store.getState().refresh();
+		expect(store.getState()).toMatchObject({ models: [OPUS], status: "unverified", error: null });
+	});
+
+	it("protects the first accepted snapshot from shrink in the post-context-window read", async () => {
+		storage["ompws.contextWindowRules.v1"] = JSON.stringify([{ id: "opus", keywords: ["opus"], contextWindow: 272000, createdAt: 1 }]);
+		const store = await loadStore();
+		listModels.mockResolvedValueOnce([OPUS, HAIKU]).mockResolvedValueOnce([HAIKU]);
+		await store.getState().refresh();
+		expect(writeOverrides).toHaveBeenCalledTimes(1);
+		expect(store.getState().models).toEqual([OPUS, HAIKU]);
+		expect(JSON.parse(storage[KEY])).toEqual([OPUS, HAIKU]);
+		expect(store.getState().status).toBe("stale");
+	});
+
+	it("does not start derived writes after a provider mutation supersedes override discovery", async () => {
+		storage["ompws.providerContextWindows.v1"] = JSON.stringify({ anthropic: 64000 });
+		// ES2021 does not expose Promise.withResolvers.
+		let resolveOverrides!: (value: []) => void;
+		readOverrides.mockReturnValueOnce(new Promise((resolve) => { resolveOverrides = resolve; }));
+		listModels.mockResolvedValueOnce([OPUS]);
+		const store = await loadStore();
+		const old = store.getState().refresh();
+		await vi.waitFor(() => expect(readOverrides).toHaveBeenCalledTimes(1));
+		listModels.mockResolvedValueOnce([]);
+		await store.getState().refresh(["anthropic"]);
+		resolveOverrides([]);
+		await old;
+		expect(writeOverrides).not.toHaveBeenCalled();
+		expect(store.getState().models).toEqual([]);
+		expect(JSON.parse(storage[KEY])).toEqual([]);
+	});
+
+	it("does not publish a late post-write response after invalidation", async () => {
+		storage["ompws.providerContextWindows.v1"] = JSON.stringify({ anthropic: 64000 });
+		// ES2021 does not expose Promise.withResolvers.
+		let resolveOld!: (models: Model[]) => void;
+		listModels.mockResolvedValueOnce([OPUS]).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+		const store = await loadStore();
+		const old = store.getState().refresh();
+		await vi.waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+		listModels.mockResolvedValueOnce([]);
+		await store.getState().refresh(["anthropic"]);
+		resolveOld([OPUS]);
+		await old;
+		expect(store.getState()).toMatchObject({ models: [], loading: false, status: "unverified" });
+		expect(JSON.parse(storage[KEY])).toEqual([]);
 	});
 });

@@ -71,9 +71,9 @@ const failedTest = (e: unknown): TestStatus => ({
  * stale. Stale sessions are restarted lazily when the user picks a model for them; nothing is
  * restarted here.
  */
-async function syncModelConfig(): Promise<void> {
+async function syncModelConfig(invalidateProviders: readonly string[]): Promise<void> {
 	await Promise.all([
-		useModelCatalog.getState().refresh().catch(() => {}),
+		useModelCatalog.getState().refresh(invalidateProviders).catch(() => {}),
 		useModelKindCatalog.getState().load(true),
 	]);
 	await invalidateWarmDrafts().catch(() => {});
@@ -113,7 +113,7 @@ export const useProviders = create<ProvidersState>((set, get) => {
 				set({ rows: prev });
 				throw e;
 			}
-			await syncModelConfig();
+			await syncModelConfig([id]);
 		},
 
 		encrypt: async (id) => {
@@ -141,29 +141,31 @@ export const useProviders = create<ProvidersState>((set, get) => {
 			const row = await providerUpsert(input, apiKey, keyMode);
 			if (input.originalId && input.originalId !== row.id) moveProviderWindow(input.originalId, row.id);
 			applyRow(row, input.originalId ?? row.id);
-			await syncModelConfig();
+			await syncModelConfig([input.originalId ?? row.id, row.id]);
 			return row;
 		},
 
 		saveBuiltin: async (input, apiKey, keyMode) => {
 			const row = await providerSaveBuiltin(input, apiKey, keyMode);
 			applyRow(row, input.id);
-			await syncModelConfig();
+			await syncModelConfig([input.id]);
 			return row;
 		},
 
 		setKey: async (id, apiKey, keyMode) => {
 			const row = await providerSetKey(id, apiKey, keyMode);
 			applyRow(row);
-			await syncModelConfig();
+			await syncModelConfig([id]);
 			return row;
 		},
 
 		remove: async (id) => {
 			await providerDelete(id);
+			// Evict on confirmed deletion, even if reloading provider rows fails.
 			setProviderWindow(id, null);
+			const sync = syncModelConfig([id]);
 			await get().load();
-			await syncModelConfig();
+			await sync;
 			set((s) => ({
 				tests: Object.fromEntries(Object.entries(s.tests).filter(([key]) => key !== id)),
 				modelTests: Object.fromEntries(

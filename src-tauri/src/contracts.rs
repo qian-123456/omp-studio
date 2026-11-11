@@ -1301,6 +1301,15 @@ pub struct Model {
     pub reasoning: Option<bool>,
 }
 
+/// CLI success is not a completeness certificate; failed reads are errors.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCatalogSnapshot {
+    pub models: Vec<Model>,
+    pub source: &'static str,
+    pub completeness: &'static str,
+}
+
 /// One `models.yml` `providers.<providerId>.modelOverrides.<modelId>.contextWindow`
 /// edit; `context_window: None` deletes the override.
 #[derive(Debug, Clone, Serialize, Deserialize)]

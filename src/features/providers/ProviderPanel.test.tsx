@@ -19,7 +19,7 @@ const ipc = vi.hoisted(() => ({
 	providerExportEnvText: vi.fn(),
 	providerFetchModels: vi.fn(),
 	providerReadEnvFile: vi.fn(),
-	listModels: vi.fn(async () => []),
+	listModels: vi.fn(async () => ({ models: [], source: "cli", completeness: "unverified" })),
 	modelKindCatalog: vi.fn(async (): Promise<ModelKindEntry[]> => []),
 	ompInfo: vi.fn(async () => ({ agentDir: "/home/u/.omp/agent" })),
 	readTextFile: vi.fn(async () => "providers: {}\n"),

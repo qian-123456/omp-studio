@@ -506,177 +506,83 @@ fn parse_models_value(
     }
 }
 
-/// Collect "configured" provider ids: keys under `providers:` in omp's YAML
-/// configs plus providers holding credentials in agent.db. Only keys are read,
-/// never values — keys are names, values carry secrets. A `provider/model`
-/// selector key (config.yml style) contributes its `provider` prefix.
-fn configured_providers(home: &std::path::Path) -> std::collections::HashSet<String> {
-    let mut set = std::collections::HashSet::new();
-    for name in ["models.yml", "models-snippet.yml", "config.yml"] {
-        let path = home.join(".omp").join("agent").join(name);
-        if let Ok(text) = std::fs::read_to_string(&path) {
-            collect_provider_keys(&text, &mut set);
-        }
-    }
-    let db = home.join(".omp").join("agent").join("agent.db");
-    if let Ok(conn) =
-        rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-    {
-        if let Ok(mut stmt) = conn
-            .prepare("SELECT DISTINCT provider FROM auth_credentials WHERE disabled_cause IS NULL")
+fn decode_model_catalog(stdout: &[u8]) -> Result<crate::contracts::ModelCatalogSnapshot, String> {
+    let value: serde_json::Value =
+        serde_json::from_slice(stdout).map_err(|_| "MODEL_CATALOG_INVALID_JSON".to_string())?;
+    let list = value
+        .as_array()
+        .or_else(|| value.get("models").and_then(serde_json::Value::as_array))
+        .or_else(|| {
+            value.get("data").and_then(|v| {
+                v.as_array()
+                    .or_else(|| v.get("models").and_then(serde_json::Value::as_array))
+            })
+        })
+        .ok_or_else(|| "MODEL_CATALOG_INVALID_SHAPE".to_string())?;
+    // Malformed rows must not silently produce a successful subset.
+    for item in list {
+        let id = item
+            .get("id")
+            .or_else(|| item.get("modelId"))
+            .or_else(|| item.get("model"));
+        let provider = item.get("provider").or_else(|| item.get("providerId"));
+        if !id
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|s| !s.trim().is_empty())
+            || !provider
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty())
         {
-            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
-                for p in rows.flatten() {
-                    set.insert(p);
-                }
-            }
+            return Err("MODEL_CATALOG_INVALID_ROW".to_string());
         }
     }
-    set
+    let mut models = Vec::new();
+    parse_models_value(
+        &value,
+        None,
+        &mut std::collections::HashSet::new(),
+        &mut models,
+    );
+    Ok(crate::contracts::ModelCatalogSnapshot {
+        models,
+        source: "cli",
+        completeness: "unverified",
+    })
 }
 
-/// Extract provider names: keys at the first child level under a `providers:`
-/// mapping. Tolerant line scan — enough for omp's machine-written configs.
-/// `provider/model` selector keys contribute their `provider` prefix.
-fn collect_provider_keys(text: &str, out: &mut std::collections::HashSet<String>) {
-    let mut base: Option<usize> = None;
-    let mut child_indent: Option<usize> = None;
-    for raw in text.lines() {
-        let line = raw.trim_end();
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let indent = line.len() - line.trim_start().len();
-        match base {
-            None => {
-                if trimmed == "providers:" {
-                    base = Some(indent);
-                    child_indent = None;
-                }
-            }
-            Some(b) => {
-                if indent <= b {
-                    // Left the block; allow a later sibling `providers:` too.
-                    base = if trimmed == "providers:" {
-                        child_indent = None;
-                        Some(indent)
-                    } else {
-                        None
-                    };
-                    continue;
-                }
-                match child_indent {
-                    None => child_indent = Some(indent),
-                    Some(ci) if indent != ci => continue,
-                    _ => {}
-                }
-                if let Some(key) = line
-                    .split_once(':')
-                    .map(|(k, _)| k.trim().trim_matches(|c| c == '"' || c == '\''))
-                {
-                    let provider = key.split('/').next().unwrap_or(key);
-                    if !provider.is_empty() {
-                        out.insert(provider.to_string());
-                    }
-                }
-            }
-        }
+async fn read_model_catalog(
+    exe: &std::path::Path,
+    path_env: &str,
+) -> Result<crate::contracts::ModelCatalogSnapshot, String> {
+    let mut cmd = tokio::process::Command::new(exe);
+    cmd.args(["models", "--json"]);
+    cmd.env("PATH", path_env);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::null());
+    cmd.kill_on_drop(true);
+    let child = cmd
+        .spawn()
+        .map_err(|_| "MODEL_CATALOG_SPAWN_FAILED".to_string())?;
+    let output = tokio::time::timeout(std::time::Duration::from_secs(8), child.wait_with_output())
+        .await
+        .map_err(|_| "MODEL_CATALOG_TIMEOUT".to_string())?
+        .map_err(|_| "MODEL_CATALOG_READ_FAILED".to_string())?;
+    if !output.status.success() {
+        return Err("MODEL_CATALOG_EXIT_FAILED".to_string());
     }
-}
-
-fn load_fallback_models(seen: &mut std::collections::HashSet<String>, out: &mut Vec<Model>) {
-    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
-    // model_cache also holds the *entire upstream catalog* for providers the
-    // user never configured — restrict to configured ones, matching what
-    // `omp models --json` emits.
-    let configured = configured_providers(&home);
-    let candidates = [
-        home.join(".omp").join("agent").join("models.db"),
-        home.join(".omp").join("models.db"),
-    ];
-
-    for db_path in candidates {
-        if !db_path.is_file() {
-            continue;
-        }
-        let conn = match rusqlite::Connection::open_with_flags(
-            &db_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        ) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        let mut stmt = match conn.prepare("SELECT provider_id, models FROM model_cache") {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-
-        let rows = stmt.query_map([], |row| {
-            let provider_id: String = row.get(0)?;
-            let models_str: String = row.get(1)?;
-            Ok((provider_id, models_str))
-        });
-        if let Ok(rows) = rows {
-            for row in rows.flatten() {
-                let (provider_id, models_str) = row;
-                // Cache keys may carry a catalog suffix: "opencode-zen:models-v3:…"
-                let provider_name = provider_id.split(':').next().unwrap_or(&provider_id);
-                if !configured.is_empty()
-                    && !configured.contains(&provider_id)
-                    && !configured.contains(provider_name)
-                {
-                    continue;
-                }
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&models_str) {
-                    parse_models_value(&parsed, Some(provider_name), seen, out);
-                }
-            }
-        }
-
-        if !out.is_empty() {
-            break;
-        }
-    }
+    decode_model_catalog(&output.stdout)
 }
 
 #[tauri::command]
-pub async fn list_models(state: tauri::State<'_, AppState>) -> Result<Vec<Model>, String> {
+pub async fn list_models(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::contracts::ModelCatalogSnapshot, String> {
     let bin = state.settings.read().omp_binary.clone();
     let path_env = crate::todos::omp::augmented_path();
     let exe = crate::todos::omp::resolve_binary(&bin, &path_env);
-
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    let mut cmd = tokio::process::Command::new(&exe);
-    cmd.args(["models", "--json"]);
-    cmd.env("PATH", &path_env);
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    cmd.kill_on_drop(true);
-
-    if let Ok(child) = cmd.spawn() {
-        if let Ok(Ok(output)) =
-            tokio::time::timeout(std::time::Duration::from_secs(8), child.wait_with_output()).await
-        {
-            if output.status.success() {
-                if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                    parse_models_value(&parsed, None, &mut seen, &mut out);
-                }
-            }
-        }
-    }
-
-    if !out.is_empty() {
-        return Ok(out);
-    }
-
-    load_fallback_models(&mut seen, &mut out);
-
-    Ok(out)
+    // models.db omits static/keyless providers and cannot substitute for this read.
+    read_model_catalog(std::path::Path::new(&exe), &path_env).await
 }
 
 fn parse_export_output(stdout: &str, working_dir: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -935,33 +841,53 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_provider_keys_models_yml_shape() {
-        // models.yml: provider keys at one indent level, secret fields deeper.
-        let text = "providers:\n  devin:\n    apiKey: \"sk-xxx\"\n    models:\n      - id: swe-2\n  sub2api-gpt-pro:\n    baseUrl: https://x\n    apiKey: k\nsettings:\n  foo: 1\n";
-        let mut set = std::collections::HashSet::new();
-        collect_provider_keys(text, &mut set);
-        assert!(set.contains("devin"));
-        assert!(set.contains("sub2api-gpt-pro"));
-        assert_eq!(set.len(), 2, "nested keys must not leak: {set:?}");
+    fn model_catalog_requires_valid_shape_and_every_row() {
+        for invalid in [
+            b"oops".as_slice(),
+            b"{}".as_slice(),
+            br#"[{"provider":"p","id":"ok"},{"id":"bad"}]"#.as_slice(),
+        ] {
+            assert!(decode_model_catalog(invalid).is_err());
+        }
+        let empty = decode_model_catalog(b"[]").unwrap();
+        assert!(empty.models.is_empty());
+        assert_eq!(empty.completeness, "unverified");
+        let partial = decode_model_catalog(br#"[{"provider":"only-one","id":"m"}]"#).unwrap();
+        assert_eq!(partial.models.len(), 1);
+        assert_eq!(partial.completeness, "unverified");
     }
 
-    #[test]
-    fn test_collect_provider_keys_selector_prefix() {
-        // config.yml style: "provider/model" selectors and quoted keys.
-        let text = "providers:\n    CTAI-luna+plus/gpt-5.6-luna:\n      model: x\n    \"google-antigravity/*\":\n      model: y\n";
-        let mut set = std::collections::HashSet::new();
-        collect_provider_keys(text, &mut set);
-        assert!(set.contains("CTAI-luna+plus"));
-        assert!(set.contains("google-antigravity"));
-        assert_eq!(set.len(), 2);
-    }
-
-    #[test]
-    fn test_load_fallback_models() {
-        let mut seen = std::collections::HashSet::new();
-        let mut out = Vec::new();
-        load_fallback_models(&mut seen, &mut out);
-        println!("Loaded fallback models count: {}", out.len());
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn model_catalog_process_failures_are_errors_not_database_fallbacks() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ompws-catalog-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("fixture");
+        for (body, expected) in [
+            ("exit 1", "MODEL_CATALOG_EXIT_FAILED"),
+            ("printf 'not-json'", "MODEL_CATALOG_INVALID_JSON"),
+            ("exec /bin/sleep 20", "MODEL_CATALOG_TIMEOUT"),
+            ("printf '{}'", "MODEL_CATALOG_INVALID_SHAPE"),
+        ] {
+            std::fs::write(&exe, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(read_model_catalog(&exe, "").await.unwrap_err(), expected);
+        }
+        assert_eq!(
+            read_model_catalog(&dir.join("missing"), "")
+                .await
+                .unwrap_err(),
+            "MODEL_CATALOG_SPAWN_FAILED"
+        );
+        std::fs::write(&exe, "#!/bin/sh\nprintf '[]'\n").unwrap();
+        assert!(read_model_catalog(&exe, "")
+            .await
+            .unwrap()
+            .models
+            .is_empty());
+        std::fs::remove_file(&exe).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
     }
 
     #[test]

@@ -141,6 +141,8 @@ export function ModelMenuContent({
 	const dismissGuide = useModelSelectPrefs((s) => s.dismissGuide);
 	const refreshing = useModelCatalog((s) => s.loading);
 	const refreshCatalog = useModelCatalog((s) => s.refresh);
+	const catalogStatus = useModelCatalog((s) => s.status);
+	const catalogError = useModelCatalog((s) => s.error);
 	// Every open re-fetches the catalog so picks reflect `omp update`; the
 	// cached list renders immediately and updates in place.
 	useEffect(() => {
@@ -283,9 +285,9 @@ export function ModelMenuContent({
 
 	if (models === null) {
 		return (
-			<div className="flex items-center gap-2 p-2.5 text-xs text-neutral-400">
-				<Loader2 size={13} className="animate-spin text-neutral-400" />
-				<span>{t("models.loadingModels")}</span>
+			<div role={catalogError ? "alert" : "status"} className="flex items-center gap-2 p-2.5 text-xs text-neutral-400">
+				{!catalogError && <Loader2 size={13} className="animate-spin text-neutral-400" />}
+				<span className="min-w-0 break-words">{catalogError || t("models.loadingModels")}</span>
 			</div>
 		);
 	}
@@ -489,6 +491,11 @@ export function ModelMenuContent({
 			{caption && (
 				<div className="flex shrink-0 items-center justify-between gap-2 px-2.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
 					<span className="break-all">{caption}</span>
+				</div>
+			)}
+			{(catalogError || catalogStatus === "stale" || catalogStatus === "unverified") && (
+				<div role="status" className="mx-2 my-1 shrink-0 break-words rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-500">
+					{catalogError || t(catalogStatus === "stale" ? "models.catalogStale" : "models.catalogUnverified")}
 				</div>
 			)}
 			{(models.length > 5 || allowCustom) && (

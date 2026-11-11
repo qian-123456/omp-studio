@@ -93,7 +93,7 @@ export async function applyContextWindowsOnSave<T extends ProviderModels>(
 ): Promise<{ config: T; count: number }> {
 	let catalog: Model[] = [];
 	try {
-		catalog = await listModels();
+		catalog = (await listModels()).models;
 	} catch {
 		// Catalog is optional for D15; rules and provider default still apply.
 	}

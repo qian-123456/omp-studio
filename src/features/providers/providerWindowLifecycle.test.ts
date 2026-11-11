@@ -17,7 +17,7 @@ vi.mock("../../lib/ipc", () => ({
 		backend.provider = input.id;
 		return { id: input.id, models: input.models };
 	}),
-	listModels: vi.fn(async () => [{ provider: backend.provider, id: "shared", name: "Shared", contextWindow: backend.overrides.get(`${backend.provider}\0shared`) ?? null }]),
+	listModels: vi.fn(async () => ({ models: [{ provider: backend.provider, id: "shared", name: "Shared", contextWindow: backend.overrides.get(`${backend.provider}\0shared`) ?? null }], source: "cli", completeness: "unverified" })),
 	ompModelsContextWindowOverrides: vi.fn(async () => [...backend.overrides].map(([key, contextWindow]) => {
 		const [providerId, modelId] = key.split("\0");
 		return { providerId, modelId, contextWindow };

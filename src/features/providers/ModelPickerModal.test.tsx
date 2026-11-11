@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const ipc = vi.hoisted(() => ({
 	providerTestModel: vi.fn(),
 	providerRows: vi.fn(),
-	listModels: vi.fn(async () => []),
+	listModels: vi.fn(async () => ({ models: [], source: "cli", completeness: "unverified" })),
 }));
 vi.mock("../../lib/ipc", () => ipc);
 vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));

@@ -101,6 +101,7 @@ export function ModelPicker({
 
 	return (
 		<div className={`flex min-h-0 flex-col gap-3 ${className}`}>
+			<div role="status" className="px-1 text-m-xs text-m-text-3">OMP 未提供完整性证明；列表可能不完整，模型可用性尚未验证。</div>
 			{thinking && options.length > 0 && (
 				<section className="flex shrink-0 flex-col gap-2">
 					<div className="px-1 text-m-xs text-m-text-3">思考强度</div>

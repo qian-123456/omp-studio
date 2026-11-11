@@ -5,6 +5,7 @@
  * - Any 2xx clears a stale error banner.
  */
 import { useConnection } from "./stores/connection";
+import { acceptCatalogResponse, catalogGeneration, invalidateProviderCatalog } from "./modelCatalog";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -88,13 +89,20 @@ async function finish<T>(res: Response): Promise<T> {
 }
 
 export async function api<T = unknown>(method: string, path: string, body?: unknown, opts?: ApiOptions): Promise<T> {
+	const requestGeneration = catalogGeneration();
 	const headers: Record<string, string> = { ...opts?.headers };
 	const init: RequestInit = { method, headers };
 	if (body !== undefined) {
 		headers["content-type"] = "application/json";
 		init.body = JSON.stringify(body);
 	}
-	return finish<T>(await send(apiUrl(path), init, opts));
+	const data = await finish<T>(await send(apiUrl(path), init, opts));
+	if (method.toUpperCase() === "POST" && apiUrl(path).split("?")[0] === "/api/left/providers/save") {
+		const id = (body as { id?: unknown } | undefined)?.id;
+		if (typeof id === "string") invalidateProviderCatalog(id);
+	}
+	acceptCatalogResponse(data, requestGeneration);
+	return data;
 }
 
 export interface UploadOptions extends ApiOptions {

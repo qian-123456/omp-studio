@@ -40,7 +40,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		sessionUsage: vi.fn(async () => ({ available: false, tokens: 0 })),
 		sessionSnapshot: vi.fn(async () => ({})),
 		listWorkspaceFiles: h.listWorkspaceFiles,
-		listModels: vi.fn(async () => []),
+		listModels: vi.fn(async () => ({ models: [], source: "cli", completeness: "unverified" })),
 		listSessions: vi.fn(async () => []),
 		skillsList: vi.fn(async () => ({ skills: [], extensions: [] })),
 		listWorkspaces: vi.fn(async () => []),

@@ -5,7 +5,7 @@ import { tNow } from "../../stores/language";
 const upsert = vi.hoisted(() => vi.fn(async (_config: unknown, _key: unknown, _mode: unknown) => {}));
 const saveBuiltin = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("./store", () => ({ useProviders: (select: (state: unknown) => unknown) => select({ rows: [], upsert, saveBuiltin, tests: {} }) }));
-vi.mock("../../lib/ipc", () => ({ providerFetchModels: vi.fn(), providerReadEnvFile: vi.fn(), listModels: vi.fn(async () => []), ompModelsSetContextWindows: vi.fn(async () => {}) }));
+vi.mock("../../lib/ipc", () => ({ providerFetchModels: vi.fn(), providerReadEnvFile: vi.fn(), listModels: vi.fn(async () => ({ models: [], source: "cli", completeness: "unverified" })), ompModelsSetContextWindows: vi.fn(async () => {}) }));
 vi.mock("../../stores/modelCatalog", () => ({ useModelCatalog: { getState: () => ({ refresh: vi.fn(async () => {}) }) } }));
 vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../../lib/dialogs", () => ({ confirmDialog: vi.fn(async () => true), errMsg: String }));
