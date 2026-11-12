@@ -111,6 +111,7 @@ export const saveSettings = (settings: Settings) =>
 	invoke<Settings>("save_settings", { settings });
 
 export const appPaths = () => invoke<AppPaths>("app_paths");
+export const appRelaunch = () => invoke<void>("app_relaunch");
 export const currentWorktreeIdentity = () =>
 	invoke<string | null>("current_worktree_identity");
 

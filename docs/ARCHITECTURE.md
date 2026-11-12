@@ -674,7 +674,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 `voice_transcribe` accepts a raw audio IPC body (maximum 25 MiB) and returns the recognized text. The desktop composer records with the macOS microphone permission and sends the audio directly to the configured `dictation` or `speech` provider via the shared transcription implementation; the mobile server need not be running. Audio is transmitted to that provider. macOS bundles declare microphone usage and the hardened-runtime audio-input entitlement.
 
-**LEAD (lib.rs / state):** `get_settings() -> Settings`, `save_settings(settings: Settings) -> Settings` (also re-applies the OS window title via `settings::apply_window_title`), `app_paths() -> {dataDir, globalDir}`
+**LEAD (lib.rs / state):** `get_settings() -> Settings`, `save_settings(settings: Settings) -> Settings` (also re-applies the OS window title via `settings::apply_window_title`), `app_paths() -> {dataDir, globalDir}`, `app_relaunch() -> ()` (on macOS `.app` bundles, waits for the current process to exit before reopening via `open` without `-n` so LaunchServices does not create a duplicate Dock icon)
 
 **LEAD — diagnostics:** `diagnostics_record(events: Vec<FrontendDiagnosticInput>, dropped_events: u64) -> DiagnosticAck`.
 Maximum 20 events per batch and 4 KiB per frontend event. Invalid batches are rejected

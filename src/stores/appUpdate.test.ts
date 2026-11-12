@@ -13,8 +13,8 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
 	check: () => mockCheck(),
 }));
 
-vi.mock("@tauri-apps/plugin-process", () => ({
-	relaunch: () => mockRelaunch(),
+vi.mock("../lib/ipc", () => ({
+	appRelaunch: () => mockRelaunch(),
 }));
 
 describe("useAppUpdate store", () => {

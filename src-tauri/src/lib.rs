@@ -112,6 +112,107 @@ async fn app_paths() -> Result<AppPaths, String> {
         global_dir: paths::global_dir().to_string_lossy().to_string(),
     })
 }
+
+/// Returns the enclosing `.app` bundle root when `exe_path` lives at
+/// `<Bundle>.app/Contents/MacOS/<binary>`, so macOS relaunch can reopen the
+/// bundle via LaunchServices after the current process has exited.
+pub fn macos_app_bundle_root(exe_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let macos_dir = exe_path.parent()?;
+    if macos_dir.file_name() != Some(std::ffi::OsStr::new("MacOS")) {
+        return None;
+    }
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name() != Some(std::ffi::OsStr::new("Contents")) {
+        return None;
+    }
+    let bundle_root = contents_dir.parent()?;
+    if bundle_root.extension() != Some(std::ffi::OsStr::new("app")) {
+        return None;
+    }
+    Some(bundle_root.to_path_buf())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn relaunch_extra_args(args: &[std::ffi::OsString]) -> Vec<std::ffi::OsString> {
+    args.iter()
+        .skip(1)
+        .filter(|arg| !arg.to_string_lossy().starts_with("-psn_"))
+        .cloned()
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+const MACOS_RELAUNCH_SCRIPT: &str = r#"pid="$1"
+app="$2"
+shift 2
+i=0
+while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+if kill -0 "$pid" 2>/dev/null; then
+  exit 1
+fi
+sleep 0.2
+if [ "$#" -gt 0 ]; then
+  exec /usr/bin/open "$app" --args "$@"
+else
+  exec /usr/bin/open "$app"
+fi"#;
+
+#[cfg(target_os = "macos")]
+fn spawn_macos_relaunch_helper(
+    bundle_root: &std::path::Path,
+    extra_args: &[std::ffi::OsString],
+) -> Result<(), String> {
+    use std::os::unix::process::CommandExt as _;
+    use std::process::{Command, Stdio};
+
+    // Wait for the current process to exit before invoking `open` (without `-n`)
+    // so LaunchServices rebinds the new instance to the existing Dock tile instead
+    // of creating a duplicate running icon beside the pinned Dock item.
+    Command::new("/bin/sh")
+        .arg("-c")
+        .arg(MACOS_RELAUNCH_SCRIPT)
+        .arg("omp-workspace-relaunch")
+        .arg(std::process::id().to_string())
+        .arg(bundle_root)
+        .args(extra_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch macOS relaunch helper: {e}"))
+}
+
+#[tauri::command]
+async fn app_relaunch(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static RELAUNCHING: AtomicBool = AtomicBool::new(false);
+
+        if let Ok(exe) = tauri::process::current_binary(&app.env()) {
+            if let Some(bundle_root) = macos_app_bundle_root(&exe) {
+                if RELAUNCHING.swap(true, Ordering::SeqCst) {
+                    return Ok(());
+                }
+                let extra_args = relaunch_extra_args(&app.env().args_os);
+                if let Err(err) = spawn_macos_relaunch_helper(&bundle_root, &extra_args) {
+                    RELAUNCHING.store(false, Ordering::SeqCst);
+                    return Err(err);
+                }
+                app.exit(0);
+                return Ok(());
+            }
+        }
+    }
+
+    app.request_restart();
+    Ok(())
+}
 #[tauri::command]
 async fn current_worktree_identity() -> Result<Option<String>, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -264,6 +365,7 @@ pub fn run() {
             get_settings,
             save_settings,
             app_paths,
+            app_relaunch,
             current_worktree_identity,
             allowed_tools_list,
             ime::ime_active,
@@ -584,6 +686,53 @@ allowed-tools: ["edit", "glob"]
 "#;
         let tools = parse_allowed_tools_from_text(content).unwrap();
         assert_eq!(tools, vec!["edit", "glob"]);
+    }
+
+    #[test]
+    fn test_macos_app_bundle_root() {
+        assert_eq!(
+            macos_app_bundle_root(std::path::Path::new(
+                "/Applications/omp-workspace.app/Contents/MacOS/omp-workspace"
+            )),
+            Some(std::path::PathBuf::from("/Applications/omp-workspace.app"))
+        );
+        assert_eq!(
+            macos_app_bundle_root(std::path::Path::new(
+                "/Users/dev/target/debug/omp-workspace"
+            )),
+            None
+        );
+        assert_eq!(
+            macos_app_bundle_root(std::path::Path::new(
+                "/Applications/NotABundle/Contents/MacOS/omp-workspace"
+            )),
+            None
+        );
+        assert_eq!(
+            macos_app_bundle_root(std::path::Path::new(
+                "/Applications/omp-workspace.app/Contents/Resources/helper"
+            )),
+            None
+        );
+    }
+
+    #[test]
+    fn test_relaunch_extra_args_filters_program_and_psn() {
+        let args = vec![
+            std::ffi::OsString::from(
+                "/Applications/omp-workspace.app/Contents/MacOS/omp-workspace",
+            ),
+            std::ffi::OsString::from("-psn_0_123456"),
+            std::ffi::OsString::from("--flag"),
+            std::ffi::OsString::from("value"),
+        ];
+        assert_eq!(
+            relaunch_extra_args(&args),
+            vec![
+                std::ffi::OsString::from("--flag"),
+                std::ffi::OsString::from("value"),
+            ]
+        );
     }
 
     #[test]

@@ -89,14 +89,21 @@ jobs:
             ---
 
             ### 本次更新 / What's New
+            #### 新增功能 / Features
+            - 供应商密钥现在支持直接保存或使用环境变量；新增与编辑供应商的配置界面重新设计。
+            - Provider keys can now be saved directly or supplied through environment variables; provider setup and editing have been redesigned.
+
             #### 修复与优化 / Fixes & Improvements
-            - 优化流式输出与对话渲染体验：重构流式快照合并逻辑（streamSnapshot），大幅降低高频流式片段引起的无谓渲染与抖动；优化副对话（Sidechat）交互与占位提示，完善交回主对话后的结论动作支持。
-            - 增强待办与灵感编辑器：灵感编辑器完整支持中文等输入法（IME）原生组合输入与拼音合成状态保护；撤销与重做操作完整保留并恢复附件历史；以草稿预填（draft prefill）替代原派发对话框，提升派发流转流畅度。
-            - 完善计划评审与选区高亮：修复计划评审（Plan Review）布局，准确对齐文档中计划选区的高亮展示与完成状态。
-            - 存储空间管理与清理能力增强：新增 OMP 运行缓存清理支持（安全清理 ~/.omp/cache 与 ~/.omp/puppeteer）；数据库紧凑化操作扩展至跨多库清理（app.db、search.db 与 activity-cache.sqlite 全量 VACUUM & checkpoint），释放更多本地磁盘空间。
+            - 调整供应商表单的列布局与对齐，并统一服务配置体验。
+            - Improved provider form alignment and consistency across service configuration.
+
+            #### 重大改动 / Breaking Changes
+            - 供应商 API 密钥现以明文保存在 OMP 的 `~/.omp/agent/models.yml`；已移除供应商密钥加密存储。升级前请确认该文件及其备份的访问权限。可识别的旧密钥引用会在启动时迁移。
+            - Provider API keys are now stored unencrypted in OMP's `~/.omp/agent/models.yml`; encrypted provider-key storage has been removed. Review access to this file and its backups before upgrading. Recognized legacy key references migrate at startup.
 
             #### 验证范围 / Verification Scope
-            - 已通过全量 TypeScript 类型检查、前端 434 套件（4116 案例）单元测试、Rust 1010 项单元测试及代码规范（clippy）校验。
+            - TypeScript 类型检查、435 个前端与移动端测试文件（4,123 项）、Rust `cargo check`，以及 Apple Silicon 本地发布包与更新签名构建均已通过。
+            - Verified: TypeScript type-check, 435 frontend/mobile test files (4,123 tests), Rust `cargo check`, and the Apple Silicon release bundle with updater signature.
             ---
 
             ### 问题反馈与帮助 / Support

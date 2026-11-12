@@ -1,9 +1,9 @@
 /** App (omp-workspace) update state powered by @tauri-apps/plugin-updater and GitHub Releases. */
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { create } from "zustand";
 import { errMsg } from "../lib/dialogs";
+import { appRelaunch } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { tNow } from "./language";
 
@@ -222,7 +222,7 @@ export const useAppUpdate = create<AppUpdateState>((set, get) => ({
 		if (!get().readyToRestart || get().downloading || get().restarting) return;
 		set({ restarting: true, error: null });
 		try {
-			await relaunch();
+			await appRelaunch();
 		} catch (e) {
 			const msg = errMsg(e);
 			set({ restarting: false, error: msg });
