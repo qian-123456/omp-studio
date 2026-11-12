@@ -536,7 +536,6 @@ export function Composer({
 	};
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
-	const setDismissed = useHeldQueue((s) => s.setDismissed);
 	const pushHeld = useHeldQueue((s) => s.push);
 
 
@@ -2947,12 +2946,14 @@ export function Composer({
 									? chipHintText(chip)
 									: streaming
 										? t("composer.placeholderStreaming")
-										: t("composer.placeholderDefault")
+										: compact
+											? t("sidechat.inputPlaceholder")
+											: t("composer.placeholderDefault")
 						}
 						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0, ...COMPOSER_TEXT_METRICS_STYLE }}
 						className={clsx(
 							COMPOSER_TEXT_METRICS_CLASS,
-							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))] disabled:cursor-not-allowed",
+							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-[var(--text-30,var(--text-dim))] disabled:cursor-not-allowed",
 							hasInlineTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
 								: "relative text-[var(--text)]",
@@ -3047,6 +3048,7 @@ export function Composer({
 						<div className="relative min-w-0" ref={modelMenuRef}>
 							<button
 								type="button"
+								data-model-picker={sessionId}
 								onClick={() => {
 									setModelOpen((v) => !v);
 									if (!models || models.length === 0) void loadModels();
@@ -3127,12 +3129,15 @@ export function Composer({
 
 					{/* Right side actions */}
 					<div className="flex shrink-0 items-center gap-1.5">
-						{/* Held queue count pill: post-turn only (manual mode, un-dismisses the bar);
-						    while streaming the items show as queued bubbles in the thread. */}
+						{/* Held queue count pill: scrolls directly to the unified queued bubbles at the bottom of the thread. */}
 						{held.length > 0 && !streaming && !readonly && (
 							<button
 								type="button"
-								onClick={() => setDismissed(sessionId, false)}
+								onClick={() => {
+									const root = document.querySelector(`[data-session-view="${CSS.escape(sessionId)}"]`) ?? document;
+									const target = root.querySelector("[data-queued-message]");
+									target?.scrollIntoView({ behavior: "smooth", block: "center" });
+								}}
 								aria-label={t("composer.viewHeldQueue")}
 								title={t("composer.clickToViewHeldQueue")}
 								className="flex items-center gap-1 rounded-full bg-[var(--ghost-hover,var(--bg-active-fill))] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"

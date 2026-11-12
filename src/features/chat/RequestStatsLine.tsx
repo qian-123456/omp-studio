@@ -255,7 +255,6 @@ export function RequestStatsLine({
 	const { open, anchor, enterProps, clickProps, cardProps } = useHoverCard();
 	const failedText = formatFailedRequest(stat);
 	if (!failedText && parts.length === 0) return null;
-	if (failedText && !enabled) return null;
 
 	return (
 		<>

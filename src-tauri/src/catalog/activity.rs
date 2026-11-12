@@ -16,21 +16,75 @@ use serde_json::Value;
 
 use crate::contracts::{ActivityDayUsage, ActivityUsage};
 
+type FileSignatures = HashMap<String, (u64, String)>;
+
+#[derive(Clone)]
+struct CachedScan {
+    root: PathBuf,
+    cache: PathBuf,
+    local_day: String,
+    signatures: FileSignatures,
+    usage: ActivityUsage,
+}
+
 pub(crate) fn load() -> Result<ActivityUsage, String> {
-    static SCAN: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    let _guard = SCAN.lock();
+    static SCAN: LazyLock<Mutex<Option<CachedScan>>> = LazyLock::new(|| Mutex::new(None));
+    let mut guard = SCAN.lock();
     let dir = crate::paths::data_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    load_from(
-        &crate::paths::omp_sessions_dir(),
-        &dir.join("activity-cache.sqlite"),
-    )
-    .map_err(|e| format!("read activity usage: {e}"))
+    let root = crate::paths::omp_sessions_dir();
+    let cache = dir.join("activity-cache.sqlite");
+    let local_day = Local::now().format("%Y-%m-%d").to_string();
+
+    if let Some(prev) = guard.as_ref() {
+        if prev.root == root && prev.cache == cache && prev.local_day == local_day && cache.exists()
+        {
+            if let Ok(current) = collect_signatures(&root) {
+                if current == prev.signatures {
+                    return Ok(prev.usage.clone());
+                }
+            }
+        }
+    }
+
+    let (usage, signatures) = load_from_with_signatures(&root, &cache)
+        .map_err(|e| format!("read activity usage: {e}"))?;
+    *guard = Some(CachedScan {
+        root,
+        cache,
+        local_day,
+        signatures,
+        usage: usage.clone(),
+    });
+    Ok(usage)
+}
+
+fn collect_signatures(root: &Path) -> anyhow::Result<FileSignatures> {
+    let mut out = HashMap::new();
+    for path in session_files(root)? {
+        let metadata = std::fs::metadata(&path)?;
+        let size = metadata.len();
+        let modified = metadata
+            .modified()?
+            .duration_since(UNIX_EPOCH)?
+            .as_nanos()
+            .to_string();
+        out.insert(path.to_string_lossy().into_owned(), (size, modified));
+    }
+    Ok(out)
 }
 
 /// File signatures persist across launches. Only added/changed files are parsed;
 /// deleted files are removed. A rewrite replaces its rows rather than adding them.
+#[cfg(test)]
 pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsage> {
+    load_from_with_signatures(root, cache).map(|(usage, _)| usage)
+}
+
+fn load_from_with_signatures(
+    root: &Path,
+    cache: &Path,
+) -> anyhow::Result<(ActivityUsage, FileSignatures)> {
     let mut db = Connection::open(cache)?;
     db.busy_timeout(Duration::from_secs(5))?;
     let version: u32 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
@@ -49,13 +103,15 @@ pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsa
            session_created TEXT NOT NULL, timestamp INTEGER NOT NULL,
            model TEXT, tokens INTEGER, is_turn INTEGER NOT NULL,
            PRIMARY KEY(file, event_key)
-         );",
+         );
+         CREATE INDEX IF NOT EXISTS idx_events_order ON events(session_created, file, timestamp);",
     )?;
     let previous: HashMap<String, (u64, String)> = {
         let mut stmt = db.prepare("SELECT path, size, modified FROM files")?;
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?;
         rows.collect::<rusqlite::Result<_>>()?
     };
+    let mut signatures: HashMap<String, (u64, String)> = HashMap::new();
     let mut present = HashSet::new();
     let tx = db.transaction()?;
     for path in session_files(root)? {
@@ -66,15 +122,16 @@ pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsa
             .duration_since(UNIX_EPOCH)?
             .as_nanos()
             .to_string();
-        let name = path.to_string_lossy();
-        present.insert(name.to_string());
+        let name = path.to_string_lossy().into_owned();
+        present.insert(name.clone());
+        signatures.insert(name.clone(), (size, modified.clone()));
         if previous
-            .get(name.as_ref())
+            .get(&name)
             .is_some_and(|(s, m)| *s == size && *m == modified)
         {
             continue;
         }
-        tx.execute("DELETE FROM events WHERE file = ?1", [name.as_ref()])?;
+        tx.execute("DELETE FROM events WHERE file = ?1", [&name])?;
         {
             let mut insert = tx.prepare_cached(
                 "INSERT OR REPLACE INTO events
@@ -83,7 +140,7 @@ pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsa
             )?;
             scan_file(&path, root, size, |event| {
                 insert.execute(params![
-                    name.as_ref(),
+                    &name,
                     event.key,
                     event.session,
                     event.session_created,
@@ -97,7 +154,7 @@ pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsa
         }
         tx.execute(
             "INSERT OR REPLACE INTO files(path,size,modified) VALUES (?1,?2,?3)",
-            params![name.as_ref(), size, modified],
+            params![&name, size, modified],
         )?;
     }
     for path in previous.keys().filter(|p| !present.contains(*p)) {
@@ -148,23 +205,27 @@ pub(crate) fn load_from(root: &Path, cache: &Path) -> anyhow::Result<ActivityUsa
             *entry += tokens.unwrap_or(0);
         }
     }
-    Ok(ActivityUsage {
-        days: days
-            .into_iter()
-            .map(|(date, day)| ActivityDayUsage {
-                date,
-                tokens: (day.known_requests > 0 || day.missing_requests == 0).then_some(day.tokens),
-                missing_requests: day.missing_requests,
-                sessions: day.sessions.len() as u64,
-                turns: day.turns,
-                top_model: day
-                    .models
-                    .into_iter()
-                    .max_by(|(ma, a), (mb, b)| a.cmp(b).then_with(|| mb.cmp(ma)))
-                    .map(|(m, _)| m),
-            })
-            .collect(),
-    })
+    Ok((
+        ActivityUsage {
+            days: days
+                .into_iter()
+                .map(|(date, day)| ActivityDayUsage {
+                    date,
+                    tokens: (day.known_requests > 0 || day.missing_requests == 0)
+                        .then_some(day.tokens),
+                    missing_requests: day.missing_requests,
+                    sessions: day.sessions.len() as u64,
+                    turns: day.turns,
+                    top_model: day
+                        .models
+                        .into_iter()
+                        .max_by(|(ma, a), (mb, b)| a.cmp(b).then_with(|| mb.cmp(ma)))
+                        .map(|(m, _)| m),
+                })
+                .collect(),
+        },
+        signatures,
+    ))
 }
 
 #[derive(Default)]

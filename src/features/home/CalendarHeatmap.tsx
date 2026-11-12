@@ -121,7 +121,11 @@ function HeatmapContent() {
 		};
 	}, []);
 
+	const didInitialFetchRef = useRef(false);
 	useEffect(() => {
+		const anyWorking = Object.values(sessions).some((s) => s.status === "working");
+		if (didInitialFetchRef.current && anyWorking) return;
+		didInitialFetchRef.current = true;
 		refreshRef.current();
 	}, [sessions]);
 

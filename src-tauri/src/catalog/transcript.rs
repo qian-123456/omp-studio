@@ -296,11 +296,13 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                     _ => {}
                 }
             }
-            let raw_text = opt(texts.join("\n\n")).or_else(|| {
-                msg.get("errorMessage")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
+            let error_message = msg
+                .get("errorMessage")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            let raw_text = opt(texts.join("\n\n")).or_else(|| error_message.clone());
             if texts.is_empty() {
                 if let Some(text) = raw_text.as_ref().filter(|text| !text.trim().is_empty()) {
                     assistant_parts.push(AssistantContentPart::Text { text: text.clone() });
@@ -322,6 +324,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 .get("stopReason")
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            item.error_message = error_message;
             item.duration = num_u64(msg.get("duration"));
             item.ttft = num_u64(msg.get("ttft"));
             item.completed_at = num_i64(msg.get("completedAt"));
@@ -888,5 +891,26 @@ mod tests {
             Some(serde_json::from_str(task).unwrap())
         );
         assert!(details("ask", r#"{"results":[]}"#).is_some());
+    }
+
+    #[test]
+    fn preserves_error_message_even_when_partial_text_streamed() {
+        let partial_err = r#"{"type":"message","id":"ae","timestamp":"T","message":{"role":"assistant","stopReason":"error","errorMessage":"Connection reset by peer","content":[{"type":"text","text":"Partial answer before drop"}]}}"#;
+        let item = normalize_entry(&serde_json::from_str(partial_err).unwrap()).unwrap();
+        assert_eq!(item.stop_reason.as_deref(), Some("error"));
+        assert_eq!(item.text.as_deref(), Some("Partial answer before drop"));
+        assert_eq!(
+            item.error_message.as_deref(),
+            Some("Connection reset by peer")
+        );
+
+        let empty_err = r#"{"type":"message","id":"ae2","timestamp":"T","message":{"role":"assistant","stopReason":"error","errorMessage":"429 Too Many Requests","content":[]}}"#;
+        let item2 = normalize_entry(&serde_json::from_str(empty_err).unwrap()).unwrap();
+        assert_eq!(item2.stop_reason.as_deref(), Some("error"));
+        assert_eq!(item2.text.as_deref(), Some("429 Too Many Requests"));
+        assert_eq!(
+            item2.error_message.as_deref(),
+            Some("429 Too Many Requests")
+        );
     }
 }

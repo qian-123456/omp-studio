@@ -80,11 +80,19 @@ export function splitThinkTags(
 			chunks[chunks.length - 1] += piece;
 			inThink = false;
 		} else if (!seenOpener && chunks.length === 0) {
-			// Closer with no opener: the chat template swallowed `<think>`, so
-			// everything before the closer is reasoning.
-			chunks.push(text + piece);
-			text = "";
-			seenOpener = true;
+			// Closer with no opener: usually the chat template swallowed `<think>`,
+			// so text before `</think>` is reasoning followed by the answer.
+			// Guard: once streaming is finished (`!opts.streaming`), if nothing
+			// non-whitespace follows `</think>`, treating it as reasoning would
+			// swallow 100% of the reply into collapsed thinking — treat it as a
+			// stray closing tag on the reply instead.
+			if (!opts.streaming && src.slice(pos).trim() === "") {
+				text += piece;
+			} else {
+				chunks.push(text + piece);
+				text = "";
+				seenOpener = true;
+			}
 		} else {
 			// Stray closer after reasoning already closed: drop the tag only.
 			text += piece;

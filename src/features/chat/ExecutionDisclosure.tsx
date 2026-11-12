@@ -744,6 +744,10 @@ export function ExecutionDisclosure({
 		forceExpanded || liveOpen ? true : forceExpanded,
 	);
 	const live = Boolean(isStreaming) || Boolean(awaitingSubagents);
+	const failedCount = useMemo(
+		() => (turnStats ?? []).filter((s) => Boolean(s.error)).length,
+		[turnStats],
+	);
 	const titleText: ReactNode = live ? (
 		<ProcessingTitle startedAt={startedAt} />
 	) : durationMs ? (
@@ -759,12 +763,23 @@ export function ExecutionDisclosure({
 	return (
 		<div className={clsx("mt-1 flex flex-col", !liveOpen && "mb-1")}>
 			{!hideHeader && (
-				<DisclosureHeader
-					title={titleText}
-					shimmer={live}
-					expanded={expanded}
-					onToggle={toggle}
-				/>
+				<div className="flex flex-wrap items-center gap-2">
+					<DisclosureHeader
+						title={titleText}
+						shimmer={live}
+						expanded={expanded}
+						onToggle={toggle}
+					/>
+					{!live && !expanded && failedCount > 0 && (
+						<button
+							type="button"
+							onClick={toggle}
+							className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-500 transition-colors hover:bg-rose-500/15"
+						>
+							{t("chat.execution.failedCount", { count: failedCount })}
+						</button>
+					)}
+				</div>
 			)}
 
 			{expanded && (

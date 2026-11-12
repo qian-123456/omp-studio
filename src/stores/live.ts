@@ -161,6 +161,8 @@ export type UserEcho = TranscriptItem & {
 	steer?: boolean;
 	held?: boolean;
 	delivered?: boolean;
+	/** Visible cold-start / send progress before the RPC prompt is accepted. */
+	deliveryPhase?: "waking" | "sending";
 	/** Id of the last transcript item when the echo was sent (thread position). */
 	anchorId?: string | null;
 };
@@ -629,7 +631,7 @@ function deliveredInputText(msg: Frame): string | null {
 function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
 	const i = findEchoIndex(echoes, [text], (e) => !(e as UserEcho).delivered);
 	if (i < 0) return echoes;
-	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+	return echoes.map((e, j) => (j === i ? { ...e, delivered: true, deliveryPhase: undefined } : e));
 }
 
 /** One user/skill message has two boundaries but consumes only one queued echo. */
@@ -1552,6 +1554,8 @@ export interface LiveState {
 	): string | null;
 	/** Drop a pending echo by id (its send failed or was cancelled). */
 	removeUserEcho(sessionId: string, echoId: string): void;
+	/** Update the visible delivery phase (`"waking"` / `"sending"`) of a pending echo. */
+	setUserEchoPhase(sessionId: string, echoId: string, phase: UserEcho["deliveryPhase"]): void;
 	/** Scroll the message stream to a transcript item (used by HeatmapPanel). With
 	 * `quote`, only that text is highlighted (whole item if it can't be found). */
 	scrollToItem(sessionId: string, itemId: string, quote?: string): void;
@@ -1837,6 +1841,24 @@ export const useLive = create<LiveState>((set) => ({
 					[sessionId]: {
 						...live,
 						pendingUserEchoes: live.pendingUserEchoes.filter((e) => e.id !== echoId),
+					},
+				},
+			};
+		}),
+	setUserEchoPhase: (sessionId, echoId, phase) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			const target = live.pendingUserEchoes.find((e) => e.id === echoId);
+			if (!target || target.deliveryPhase === phase) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						pendingUserEchoes: live.pendingUserEchoes.map((e) =>
+							e.id === echoId ? { ...e, deliveryPhase: phase } : e,
+						),
 					},
 				},
 			};

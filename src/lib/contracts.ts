@@ -214,6 +214,8 @@ export interface TranscriptItem {
 	usage: Usage | null;
 	model: string | null;
 	stopReason: string | null;
+	/** Assistant only: error text preserved even when partial prose streamed before failure. */
+	errorMessage?: string | null;
 	hidden: boolean;
 	/** Structured image attachments. */
 	images?: ImageAttachment[];

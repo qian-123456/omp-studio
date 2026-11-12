@@ -108,6 +108,11 @@ export default defineMessages({
 			sendNowInterruptTitle: "打断当前回复，立即发送这条",
 			sendNowTitle: "立即发送这条",
 			sendNow: "立即发送",
+			editInComposer: "放回输入框",
+			editInComposerTitle: "移出队列并放回输入框编辑",
+			sendAllMerged: "全部合并发送",
+			sendAllMergedTitle: "将所有排队消息合并为一条并立即发送",
+			queuedBecauseBusy: "当前对话仍在处理上一轮，消息已自动加入排队",
 			removeTitle: "从队列移除这条消息",
 		},
 		stats: {
@@ -187,6 +192,8 @@ export default defineMessages({
 			actionSteer: "引导当前回合",
 			actionQueue: "本回合结束后发送",
 			actionInterrupt: "打断并发送",
+			wakingSession: "正在唤醒对话",
+			sendingMessage: "正在发送",
 		},
 		shell: {
 			commandFailed: "命令执行失败",
@@ -387,6 +394,11 @@ export default defineMessages({
 			sendNowInterruptTitle: "Interrupt current response and send this now",
 			sendNowTitle: "Send this now",
 			sendNow: "Send now",
+			editInComposer: "Edit in Input",
+			editInComposerTitle: "Remove from queue and place back in the input box",
+			sendAllMerged: "Merge & Send All",
+			sendAllMergedTitle: "Merge all queued messages into one and send now",
+			queuedBecauseBusy: "Session is still processing the previous turn; message added to queue",
 			removeTitle: "Remove this message from queue",
 		},
 		stats: {
@@ -466,6 +478,8 @@ export default defineMessages({
 			actionSteer: "Steer current turn",
 			actionQueue: "Send when turn ends",
 			actionInterrupt: "Interrupt and send",
+			wakingSession: "Waking session",
+			sendingMessage: "Sending",
 		},
 		shell: {
 			commandFailed: "Command execution failed",

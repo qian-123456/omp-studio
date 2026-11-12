@@ -302,6 +302,9 @@ pub struct TranscriptItem {
     pub usage: Option<Usage>,
     pub model: Option<String>,
     pub stop_reason: Option<String>,
+    /// Assistant only: provider/model error text preserved even when partial prose streamed first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
     /// custom_message display:false, system reminders.
     pub hidden: bool,
     /// Attached images (blob refs, clip files, or unresolvable markers).

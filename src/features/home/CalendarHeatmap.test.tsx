@@ -155,4 +155,30 @@ describe("CalendarHeatmap", () => {
 		hover(container, "2026-07-01");
 		expect(screen.getByText("20.5B tokens")).toBeTruthy();
 	});
+
+	it("skips session-triggered rescans while a session is actively working, then refreshes once settled", async () => {
+		fetchUsage
+			.mockResolvedValueOnce({ days: [day("2026-07-01", 100)] })
+			.mockResolvedValueOnce({ days: [day("2026-07-01", 250)] });
+		render(<CalendarHeatmap />);
+		await flush();
+		expect(fetchUsage).toHaveBeenCalledTimes(1);
+
+		act(() => {
+			useSessions.setState({
+				sessions: { s1: { id: "s1", status: "working" } as never },
+			});
+		});
+		await flush();
+		expect(fetchUsage).toHaveBeenCalledTimes(1);
+
+		act(() => {
+			useSessions.setState({
+				sessions: { s1: { id: "s1", status: "idle" } as never },
+			});
+		});
+		await flush();
+		expect(fetchUsage).toHaveBeenCalledTimes(2);
+		expect(screen.getByText(/250 tokens/)).toBeTruthy();
+	});
 });

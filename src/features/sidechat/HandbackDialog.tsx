@@ -1,19 +1,22 @@
 /**
- * [B] 「回传给父会话」 dialog (整理成结论 mode). The side chat writes the settled
- * conclusions after the user's click; the note is edited here and only goes to
- * the parent's composer (as a quote chip) on 「插入主对话输入框」 — never sent.
+ * [B] 「回传给父会话」 dialog (整理成结论 mode). Opening automatically triggers a
+ * summary turn in the side chat, streams a live preview while running, lets the
+ * user edit the draft once ready, and either sends directly to the parent session
+ * (「发送给主对话」) or stages in the parent's composer (「仅放入输入框」).
  */
 
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { Notice } from "../../components/Notice";
+import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
+import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { buildHandbackText } from "./handbackLogic";
-import { startHandback, useHandback } from "./handbackRun";
-import { HANDBACK_MODAL, insertInParentComposer } from "./sideChatActions";
+import { cancelHandback, startHandback, useHandback } from "./handbackRun";
+import { HANDBACK_MODAL, insertInParentComposer, sendToParentSession } from "./sideChatActions";
 import { useT } from "../../stores/language";
 const BTN = "rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-80`;
@@ -26,7 +29,24 @@ export function HandbackDialog() {
 	const childId = modal?.name === HANDBACK_MODAL && typeof modal.props.childId === "string" ? modal.props.childId : null;
 	const run = useHandback((s) => (childId ? s.runs[childId] : undefined));
 	const title = useSessions((s) => (childId ? s.sessions[childId]?.title : undefined));
+	const liveText = useLive((s) => {
+		if (!childId) return "";
+		const content = s.sessions[childId]?.streamingMessage?.content;
+		if (typeof content === "string") return content.trim();
+		if (Array.isArray(content)) {
+			return content
+				.map((p) =>
+					p && typeof p === "object" && "type" in p && p.type === "text" && "text" in p
+						? String(p.text ?? "")
+						: "",
+				)
+				.join("")
+				.trim();
+		}
+		return "";
+	});
 	const [withTranscript, setWithTranscript] = useState(false);
+	const [sending, setSending] = useState(false);
 
 	if (!childId) return null;
 	const phase = run?.phase ?? "running";
@@ -42,6 +62,29 @@ export function HandbackDialog() {
 		toast.success(t("sidechat.handbackInsertedToast"));
 	};
 
+	const send = async () => {
+		if (!run || sending) return;
+		const text = buildHandbackText(run.draft, withTranscript ? run.transcript : null);
+		if (!text.trim()) {
+			toast.error(t("sidechat.handbackEmptyOrNoParent"));
+			return;
+		}
+		setSending(true);
+		try {
+			const ok = await sendToParentSession(childId, text);
+			if (!ok) {
+				toast.error(t("sidechat.handbackEmptyOrNoParent"));
+				return;
+			}
+			closeModal();
+			toast.success(t("sidechat.handbackSentToast"));
+		} catch (err) {
+			toast.error(errMsg(err));
+		} finally {
+			setSending(false);
+		}
+	};
+
 	return (
 		<FloatingLayer
 			anchor={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
@@ -53,9 +96,21 @@ export function HandbackDialog() {
 		>
 			<h3 className="text-sm font-semibold text-[var(--text)]">{t("sidechat.handbackDialogTitle")}</h3>
 			{phase === "running" && (
-				<div className="flex items-center gap-2 py-6 text-xs text-[var(--text-60)]">
-					<Loader2 size={14} className="animate-spin" />
-					{t("sidechat.handbackRunningNotice")}
+				<div className="flex flex-col gap-2.5 py-2">
+					<div className="flex items-center gap-2 text-xs text-[var(--text-60)]">
+						<Loader2 size={14} className="shrink-0 animate-spin" />
+						<span>{t("sidechat.handbackRunningNotice")}</span>
+					</div>
+					{liveText && (
+						<div className="flex flex-col gap-1">
+							<span className="text-[11px] text-[var(--text-40)]">
+								{t("sidechat.handbackLivePreviewLabel")}
+							</span>
+							<div className="max-h-56 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3 text-xs leading-relaxed whitespace-pre-wrap break-words text-[var(--text)]">
+								{liveText}
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 			{phase === "error" && (
@@ -85,26 +140,51 @@ export function HandbackDialog() {
 					</label>
 				</>
 			)}
-			<div className="flex items-center justify-between gap-2">
-				<span className="min-w-0 truncate text-[11px] text-[var(--text-30)]">
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<span className="min-w-0 break-words text-[11px] text-[var(--text-30)]">
 					{title ? t("sidechat.sideChatPrefix", { title }) : ""}
 				</span>
-				<div className="flex shrink-0 items-center gap-2">
+				<div className="flex flex-wrap items-center justify-end gap-2">
 					<button type="button" onClick={closeModal} className={BTN_BORDER}>
 						{t("common.cancel")}
 					</button>
-					<button
-						type="button"
-						disabled={phase === "running"}
-						onClick={() => void startHandback(childId)}
-						className={BTN_BORDER}
-					>
-						{t("sidechat.regenerate")}
-					</button>
-					{phase === "ready" && (
-						<button type="button" disabled={!run?.draft.trim()} onClick={insert} className={BTN_PRIMARY}>
-							{t("sidechat.insertToComposer")}
+					{phase === "running" ? (
+						<button
+							type="button"
+							onClick={() => void cancelHandback(childId)}
+							className={BTN_BORDER}
+						>
+							{t("sidechat.stopHandback")}
 						</button>
+					) : (
+						<button
+							type="button"
+							disabled={sending}
+							onClick={() => void startHandback(childId)}
+							className={BTN_BORDER}
+						>
+							{t("sidechat.regenerate")}
+						</button>
+					)}
+					{phase === "ready" && (
+						<>
+							<button
+								type="button"
+								disabled={sending || !run?.draft.trim()}
+								onClick={insert}
+								className={BTN_BORDER}
+							>
+								{t("sidechat.insertToComposer")}
+							</button>
+							<button
+								type="button"
+								disabled={sending || !run?.draft.trim()}
+								onClick={() => void send()}
+								className={BTN_PRIMARY}
+							>
+								{t("sidechat.sendToMain")}
+							</button>
+						</>
 					)}
 				</div>
 			</div>

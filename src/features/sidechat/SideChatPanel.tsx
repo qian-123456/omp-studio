@@ -37,7 +37,12 @@ import {
 	sideChatModelLabel,
 	sideChatSelectorUsable,
 } from "./modelDefault";
-import { SIDE_CHAT_TAB_ACTIONS, sendFirstMessage } from "./sideChatActions";
+import {
+	cancelFirstMessage,
+	isFirstMessageCancelled,
+	SIDE_CHAT_TAB_ACTIONS,
+	sendFirstMessage,
+} from "./sideChatActions";
 import { visibleSideChatActions } from "./handbackLogic";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { isBlankTab, resolveActiveTab, useSideChatView } from "./viewStore";
@@ -164,6 +169,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const setQuestion = (val: string) => setSideChatDraft(tabId, val);
 	/** First message while the session is being created: shown as a pending bubble. */
 	const pendingQuestion = useSideChatView((s) => s.pending[tabId] ?? null);
+	const pendingStage = useSideChatView((s) => s.pendingStage[tabId] ?? "creating");
 	const busy = pendingQuestion !== null;
 	const pendingImages = useSideChatView((s) => s.pendingAttachments[tabId]);
 	const [error, setError] = useState<string | null>(null);
@@ -184,6 +190,38 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	}, [ownerKey]);
 	const addBtnRef = useRef<HTMLButtonElement>(null);
 	const attachmentRef = useRef<HTMLDivElement | null>(null);
+
+	// Auto-resize the textarea to fit question contents, mirroring Composer's fit logic.
+	useEffect(() => {
+		const ta = textareaRef.current;
+		if (!ta) return;
+		const fit = () => {
+			const savedScrollTop = ta.scrollTop;
+			ta.style.height = "auto";
+			const minH = 22;
+			const maxH = 140;
+			const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
+			ta.style.height = `${nextH}px`;
+			ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
+			ta.scrollTop = savedScrollTop;
+			if (backdropRef.current) {
+				backdropRef.current.style.height = `${nextH}px`;
+				const gutter = ta.offsetWidth - ta.clientWidth;
+				backdropRef.current.style.paddingRight = `calc(1rem + ${Math.max(gutter, 0)}px)`;
+				backdropRef.current.scrollTop = ta.scrollTop;
+			}
+		};
+		fit();
+		let lastWidth = ta.clientWidth;
+		const ro = new ResizeObserver(() => {
+			if (ta.clientWidth === lastWidth) return;
+			lastWidth = ta.clientWidth;
+			fit();
+		});
+		ro.observe(ta);
+		return () => ro.disconnect();
+	}, [question]);
+
 	const selectionRef = useRef({ start: 0, end: 0 });
 	const nativeDropRef = useRef<(paths: string[]) => void>(() => {});
 	const rememberSelection = (textarea: HTMLTextAreaElement) => {
@@ -493,6 +531,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				images,
 			});
 		} catch (err) {
+			if (isFirstMessageCancelled(err)) return;
 			const msg = errMsg(err);
 			// Draft recovery is owned by the delivery, even if this panel unmounts.
 			setError(msg);
@@ -533,9 +572,20 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								}}
 							/>
 						</div>
-						<div role="status" className="flex items-center justify-end gap-1 whitespace-nowrap text-[10px] text-[var(--text-40)]">
-							<Loader2 size={10} className="animate-spin" />
-							{t("sidechat.creatingSideChat")}
+						<div role="status" className="flex items-center justify-end gap-2 text-[10px] text-[var(--text-40)]">
+							<span className="inline-flex items-center gap-1 whitespace-nowrap">
+								<Loader2 size={10} className="animate-spin" />
+								{pendingStage === "asking"
+									? t("sidechat.preparingFirstPrompt")
+									: t("sidechat.creatingSideChat")}
+							</span>
+							<button
+								type="button"
+								onClick={() => cancelFirstMessage(tabId)}
+								className="rounded-full border border-[var(--line)] bg-[var(--bg-panel)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							>
+								{t("sidechat.stopFirstMessage")}
+							</button>
 						</div>
 					</div>
 				) : (
@@ -628,8 +678,6 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								onChange={(e) => {
 									setQuestion(e.target.value);
 									rememberSelection(e.currentTarget);
-									e.target.style.height = "auto";
-									e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
 								}}
 								onSelect={(e) => rememberSelection(e.currentTarget)}
 								onScroll={(e) => { if (backdropRef.current) backdropRef.current.scrollTop = e.currentTarget.scrollTop; }}
@@ -643,7 +691,11 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 								}}
 								placeholder={t("sidechat.inputPlaceholder")}
 								rows={1}
-								className={clsx(COMPOSER_TEXT_METRICS_CLASS, "relative w-full resize-none bg-transparent px-4 pt-3 pb-1.5 outline-none max-h-36 min-h-[40px] placeholder:text-[var(--text-30,var(--text-dim))]", images.length ? "text-transparent caret-[var(--text)]" : "text-[var(--text)]")}
+								className={clsx(
+									COMPOSER_TEXT_METRICS_CLASS,
+									"relative w-full resize-none overflow-hidden bg-transparent px-4 pt-3 pb-1.5 outline-none max-h-36 min-h-[40px] placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-[var(--text-30,var(--text-dim))]",
+									images.length ? "text-transparent caret-[var(--text)]" : "text-[var(--text)]",
+								)}
 								style={COMPOSER_TEXT_METRICS_STYLE}
 							/>
 							</div>

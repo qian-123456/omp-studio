@@ -8,19 +8,20 @@
  */
 
 import type { ComposerImage } from "../../stores/composer";
-import { createSideChat, sideChatAsk } from "../../lib/ipc";
+import { createSideChat, deleteSession, rpcStop, sideChatAsk } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { type Annotation, annotationImageAttachments, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
 import { expandImagesForSend } from "../chat/imageTokens";
+import * as Send from "../chat/send";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { prepareSideChatFirstPrompt } from "../../stores/transcript";
 import { useUi } from "../../stores/ui";
 import { sideChatDefaultModelArg } from "./modelDefault";
 import { HANDBACK_ACTION_KEY, appendToDraft, handbackAnnotation } from "./handbackLogic";
-import { isSideChatBusy, prefillHandbackFromExisting, useHandback } from "./handbackRun";
+import { ensureHandbackStarted, isSideChatBusy, useHandback } from "./handbackRun";
 import { removeSideChatImageToken, sideChatImageAttachments } from "./sideChatAttachments";
 import { openNewSideChat, useSideChatView } from "./viewStore";
 
@@ -98,36 +99,95 @@ export function liveTurnContext(parentId: string): string | undefined {
 	return lines.length ? lines.join("\n\n") : undefined;
 }
 
+const FIRST_MESSAGE_CANCELLED = "FIRST_MESSAGE_CANCELLED";
+
+export function isFirstMessageCancelled(err: unknown): boolean {
+	return err instanceof Error && err.message === FIRST_MESSAGE_CANCELLED;
+}
+
+function cleanupOrphanSideChat(sessionId: string): void {
+	void Promise.resolve(rpcStop?.(sessionId))
+		.catch(() => {})
+		.then(() => Promise.resolve(deleteSession?.(sessionId)).catch(() => {}));
+}
+
 // Keep it across failures so retrying does not create another side chat or use
 // the ordinary send path, which would omit the first-question boundary prompt.
 const firstQuestionSessions = new Map<string, string>();
-const firstMessagesInFlight = new Map<string, Promise<void>>();
+const firstMessagesInFlight = new Map<
+	string,
+	{ promise: Promise<void>; cancel: () => void; cancelled: boolean; originalDraft: string }
+>();
 useSideChatView.subscribe(({ openTabs }) => {
-	for (const tabId of firstQuestionSessions.keys()) {
-		if (!Object.values(openTabs).some((tabs) => tabs.includes(tabId))) firstQuestionSessions.delete(tabId);
+	for (const [tabId, sessionId] of firstQuestionSessions.entries()) {
+		const stillOpen = Object.values(openTabs).some((tabs) => tabs.includes(tabId));
+		if (!stillOpen && !firstMessagesInFlight.has(tabId)) {
+			firstQuestionSessions.delete(tabId);
+			cleanupOrphanSideChat(sessionId);
+		}
 	}
 });
+
+/** Cancel an in-flight blank-tab first message, restoring its draft and cleaning up any unbound child. */
+export function cancelFirstMessage(tabId: string): void {
+	const entry = firstMessagesInFlight.get(tabId);
+	if (entry) {
+		entry.cancelled = true;
+		entry.cancel();
+		firstMessagesInFlight.delete(tabId);
+		const composer = useComposer.getState();
+		if (!composer.sideChatDrafts[tabId] && entry.originalDraft) {
+			composer.setSideChatDraft(tabId, entry.originalDraft);
+		}
+	}
+	useSideChatView.getState().setPending(tabId, null);
+	const orphanId = firstQuestionSessions.get(tabId);
+	if (orphanId) {
+		firstQuestionSessions.delete(tabId);
+		cleanupOrphanSideChat(orphanId);
+	}
+}
 
 /** A tab owns one first-message delivery, even across panel unmounts and remounts. */
 export function sendFirstMessage(input: FirstMessageInput): Promise<void> {
 	const existing = firstMessagesInFlight.get(input.tabId);
-	if (existing) return existing;
+	if (existing) return existing.promise;
+	const originalDraft = useComposer.getState().sideChatDrafts[input.tabId] ?? input.text;
 	let resolve!: () => void;
 	let reject!: (error: unknown) => void;
-	const delivery = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
-	firstMessagesInFlight.set(input.tabId, delivery);
-	void deliverFirstMessage(input).then(() => {
-		firstMessagesInFlight.delete(input.tabId);
-		resolve();
-	}, (error: unknown) => {
-		firstMessagesInFlight.delete(input.tabId);
-		reject(error);
+	const promise = new Promise<void>((done, failed) => {
+		resolve = done;
+		reject = failed;
 	});
-	return delivery;
+	const entry = {
+		promise,
+		cancelled: false,
+		originalDraft,
+		cancel: () => reject(new Error(FIRST_MESSAGE_CANCELLED)),
+	};
+	firstMessagesInFlight.set(input.tabId, entry);
+	void deliverFirstMessage(input, entry).then(
+		() => {
+			if (firstMessagesInFlight.get(input.tabId) === entry) {
+				firstMessagesInFlight.delete(input.tabId);
+			}
+			resolve();
+		},
+		(error: unknown) => {
+			if (firstMessagesInFlight.get(input.tabId) === entry) {
+				firstMessagesInFlight.delete(input.tabId);
+			}
+			reject(error);
+		},
+	);
+	return promise;
 }
 
 /** Failed deliveries leave staged input intact and remove only their own optimistic echo. */
-async function deliverFirstMessage(input: FirstMessageInput): Promise<void> {
+async function deliverFirstMessage(
+	input: FirstMessageInput,
+	flight: { cancelled: boolean; originalDraft: string },
+): Promise<void> {
 	const { parentId, tabId, annotations = [], images = [] } = input;
 	const imageAttachments = sideChatImageAttachments(images);
 	const { question, selection } = firstMessageParts(input.text, annotations, images.length);
@@ -151,17 +211,24 @@ async function deliverFirstMessage(input: FirstMessageInput): Promise<void> {
 		...annotationImageAttachments(annotations, imageAttachments),
 	];
 	const context = liveTurnContext(parentId);
-	const originalDraft = useComposer.getState().sideChatDrafts[tabId] ?? input.text;
+	const originalDraft = flight.originalDraft;
 	useComposer.getState().clearSideChatDraft(tabId);
 	view.setPending(tabId, shown, allAttachments);
 	try {
 		let sessionId = firstQuestionSessions.get(tabId);
 		if (!sessionId) {
 			const info = await createSideChat(parentId, input.model ?? undefined);
+			if (flight.cancelled) {
+				cleanupOrphanSideChat(info.sessionId);
+				throw new Error(FIRST_MESSAGE_CANCELLED);
+			}
 			sessionId = info.sessionId;
 			firstQuestionSessions.set(tabId, sessionId);
 		}
+		if (flight.cancelled) throw new Error(FIRST_MESSAGE_CANCELLED);
+		useSideChatView.getState().setPendingStage(tabId, "asking");
 		await prepareSideChatFirstPrompt(sessionId);
+		if (flight.cancelled) throw new Error(FIRST_MESSAGE_CANCELLED);
 		// Register before IPC can emit agent_start or the first transcript page.
 		// Otherwise the already-delivered first question is mistaken for queued input.
 		const echoId = useLive.getState().addUserEcho(sessionId, shown, allAttachments);
@@ -173,6 +240,10 @@ async function deliverFirstMessage(input: FirstMessageInput): Promise<void> {
 		} catch (error) {
 			if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
 			throw error;
+		}
+		if (flight.cancelled) {
+			if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
+			throw new Error(FIRST_MESSAGE_CANCELLED);
 		}
 		await useSessions.getState().load().catch(() => {});
 		const composer = useComposer.getState();
@@ -200,9 +271,18 @@ async function deliverFirstMessage(input: FirstMessageInput): Promise<void> {
 	} catch (error) {
 		const composer = useComposer.getState();
 		if (!composer.sideChatDrafts[tabId]) composer.setSideChatDraft(tabId, originalDraft);
+		const openTabs = useSideChatView.getState().openTabs;
+		const stillOpen = Object.values(openTabs).some((tabs) => tabs.includes(tabId));
+		if (!stillOpen) {
+			const orphanId = firstQuestionSessions.get(tabId);
+			if (orphanId) {
+				firstQuestionSessions.delete(tabId);
+				cleanupOrphanSideChat(orphanId);
+			}
+		}
 		throw error;
 	} finally {
-		view.setPending(tabId, null);
+		useSideChatView.getState().setPending(tabId, null);
 	}
 }
 
@@ -239,9 +319,9 @@ export async function openSideChatTab(
 export const HANDBACK_MODAL = "side-chat-handback";
 
 /**
- * 「回传给父会话」 (summary mode), user click only: open the dialog and have the
- * side chat write its settled conclusions. Refuses while the side chat is
- * mid-turn (the instruction would queue behind that turn).
+ * 「回传给父会话」 (summary mode), user click only: open the dialog immediately and
+ * automatically summarize settled conclusions (unless an up-to-date summary already
+ * covers the latest side-chat message). Refuses while the side chat is mid-turn.
  */
 export async function openHandback(childId: string): Promise<void> {
 	if (!useSessions.getState().sessions[childId]?.parentId) {
@@ -253,10 +333,18 @@ export async function openHandback(childId: string): Promise<void> {
 		toast.info(tNow("sidechat.sideChatBusyWait"));
 		return;
 	}
-	// Fill from the side chat's latest reply; the summarize prompt is sent only
-	// when the user presses 「重新生成」 in the dialog.
-	await prefillHandbackFromExisting(childId);
 	useUi.getState().openModal(HANDBACK_MODAL, { childId });
+	await ensureHandbackStarted(childId);
+}
+
+/** Send `text` directly as a user message in the parent session and select the parent session. */
+export async function sendToParentSession(childId: string, text: string): Promise<boolean> {
+	const child = useSessions.getState().sessions[childId];
+	const body = text.trim();
+	if (!child?.parentId || !body) return false;
+	useUi.getState().selectSession(child.parentId);
+	await Send.sendPrompt(child.parentId, body);
+	return true;
 }
 
 /** Stage `text` as a quote chip in the parent's main composer, show the parent and focus its composer. Never sends. */
