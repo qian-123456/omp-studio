@@ -50,7 +50,7 @@ const batchCellCls =
 	"w-full rounded-md hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-[11px] text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 const labelCls = "block text-xs font-medium text-neutral-200";
 const hintCls = "mt-1 text-[11px] text-neutral-400";
-const MODEL_TABLE_GRID = "grid grid-cols-[minmax(0,1fr)_116px_110px_92px] items-center gap-2";
+const MODEL_TABLE_GRID = "grid grid-cols-[minmax(0,1fr)_114px_114px_92px] items-center gap-2";
 const PROBE_CONCURRENCY = 4;
 const digitsOnly = (value: string): string => value.replace(/[^0-9]/g, "");
 
@@ -832,7 +832,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					<div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3.5">
 						{/* 1. Core connection & credentials */}
 						<section className="space-y-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/45 p-2.5">
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_276px]">
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 								<div className="min-w-0">
 									<div className="flex min-h-[22px] items-center gap-0.5">
 										<label htmlFor="provider-name" className={labelCls}>
@@ -901,7 +901,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 							)}
 
 							{serviceMode && (
-								<div className="grid grid-cols-1 gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+								<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-center">
 									<div>
 										<label htmlFor="provider-purpose" className={labelCls}>{t("providers.servicePurpose")}</label>
 										<NativeSelect
@@ -927,7 +927,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 								</div>
 							)}
 
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_276px]">
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 								<div className="min-w-0">
 									<div className="flex min-h-[22px] items-center gap-0.5">
 										<label htmlFor="provider-url" className={labelCls}>
