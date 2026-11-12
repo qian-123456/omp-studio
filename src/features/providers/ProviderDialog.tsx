@@ -832,9 +832,9 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					<div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3.5">
 						{/* 1. Core connection & credentials */}
 						<section className="space-y-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/45 p-2.5">
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_268px]">
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_276px]">
 								<div className="min-w-0">
-									<div className="flex items-center gap-0.5">
+									<div className="flex min-h-[22px] items-center gap-0.5">
 										<label htmlFor="provider-name" className={labelCls}>
 											{t("providers.nameLabel")}
 										</label>
@@ -855,9 +855,11 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 									</div>
 								</div>
 								<div className="min-w-0">
-									<label htmlFor="provider-api" className={labelCls}>
-										{t("providers.apiLabel")}
-									</label>
+									<div className="flex min-h-[22px] items-center">
+										<label htmlFor="provider-api" className={labelCls}>
+											{t("providers.apiLabel")}
+										</label>
+									</div>
 									{isBuiltin ? (
 										<div
 											id="provider-api"
@@ -925,7 +927,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 								</div>
 							)}
 
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_276px]">
 								<div className="min-w-0">
 									<div className="flex min-h-[22px] items-center gap-0.5">
 										<label htmlFor="provider-url" className={labelCls}>
