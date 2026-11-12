@@ -1969,8 +1969,8 @@ async fn providers_get<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>) -> ApiResult
     Ok(Json(json!({ "providers": list })))
 }
 
-/// Mobile edits only a custom provider's Base URL and/or its key; the key keeps
-/// its current storage (vault stays vault, anything else is written plaintext).
+/// Mobile edits only a custom provider's Base URL and/or its key (written as
+/// plaintext into models.yml).
 #[derive(Deserialize)]
 struct ProviderSaveBody {
     id: String,
@@ -1984,17 +1984,13 @@ async fn providers_save<B: Backend>(
     State(_ctx): State<Arc<Ctx<B>>>,
     Json(body): Json<ProviderSaveBody>,
 ) -> ApiResult<Value> {
-    use crate::contracts::{KeyMode, ProviderKeyKind, ProviderOrigin, ProviderUpsert};
+    use crate::contracts::{ProviderOrigin, ProviderUpsert};
     use crate::providers::commands::{provider_rows, provider_set_key, provider_upsert};
     let rows = provider_rows().await.map_err(bad_request)?;
     let row = rows
         .into_iter()
         .find(|r| r.id == body.id)
         .ok_or_else(|| bad_request("供应商不存在".to_string()))?;
-    let mode = match row.key.kind {
-        ProviderKeyKind::Encrypted | ProviderKeyKind::VaultMissing => KeyMode::Encrypted,
-        _ => KeyMode::Plaintext,
-    };
     let new_key = body.api_key.filter(|k| !k.trim().is_empty());
     let new_url = body
         .base_url
@@ -2013,13 +2009,12 @@ async fn providers_save<B: Backend>(
                 auth_none: row.auth_none,
             },
             None,
-            mode,
         )
         .await
         .map_err(bad_request)?;
     }
     if let Some(key) = new_key {
-        saved = provider_set_key(row.id.clone(), key, mode)
+        saved = provider_set_key(row.id.clone(), key)
             .await
             .map_err(bad_request)?;
     }

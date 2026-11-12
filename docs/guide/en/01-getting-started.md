@@ -24,7 +24,7 @@ omp-workspace is a native desktop shell (built with Tauri 2 + React 19) for the 
 
 | Requirement | Details |
 | --- | --- |
-| Operating System | macOS (uses macOS Keychain for secure credential encryption and supports Finder integrations) |
+| Operating System | macOS (supports Finder integrations) |
 | OMP CLI | No need to install it first: if the `omp` core is missing at launch, the app opens an install dialog and installs it with the official installer (about 200 MB, no restart needed). You can also install it yourself so `omp` works in your shell |
 | Model Credentials | At least one valid provider (API key or OAuth subscription account), see [Configure model providers](#configure-model-providers) |
 | Building from Source | Node.js (>=18), `pnpm`, and Rust (Cargo) toolchain |
@@ -108,7 +108,7 @@ To configure AI model access:
 - Type `/login` in the composer and press Enter to jump directly to the provider page.
 
 > [!TIP]
-> API keys are encrypted using the macOS Keychain master key (AES-256-GCM) and saved to `~/.omp-workspace/env/keys.env`. Plaintext keys reside only in memory during requests.
+> Provider API keys are saved as plain text in OMP's `~/.omp/agent/models.yml`; the workbench never writes them to logs.
 
 ## Next Steps
 

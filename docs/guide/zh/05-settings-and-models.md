@@ -42,12 +42,14 @@
 ### 添加 API 供应商
 1. 点击 **添加供应商**；
 2. 在 **从预设开始** 中选择（内置主流预设：Anthropic、OpenAI、DeepSeek、Google Gemini、Moonshot Kimi、OpenRouter、SiliconFlow、Groq、Mistral、xAI、Ollama，或选择 **自定义 OpenAI 兼容**）；
-3. 填入名称、环境变量名及 API Key；展开 **进阶设置** 可自定义协议标准（OpenAI Compatible / Responses / Anthropic / Gemini / Ollama）、默认上下文窗口及输出上限；
+3. 填入名称，并选择 **密钥怎么提供**（见下方说明）；展开 **进阶设置** 可自定义协议标准（OpenAI Compatible / Responses / Anthropic / Gemini / Ollama）、默认上下文窗口及输出上限；
 4. 点击 **获取模型列表** 从接口实时拉取可用模型，或手动填入模型 ID；
-5. 点击 **保存并加密密钥**。
+5. 点击 **保存**。
 
 > [!NOTE]
-> **钥匙串级硬件加密**：工作台采用 macOS 系统钥匙串的主密钥对 API Key 进行 AES-256-GCM 本地加密，密文保存在 `~/.omp-workspace/env/keys.env`，明文仅在向接口发送请求时短暂驻留在内存中，绝不写入普通文件或日志。
+> **密钥怎么提供**：有两种方式，可在添加供应商或点击密钥状态时选择。
+> - **直接保存密钥**：API Key 以明文保存在 OMP 自己的配置文件 `~/.omp/agent/models.yml` 中，工作台不再另行加密，也不会写入日志。
+> - **使用环境变量**：工作台不保存密钥本身，`models.yml` 里只记下变量名（如 `OPENAI_API_KEY`），OMP 运行时按这个名字读取。变量必须存在于运行本应用和 omp 的环境里；从 Finder 或程序坞打开的应用通常读不到写在 `~/.zshrc` 里的变量，请从终端启动本应用，或执行 `launchctl setenv 变量名 密钥值` 后重启应用。变量还没设置时，供应商会显示「环境变量未设置」。
 
 ### OAuth 订阅账号与配额看板
 - 点击 **OAuth 登录**：通过浏览器完成官方授权流程，凭据直接托管于系统安全凭证库；

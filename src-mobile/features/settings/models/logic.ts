@@ -214,8 +214,6 @@ export function contextSetBody(
 /* ------------------------------------------------------------------ providers */
 
 export type KeyKind =
-	| "encrypted"
-	| "vaultMissing"
 	| "plaintext"
 	| "envVar"
 	| "command"
@@ -225,8 +223,6 @@ export type KeyKind =
 	| "missing";
 
 const KEY_LABELS: Record<KeyKind, string> = {
-	encrypted: "已加密",
-	vaultMissing: "密钥缺失",
 	plaintext: "明文密钥",
 	envVar: "环境变量",
 	command: "命令获取",
@@ -239,7 +235,7 @@ const KEY_LABELS: Record<KeyKind, string> = {
 export const keyLabel = (kind: string | undefined): string => KEY_LABELS[kind as KeyKind] ?? "未设密钥";
 
 export const hasKey = (kind: string | undefined): boolean =>
-	["encrypted", "plaintext", "envVar", "command", "oauth", "loginStored"].includes(kind ?? "");
+	["plaintext", "envVar", "command", "oauth", "loginStored"].includes(kind ?? "");
 
 export interface ProviderRow {
 	id: string;

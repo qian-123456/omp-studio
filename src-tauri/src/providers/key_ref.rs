@@ -1,10 +1,14 @@
-//! Command-reference mechanism for encrypted provider keys.
+//! Legacy command-reference support (read-only).
 //!
-//! An "encrypted" provider keeps `apiKey: "!'<shim>' '<id>'"` in OMP's own
-//! `models.yml`. OMP runs that value through `/bin/sh -c`, which executes the shim
-//! `<data_dir>/bin/ompws-key`; the shim re-invokes this binary with
-//! `--ompws-key <id>`, which prints the decrypted vault key to stdout. Nothing
-//! but the vault holds the secret, and it works in any terminal OMP runs in.
+//! Older versions could keep a provider key in an AES vault and write
+//! `apiKey: "!'<shim>' '<id>'"` into OMP's `models.yml`; OMP ran that through
+//! `/bin/sh -c`, executing the shim `<data_dir>/bin/ompws-key`, which
+//! re-invokes this binary with `--ompws-key <id>` to print the decrypted key.
+//! That storage mode is gone: keys are plaintext in models.yml. This module only
+//! recognises such leftover references ([`parse_command_ref`], [`is_ref_for`])
+//! and still serves the `--ompws-key` CLI ([`run_cli`]) so a reference that
+//! could not be migrated by `providers::legacy_keys` keeps working in OMP.
+//! Nothing here generates references or installs the shim any more.
 
 use std::path::{Path, PathBuf};
 
@@ -27,11 +31,14 @@ pub fn vault_slug(id: &str) -> String {
 }
 
 /// POSIX sh single-quoting: wrap in `'` and turn each `'` into `'\''`.
+#[cfg(test)]
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// The raw `apiKey` value (before YAML quoting): `!'<shim>' '<id>'`.
+/// The raw `apiKey` value (before YAML quoting): `!'<shim>' '<id>'`. Test-only:
+/// production code never writes references.
+#[cfg(test)]
 pub fn command_ref(shim: &Path, id: &str) -> String {
     format!("!{} {}", sh_quote(&shim.to_string_lossy()), sh_quote(id))
 }
@@ -90,56 +97,6 @@ pub fn is_ref_for(value: &str, shim: &Path, id: &str) -> bool {
     parse_command_ref(value).is_some_and(|(s, i)| Path::new(&s) == shim && i == id)
 }
 
-/// Content of the shim script for `exe`; `data_dir` is exported only when the
-/// data directory is overridden.
-pub fn shim_script(exe: &Path, data_dir_override: Option<&Path>) -> String {
-    let mut out = String::from("#!/bin/sh\n");
-    if let Some(dir) = data_dir_override {
-        let q = sh_quote(&dir.to_string_lossy());
-        out.push_str(&format!("OMPWS_DATA_DIR={q}; export OMPWS_DATA_DIR\n"));
-    }
-    out.push_str(&format!(
-        "exec {} {KEY_FLAG} \"$@\"\n",
-        sh_quote(&exe.to_string_lossy())
-    ));
-    out
-}
-
-fn data_dir_override() -> Option<PathBuf> {
-    std::env::var("OMPWS_DATA_DIR")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .map(|v| PathBuf::from(v.trim()))
-}
-
-/// Write the shim for the running executable when its content differs.
-pub fn install_shim() -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| format!("无法确定应用路径: {}", e.kind()))?;
-    install_shim_at(
-        &shim_path(),
-        &shim_script(&exe, data_dir_override().as_deref()),
-    )
-}
-
-fn install_shim_at(path: &Path, content: &str) -> Result<(), String> {
-    if std::fs::read_to_string(path).is_ok_and(|cur| cur == content) {
-        return Ok(());
-    }
-    let dir = path
-        .parent()
-        .ok_or_else(|| "密钥脚本路径无效".to_string())?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("创建 bin 目录失败: {}", e.kind()))?;
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, content).map_err(|e| format!("写入密钥脚本失败: {}", e.kind()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("设置密钥脚本权限失败: {}", e.kind()))?;
-    }
-    std::fs::rename(&tmp, path).map_err(|e| format!("替换密钥脚本失败: {}", e.kind()))
-}
-
 /// Decrypted key for provider `id`; errors never contain key material.
 fn key_for_cli(id: &str) -> Result<String, String> {
     let slug = vault_slug(id);
@@ -177,16 +134,6 @@ pub fn run_cli(id: Option<String>) -> i32 {
     }
 }
 
-/// YAML double-quoted scalar (`\` and `"` escaped; control chars as `\uXXXX`).
-pub fn yaml_double_quoted(s: &str) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\""))
-}
-
-/// The `apiKey` scalar for an encrypted provider, ready to follow `apiKey: `.
-pub fn command_ref_yaml(shim: &Path, id: &str) -> String {
-    yaml_double_quoted(&command_ref(shim, id))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,15 +166,15 @@ mod tests {
     fn command_ref_survives_yaml_quoting() {
         let shim = Path::new("/d/bin/ompws-key");
         for id in IDS {
-            let yaml = format!("apiKey: {}\n", command_ref_yaml(shim, id));
+            let r = command_ref(shim, id);
+            let yaml = format!(
+                "apiKey: {}\n",
+                crate::providers::models_yml_providers::yaml_double_quoted(&r)
+            );
             let v: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
             let got = v.get("apiKey").and_then(|v| v.as_str()).unwrap();
-            assert_eq!(got, command_ref(shim, id), "{id}");
+            assert_eq!(got, r, "{id}");
         }
-        assert_eq!(
-            command_ref_yaml(shim, "it's"),
-            r#""!'/d/bin/ompws-key' 'it'\\''s'""#
-        );
     }
 
     #[test]
@@ -237,32 +184,5 @@ mod tests {
         assert_eq!(parse_command_ref("!'a'"), None);
         assert_eq!(parse_command_ref("!'a' 'b' 'c'"), None);
         assert_eq!(parse_command_ref("!'a' b"), None);
-    }
-
-    #[test]
-    fn shim_script_shapes() {
-        let exe = Path::new("/Applications/OMP Workspace.app/Contents/MacOS/omp-workspace");
-        assert_eq!(
-            shim_script(exe, None),
-            "#!/bin/sh\nexec '/Applications/OMP Workspace.app/Contents/MacOS/omp-workspace' --ompws-key \"$@\"\n"
-        );
-        let with = shim_script(exe, Some(Path::new("/tmp/d'ir")));
-        assert!(with.contains("OMPWS_DATA_DIR='/tmp/d'\\''ir'; export OMPWS_DATA_DIR\n"));
-    }
-
-    #[test]
-    fn install_shim_is_idempotent_and_private() {
-        let dir = std::env::temp_dir().join(format!("ompws-shim-{}", uuid::Uuid::new_v4()));
-        let path = dir.join("bin").join("ompws-key");
-        install_shim_at(&path, "#!/bin/sh\nA\n").unwrap();
-        install_shim_at(&path, "#!/bin/sh\nB\n").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "#!/bin/sh\nB\n");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o700);
-        }
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

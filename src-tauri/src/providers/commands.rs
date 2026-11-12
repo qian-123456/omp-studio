@@ -1,27 +1,22 @@
 //! [providers] Tauri commands over OMP's own provider state: rows, enable
-//! toggle, encrypt / decrypt, upsert, delete, probes and the `.env` export.
-//! Keys arrive as command arguments, go to `models.yml` or the encrypted vault
-//! and are never logged or returned to the frontend (except the explicit
-//! clipboard export).
+//! toggle, upsert, delete, probes and the `.env` export. Keys arrive as command
+//! arguments, go to `models.yml` as plaintext (OMP's own format) and are never
+//! logged or returned to the frontend (except the explicit clipboard export).
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use crate::contracts::{
-    BuiltinOverride, KeyMode, ProviderApi, ProviderBulkResult, ProviderKeyKind, ProviderRow,
-    ProviderTestResult, ProviderUpsert,
+    BuiltinOverride, ProviderApi, ProviderKeyKind, ProviderRow, ProviderTestResult, ProviderUpsert,
 };
 
-use super::ops::{self, Env, VaultStore};
-use super::{config_yml, key_ref, models_yml_providers, omp_config, rows};
+use super::ops::{self, Env};
+use super::{config_yml, models_yml_providers, omp_config, rows};
 
 fn with_env<T>(f: impl FnOnce(&Env) -> Result<T, String>) -> Result<T, String> {
-    let shim = key_ref::shim_path();
     let models_yml = models_yml_providers::models_yml_path();
     f(&Env {
         models_yml: &models_yml,
-        shim: &shim,
-        store: &VaultStore,
     })
 }
 
@@ -48,53 +43,14 @@ pub async fn provider_set_enabled(id: String, enabled: bool) -> Result<(), Strin
     config_yml::set_disabled(&id, !enabled)
 }
 
-/// Move a plaintext key into the vault and reference it from models.yml.
-#[tauri::command]
-pub async fn provider_encrypt(id: String) -> Result<ProviderRow, String> {
-    let _guard = super::MUTATION_LOCK.lock().await;
-    with_env(|env| ops::encrypt(env, &id))?;
-    row_of(&id)
-}
-
-/// Write the vault key back into models.yml as plaintext.
-#[tauri::command]
-pub async fn provider_decrypt(id: String) -> Result<ProviderRow, String> {
-    let _guard = super::MUTATION_LOCK.lock().await;
-    with_env(|env| ops::decrypt(env, &id))?;
-    row_of(&id)
-}
-
-/// Encrypt every plaintext-key provider; one result per provider.
-#[tauri::command]
-pub async fn provider_encrypt_all() -> Result<Vec<ProviderBulkResult>, String> {
-    let _guard = super::MUTATION_LOCK.lock().await;
-    let ids: Vec<String> = rows::load_rows()?
-        .into_iter()
-        .filter(|r| r.key.kind == ProviderKeyKind::Plaintext)
-        .map(|r| r.id)
-        .collect();
-    Ok(ids
-        .into_iter()
-        .map(|id| {
-            let result = with_env(|env| ops::encrypt(env, &id));
-            ProviderBulkResult {
-                ok: result.is_ok(),
-                error: result.err(),
-                id,
-            }
-        })
-        .collect())
-}
-
 /// Create / edit a custom provider block. `api_key` None keeps the current key.
 #[tauri::command]
 pub async fn provider_upsert(
     input: ProviderUpsert,
     api_key: Option<String>,
-    key_mode: KeyMode,
 ) -> Result<ProviderRow, String> {
     let _guard = super::MUTATION_LOCK.lock().await;
-    let id = with_env(|env| ops::upsert(env, &input, api_key.as_deref(), key_mode))?;
+    let id = with_env(|env| ops::upsert(env, &input, api_key.as_deref()))?;
     if let Some(old) = input.original_id.as_deref().map(str::trim) {
         if old != id && config_yml::read_disabled().contains(old) {
             config_yml::set_disabled(old, false)?;
@@ -106,13 +62,9 @@ pub async fn provider_upsert(
 
 /// Set the key of any row; a built-in gets an override-only models.yml block.
 #[tauri::command]
-pub async fn provider_set_key(
-    id: String,
-    api_key: String,
-    key_mode: KeyMode,
-) -> Result<ProviderRow, String> {
+pub async fn provider_set_key(id: String, api_key: String) -> Result<ProviderRow, String> {
     let _guard = super::MUTATION_LOCK.lock().await;
-    with_env(|env| ops::apply_key(env, &id, &api_key, key_mode))?;
+    with_env(|env| ops::apply_key(env, &id, &api_key))?;
     row_of(&id)
 }
 
@@ -122,7 +74,6 @@ pub async fn provider_set_key(
 pub async fn provider_save_builtin(
     input: BuiltinOverride,
     api_key: Option<String>,
-    key_mode: KeyMode,
 ) -> Result<ProviderRow, String> {
     let _guard = super::MUTATION_LOCK.lock().await;
     let id = input.id.trim().to_string();
@@ -131,18 +82,12 @@ pub async fn provider_save_builtin(
         .find(|r| r.id == id)
         .and_then(|r| r.default_base_url);
     with_env(|env| {
-        ops::save_builtin(
-            env,
-            &input,
-            default_base_url.as_deref(),
-            api_key.as_deref(),
-            key_mode,
-        )
+        ops::save_builtin(env, &input, default_base_url.as_deref(), api_key.as_deref())
     })?;
     row_of(&id)
 }
 
-/// Delete the models.yml block (custom / override) and the vault entry.
+/// Delete the models.yml block (custom / override).
 #[tauri::command]
 pub async fn provider_delete(id: String) -> Result<(), String> {
     let _guard = super::MUTATION_LOCK.lock().await;
@@ -174,7 +119,7 @@ fn probe_target(id: &str) -> Result<Result<Target, ProviderTestResult>, String> 
         return Ok(Err(blocked("该供应商的协议暂不支持测试")));
     };
     let key = match row.key.kind {
-        ProviderKeyKind::Encrypted | ProviderKeyKind::Plaintext | ProviderKeyKind::EnvVar => {
+        ProviderKeyKind::Plaintext | ProviderKeyKind::EnvVar => {
             with_env(|env| ops::resolve_key(env, id, &process_env))?
         }
         ProviderKeyKind::LoginStored => {

@@ -230,7 +230,7 @@ const CONTEXT_WINDOW_SEARCH_TERMS = [
 const EXTRA_TERMS: Record<string, string[]> = {
 	"context-window": CONTEXT_WINDOW_SEARCH_TERMS,
 	providers: [
-		"API", "密钥", "key", "provider", "anthropic", "openai", "凭证", "oauth", "keychain", "供应商",
+		"API", "密钥", "key", "provider", "anthropic", "openai", "凭证", "oauth", "供应商",
 		"quota", "额度", "订阅", "subscription", "用量", "限额", "速率", "rate limit", "claude pro", "copilot", "重置",
 	],
 	appearance: [

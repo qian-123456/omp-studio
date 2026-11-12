@@ -3284,7 +3284,6 @@ dependencies = [
  "rust-embed",
  "rustls",
  "rustls-pki-types",
- "security-framework",
  "serde",
  "serde_json",
  "serde_yaml_ng",

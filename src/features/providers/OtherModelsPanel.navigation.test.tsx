@@ -7,9 +7,6 @@ import { tNow } from "../../stores/language";
 const ipc = vi.hoisted(() => ({
 	modelKindCatalog: vi.fn(),
 	providerRows: vi.fn(),
-	providerEncrypt: vi.fn(),
-	providerDecrypt: vi.fn(),
-	providerEncryptAll: vi.fn(),
 	providerSetEnabled: vi.fn(),
 	providerSetKey: vi.fn(),
 	providerUpsert: vi.fn(),
@@ -93,7 +90,7 @@ const CONNECTIONS: ProviderRow[] = PROVIDER_IDS.slice(0, 2).map((id, index): Pro
 	baseUrl: `https://${id}.example/v1`,
 	api: "openai-completions",
 	models: ["model-000"],
-	key: { kind: index === 0 ? "encrypted" : "plaintext", envVar: null, envSet: null },
+	key: { kind: "plaintext", envVar: null, envSet: null },
 	enabled: index === 0,
 	testable: true,
 	defaultBaseUrl: null,

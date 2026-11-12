@@ -84,6 +84,7 @@ In this chapter, you will learn how to:
 - Run `touch index.html` in the repository root to force Vite to trigger a clean full reload.
 
 ### 6. "Cannot read master key" error
+- The master key only protects the Cloudflare DDNS token (provider API keys live in plain text in `~/.omp/agent/models.yml`).
 - Ensure `~/.omp-workspace/env/.master.key` exists and has `600` permissions.
 
 ## Data Locations
@@ -93,7 +94,7 @@ All local workspace data is transparently stored under:
 | Path | Contents |
 | --- | --- |
 | `~/.omp-workspace/app.db` | Local SQLite database (metadata, backlog, schedules, settings) |
-| `~/.omp-workspace/env/keys.env` | Keychain-encrypted API key ciphertext |
+| `~/.omp-workspace/env/keys.env` | Encrypted Cloudflare DDNS token (master key in `.master.key`) |
 | `~/.omp-workspace/env/.master.key` | Local master key file |
 | `~/.omp-workspace/global/` | Working directory for Universal space sessions |
 | `~/.omp-workspace/images/` | Cached session images (cleaned automatically after 30 days) |

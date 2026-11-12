@@ -1,4 +1,4 @@
-import { ChevronDown, ClipboardCopy, FileInput, Loader2, Lock, LogIn, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ClipboardCopy, FileInput, Loader2, LogIn, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { SearchInput } from "../../components/SearchInput";
@@ -9,7 +9,7 @@ import { useT } from "../../stores/language";
 import { SectionHeader } from "../settings/ui";
 import { useSettingsNav } from "../settings/settingsNav";
 import { openSettingsTarget } from "../settings/settingsTargets";
-import { VAULT_PATH, MODELS_YML_PATH } from "./keyState";
+import { MODELS_YML_PATH } from "./keyState";
 import { modelEntryId } from "./modelEntry";
 import { OauthLoginDialog } from "./OauthLoginDialog";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
@@ -49,7 +49,6 @@ function ChatProviderPanel() {
 	const loaded = useProviders((s) => s.loaded);
 	const error = useProviders((s) => s.error);
 	const load = useProviders((s) => s.load);
-	const encryptAll = useProviders((s) => s.encryptAll);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
 
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
@@ -60,7 +59,6 @@ function ChatProviderPanel() {
 	const [groupOpen, setGroupOpen] = useState<Partial<Record<ProviderGroupId, boolean>>>({});
 	const [groupLimit, setGroupLimit] = useState<Partial<Record<ProviderGroupId, number>>>({});
 	const [menuOpen, setMenuOpen] = useState(false);
-	const [encryptingAll, setEncryptingAll] = useState(false);
 	const menuBtnRef = useRef<HTMLButtonElement>(null);
 
 	useEffect(() => {
@@ -100,33 +98,7 @@ function ChatProviderPanel() {
 	}, [sorted, query]);
 
 	const grouped = useMemo(() => groupProviders(filtered), [filtered]);
-	const encryptedCount = rows.filter((r) => r.key.kind === "encrypted").length;
-	const plaintextCount = rows.filter((r) => r.key.kind === "plaintext").length;
 	const keyDialogRow = keyDialogId ? rows.find((r) => r.id === keyDialogId) : undefined;
-
-	const handleEncryptAll = async () => {
-		setMenuOpen(false);
-		setEncryptingAll(true);
-		try {
-			const results = await encryptAll();
-			const failed = results.filter((r) => !r.ok);
-			const done = results.length - failed.length;
-			if (failed.length === 0) toast.success(t("providers.encryptAllDoneToast", { count: done }));
-			else
-				toast.error(
-					t("providers.encryptAllPartialToast", {
-						done,
-						failed: failed.length,
-						id: failed[0].id,
-						error: failed[0].error ?? t("providers.unknownError"),
-					}),
-				);
-		} catch (err) {
-			toast.error(t("providers.encryptFailedToast", { error: errMsg(err) }));
-		} finally {
-			setEncryptingAll(false);
-		}
-	};
 
 	const handleExport = async () => {
 		setMenuOpen(false);
@@ -152,7 +124,7 @@ function ChatProviderPanel() {
 			<div className="space-y-3">
 				<SectionHeader
 					title={t("providers.headerTitle")}
-					description={t("providers.headerDesc", { total: rows.length, encrypted: encryptedCount })}
+					description={t("providers.headerDesc", { total: rows.length })}
 				/>
 				<button
 					type="button"
@@ -178,7 +150,6 @@ function ChatProviderPanel() {
 							onClick={() => setMenuOpen((v) => !v)}
 							className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
-							{encryptingAll && <Loader2 className="h-3 w-3 animate-spin" />}
 							<span>{t("providers.batchKeyManage")}</span>
 							<ChevronDown className={`h-3 w-3 text-neutral-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
 						</button>
@@ -192,17 +163,6 @@ function ChatProviderPanel() {
 								ignoreRefs={[menuBtnRef]}
 								className="w-60 space-y-0.5 rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-1 text-xs shadow-xl"
 							>
-								<button
-									type="button"
-									onClick={() => void handleEncryptAll()}
-									disabled={plaintextCount === 0 || encryptingAll}
-									className={menuItemCls}
-								>
-									<Lock className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
-									<span className="flex-1 whitespace-nowrap font-medium">
-										{plaintextCount === 0 ? t("providers.allEncrypted") : t("providers.encryptAllPlaintext", { count: plaintextCount })}
-									</span>
-								</button>
 								<button
 									type="button"
 									onClick={() => {
@@ -340,7 +300,7 @@ function ChatProviderPanel() {
 			)}
 
 			<div className="text-[11px] leading-relaxed text-neutral-600">
-				{t("providers.footerNote", { vaultPath: VAULT_PATH, modelsYmlPath: MODELS_YML_PATH })}
+				{t("providers.footerNote", { modelsYmlPath: MODELS_YML_PATH })}
 			</div>
 			{dialog && <ProviderDialog target={dialog} onClose={() => setDialog(null)} pickerCategory={category} />}
 			{keyDialogRow && <SetKeyDialog row={keyDialogRow} onClose={() => setKeyDialogId(null)} />}

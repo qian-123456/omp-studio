@@ -5,7 +5,7 @@ import { Activity, Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, RotateCcw,
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { NativeSelect } from "../../components/NativeSelect";
-import type { DiscoveredModel, KeyMode, ProviderRow } from "../../lib/contracts";
+import type { DiscoveredModel, ProviderRow } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { ompModelsSetContextWindows, providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
@@ -16,12 +16,14 @@ import { useModelCatalog } from "../../stores/modelCatalog";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 import { planEnvImport } from "./envImport";
 import { maskKey } from "./envparse";
+import { initialEnvName, initialKeyInputMode, type KeyInputMode as Mode, keyInputProblem, keyToSend, toastKeySaved } from "./keyInput";
+import { KeyInputMode } from "./KeyInputMode";
+import { MODELS_YML_PATH } from "./keyState";
 import { insecureHttpWarning } from "./httpWarning";
-import { KeyModeRadio } from "./KeyModeRadio";
 import { ModelPickerModal } from "./ModelPickerModal";
 import type { ModelCategory } from "./modelClass";
 import { type ModelRow, modelEntriesToRows, rowsToModelEntries } from "./modelEntry";
-import { KNOWN_APIS, PROVIDER_PRESETS, SERVICE_PURPOSES, SERVICE_API_LABELS, serviceApiSupportsKind, INVALID_PROVIDER_APIS } from "./presets";
+import { KNOWN_APIS, PROVIDER_PRESETS, presetById, SERVICE_PURPOSES, SERVICE_API_LABELS, serviceApiSupportsKind, INVALID_PROVIDER_APIS } from "./presets";
 import { useProviders } from "./store";
 
 export type ProviderDialogTarget =
@@ -80,10 +82,15 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const isKnownApi = (serviceMode && initialApi === "") || availableApis.some((a) => a.value === initialApi);
 	const [apiChoice, setApiChoice] = useState(isKnownApi ? initialApi : OTHER_API);
 	const [apiOther, setApiOther] = useState(isKnownApi ? "" : initialApi);
+	const initialMode = initialKeyInputMode(editing);
+	const initialEnv = initialEnvName(editing, editing ? presetById(editing.id)?.envVar : undefined);
+	const [keyMode, setKeyMode] = useState<Mode>(initialMode);
+	const [envName, setEnvName] = useState(initialEnv);
+	const [keyAttempted, setKeyAttempted] = useState(false);
 	const [apiKey, setApiKey] = useState("");
-	const initialKeyMode: KeyMode =
-		editing?.key.kind === "encrypted" || editing?.key.kind === "vaultMissing" ? "encrypted" : "plaintext";
-	const [keyMode, setKeyMode] = useState<KeyMode>(initialKeyMode);
+	const keyProblem = authNone || isImport
+		? null
+		: keyInputProblem({ mode: keyMode, envName, plainKey: apiKey, requirePlainKey: editing !== null && initialMode === "env" });
 	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
 		const initial = modelEntriesToRows(initialModels);
 		return initial.length > 0 || isBuiltin ? initial : [{ ...blankModelRow(), ...(serviceMode ? { kind: "image", api: "openai-images" } : {}) }];
@@ -99,7 +106,6 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 
 	// .env import state.
 	const [pasteText, setPasteText] = useState("");
-	const [importMode, setImportMode] = useState<KeyMode>("encrypted");
 	const [importing, setImporting] = useState(false);
 	const [envPath, setEnvPath] = useState("");
 	const [readingFile, setReadingFile] = useState(false);
@@ -123,8 +129,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 				api !== (editing.api ?? "") ||
 				authNone !== editing.authNone ||
 				apiKey.length > 0 ||
-				(!authNone && keyMode !== initialKeyMode &&
-					(editing.key.kind === "plaintext" || editing.key.kind === "encrypted" || editing.key.kind === "vaultMissing")) ||
+				(!authNone && (keyMode !== initialMode || (keyMode === "env" && envName !== initialEnv))) ||
 				JSON.stringify(entries) !== JSON.stringify(initialModels)
 			);
 		}
@@ -134,10 +139,11 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			id.length > 0 ||
 			baseUrl.length > 0 ||
 			apiKey.length > 0 ||
+			(keyMode === "env" && envName.length > 0) ||
 			api !== "openai-completions" ||
 			entries.length > 0
 		);
-	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, initialKeyMode, modelRows, selectedPresetId, providerWindowChanged]);
+	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, envName, initialMode, initialEnv, modelRows, selectedPresetId, providerWindowChanged]);
 
 	const isClosingRef = useRef(false);
 	const handleDismiss = useCallback(async () => {
@@ -178,6 +184,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		const p = PROVIDER_PRESETS.find((x) => x.id === presetId);
 		setSelectedPresetId(presetId);
 		if (!p) return;
+		setEnvName(p.envVar);
 		setId(p.id === "custom" ? "" : uniqueId(p.id));
 		setBaseUrl(p.baseUrl);
 		const nextApi = serviceMode ? "" : p.api;
@@ -207,7 +214,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			const models = await providerFetchModels(
 				trimmedUrl,
 				api,
-				authNone ? null : apiKey.trim() || null,
+				authNone || keyMode === "env" ? null : apiKey.trim() || null,
 				editing?.id ?? null,
 			);
 			setDiscoveredModels(models);
@@ -277,7 +284,11 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			setFormError(t("providers.incompatibleServiceApi", { id: incompatible.id }));
 			return;
 		}
-		const key = authNone ? "" : apiKey.trim();
+		if (keyProblem) {
+			setKeyAttempted(true);
+			return;
+		}
+		const key = authNone ? "" : (keyToSend({ mode: keyMode, envName, plainKey: apiKey }) ?? "");
 		const url = baseUrl.trim();
 		if (editing && isBuiltin) {
 			const extra = rowsToModelEntries(modelRows);
@@ -291,10 +302,9 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					{ models: editing.extraModels },
 					{ models: extra },
 				);
-				await saveBuiltin(
+				const savedRow = await saveBuiltin(
 					{ id: editing.id, baseUrl: url || null, authNone, extraModels: config.models },
 					key || null,
-					keyMode,
 				);
 				if (!serviceMode && providerWindowChanged && providerWindow) {
 					const overrides = new Map(config.models.map((model) => [
@@ -311,7 +321,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					saveProviderWindow(editing.id, providerWindow ? Number(providerWindow) : null);
 					void useModelCatalog.getState().refresh();
 				}
-				toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
+				toastKeySaved(savedRow, keyMode, t("providers.savedToast"));
 				if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 				onClose();
 			} catch (err) {
@@ -344,7 +354,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 				editing ? { models: editing.models } : null,
 				{ models },
 			);
-			await upsert(
+			const savedRow = await upsert(
 				{
 					originalId: editing?.id ?? null,
 					id: newId,
@@ -355,7 +365,6 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					authNone,
 				},
 				key || null,
-				keyMode,
 			);
 			if (!serviceMode && providerWindowChanged && providerWindow) {
 				await ompModelsSetContextWindows(config.models.map((model) => ({
@@ -368,7 +377,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 				saveProviderWindow(newId, providerWindow ? Number(providerWindow) : null);
 				void useModelCatalog.getState().refresh();
 			}
-			toast.success(key && keyMode === "encrypted" ? t("providers.savedEncryptedToast") : t("providers.savedToast"));
+			toastKeySaved(savedRow, keyMode, t("providers.savedToast"));
 			if (count > 0) toast.success(t("providers.windowRuleCountToast", { count }));
 			onClose();
 		} catch (err) {
@@ -390,7 +399,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			for (const item of importPlan) {
 				if (item.kind === "unknown") continue;
 				if (item.kind === "setKey") {
-					await setKey(item.row.id, item.entry.value, importMode);
+					await setKey(item.row.id, item.entry.value);
 				} else {
 					const { config } = await applyContextWindowsOnSave(null, { models: item.preset.models });
 					await upsert(
@@ -404,16 +413,12 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 							authNone: false,
 						},
 						item.entry.value,
-						importMode,
 					);
 				}
 				count++;
 			}
 			toast.success(
-				t("providers.importSuccessToast", {
-					count,
-					mode: importMode === "encrypted" ? t("providers.importModeEncrypted") : t("providers.importModePlaintext"),
-				}),
+				t("providers.importSuccessToast", { count }),
 			);
 			onClose();
 		} catch (err) {
@@ -627,7 +632,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 								))}
 							</div>
 						)}
-						<KeyModeRadio name="import-key-mode" value={importMode} onChange={setImportMode} />
+						<p className="text-[11px] leading-relaxed text-neutral-500">{t("providers.keyPlainNote", { path: MODELS_YML_PATH })}</p>
 					</div>
 				) : (
 					<div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -766,7 +771,17 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 						</label>
 
 						{!authNone && (
-							<>
+							<KeyInputMode
+								name="provider-key-mode"
+								mode={keyMode}
+								onModeChange={setKeyMode}
+								envName={envName}
+								onEnvNameChange={setEnvName}
+								problem={keyProblem}
+								attempted={keyAttempted}
+								current={editing?.key.kind === "envVar" && editing.key.envVar ? { name: editing.key.envVar, set: editing.key.envSet } : null}
+								onSubmit={() => void handleSave()}
+							>
 								<div>
 									<label htmlFor="provider-key" className={labelCls}>
 										{t("providers.apiKeyLabel")}
@@ -800,8 +815,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 										</button>
 									</div>
 								</div>
-								<KeyModeRadio name="provider-key-mode" value={keyMode} onChange={setKeyMode} />
-							</>
+							</KeyInputMode>
 						)}
 
 						<div className="border-t border-[var(--border-divider)] pt-3">

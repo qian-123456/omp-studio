@@ -1098,8 +1098,6 @@ export interface DiscoveredModel {
 export type ModelEntry = string | ModelSpec;
 
 export type ProviderKeyKind =
-	| "encrypted"
-	| "vaultMissing"
 	| "plaintext"
 	| "envVar"
 	| "command"
@@ -1138,8 +1136,6 @@ export interface ProviderRow {
 	authNone: boolean;
 }
 
-export type KeyMode = "plaintext" | "encrypted";
-
 export interface ProviderUpsert {
 	originalId: string | null;
 	id: string;
@@ -1155,12 +1151,6 @@ export interface BuiltinOverride {
 	baseUrl: string | null;
 	authNone: boolean;
 	extraModels: ModelEntry[];
-}
-
-export interface ProviderBulkResult {
-	id: string;
-	ok: boolean;
-	error: string | null;
 }
 
 /** Result of `provider_test`. */

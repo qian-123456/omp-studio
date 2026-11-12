@@ -5,12 +5,22 @@ import type { ServiceConfigChanges, ServiceConfigSnapshot } from "../../lib/serv
 import { useT } from "../../stores/language";
 import { Button } from "../settings/ui";
 import type { ServiceCapability } from "./serviceCapabilities";
+import { initialEnvName, initialKeyInputMode, type KeyInputMode as Mode, keyInputProblem, keyToSend, isEnvUnsetAfterSave, toastEnvUnset } from "./keyInput";
+import { KeyInputMode } from "./KeyInputMode";
+import { MODELS_YML_PATH } from "./keyState";
+import { presetById } from "./presets";
 import { useProviders } from "./store";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
 
 export function ServiceConfigDialog({ capability, selector, onClose, onAdvanced, onLogin }: { capability: ServiceCapability; selector: string; onClose: () => void; onAdvanced: () => void; onLogin?: () => void }) {
 	const { t } = useT();
+	const supplierRow = useProviders.getState().rows?.find((r) => r.id === capability.supplier);
 	const [key, setKey] = useState("");
+	const [keyMode, setKeyMode] = useState<Mode>(() => initialKeyInputMode(supplierRow));
+	const [envName, setEnvName] = useState(() => initialEnvName(supplierRow, presetById(capability.supplier)?.envVar));
+	const [keyAttempted, setKeyAttempted] = useState(false);
+	const keyProblem = keyInputProblem({ mode: keyMode, envName, plainKey: key });
+	const keyToWrite = keyToSend({ mode: keyMode, envName, plainKey: key });
 	const [snapshot, setSnapshot] = useState<ServiceConfigSnapshot | null>(null);
 	const [changes, setChanges] = useState<ServiceConfigChanges>({});
 	const [error, setError] = useState("");
@@ -29,8 +39,10 @@ export function ServiceConfigDialog({ capability, selector, onClose, onAdvanced,
 			if (settings && snapshot && capability.target) {
 				setSnapshot(await serviceConfigWrite(capability.target, changes, snapshot.stamp)); setChanges({});
 				await useOmpConfigStore.getState().load(true);
-			} else if (key.trim()) {
-				await useProviders.getState().setKey(capability.supplier, key.trim(), "encrypted"); setKey("");
+			} else if (keyMode === "env" || key.trim()) {
+				if (keyProblem || !keyToWrite) { setKeyAttempted(true); return; }
+				const savedRow = await useProviders.getState().setKey(capability.supplier, keyToWrite); setKey("");
+				if (savedRow && isEnvUnsetAfterSave(savedRow, keyMode)) toastEnvUnset(savedRow);
 			} else return;
 			setSaved(true);
 		} catch (e) { setError(String(e)); } finally { setBusy(false); }
@@ -45,7 +57,9 @@ export function ServiceConfigDialog({ capability, selector, onClose, onAdvanced,
 			{capability.method === "optional-key" && <p className="text-sm">{t("providers.serviceOptionalKeyHint")}</p>}
 			{capability.method === "advanced" && <><p className="text-sm">{t(capability.supplier === "kimi" ? "providers.serviceKimiHint" : "providers.serviceAdvancedHint")}</p><Button onClick={onAdvanced}>{t("settingsSections.providers.editRawConfig")}</Button></>}
 			{capability.supplier === "kimi" && onLogin && <Button onClick={onLogin}>{t("providers.oauthTitleList")}</Button>}
-			{canKey && <label className="block space-y-2 text-xs"><span>API Key</span><input aria-label="API Key" type="password" autoComplete="new-password" value={key} onChange={(e) => { setKey(e.target.value); setSaved(false); }} placeholder={t("providers.serviceKeyUnchanged")} className="w-full rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-2" /><span className="block text-[var(--text-dim)]">{t("providers.serviceEncryptedHint")}</span></label>}
+			{canKey && <KeyInputMode name="service-key" mode={keyMode} onModeChange={(m) => { setKeyMode(m); setSaved(false); }} envName={envName} onEnvNameChange={(v) => { setEnvName(v); setSaved(false); }} problem={keyProblem} attempted={keyAttempted} current={supplierRow?.key.kind === "envVar" && supplierRow.key.envVar ? { name: supplierRow.key.envVar, set: supplierRow.key.envSet } : null} plainNote={t("providers.serviceKeyHint", { path: MODELS_YML_PATH })} onSubmit={() => void save()}>
+				<label className="block space-y-2 text-xs"><span>API Key</span><input aria-label="API Key" type="password" autoComplete="new-password" value={key} onChange={(e) => { setKey(e.target.value); setSaved(false); }} placeholder={t("providers.serviceKeyUnchanged")} className="w-full rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-2" /></label>
+			</KeyInputMode>}
 			{settings && !snapshot && !error && <p role="status">{t("providers.serviceLoading")}</p>}
 			{settings && snapshot && fields.map((field) => {
 				const secret = field in snapshot.secrets;
@@ -67,7 +81,7 @@ export function ServiceConfigDialog({ capability, selector, onClose, onAdvanced,
 			{error && <p role="alert" className="break-words text-xs text-rose-400">{error}</p>}
 			{settings && error && <Button onClick={onAdvanced}>{t("settingsSections.providers.editRawConfig")}</Button>}
 			{saved && <p role="status" className="text-xs">{t("providers.serviceSaved")}</p>}
-			<div className="flex justify-end gap-2"><Button onClick={onClose}>{t("common.close")}</Button>{(canKey || settings) && <Button disabled={busy || (settings ? !snapshot || Object.keys(changes).length === 0 : !key.trim())} onClick={() => void save()}>{t("common.save")}</Button>}</div>
+			<div className="flex justify-end gap-2"><Button onClick={onClose}>{t("common.close")}</Button>{(canKey || settings) && <Button disabled={busy || (settings ? !snapshot || Object.keys(changes).length === 0 : !keyToWrite)} onClick={() => void save()}>{t("common.save")}</Button>}</div>
 		</div>
 	</Modal>;
 }

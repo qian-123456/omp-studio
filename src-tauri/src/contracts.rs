@@ -1410,8 +1410,6 @@ impl From<&str> for ModelEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ProviderKeyKind {
-    Encrypted,
-    VaultMissing,
     Plaintext,
     EnvVar,
     Command,
@@ -1447,7 +1445,7 @@ pub struct ProviderRow {
     /// OMP provider id, verbatim.
     pub id: String,
     pub display_name: Option<String>,
-    /// `sanitize_slug(id)`; the vault entry name derives from it.
+    /// `sanitize_slug(id)`.
     pub slug: String,
     pub origin: ProviderOrigin,
     /// "models.yml" | "config.yml" | "agent.db" | "models.db" | "built-in"
@@ -1465,13 +1463,6 @@ pub struct ProviderRow {
     pub extra_models: Vec<ModelEntry>,
     /// Block has `auth: none`, or a keyless local engine without a block.
     pub auth_none: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KeyMode {
-    Plaintext,
-    Encrypted,
 }
 
 /// Editable fields of a custom provider block in models.yml.
@@ -1499,14 +1490,6 @@ pub struct BuiltinOverride {
     pub auth_none: bool,
     /// Non-empty requires an effective baseUrl (explicit or the default).
     pub extra_models: Vec<ModelEntry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderBulkResult {
-    pub id: String,
-    pub ok: bool,
-    pub error: Option<String>,
 }
 
 /// Result of `provider_test`.

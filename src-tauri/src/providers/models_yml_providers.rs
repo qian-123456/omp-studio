@@ -327,6 +327,11 @@ fn same_models(got: &[ModelEntry], want: &[ModelEntry]) -> bool {
 // Line-level provider block editing.
 // ---------------------------------------------------------------------------
 
+/// YAML double-quoted scalar (`\` and `"` escaped; control chars as `\uXXXX`).
+pub fn yaml_double_quoted(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\""))
+}
+
 /// YAML scalar for `s`: plain when it round-trips as the same string, else a
 /// double-quoted (JSON-escaped) scalar.
 pub fn yaml_scalar(s: &str) -> String {
@@ -343,7 +348,7 @@ pub fn yaml_scalar(s: &str) -> String {
     {
         s.to_string()
     } else {
-        super::key_ref::yaml_double_quoted(s)
+        yaml_double_quoted(s)
     }
 }
 
@@ -360,7 +365,7 @@ fn key_text(id: &str) -> String {
     {
         k
     } else {
-        super::key_ref::yaml_double_quoted(id)
+        yaml_double_quoted(id)
     }
 }
 

@@ -36,7 +36,9 @@ The settings are structured into seven distinct groups:
 
 Navigate to **Settings ▸ Models and providers**:
 - **Add Provider**: Select built-in presets (Anthropic, OpenAI, DeepSeek, Gemini, Moonshot Kimi, OpenRouter, SiliconFlow, Groq, Mistral, xAI, Ollama) or **Custom OpenAI Compatible**.
-- **Hardware-backed Encryption**: API keys are encrypted with AES-256-GCM using the macOS Keychain master key and stored in `~/.omp-workspace/env/keys.env`. Plaintext keys exist only in memory during network requests.
+- **Key storage**: choose how to provide the key when adding a provider or clicking its key status.
+  - **Save the key directly**: the API key is saved as plain text in OMP's own `~/.omp/agent/models.yml`; the workbench does not encrypt it and never writes it to logs.
+  - **Use an environment variable**: the workbench does not store the key itself; `models.yml` only records the variable name (e.g. `OPENAI_API_KEY`) and OMP reads it when it runs. The variable must exist in the environment where this app and omp run. Apps opened from Finder or the Dock usually can't see variables set in `~/.zshrc`: start the app from a terminal, or run `launchctl setenv NAME value` and restart the app. Until the variable is set, the provider shows "Env var not set".
 - **OAuth Subscriptions**: Sign in via OAuth to track usage percentages, reset cycles, and balance across subscription accounts.
 
 ## Model Roles vs Custom Sub-agents

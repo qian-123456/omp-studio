@@ -3,7 +3,7 @@
 //! API key prompts, extension UI requests).
 //!
 //! Concurrency and safety:
-//! - Child processes are spawned without vault secrets or provider environments.
+//! - Child processes are spawned without secrets or provider environments.
 //! - Writing to child stdin is serialized and never holds locks during I/O.
 //! - Frame bodies carrying secrets are never logged; only event kinds and provider IDs.
 

@@ -118,7 +118,7 @@ describe("provider edit payload", () => {
 		id: "mine",
 		origin: "custom",
 		baseUrl: "https://a.example/v1",
-		key: { kind: "encrypted" },
+		key: { kind: "plaintext" },
 	};
 
 	it("sends only changed fields", () => {

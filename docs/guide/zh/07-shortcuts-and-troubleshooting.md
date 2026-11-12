@@ -121,7 +121,7 @@
 - **解决方式**：在项目根目录下执行 `touch index.html`，强制 Vite 重新触发一次根渲染，窗口即刻恢复。
 
 ### 7. 提示「无法读取主密钥」？
-- **原因**：工作台的供应商加密库依赖于主密钥文件 `~/.omp-workspace/env/.master.key`。
+- **原因**：工作台用主密钥文件 `~/.omp-workspace/env/.master.key` 保护 Cloudflare DDNS token（供应商 API Key 不受影响，它们明文保存在 `~/.omp/agent/models.yml`）。
 - **解决方式**：检查该文件是否存在以及当前用户是否拥有读写权限；如果曾手工移动过用户主目录，请确保权限为 `600`。
 
 ## 数据位置与目录结构
@@ -131,7 +131,7 @@
 | 本地路径 | 存储内容与用途说明 |
 | --- | --- |
 | `~/.omp-workspace/app.db` | 本地 SQLite 核心数据库（存储会话元信息、定时任务、想法收集箱、设置状态等） |
-| `~/.omp-workspace/env/keys.env` | 由 macOS 钥匙串高强度加密的供应商 API 密钥密文文件 |
+| `~/.omp-workspace/env/keys.env` | 加密保存的 Cloudflare DDNS token（主密钥在 `.master.key`） |
 | `~/.omp-workspace/env/.master.key` | 本机加密主密钥文件（严格本地受控） |
 | `~/.omp-workspace/global/` | Universal 通用空间对话所依附的全局工作目录 |
 | `~/.omp-workspace/images/` | 会话中粘贴、拖拽或草图生成的本地图片缓存（超过 30 天无引用的图片会自动清理） |

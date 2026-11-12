@@ -353,11 +353,6 @@ pub fn resolve_provider_credentials(provider_id: &str) -> (String, Option<String
                     &r.id,
                 )
             }
-            crate::contracts::ProviderKeyKind::Encrypted => {
-                crate::providers::vault::read_entry(&crate::providers::key_ref::vault_slug(&r.id))
-                    .ok()
-                    .flatten()
-            }
             _ => None,
         };
     }
@@ -375,11 +370,7 @@ pub fn resolve_provider_credentials(provider_id: &str) -> (String, Option<String
                     if let Some(raw_k) = p.api_key {
                         let k = raw_k.trim();
                         if k.starts_with('!') {
-                            key = crate::providers::vault::read_entry(
-                                &crate::providers::key_ref::vault_slug(provider_id),
-                            )
-                            .ok()
-                            .flatten();
+                            // A command reference cannot be resolved here.
                         } else if crate::providers::rows::is_env_name(k) {
                             key = std::env::var(k).ok();
                         } else if !k.is_empty() {

@@ -5,9 +5,6 @@ const mocks = vi.hoisted(() => ({
 	modelKindCatalog: vi.fn<() => Promise<ModelKindEntry[]>>(),
 	providerRows: vi.fn(),
 	providerSetEnabled: vi.fn(),
-	providerEncrypt: vi.fn(),
-	providerDecrypt: vi.fn(),
-	providerEncryptAll: vi.fn(),
 	providerUpsert: vi.fn(),
 	providerSaveBuiltin: vi.fn(),
 	providerSetKey: vi.fn(),
@@ -63,9 +60,6 @@ beforeEach(() => {
 	mocks.providerUpsert.mockResolvedValue(row);
 	mocks.providerSaveBuiltin.mockResolvedValue(row);
 	mocks.providerSetKey.mockResolvedValue(row);
-	mocks.providerEncrypt.mockResolvedValue(row);
-	mocks.providerDecrypt.mockResolvedValue(row);
-	mocks.providerEncryptAll.mockResolvedValue([{ id: row.id, ok: true, error: null }]);
 	mocks.providerSetEnabled.mockReset().mockResolvedValue(undefined);
 	useModelKindCatalog.setState({ entries: [], kindBySelector: new Map(), loading: false, error: null });
 	useProviders.setState({ rows: [row], loaded: true, error: null, tests: {}, modelTests: {} });
@@ -73,14 +67,11 @@ beforeEach(() => {
 
 describe("provider mutations refresh registered candidates", () => {
 	it.each([
-		["save custom", () => useProviders.getState().upsert(input, null, "plaintext")],
-		["save builtin", () => useProviders.getState().saveBuiltin({ id: row.id, baseUrl: null, authNone: true, extraModels: [] }, null, "plaintext")],
-		["change key", () => useProviders.getState().setKey(row.id, "updated-key", "plaintext")],
+		["save custom", () => useProviders.getState().upsert(input, null)],
+		["save builtin", () => useProviders.getState().saveBuiltin({ id: row.id, baseUrl: null, authNone: true, extraModels: [] }, null)],
+		["change key", () => useProviders.getState().setKey(row.id, "updated-key")],
 		["disable", () => useProviders.getState().setEnabled(row.id, false)],
 		["remove", () => useProviders.getState().remove(row.id)],
-		["encrypt", () => useProviders.getState().encrypt(row.id)],
-		["decrypt", () => useProviders.getState().decrypt(row.id)],
-		["encrypt all", () => useProviders.getState().encryptAll()],
 	] as const)("reloads the all-kind catalog after %s", async (_name, mutate) => {
 		await mutate();
 		expect(mocks.modelKindCatalog).toHaveBeenCalledTimes(1);
@@ -90,7 +81,7 @@ describe("provider mutations refresh registered candidates", () => {
 
 	it("does not make raw configured model names executable when runtime omits them", async () => {
 		mocks.modelKindCatalog.mockResolvedValue([]);
-		await useProviders.getState().upsert(input, null, "plaintext");
+		await useProviders.getState().upsert(input, null);
 		expect(useProviders.getState().rows[0].models).toEqual(["unregistered-image-runner"]);
 		expect(useModelKindCatalog.getState().entries).toEqual([]);
 		expect(useModelKindCatalog.getState().kindBySelector.size).toBe(0);

@@ -13,19 +13,19 @@ describe("supplier credential evidence", () => {
 	it("does not claim SearXNG authentication is unnecessary or configured", () => {
 		expect(supplierStatus(serviceCapability({ selector: "web/searxng", provider: "web", kind: "search" }), undefined, true, null)).toMatchObject({ label: "supplierParameters", action: "settings" });
 	});
-	it.each(["encrypted", "plaintext", "loginStored"] as const)("reuses stored %s evidence without asserting validity", (kind) => {
+	it.each(["plaintext", "loginStored"] as const)("reuses stored %s evidence without asserting validity", (kind) => {
 		expect(supplierStatus(capability, row(kind), true, null)).toMatchObject({ label: "supplierKeyAdded", action: "key", reuse: "key" });
 	});
 	it("routes existing OAuth to account management", () => {
 		expect(supplierStatus(capability, row("oauth"), true, null)).toMatchObject({ label: "supplierLoggedIn", action: "account", actionLabel: "supplierManageAccount" });
 	});
-	it("distinguishes loading, read errors, missing and damaged storage", () => {
+	it("distinguishes loading, read errors, and missing storage", () => {
 		expect(supplierStatus(capability, undefined, false, null)).toMatchObject({ label: "supplierLoading", action: null });
-		expect(supplierStatus(capability, row("encrypted"), true, "offline")).toMatchObject({ label: "supplierUnknown", action: null });
+		expect(supplierStatus(capability, row("plaintext"), true, "offline")).toMatchObject({ label: "supplierUnknown", action: null });
 		expect(supplierStatus(capability, undefined, true, null)).toMatchObject({ label: "supplierKeyMissing", actionLabel: "supplierAddKey" });
-		expect(supplierStatus(capability, row("vaultMissing"), true, null)).toMatchObject({ label: "supplierKeyAttention", warning: true });
 	});
 	it("qualifies environment and command sources", () => {
+		expect(supplierStatus(capability, row("envVar", { key: { kind: "envVar", envVar: "KEY", envSet: false } }), true, null)).toMatchObject({ label: "supplierEnvUnset", warning: true, action: "key" });
 		expect(supplierStatus(capability, row("envVar", { key: { kind: "envVar", envVar: "KEY", envSet: true } }), true, null).label).toBe("supplierEnvSet");
 		expect(supplierStatus(capability, row("envVar"), true, null).label).toBe("supplierUnknown");
 		expect(supplierStatus(capability, row("command"), true, null).label).toBe("supplierCommand");

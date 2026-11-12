@@ -1,19 +1,22 @@
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
-import type { KeyMode, ProviderRow } from "../../lib/contracts";
+import type { ProviderRow } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
-import { toast } from "../../lib/toast";
 import { useT } from "../../stores/language";
-import { KeyModeRadio } from "./KeyModeRadio";
+import { initialEnvName, initialKeyInputMode, type KeyInputMode as Mode, keyInputProblem, keyToSend, toastKeySaved } from "./keyInput";
+import { KeyInputMode } from "./KeyInputMode";
+import { presetById } from "./presets";
 import { useProviders } from "./store";
-/** 设置密钥: type a key for any provider row and choose 明文 / 加密 storage. */
+/** 设置密钥: give any provider row a key, either typed in (plain text in models.yml) or as an environment variable name. */
 export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () => void }) {
 	const { t } = useT();
 	const setKey = useProviders((s) => s.setKey);
+	const [mode, setMode] = useState<Mode>(() => initialKeyInputMode(row));
+	const [envName, setEnvName] = useState(() => initialEnvName(row, presetById(row.id)?.envVar));
+	const [attempted, setAttempted] = useState(false);
 	const [apiKey, setApiKey] = useState("");
-	const [mode, setMode] = useState<KeyMode>("encrypted");
 	const [show, setShow] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -23,17 +26,20 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 		inputRef.current?.focus();
 	}, []);
 
+	const problem = keyInputProblem({ mode, envName, plainKey: apiKey, requirePlainKey: true });
+
 	const save = async () => {
-		const key = apiKey.trim();
-		if (!key) {
-			setError(t("providers.errorEmptyKey"));
+		if (problem) {
+			setAttempted(true);
 			return;
 		}
+		const key = keyToSend({ mode, envName, plainKey: apiKey });
+		if (!key) return;
 		setSaving(true);
 		setError(null);
 		try {
-			await setKey(row.id, key, mode);
-			toast.success(mode === "encrypted" ? t("providers.keySavedEncryptedToast") : t("providers.keySavedToast"));
+			const saved = await setKey(row.id, key);
+			toastKeySaved(saved, mode, t("providers.keySavedToast"));
 			onClose();
 		} catch (err) {
 			setError(errMsg(err));
@@ -44,6 +50,17 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 	return (
 		<Modal onClose={onClose} size="sm" title={t("providers.setKeyTitle", { name: row.displayName ?? row.id })}>
 			<div className="space-y-3 p-4">
+					<KeyInputMode
+						name="set-key"
+						mode={mode}
+						onModeChange={setMode}
+						envName={envName}
+						onEnvNameChange={setEnvName}
+						problem={problem}
+						attempted={attempted}
+						current={row.key.kind === "envVar" && row.key.envVar ? { name: row.key.envVar, set: row.key.envSet } : null}
+						onSubmit={() => void save()}
+					>
 					<div>
 						<label htmlFor="set-key-input" className="block text-xs font-medium text-neutral-200">
 							{t("providers.apiKeyLabel")}
@@ -75,7 +92,7 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 							</button>
 						</div>
 					</div>
-					<KeyModeRadio name="set-key-mode" value={mode} onChange={setMode} />
+					</KeyInputMode>
 					{error && (
 						<div role="alert" className="select-text break-words text-[11px] text-rose-300">
 							{error}

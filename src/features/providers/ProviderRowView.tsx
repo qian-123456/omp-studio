@@ -59,8 +59,6 @@ interface Props {
 
 export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKey, onOauth, category = "all" }: Props) {
 	const { t } = useT();
-	const encrypt = useProviders((s) => s.encrypt);
-	const decrypt = useProviders((s) => s.decrypt);
 	const setEnabled = useProviders((s) => s.setEnabled);
 	const remove = useProviders((s) => s.remove);
 	const runTest = useProviders((s) => s.runTest);
@@ -68,7 +66,6 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 	const modelTests = useProviders((s) => s.modelTests);
 	const test = useProviders((s) => s.tests[row.id]);
 
-	const [busy, setBusy] = useState(false);
 	const [note, setNote] = useState(false);
 	const [showAllModels, setShowAllModels] = useState(false);
 	const [probingAll, setProbingAll] = useState(false);
@@ -83,35 +80,6 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 
 	const onKeyClick = async () => {
 		switch (key.action) {
-			case "encrypt":
-				setBusy(true);
-				try {
-					await encrypt(row.id);
-					toast.success(t("providers.encryptSuccessToast", { title }));
-				} catch (err) {
-					toast.error(t("providers.encryptFailedToast", { error: errMsg(err) }));
-				} finally {
-					setBusy(false);
-				}
-				return;
-			case "decrypt": {
-				const ok = await confirmDialog(t("providers.decryptConfirmMessage", { path: MODELS_YML_PATH }), {
-					title: t("providers.decryptConfirmTitle"),
-					danger: true,
-					okLabel: t("providers.decryptConfirmOk"),
-				});
-				if (!ok) return;
-				setBusy(true);
-				try {
-					await decrypt(row.id);
-					toast.success(t("providers.decryptSuccessToast", { title }));
-				} catch (err) {
-					toast.error(t("providers.opFailedToast", { error: errMsg(err) }));
-				} finally {
-					setBusy(false);
-				}
-				return;
-			}
 			case "setKey":
 				onSetKey();
 				return;
@@ -260,17 +228,15 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 						<button
 							type="button"
 							onClick={() => void onKeyClick()}
-							disabled={busy}
 							title={key.title}
 							aria-label={t("providers.keyStateAria", { title, label: key.label, hint: key.title })}
 							className={clsx(
 								"inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-transparent px-1.5 py-0.5 text-xs underline decoration-dashed decoration-1 underline-offset-4 transition-colors",
 								"hover:border-[var(--border-divider)] hover:bg-[var(--bg-active-fill)] focus-visible:border-[var(--border-divider)] focus-visible:bg-[var(--bg-active-fill)] focus-visible:outline-none",
-								"disabled:opacity-50",
 								keyToneClass[key.tone],
 							)}
 						>
-							{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyIcon className="h-3 w-3 shrink-0" />}
+							<KeyIcon className="h-3 w-3 shrink-0" />
 							<span>{key.label}</span>
 						</button>
 					)}

@@ -51,7 +51,6 @@ import type {
 	ModelRoleSnapshot,
 	ModelSwitchRuleInput,
 	ModelTemplateInput,
-	KeyMode,
 	OmpUsageReportData,
 	PairingInfo,
 	PairingTarget,
@@ -66,7 +65,6 @@ import type {
 	PluginCatalog,
 	ProcessMemoryInfo,
 	ProviderApi,
-	ProviderBulkResult,
 	ProviderRow,
 	BuiltinOverride,
 	ProviderUpsert,
@@ -695,32 +693,20 @@ export const providerRows = () => invoke<ProviderRow[]>("provider_rows");
 export const providerSetEnabled = (id: string, enabled: boolean) =>
 	invoke<void>("provider_set_enabled", { id, enabled });
 
-export const providerEncrypt = (id: string) =>
-	invoke<ProviderRow>("provider_encrypt", { id });
-
-export const providerDecrypt = (id: string) =>
-	invoke<ProviderRow>("provider_decrypt", { id });
-
-/** Encrypts every plaintext-key provider; one result per provider. */
-export const providerEncryptAll = () =>
-	invoke<ProviderBulkResult[]>("provider_encrypt_all");
-
 /** Upsert a custom provider; `apiKey` null keeps the current key. */
 export const providerUpsert = (
 	input: ProviderUpsert,
 	apiKey: string | null,
-	keyMode: KeyMode,
-) => invoke<ProviderRow>("provider_upsert", { input, apiKey, keyMode });
+) => invoke<ProviderRow>("provider_upsert", { input, apiKey });
 
 /** Create/update the override block of a built-in provider; `apiKey` null keeps the current key. */
 export const providerSaveBuiltin = (
 	input: BuiltinOverride,
 	apiKey: string | null,
-	keyMode: KeyMode,
-) => invoke<ProviderRow>("provider_save_builtin", { input, apiKey, keyMode });
+) => invoke<ProviderRow>("provider_save_builtin", { input, apiKey });
 
-export const providerSetKey = (id: string, apiKey: string, keyMode: KeyMode) =>
-	invoke<ProviderRow>("provider_set_key", { id, apiKey, keyMode });
+export const providerSetKey = (id: string, apiKey: string) =>
+	invoke<ProviderRow>("provider_set_key", { id, apiKey });
 
 export const providerDelete = (id: string) =>
 	invoke<void>("provider_delete", { id });

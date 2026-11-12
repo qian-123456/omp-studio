@@ -20,8 +20,21 @@ describe("service configuration", () => {
 		expect(screen.getByText("common.save").closest("button")?.disabled).toBe(true);
 		fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "synthetic-key" } });
 		fireEvent.click(screen.getByText("common.save"));
-		await waitFor(() => expect(mocks.key).toHaveBeenCalledWith(engine, "synthetic-key", "encrypted"));
+		await waitFor(() => expect(mocks.key).toHaveBeenCalledWith(engine, "synthetic-key"));
 		expect(close).not.toHaveBeenCalled(); expect(await screen.findByText("providers.serviceSaved")).toBeTruthy();
+	});
+	it("can reference an environment variable instead of storing the key", async () => {
+		const model = entry("brave");
+		mocks.key.mockResolvedValue({ key: { kind: "envVar", envVar: "BRAVE_API_KEY", envSet: false } });
+		render(<ServiceConfigDialog capability={serviceCapability(model)} selector={model.selector} onClose={vi.fn()} onAdvanced={vi.fn()} />);
+		fireEvent.click(screen.getByLabelText(/providers\.keyInputModeEnv/));
+		fireEvent.change(screen.getByLabelText("providers.envNameLabel"), { target: { value: "my-key" } });
+		fireEvent.click(screen.getByText("common.save"));
+		expect(mocks.key).not.toHaveBeenCalled();
+		expect((await screen.findByRole("alert")).textContent).toContain("providers.envNameInvalid");
+		fireEvent.change(screen.getByLabelText("providers.envNameLabel"), { target: { value: "BRAVE_API_KEY" } });
+		fireEvent.click(screen.getByText("common.save"));
+		await waitFor(() => expect(mocks.key).toHaveBeenCalledWith("brave", "BRAVE_API_KEY"));
 	});
 	it("offers keyless engines without a save action or credential write", () => {
 		const model = entry("duckduckgo");

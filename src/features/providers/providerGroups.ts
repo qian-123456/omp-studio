@@ -18,7 +18,6 @@ export function providerGroupOf(row: ProviderRow): ProviderGroupId {
 	if (!row.enabled) return "disabled";
 	if (row.authNone) return "ready";
 	switch (row.key.kind) {
-		case "vaultMissing":
 		case "missing":
 			return "needsKey";
 		case "envVar":

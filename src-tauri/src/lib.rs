@@ -163,11 +163,12 @@ async fn allowed_tools_list() -> Result<Vec<String>, String> {
     Ok(Vec::new())
 }
 
-/// CLI flag of the key-reference fast path (`omp-workspace --ompws-key <id>`).
+/// CLI flag of the legacy key-reference fast path (`omp-workspace --ompws-key <id>`).
 pub const KEY_FLAG: &str = providers::key_ref::KEY_FLAG;
 
-/// `--ompws-key <id>`: print the vault key for provider `id` to stdout and
-/// return the process exit code. Never starts Tauri, logging or the database.
+/// `--ompws-key <id>`: print the legacy vault key for provider `id` to stdout
+/// (so leftover `!` references in models.yml keep working) and return the
+/// process exit code. Never starts Tauri, logging or the database.
 pub fn run_key_cli(id: Option<String>) -> i32 {
     providers::key_ref::run_cli(id)
 }
@@ -426,12 +427,9 @@ pub fn run() {
             settings::omp_update_run,
             omp_install::omp_install_run,
             omp_install::omp_install_cancel,
-            // providers (API provider manager + encrypted vault)
+            // providers (API provider manager)
             providers::commands::provider_rows,
             providers::commands::provider_set_enabled,
-            providers::commands::provider_encrypt,
-            providers::commands::provider_decrypt,
-            providers::commands::provider_encrypt_all,
             providers::commands::provider_upsert,
             providers::commands::provider_set_key,
             providers::commands::provider_save_builtin,

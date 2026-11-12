@@ -3,8 +3,6 @@
 import { create } from "zustand";
 import type {
 	BuiltinOverride,
-	KeyMode,
-	ProviderBulkResult,
 	ProviderRow,
 	ProviderTestResult,
 	ProviderUpsert,
@@ -16,10 +14,7 @@ import { useModelKindCatalog } from "../../stores/modelKinds";
 import { moveProviderWindow, setProviderWindow } from "../settings/contextWindow/core";
 import {
 	providerSaveBuiltin,
-	providerDecrypt,
 	providerDelete,
-	providerEncrypt,
-	providerEncryptAll,
 	providerExportEnvText,
 	providerRows,
 	providerSetEnabled,
@@ -44,17 +39,11 @@ interface ProvidersState {
 	load(): Promise<void>;
 	/** Optimistic toggle of OMP's `disabledProviders`; rolls back and rethrows on failure. */
 	setEnabled(id: string, enabled: boolean): Promise<void>;
-	/** Moves the plaintext key into the vault (models.yml keeps a command reference). */
-	encrypt(id: string): Promise<ProviderRow>;
-	/** Writes the key back into models.yml as plaintext and drops the vault entry. */
-	decrypt(id: string): Promise<ProviderRow>;
-	/** Encrypts every plaintext-key provider; reloads rows afterwards. */
-	encryptAll(): Promise<ProviderBulkResult[]>;
-	/** Null keeps key material, honoring keyMode for plaintext/managed encrypted keys; external references stay unchanged. */
-	upsert(input: ProviderUpsert, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
-	/** Null keeps key material, honoring keyMode for plaintext/managed encrypted keys; external references stay unchanged. */
-	saveBuiltin(input: BuiltinOverride, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
-	setKey(id: string, apiKey: string, keyMode: KeyMode): Promise<ProviderRow>;
+	/** Null keeps the current key; external references stay unchanged. */
+	upsert(input: ProviderUpsert, apiKey: string | null): Promise<ProviderRow>;
+	/** Null keeps the current key; external references stay unchanged. */
+	saveBuiltin(input: BuiltinOverride, apiKey: string | null): Promise<ProviderRow>;
+	setKey(id: string, apiKey: string): Promise<ProviderRow>;
 	remove(id: string): Promise<void>;
 	runTest(id: string): Promise<void>;
 	runModelTest(providerId: string, modelId: string): Promise<void>;
@@ -116,44 +105,23 @@ export const useProviders = create<ProvidersState>((set, get) => {
 			await syncModelConfig([id]);
 		},
 
-		encrypt: async (id) => {
-			const row = await providerEncrypt(id);
-			applyRow(row);
-			await useModelKindCatalog.getState().load(true);
-			return row;
-		},
-
-		decrypt: async (id) => {
-			const row = await providerDecrypt(id);
-			applyRow(row);
-			await useModelKindCatalog.getState().load(true);
-			return row;
-		},
-
-		encryptAll: async () => {
-			const results = await providerEncryptAll();
-			await get().load();
-			await useModelKindCatalog.getState().load(true);
-			return results;
-		},
-
-		upsert: async (input, apiKey, keyMode) => {
-			const row = await providerUpsert(input, apiKey, keyMode);
+		upsert: async (input, apiKey) => {
+			const row = await providerUpsert(input, apiKey);
 			if (input.originalId && input.originalId !== row.id) moveProviderWindow(input.originalId, row.id);
 			applyRow(row, input.originalId ?? row.id);
 			await syncModelConfig([input.originalId ?? row.id, row.id]);
 			return row;
 		},
 
-		saveBuiltin: async (input, apiKey, keyMode) => {
-			const row = await providerSaveBuiltin(input, apiKey, keyMode);
+		saveBuiltin: async (input, apiKey) => {
+			const row = await providerSaveBuiltin(input, apiKey);
 			applyRow(row, input.id);
 			await syncModelConfig([input.id]);
 			return row;
 		},
 
-		setKey: async (id, apiKey, keyMode) => {
-			const row = await providerSetKey(id, apiKey, keyMode);
+		setKey: async (id, apiKey) => {
+			const row = await providerSetKey(id, apiKey);
 			applyRow(row);
 			await syncModelConfig([id]);
 			return row;

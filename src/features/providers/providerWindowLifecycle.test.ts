@@ -65,7 +65,7 @@ describe("provider window lifecycle", () => {
 	});
 
 	it("moves the default on an other-model provider rename without contaminating a recreated old id", async () => {
-		await useProviders.getState().upsert(input, null, "plaintext");
+		await useProviders.getState().upsert(input, null);
 		expect(loadProviderWindows()).toEqual({ beta: 64000 });
 		expect(backend.overrides.get("beta\0shared")).toBe(64000);
 		backend.provider = "alpha";

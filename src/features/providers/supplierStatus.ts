@@ -22,9 +22,9 @@ export function supplierStatus(capability: ServiceCapability, row: ProviderRow |
 	else if (oauthRequired) status = { label: "supplierNotLoggedIn", warning: true, action: "account", actionLabel: "supplierLogin" };
 	else if (capability.method === "settings") status = { label: "supplierParameters", action: "settings", actionLabel: "supplierParameters" };
 	else if (keyless) status = { label: "supplierKeyless", action: settings ? "settings" : capability.method === "advanced" ? "advanced" : null, actionLabel: settings ? "supplierParameters" : "supplierAdvancedAction" };
-	else if (row?.key.kind === "vaultMissing") status = { label: "supplierKeyAttention", warning: true, action: "key", actionLabel: "supplierChangeKey" };
-	else if (row && ["encrypted", "plaintext", "loginStored"].includes(row.key.kind)) status = { label: "supplierKeyAdded", action: "key", actionLabel: "supplierChangeKey", reuse: "key" };
+	else if (row && ["plaintext", "loginStored"].includes(row.key.kind)) status = { label: "supplierKeyAdded", action: "key", actionLabel: "supplierChangeKey", reuse: "key" };
 	else if (row?.key.kind === "envVar" && row.key.envSet === true) status = { label: "supplierEnvSet", action: "key", actionLabel: "supplierChangeKey", reuse: "key" };
+	else if (row?.key.kind === "envVar" && row.key.envSet === false) status = { label: "supplierEnvUnset", warning: true, action: "key", actionLabel: "supplierChangeKey" };
 	else if (row?.key.kind === "command") status = { label: "supplierCommand", action: "key", actionLabel: "supplierChangeKey" };
 	else if (capability.method === "optional-key") status = { label: "supplierOptionalKey", action: "key", actionLabel: "supplierAddKey" };
 	else if (capability.method === "advanced") status = { label: "supplierAdvanced", action: "advanced", actionLabel: "supplierAdvancedAction" };

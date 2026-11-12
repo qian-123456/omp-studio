@@ -103,7 +103,7 @@ describe("provider mutation catalog boundary with real stores", () => {
 		const fresh = deferred<ModelCatalogSnapshot>();
 		ipc.listModels.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
 		const oldRefresh = catalog.getState().refresh();
-		const save = providers.getState().upsert(input, null, "plaintext");
+		const save = providers.getState().upsert(input, null);
 		await vi.waitFor(() => expect(ipc.listModels).toHaveBeenCalledTimes(2));
 		expect(selectors(catalog.getState().models)).toEqual(selectors([beta]));
 		if (order === "old-first") {
@@ -129,7 +129,7 @@ describe("provider mutation catalog boundary with real stores", () => {
 	it("keeps unaffected providers when a post-save successful response is also partial", async () => {
 		const { catalog, providers } = await stores();
 		ipc.listModels.mockResolvedValueOnce(snapshot([updated]));
-		await providers.getState().upsert(input, null, "plaintext");
+		await providers.getState().upsert(input, null);
 		expect(selectors(catalog.getState().models)).toEqual(selectors([beta]));
 		expect(selectors(JSON.parse(localStorage.getItem(KEY)!))).toEqual(selectors([beta]));
 		expect(catalog.getState().status).toBe("stale");
@@ -140,7 +140,7 @@ describe("provider mutation catalog boundary with real stores", () => {
 		const renamed = { ...updated, provider: "renamed" };
 		ipc.providerUpsert.mockResolvedValueOnce({ ...row, id: "renamed" });
 		ipc.listModels.mockResolvedValueOnce(snapshot([renamed, beta]));
-		await providers.getState().upsert({ ...input, id: "renamed" }, null, "plaintext");
+		await providers.getState().upsert({ ...input, id: "renamed" }, null);
 		expect(catalog.getState().models).toEqual([renamed, beta]);
 		expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual([renamed, beta]);
 	});

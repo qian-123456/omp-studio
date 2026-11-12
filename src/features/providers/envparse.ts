@@ -1,5 +1,5 @@
 /** `.env` paste parsing + masking helpers for the import flow
- * (mirrors the backend parser in `src-tauri/src/providers/vault.rs`). */
+ * (mirrors the backend `.env` parser). */
 
 export interface ParsedEnvEntry {
 	key: string;

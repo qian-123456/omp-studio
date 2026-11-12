@@ -6,9 +6,6 @@ import { tNow } from "../../stores/language";
 
 const ipc = vi.hoisted(() => ({
 	providerRows: vi.fn(),
-	providerEncrypt: vi.fn(),
-	providerDecrypt: vi.fn(),
-	providerEncryptAll: vi.fn(),
 	providerSetEnabled: vi.fn(),
 	providerSetKey: vi.fn(),
 	providerUpsert: vi.fn(),
@@ -104,47 +101,82 @@ async function renderPanel(rows: ProviderRow[]) {
 }
 
 describe("key column", () => {
-	it("encrypts a plaintext key immediately, without confirmation", async () => {
-		await renderPanel([row("p1", "plaintext")]);
-		ipc.providerEncrypt.mockResolvedValue(row("p1", "encrypted"));
-		fireEvent.click(screen.getByText("明文"));
-		await waitFor(() => expect(ipc.providerEncrypt).toHaveBeenCalledWith("p1"));
-		expect(confirmDialog).not.toHaveBeenCalled();
-		await screen.findByText("已加密", { selector: "span" });
-	});
-
-	it("decrypts only after the user confirms", async () => {
-		await renderPanel([row("p1", "encrypted")]);
-		ipc.providerDecrypt.mockResolvedValue(row("p1", "plaintext"));
-		confirmDialog.mockResolvedValueOnce(false);
-		fireEvent.click(screen.getByText("已加密", { selector: "span" }));
-		await waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1));
-		expect(confirmDialog.mock.calls[0][0]).toContain("~/.omp/agent/models.yml");
-		expect(ipc.providerDecrypt).not.toHaveBeenCalled();
-
-		confirmDialog.mockResolvedValueOnce(true);
-		fireEvent.click(screen.getByText("已加密", { selector: "span" }));
-		await waitFor(() => expect(ipc.providerDecrypt).toHaveBeenCalledWith("p1"));
-	});
-
 	it.each([
-		["vaultMissing", "加密密钥丢失"],
+		["plaintext", "明文"],
 		["envVar", "环境变量未设置"],
 		["missing", "未配置密钥"],
 	] as const)("%s opens the 设置密钥 dialog", async (kind, label) => {
 		await renderPanel([row("p1", kind)]);
 		fireEvent.click(screen.getByText(label));
 		expect(await screen.findByRole("dialog", { name: /设置密钥/ })).toBeTruthy();
-		expect(ipc.providerEncrypt).not.toHaveBeenCalled();
 	});
 
-	it("设置密钥 sends the typed key with the chosen mode (default 加密)", async () => {
+	it("设置密钥 sends the typed key (always plain text in models.yml)", async () => {
 		await renderPanel([row("p1", "missing")]);
-		ipc.providerSetKey.mockResolvedValue(row("p1", "encrypted"));
+		ipc.providerSetKey.mockResolvedValue(row("p1", "plaintext"));
 		fireEvent.click(screen.getByText("未配置密钥"));
 		fireEvent.change(await screen.findByLabelText("API 密钥"), { target: { value: "sk-abc" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
-		await waitFor(() => expect(ipc.providerSetKey).toHaveBeenCalledWith("p1", "sk-abc", "encrypted"));
+		await waitFor(() => expect(ipc.providerSetKey).toHaveBeenCalledWith("p1", "sk-abc"));
+	});
+
+	it("设置密钥 opens in env mode for envVar rows, prefilled with the current name", async () => {
+		await renderPanel([row("p1", "envVar")]);
+		fireEvent.click(screen.getByText("环境变量未设置"));
+		await screen.findByRole("dialog", { name: /设置密钥/ });
+		expect((screen.getByLabelText(/使用环境变量/) as HTMLInputElement).checked).toBe(true);
+		expect((screen.getByLabelText("环境变量名") as HTMLInputElement).value).toBe("MY_KEY");
+		expect(screen.queryByLabelText("API 密钥")).toBeNull();
+		expect(screen.getByText(/当前环境里还没有 MY_KEY/)).toBeTruthy();
+	});
+
+	it("设置密钥 env mode sends the variable name and warns when it is not set", async () => {
+		await renderPanel([row("openai", "missing")]);
+		ipc.providerSetKey.mockResolvedValue(row("openai", "envVar", { key: { kind: "envVar", envVar: "OPENAI_API_KEY", envSet: false } }));
+		fireEvent.click(screen.getByText("未配置密钥"));
+		await screen.findByRole("dialog", { name: /设置密钥/ });
+		expect((screen.getByLabelText(/直接保存密钥/) as HTMLInputElement).checked).toBe(true);
+		fireEvent.click(screen.getByLabelText(/使用环境变量/));
+		// Prefilled from the preset's conventional variable name.
+		expect((screen.getByLabelText("环境变量名") as HTMLInputElement).value).toBe("OPENAI_API_KEY");
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerSetKey).toHaveBeenCalledWith("openai", "OPENAI_API_KEY"));
+		await waitFor(() => expect(toast.info).toHaveBeenCalledTimes(1));
+		expect(String(toast.info.mock.calls[0][0])).toContain("OPENAI_API_KEY");
+		expect(String(toast.info.mock.calls[0][0])).toContain("launchctl setenv");
+		expect(toast.success).not.toHaveBeenCalled();
+	});
+
+	it("设置密钥 env mode reports plain success when the variable is set", async () => {
+		await renderPanel([row("p1", "missing")]);
+		ipc.providerSetKey.mockResolvedValue(row("p1", "envVar", { key: { kind: "envVar", envVar: "MY_KEY", envSet: true } }));
+		fireEvent.click(screen.getByText("未配置密钥"));
+		await screen.findByRole("dialog", { name: /设置密钥/ });
+		fireEvent.click(screen.getByLabelText(/使用环境变量/));
+		fireEvent.change(screen.getByLabelText("环境变量名"), { target: { value: "MY_KEY" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerSetKey).toHaveBeenCalledWith("p1", "MY_KEY"));
+		await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+		expect(toast.info).not.toHaveBeenCalled();
+	});
+
+	it("设置密钥 rejects an invalid variable name and a name-like plain key", async () => {
+		await renderPanel([row("p1", "missing")]);
+		fireEvent.click(screen.getByText("未配置密钥"));
+		await screen.findByRole("dialog", { name: /设置密钥/ });
+		// Plain mode: a variable-name-looking key is blocked with an inline warning.
+		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "OPENAI_API_KEY" } });
+		expect((await screen.findByRole("alert")).textContent).toContain("看起来是变量名");
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		// A real key (lowercase / dashes) is fine.
+		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "sk-real-key" } });
+		expect(screen.queryByRole("alert")).toBeNull();
+		// Env mode: invalid names show an inline error and are not sent.
+		fireEvent.click(screen.getByLabelText(/使用环境变量/));
+		fireEvent.change(screen.getByLabelText("环境变量名"), { target: { value: "my-key" } });
+		expect((await screen.findByRole("alert")).textContent).toContain("大写字母");
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		expect(ipc.providerSetKey).not.toHaveBeenCalled();
 	});
 
 	it("oauth opens account management; loginStored only explains", async () => {
@@ -154,8 +186,7 @@ describe("key column", () => {
 		cleanup();
 		await renderPanel([row("l1", "loginStored")]);
 		fireEvent.click(screen.getByText("OMP 登录保存"));
-		expect(screen.getByRole("note").textContent).toContain("暂不支持在这里加密");
-		expect(ipc.providerEncrypt).not.toHaveBeenCalled();
+		expect(screen.getByRole("note").textContent).toContain("无法在这里修改");
 	});
 
 	it.each([
@@ -165,26 +196,6 @@ describe("key column", () => {
 		await renderPanel([row("p1", kind)]);
 		const el = screen.getByText(label);
 		expect(el.closest("button")).toBeNull();
-	});
-});
-
-describe("encrypt-all menu", () => {
-	it("shows the plaintext count and encrypts all on click", async () => {
-		await renderPanel([row("a", "plaintext"), row("b", "plaintext"), row("c", "encrypted")]);
-		ipc.providerEncryptAll.mockResolvedValue([
-			{ id: "a", ok: true, error: null },
-			{ id: "b", ok: true, error: null },
-		]);
-		fireEvent.click(screen.getByText("批量管理密钥"));
-		fireEvent.click(await screen.findByText("全部加密（2 个明文）"));
-		await waitFor(() => expect(ipc.providerEncryptAll).toHaveBeenCalledTimes(1));
-	});
-
-	it("is disabled and reads 已全部加密 when no plaintext key remains", async () => {
-		await renderPanel([row("c", "encrypted"), row("d", "envVar")]);
-		fireEvent.click(screen.getByText("批量管理密钥"));
-		const item = (await screen.findByText("已全部加密")).closest("button");
-		expect(item?.disabled).toBe(true);
 	});
 });
 
@@ -203,17 +214,17 @@ describe("enable switch", () => {
 
 describe("search", () => {
 	it("does not leak search-key-only suppliers into chat providers", async () => {
-		await renderPanel([row("brave", "encrypted"), row("tavily", "encrypted"), row("chat-supplier", "missing")]);
+		await renderPanel([row("brave", "plaintext"), row("tavily", "plaintext"), row("chat-supplier", "missing")]);
 		expect(screen.queryByText("brave")).toBeNull();
 		expect(screen.queryByText("tavily")).toBeNull();
 		expect(screen.getByText("chat-supplier")).toBeTruthy();
 	});
 	it("uses explicit kinds and dedicated APIs before model-name guesses while keeping mixed suppliers", async () => {
 		await renderPanel([
-			row("only-services", "encrypted", { models: [{ id: "plain-alpha", kind: "image" }, { id: "plain-beta", kind: "stt" }, { id: "plain-gamma", kind: "future-kind" }] }),
-			row("api-only-service", "encrypted", { models: [{ id: "plain-delta", api: "openai-transcriptions" }] }),
-			row("mixed-supplier", "encrypted", { models: [{ id: "plain-epsilon", kind: "image" }, { id: "whisper-looking-chat", kind: "chat" }] }),
-			row("tiny-supplier", "encrypted", { models: [{ id: "embedding-looking-tiny", kind: "tiny" }] }),
+			row("only-services", "plaintext", { models: [{ id: "plain-alpha", kind: "image" }, { id: "plain-beta", kind: "stt" }, { id: "plain-gamma", kind: "future-kind" }] }),
+			row("api-only-service", "plaintext", { models: [{ id: "plain-delta", api: "openai-transcriptions" }] }),
+			row("mixed-supplier", "plaintext", { models: [{ id: "plain-epsilon", kind: "image" }, { id: "whisper-looking-chat", kind: "chat" }] }),
+			row("tiny-supplier", "plaintext", { models: [{ id: "embedding-looking-tiny", kind: "tiny" }] }),
 		]);
 		expect(screen.queryByText("only-services")).toBeNull();
 		expect(screen.queryByText("api-only-service")).toBeNull();
@@ -277,20 +288,19 @@ describe("status groups", () => {
 });
 
 describe("add dialog", () => {
-	it("sends provider_upsert with the chosen key mode", async () => {
+	it("sends provider_upsert with the typed key", async () => {
 		data = [row("existing", "plaintext")];
 		useProviders.setState({ rows: data, loaded: true });
-		ipc.providerUpsert.mockResolvedValue(row("gw", "encrypted"));
+		ipc.providerUpsert.mockResolvedValue(row("gw", "plaintext"));
 		const onClose = vi.fn();
 		render(<ProviderDialog target={{ mode: "add" }} onClose={onClose} />);
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "gw" } });
 		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://gw.example/v1" } });
 		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "sk-1" } });
 		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m1" } });
-		fireEvent.click(screen.getByLabelText(/加密保存/));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
-		const [input, key, mode] = ipc.providerUpsert.mock.calls[0];
+		const [input, key] = ipc.providerUpsert.mock.calls[0];
 		expect(input).toMatchObject({
 			originalId: null,
 			id: "gw",
@@ -299,13 +309,11 @@ describe("add dialog", () => {
 			models: ["m1"],
 		});
 		expect(key).toBe("sk-1");
-		expect(mode).toBe("encrypted");
 	});
 
-	it("defaults to plaintext and rejects a duplicate name", async () => {
+	it("rejects a duplicate name", async () => {
 		useProviders.setState({ rows: [row("taken", "plaintext")], loaded: true });
 		render(<ProviderDialog target={{ mode: "add" }} onClose={() => {}} />);
-		expect((screen.getByLabelText(/明文写入 OMP 配置/) as HTMLInputElement).checked).toBe(true);
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "taken" } });
 		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://x/v1" } });
 		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m" } });
@@ -335,66 +343,6 @@ describe("edit dialog", () => {
 		return screen.findByRole("dialog", { name: /编辑供应商/ });
 	}
 
-	it.each([
-		["custom", "encrypted", "plaintext"],
-		["custom", "plaintext", "encrypted"],
-		["builtin", "encrypted", "plaintext"],
-		["builtin", "plaintext", "encrypted"],
-	] as const)("saves %s blank-key mode change from %s to %s", async (origin, kind, mode) => {
-		const r = row("synthetic", kind, { origin, models: ["m1"] });
-		useProviders.setState({ rows: [r], loaded: true });
-		const onClose = vi.fn();
-		const save = origin === "builtin" ? ipc.providerSaveBuiltin : ipc.providerUpsert;
-		save.mockResolvedValueOnce({ ...r, key: { ...r.key, kind: mode } });
-		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
-		fireEvent.click(screen.getByLabelText(mode === "encrypted" ? /加密保存/ : /明文写入 OMP 配置/));
-		expect((screen.getByLabelText("API 密钥") as HTMLInputElement).value).toBe("");
-		fireEvent.click(screen.getByRole("button", { name: "保存" }));
-		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-		expect(save).toHaveBeenCalledWith(expect.objectContaining({ id: r.id }), null, mode);
-	});
-
-	it("treats a blank-key storage-mode change as unsaved work", async () => {
-		const r = row("synthetic", "encrypted", { models: ["m1"] });
-		const onClose = vi.fn();
-		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
-		confirmDialog.mockResolvedValueOnce(false);
-		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
-		fireEvent.click(screen.getByRole("button", { name: "取消" }));
-		await waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1));
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("does not mark the original storage-mode selection as unsaved work", async () => {
-		const r = row("synthetic", "encrypted", { models: ["m1"] });
-		const onClose = vi.fn();
-		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
-		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
-		fireEvent.click(screen.getByLabelText(/加密保存/));
-		fireEvent.click(screen.getByRole("button", { name: "取消" }));
-		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-		expect(confirmDialog).not.toHaveBeenCalled();
-	});
-
-	it("keeps missing-vault references in encrypted mode initially", () => {
-		const r = row("synthetic", "vaultMissing", { models: ["m1"] });
-		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={vi.fn()} />);
-		expect((screen.getByLabelText(/加密保存/) as HTMLInputElement).checked).toBe(true);
-	});
-
-	it("keeps the dialog open when blank-key mode conversion fails", async () => {
-		const r = row("synthetic", "encrypted", { models: ["m1"] });
-		useProviders.setState({ rows: [r], loaded: true });
-		const onClose = vi.fn();
-		ipc.providerUpsert.mockRejectedValueOnce("injected vault cleanup failure");
-		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={onClose} />);
-		fireEvent.click(screen.getByLabelText(/明文写入 OMP 配置/));
-		fireEvent.click(screen.getByRole("button", { name: "保存" }));
-		expect((await screen.findByRole("alert")).textContent).toContain("injected vault cleanup failure");
-		expect(onClose).not.toHaveBeenCalled();
-		expect(toast.success).not.toHaveBeenCalled();
-	});
-
 	it("shows the 无密钥 badge for authNone rows", async () => {
 		await renderPanel([builtin()]);
 		expect(screen.getByText("无密钥")).toBeTruthy();
@@ -415,17 +363,16 @@ describe("edit dialog", () => {
 		expect(screen.queryByRole("button", { name: /删除|恢复 OMP 默认/ })).toBeNull();
 	});
 
-	it("saves a builtin through providerSaveBuiltin with null key and the chosen mode", async () => {
+	it("saves a builtin through providerSaveBuiltin with null key", async () => {
 		const r = builtin({ authNone: false, key: { kind: "missing", envVar: null, envSet: null } });
 		await openEdit(r);
 		ipc.providerSaveBuiltin.mockResolvedValue(r);
 		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "http://gpu:11434" } });
 		fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
 		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "extra-1" } });
-		fireEvent.click(screen.getByLabelText(/加密保存/));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerSaveBuiltin).toHaveBeenCalledTimes(1));
-		const [input, key, mode] = ipc.providerSaveBuiltin.mock.calls[0];
+		const [input, key] = ipc.providerSaveBuiltin.mock.calls[0];
 		expect(input).toMatchObject({
 			id: "ollama",
 			baseUrl: "http://gpu:11434",
@@ -433,7 +380,6 @@ describe("edit dialog", () => {
 			extraModels: ["extra-1"],
 		});
 		expect(key).toBeNull();
-		expect(mode).toBe("encrypted");
 	});
 
 	it("sends the typed key for a builtin", async () => {
@@ -502,9 +448,9 @@ describe("grouped other model catalog", () => {
 	it("separates registered services from unused credentials and unclassified manual connections", async () => {
 		data = [
 			row("builtin-unused", "missing", { origin: "builtin", models: ["picture"] }),
-			row("builtin-added", "encrypted", { origin: "builtin", models: ["picture"] }),
-			row("builtin-chat", "encrypted", { origin: "builtin", models: ["chat"] }),
-			row("custom-chat", "encrypted", { models: ["chat"] }),
+			row("builtin-added", "plaintext", { origin: "builtin", models: ["picture"] }),
+			row("builtin-chat", "plaintext", { origin: "builtin", models: ["chat"] }),
+			row("custom-chat", "plaintext", { models: ["chat"] }),
 			row("manual-empty", "missing", { models: [] }),
 			row("manual-unknown", "missing", { models: ["unregistered"] }),
 		];
@@ -587,7 +533,7 @@ describe("grouped other model catalog", () => {
 	});
 
 	it("recovers an empty custom connection through the regular provider editor without replacing its stored key", async () => {
-		const existing = row("existing", "encrypted", { models: [] });
+		const existing = row("existing", "plaintext", { models: [] });
 		data = [existing];
 		kindData = [];
 		ipc.providerUpsert.mockResolvedValueOnce({ ...existing, baseUrl: "https://changed.example/v1", models: ["chat-only"] });
@@ -605,7 +551,7 @@ describe("grouped other model catalog", () => {
 		fireEvent.change(within(dialog).getByLabelText("第 1 个模型 ID"), { target: { value: "chat-only" } });
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null, "encrypted");
+		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null);
 		expect(screen.getByText("existing")).toBeTruthy();
 		expect(ipc.providerSetKey).not.toHaveBeenCalled();
 	});
@@ -647,5 +593,58 @@ describe("grouped other model catalog", () => {
 		fireEvent.click(await screen.findByRole("button", { name: supplierName("ollama") }));
 		expect(screen.getByText("Delayed runner")).toBeTruthy();
 		expect(screen.queryByText(/正在读取所有类型的模型目录/)).toBeNull();
+	});
+});
+
+describe("provider dialog key input mode", () => {
+	it("add: env mode saves the variable name as the key, prefilled from the chosen preset", async () => {
+		useProviders.setState({ rows: [], loaded: true });
+		ipc.providerUpsert.mockResolvedValue(row("openai", "envVar", { key: { kind: "envVar", envVar: "OPENAI_API_KEY", envSet: true } }));
+		const onClose = vi.fn();
+		render(<ProviderDialog target={{ mode: "add" }} onClose={onClose} />);
+		fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
+		fireEvent.click(screen.getByLabelText(/使用环境变量/));
+		expect((screen.getByLabelText("环境变量名") as HTMLInputElement).value).toBe("OPENAI_API_KEY");
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
+		expect(ipc.providerUpsert.mock.calls[0][1]).toBe("OPENAI_API_KEY");
+		await waitFor(() => expect(onClose).toHaveBeenCalled());
+		expect(toast.success).toHaveBeenCalled();
+	});
+
+	it("add: plain mode blocks a key that looks like a variable name", async () => {
+		useProviders.setState({ rows: [], loaded: true });
+		render(<ProviderDialog target={{ mode: "add" }} onClose={() => {}} />);
+		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "gw" } });
+		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://gw.example/v1" } });
+		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m1" } });
+		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "MY_SECRET_NAME" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		expect((await screen.findAllByRole("alert")).some((el) => el.textContent?.includes("看起来是变量名"))).toBe(true);
+		expect(ipc.providerUpsert).not.toHaveBeenCalled();
+	});
+
+	it("edit: envVar row opens in env mode and warns after saving an unset variable", async () => {
+		const r = row("gw", "envVar", { models: ["m1"] });
+		useProviders.setState({ rows: [r], loaded: true });
+		ipc.providerUpsert.mockResolvedValue(row("gw", "envVar", { models: ["m1"], key: { kind: "envVar", envVar: "GW_KEY", envSet: false } }));
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={() => {}} />);
+		expect((screen.getByLabelText(/使用环境变量/) as HTMLInputElement).checked).toBe(true);
+		fireEvent.change(screen.getByLabelText("环境变量名"), { target: { value: "GW_KEY" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
+		expect(ipc.providerUpsert.mock.calls[0][1]).toBe("GW_KEY");
+		await waitFor(() => expect(toast.info).toHaveBeenCalledTimes(1));
+		expect(String(toast.info.mock.calls[0][0])).toContain("GW_KEY");
+	});
+
+	it("edit: switching an env reference to plain text requires a typed key", async () => {
+		const r = row("gw", "envVar", { models: ["m1"] });
+		useProviders.setState({ rows: [r], loaded: true });
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={() => {}} />);
+		fireEvent.click(screen.getByLabelText(/直接保存密钥/));
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		expect((await screen.findAllByRole("alert")).length).toBeGreaterThan(0);
+		expect(ipc.providerUpsert).not.toHaveBeenCalled();
 	});
 });

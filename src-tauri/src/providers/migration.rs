@@ -5,12 +5,14 @@
 //! injected env vars. Now OMP's own `models.yml` is the source of truth, so:
 //!
 //! 1. a models.yml provider whose `apiKey` is the env-var name a record injected
-//!    (and whose key is in the vault) gets the command reference instead;
+//!    (and whose key is in the vault) gets that key as plaintext instead;
 //! 2. a workbench-only record that is neither a built-in nor already present is
-//!    appended to models.yml as a custom provider with a command reference;
+//!    appended to models.yml as a custom provider with its plaintext key;
 //! 3. `providers.json` is renamed to `providers.json.migrated-<ts>`.
 //!
-//! Vault entries are kept. Idempotent: without `providers.json` nothing happens.
+//! Keys are read from the legacy vault (read-only) and written to models.yml as
+//! plaintext, so no command reference is ever produced; vault entries are left
+//! behind untouched. Idempotent: without `providers.json` nothing happens.
 //! `models.yml` is backed up by `models_yml_providers::edit_file`.
 
 use std::collections::HashSet;
@@ -22,7 +24,6 @@ use crate::contracts::{ModelEntry, ModelSpec, ProviderApi};
 
 use super::commands::sanitize_slug;
 use super::models_yml_providers::{self as yml, edit_file, BlockSpec};
-use super::ops::KeyStore;
 use super::{config_yml, key_ref};
 
 /// One record of the retired `providers.json` (only what migration needs).
@@ -59,14 +60,15 @@ pub struct Migration<'a> {
     pub models_yml: &'a Path,
     pub config_yml: &'a Path,
     pub shim: &'a Path,
-    pub store: &'a dyn KeyStore,
+    /// Read-only access to the legacy vault: the key stored under a slug.
+    pub vault_get: &'a dyn Fn(&str) -> Option<String>,
     /// OMP knows this provider id on its own (preset, stored login, model cache).
     pub is_builtin: &'a dyn Fn(&str) -> bool,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Summary {
-    pub encrypted: usize,
+    pub keyed: usize,
     pub appended: usize,
     pub skipped: usize,
 }
@@ -137,7 +139,7 @@ fn models_of(r: &Legacy) -> Vec<ModelEntry> {
 fn yml_key(m: &Migration, p: &yml::YmlProvider) -> Option<String> {
     let v = p.api_key.as_deref()?;
     if key_ref::is_ref_for(v, m.shim, &p.id) {
-        m.store.get(&key_ref::vault_slug(&p.id)).ok().flatten()
+        (m.vault_get)(&key_ref::vault_slug(&p.id))
     } else if v.starts_with('!') || super::rows::is_env_name(v) {
         None
     } else {
@@ -149,13 +151,19 @@ fn same_url(a: &str, b: &str) -> bool {
     a.trim().trim_end_matches('/') == b.trim().trim_end_matches('/')
 }
 
+/// A legacy vault key usable as a plaintext `apiKey`: trimmed, non-empty,
+/// single-line and not a `!command` (OMP would execute that).
+fn plain_key(key: Option<String>) -> Option<String> {
+    key.map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty() && !k.starts_with('!') && !k.contains(['\0', '\n', '\r']))
+}
+
 /// Pure over `text`: returns the migrated text, the counts and the ids to
-/// disable. Vault reads happen here; vault writes are returned as `copies`.
+/// disable. Vault reads happen here; nothing is written to the vault.
 struct Plan {
     text: String,
     summary: Summary,
     disable: Vec<String>,
-    copies: Vec<(String, String)>,
     appended: Vec<String>,
 }
 
@@ -173,20 +181,14 @@ fn plan(m: &Migration, records: &[Legacy], original: &str) -> Result<Plan, Strin
         };
         matched.insert(i);
         let injected = !r.env_var.is_empty() && p.api_key.as_deref() == Some(r.env_var.as_str());
-        if injected && m.store.has(&r.slug) {
-            text = yml::set_field(
-                &text,
-                &p.id,
-                "apiKey",
-                Some(&key_ref::command_ref_yaml(m.shim, &p.id)),
-            )?;
-            summary.encrypted += 1;
+        if let (true, Some(key)) = (injected, plain_key((m.vault_get)(&r.slug))) {
+            text = yml::set_field(&text, &p.id, "apiKey", Some(&yml::yaml_scalar(&key)))?;
+            summary.keyed += 1;
         }
     }
 
     // 2. workbench-only records → custom providers.
     let mut disable = Vec::new();
-    let mut copies = Vec::new();
     let mut appended = Vec::new();
     for (i, r) in records.iter().enumerate() {
         if matched.contains(&i) {
@@ -199,7 +201,7 @@ fn plan(m: &Migration, records: &[Legacy], original: &str) -> Result<Plan, Strin
             continue;
         }
         let (api, base_url) = omp_endpoint(r);
-        let key = m.store.get(&r.slug).ok().flatten();
+        let key = plain_key((m.vault_get)(&r.slug));
         let duplicate = current.iter().any(|p| {
             p.base_url
                 .as_deref()
@@ -224,16 +226,7 @@ fn plan(m: &Migration, records: &[Legacy], original: &str) -> Result<Plan, Strin
         };
         text = yml::upsert_block_text(&text, &spec)?;
         if let Some(k) = &key {
-            text = yml::set_field(
-                &text,
-                &id,
-                "apiKey",
-                Some(&key_ref::command_ref_yaml(m.shim, &id)),
-            )?;
-            let new_slug = key_ref::vault_slug(&id);
-            if new_slug != r.slug {
-                copies.push((new_slug, k.clone()));
-            }
+            text = yml::set_field(&text, &id, "apiKey", Some(&yml::yaml_scalar(k)))?;
         }
         if !r.enabled {
             disable.push(id.clone());
@@ -245,7 +238,6 @@ fn plan(m: &Migration, records: &[Legacy], original: &str) -> Result<Plan, Strin
         text,
         summary,
         disable,
-        copies,
         appended,
     })
 }
@@ -274,9 +266,6 @@ pub fn run(m: &Migration) -> Result<Option<Summary>, String> {
 
     let original = std::fs::read_to_string(m.models_yml).unwrap_or_default();
     let planned = plan(m, &records, &original)?;
-    for (slug, key) in &planned.copies {
-        m.store.put(slug, key)?;
-    }
     let appended = planned.appended.clone();
     let new_text = planned.text.clone();
     edit_file(m.models_yml, &|_| Ok(new_text.clone()), &|written| {
@@ -301,6 +290,14 @@ pub fn run_startup() {
     let models = yml::models_yml_path();
     let config = config_yml::config_path();
     let shim = key_ref::shim_path();
+    let vault_get = |slug: &str| {
+        // `contains` first: `read_entry` would create a master key for an empty vault.
+        if super::vault::contains(slug) {
+            super::vault::read_entry(slug).ok().flatten()
+        } else {
+            None
+        }
+    };
     let agent_dir = super::omp_config::home_agent_dir();
     let creds = super::omp_config::scan_agent_db(&agent_dir.join("agent.db"));
     let cache_db = agent_dir.join("models.db");
@@ -314,14 +311,14 @@ pub fn run_startup() {
         models_yml: &models,
         config_yml: &config,
         shim: &shim,
-        store: &super::ops::VaultStore,
+        vault_get: &vault_get,
         is_builtin: &is_builtin,
     };
     match run(&m) {
         Ok(None) => {}
         Ok(Some(s)) => tracing::info!(
-            "providers: migrated providers.json — {} key(s) encrypted, {} provider(s) appended, {} skipped",
-            s.encrypted,
+            "providers: migrated providers.json — {} key(s) written, {} provider(s) appended, {} skipped",
+            s.keyed,
             s.appended,
             s.skipped
         ),
@@ -332,7 +329,7 @@ pub fn run_startup() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::ops::tests::MemStore;
+    use std::collections::HashMap;
     use std::path::Path;
 
     const SHIM: &str = "/d/bin/ompws-key";
@@ -342,7 +339,7 @@ mod tests {
         legacy: PathBuf,
         models: PathBuf,
         config: PathBuf,
-        store: MemStore,
+        vault: HashMap<String, String>,
     }
 
     impl Fx {
@@ -354,7 +351,7 @@ mod tests {
                 models: dir.join("models.yml"),
                 config: dir.join("config.yml"),
                 dir,
-                store: MemStore::default(),
+                vault: HashMap::new(),
             };
             std::fs::write(&fx.models, models).unwrap();
             std::fs::write(&fx.legacy, legacy).unwrap();
@@ -362,12 +359,13 @@ mod tests {
         }
         fn run(&self) -> Option<Summary> {
             let builtin = |id: &str| id == "openrouter";
+            let get = |slug: &str| self.vault.get(slug).cloned();
             run(&Migration {
                 legacy: &self.legacy,
                 models_yml: &self.models,
                 config_yml: &self.config,
                 shim: Path::new(SHIM),
-                store: &self.store,
+                vault_get: &get,
                 is_builtin: &builtin,
             })
             .unwrap()
@@ -450,7 +448,7 @@ mod tests {
 
     #[test]
     fn migration_rules_and_idempotence() {
-        let fx = Fx::new(MODELS, &legacy_json());
+        let mut fx = Fx::new(MODELS, &legacy_json());
         for (slug, key) in [
             ("yiyuan", "k-yiyuan"),
             ("lit", "k-lit"),
@@ -458,39 +456,31 @@ mod tests {
             ("openrouter", "k-or"),
             ("CodexCN-pro", "sk-dup"),
         ] {
-            fx.store.put(slug, key).unwrap();
+            fx.vault.insert(slug.to_string(), key.to_string());
         }
         let s = fx.run().expect("legacy store present");
         assert_eq!(
             s,
             Summary {
-                encrypted: 1,
+                keyed: 1,
                 appended: 2,
                 skipped: 2
             }
         );
 
-        // env-name ref -> encrypted
+        // env-name ref -> the vault key as plaintext
         let y = fx.provider("yiyuan").unwrap();
-        assert!(key_ref::is_ref_for(
-            y.api_key.as_deref().unwrap(),
-            Path::new(SHIM),
-            "yiyuan"
-        ));
+        assert_eq!(y.api_key.as_deref(), Some("k-yiyuan"));
         // literal untouched even though the record has a vault key
         assert_eq!(
             fx.provider("lit").unwrap().api_key.as_deref(),
             Some("sk-literal")
         );
-        // workbench-only custom appended with ref, endpoint mapping and model defaults
+        // workbench-only custom appended with plaintext key, endpoint mapping and model defaults
         let sw = fx.provider("swift-domestic-model").unwrap();
         assert_eq!(sw.api.as_deref(), Some("google-generative-ai"));
         assert_eq!(sw.base_url.as_deref(), Some("https://s.example/v1beta"));
-        assert!(key_ref::is_ref_for(
-            sw.api_key.as_deref().unwrap(),
-            Path::new(SHIM),
-            "swift-domestic-model"
-        ));
+        assert_eq!(sw.api_key.as_deref(), Some("k-swift"));
         assert_eq!(sw.models.len(), 2);
         let ModelEntry::Spec(m1) = &sw.models[0] else {
             panic!("m1 should carry the default max tokens")
@@ -515,7 +505,8 @@ mod tests {
             .file_name()
             .to_string_lossy()
             .starts_with("providers.json.migrated-")));
-        assert!(fx.store.has("lit") && fx.store.has("openrouter"));
+        assert_eq!(fx.vault.len(), 5, "vault untouched");
+        assert!(!std::fs::read_to_string(&fx.models).unwrap().contains("!'"));
         assert!(std::fs::read_dir(&fx.dir).unwrap().any(|e| e
             .unwrap()
             .file_name()
@@ -532,7 +523,7 @@ mod tests {
     fn injected_env_without_vault_key_is_left_alone_and_bad_store_is_reported() {
         let fx = Fx::new(MODELS, &legacy_json());
         let s = fx.run().unwrap();
-        assert_eq!(s.encrypted, 0);
+        assert_eq!(s.keyed, 0);
         assert_eq!(
             fx.provider("yiyuan").unwrap().api_key.as_deref(),
             Some("YIYUAN_CODEX")
@@ -545,7 +536,7 @@ mod tests {
             models_yml: &bad.models,
             config_yml: &bad.config,
             shim: Path::new(SHIM),
-            store: &bad.store,
+            vault_get: &|_: &str| None,
             is_builtin: &builtin,
         });
         assert!(r.is_err());

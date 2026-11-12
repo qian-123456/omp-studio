@@ -1,11 +1,14 @@
 //! Encrypted secret vault: `~/.omp-workspace/env/keys.env`.
 //!
+//! Holds non-provider secrets only (the Cloudflare DDNS token, slug
+//! `cloudflare-ddns`). Provider API keys are plaintext in OMP's models.yml; keys
+//! older versions kept here are moved out by `providers::legacy_keys`.
+//!
 //! The file is `.env`-format (`# comments`, `SLUG_API_KEY=<value>` lines) but
 //! VALUES ARE ENCRYPTED, not plaintext: AES-256-GCM with a random nonce per
 //! entry, stored as `v1:<nonce_b64>:<ct_b64>`. The 32-byte master key lives in
-//! the file `env/.master.key` next to it (mode 0600); the macOS Keychain
-//! (service `omp-workspace.vault`, account `master-v1`) is only read once as a
-//! legacy migration source.
+//! the file `env/.master.key` next to it (mode 0600). The macOS Keychain is
+//! never touched (it prompted for a password on every unsigned dev rebuild).
 //! Plaintext key material exists ONLY in memory (injection / connection test /
 //! explicit .env export) — never logged, never returned to the frontend after
 //! save, never written anywhere but this file. There is NO plaintext fallback:
@@ -20,8 +23,6 @@ use base64::Engine as _;
 
 use crate::paths;
 
-const KEYCHAIN_SERVICE: &str = "omp-workspace.vault";
-const KEYCHAIN_ACCOUNT: &str = "master-v1";
 /// Ciphertext format version prefix.
 const VERSION: &str = "v1";
 
@@ -53,7 +54,7 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), String> {
     Ok(())
 }
 
-// ---- master key (cross-platform protected keyfile + legacy macOS Keychain migration) ----
+// ---- master key (cross-platform protected keyfile) ----
 
 /// Path to local protected master key: `~/.omp-workspace/env/.master.key`
 pub fn master_key_path() -> PathBuf {
@@ -92,58 +93,14 @@ fn keyfile_write(key: &[u8; 32]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn keychain_read() -> Result<Option<[u8; 32]>, String> {
-    use security_framework::passwords::{generic_password, PasswordOptions};
-    match generic_password(PasswordOptions::new_generic_password(
-        KEYCHAIN_SERVICE,
-        KEYCHAIN_ACCOUNT,
-    )) {
-        Ok(bytes) => {
-            let hex = std::str::from_utf8(&bytes).map_err(|_| keychain_error())?;
-            decode_hex_key(hex).map(Some).ok_or_else(keychain_error)
-        }
-        Err(error) if error.code() == -25300 => Ok(None), // errSecItemNotFound
-        Err(_) => Err(keychain_error()),
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn keychain_read() -> Result<Option<[u8; 32]>, String> {
-    Ok(None)
-}
-
-fn keychain_error() -> String {
-    format!(
-        "无法访问 macOS 钥匙串（service: {KEYCHAIN_SERVICE}）。密钥库依赖钥匙串加密保存主密钥，\
-         不会降级为明文存储；请在「系统设置 → 隐私与安全性」中允许访问，或删除旧钥匙串条目后重试。"
-    )
-}
-
 fn random_key() -> Result<[u8; 32], String> {
     let mut key = [0u8; 32];
     getrandom::fill(&mut key).map_err(|e| format!("生成随机主密钥失败: {e}"))?;
     Ok(key)
 }
 
-#[cfg(target_os = "macos")]
-fn keychain_create(key: &[u8; 32]) -> Result<(), String> {
-    let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
-    security_framework::passwords::set_generic_password(
-        KEYCHAIN_SERVICE,
-        KEYCHAIN_ACCOUNT,
-        hex.as_bytes(),
-    )
-    .map_err(|_| keychain_error())
-}
-
-#[cfg(not(target_os = "macos"))]
-fn keychain_create(_key: &[u8; 32]) -> Result<(), String> {
-    Ok(())
-}
-
-/// Load the master key, prioritizing the local protected keyfile (`~/.omp-workspace/env/.master.key`).
-/// On first use with an existing Keychain entry, automatically migrates to the keyfile.
+/// Load the master key from the local protected keyfile (`<data_dir>/env/.master.key`),
+/// creating it on a fresh vault. Never touches the macOS Keychain.
 /// A successful load is cached for the process lifetime.
 pub fn master_key() -> Result<[u8; 32], String> {
     static KEY: OnceLock<[u8; 32]> = OnceLock::new();
@@ -159,21 +116,7 @@ pub fn master_key() -> Result<[u8; 32], String> {
         return Ok(key);
     }
 
-    // 2. Fall back to reading from macOS Keychain and automatically migrate to keyfile
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(Some(key)) = keychain_read() {
-            if let Ok(()) = keyfile_write(&key) {
-                tracing::info!(
-                    "migrated vault master key from macOS Keychain to protected keyfile"
-                );
-            }
-            let _ = KEY.set(key);
-            return Ok(key);
-        }
-    }
-
-    // 3. Neither keyfile nor Keychain has a key:
+    // 2. No keyfile: refuse if ciphertext already exists (never overwrite a key we can't recover)
     let has_content = std::fs::read(vault_path())
         .map(|bytes| !bytes.is_empty())
         .unwrap_or(false);
@@ -184,21 +127,15 @@ pub fn master_key() -> Result<[u8; 32], String> {
         );
     }
 
-    // 4. Fresh vault: generate a fresh random key and write to protected keyfile
+    // 3. Fresh vault: generate a fresh random key and write to protected keyfile
     let key = random_key()?;
     keyfile_write(&key)?;
-
-    #[cfg(target_os = "macos")]
-    {
-        // Best-effort secondary backup to Keychain, ignore any errors
-        let _ = keychain_create(&key);
-    }
 
     let _ = KEY.set(key);
     Ok(key)
 }
 
-// ---- crypto (key passed explicitly so tests need no Keychain) ----
+// ---- crypto (key passed explicitly so tests need no key file) ----
 
 /// Encrypt to `v1:<nonce_b64>:<ct_b64>` (random nonce per entry).
 pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<String, String> {
@@ -325,7 +262,7 @@ pub fn read_entry(slug: &str) -> Result<Option<String>, String> {
     read_entry_with(&master_key()?, slug)
 }
 
-/// [`read_entry`] with a caller-supplied master key (avoids repeat Keychain
+/// [`read_entry`] with a caller-supplied master key (avoids repeat key-file
 /// reads when processing many providers).
 pub fn read_entry_with(key: &[u8; 32], slug: &str) -> Result<Option<String>, String> {
     let needle = line_key(slug);

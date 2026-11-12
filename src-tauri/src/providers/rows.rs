@@ -1,23 +1,19 @@
 //! `ProviderRow` assembly: OMP's own state (models.yml, config.yml, agent.db,
-//! models.db) plus the app's vault, merged into what the settings page lists.
+//! models.db), merged into what the settings page lists.
 //! Read-only; never carries key material.
-
-use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 use crate::contracts::{
     ModelEntry, ProviderApi, ProviderKeyKind, ProviderKeyState, ProviderOrigin, ProviderRow,
 };
+use std::collections::{HashMap, HashSet};
 
 use super::commands::{map_provider_api, sanitize_slug};
 use super::models_yml_providers::YmlProvider;
 use super::omp_config::CachedEndpoint;
-use super::{config_yml, key_ref, models_yml_providers, omp_config, presets, vault};
+use super::{config_yml, models_yml_providers, omp_config, presets};
 
 /// Environment lookups key detection depends on (injected for tests).
 pub struct KeyEnv<'a> {
-    pub shim: &'a Path,
-    pub vault_has: &'a dyn Fn(&str) -> bool,
     pub env_set: &'a dyn Fn(&str) -> bool,
 }
 
@@ -30,10 +26,10 @@ pub fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// Key state of provider `id` from its models.yml `apiKey` (if any), `auth: none`
-/// and the active agent.db credential types.
+/// Key state of a provider from its models.yml `apiKey` (if any), `auth: none`
+/// and the active agent.db credential types. Any `!` value (including a leftover
+/// legacy vault reference) is a `Command`.
 pub fn detect_key(
-    id: &str,
     api_key: Option<&str>,
     auth_none: bool,
     cred_types: &[String],
@@ -45,18 +41,7 @@ pub fn detect_key(
         env_set,
     };
     match api_key.map(str::trim).filter(|v| !v.is_empty()) {
-        Some(v) if v.starts_with('!') => {
-            if key_ref::is_ref_for(v, env.shim, id) {
-                let kind = if (env.vault_has)(&key_ref::vault_slug(id)) {
-                    ProviderKeyKind::Encrypted
-                } else {
-                    ProviderKeyKind::VaultMissing
-                };
-                state(kind, None, None)
-            } else {
-                state(ProviderKeyKind::Command, None, None)
-            }
-        }
+        Some(v) if v.starts_with('!') => state(ProviderKeyKind::Command, None, None),
         Some(v) if is_env_name(v) => state(
             ProviderKeyKind::EnvVar,
             Some(v.to_string()),
@@ -100,10 +85,7 @@ pub fn is_keyless_local(id: &str) -> bool {
 
 fn key_resolvable(key: &ProviderKeyState) -> bool {
     match key.kind {
-        ProviderKeyKind::Encrypted
-        | ProviderKeyKind::Plaintext
-        | ProviderKeyKind::LoginStored
-        | ProviderKeyKind::None => true,
+        ProviderKeyKind::Plaintext | ProviderKeyKind::LoginStored | ProviderKeyKind::None => true,
         ProviderKeyKind::EnvVar => key.env_set == Some(true),
         _ => false,
     }
@@ -174,7 +156,6 @@ pub fn build_rows(inp: &Inputs) -> Vec<ProviderRow> {
                     .unwrap_or_default(),
             };
             let mut key = detect_key(
-                &id,
                 yml.and_then(|p| p.api_key.as_deref()),
                 yml.is_some_and(|p| p.auth_none),
                 cred_types,
@@ -234,14 +215,8 @@ pub fn load_rows() -> Result<Vec<ProviderRow>, String> {
     let creds = omp_config::scan_agent_db(&agent_dir.join("agent.db"));
     let cache_db = agent_dir.join("models.db");
     let cache = |id: &str| omp_config::read_model_cache_endpoint(&cache_db, id);
-    let shim = key_ref::shim_path();
-    let vault_has = |slug: &str| vault::contains(slug);
     let env_set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
-    let env = KeyEnv {
-        shim: &shim,
-        vault_has: &vault_has,
-        env_set: &env_set,
-    };
+    let env = KeyEnv { env_set: &env_set };
     Ok(build_rows(&Inputs {
         yml: &yml,
         disabled: &disabled,
@@ -254,80 +229,44 @@ pub fn load_rows() -> Result<Vec<ProviderRow>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::providers::key_ref;
+    use std::path::Path;
 
-    fn kind(
-        id: &str,
-        key: Option<&str>,
-        auth_none: bool,
-        creds: &[&str],
-        vault: bool,
-        env: bool,
-    ) -> ProviderKeyState {
-        let shim = PathBuf::from("/d/bin/ompws-key");
-        let vault_has = move |_: &str| vault;
+    fn kind(key: Option<&str>, auth_none: bool, creds: &[&str], env: bool) -> ProviderKeyState {
         let env_set = move |_: &str| env;
         let creds: Vec<String> = creds.iter().map(|s| s.to_string()).collect();
-        detect_key(
-            id,
-            key,
-            auth_none,
-            &creds,
-            &KeyEnv {
-                shim: &shim,
-                vault_has: &vault_has,
-                env_set: &env_set,
-            },
-        )
+        detect_key(key, auth_none, &creds, &KeyEnv { env_set: &env_set })
     }
 
     #[test]
     fn key_state_table() {
         use ProviderKeyKind::*;
-        let own = key_ref::command_ref(Path::new("/d/bin/ompws-key"), "my id");
-        let other_id = key_ref::command_ref(Path::new("/d/bin/ompws-key"), "someone");
-        let other_shim = key_ref::command_ref(Path::new("/x/ompws-key"), "my id");
+        // leftover legacy vault references are just commands now
+        let legacy = key_ref::command_ref(Path::new("/d/bin/ompws-key"), "my id");
         #[allow(clippy::type_complexity)]
-        let cases: Vec<(Option<&str>, bool, Vec<&str>, bool, bool, ProviderKeyKind)> = vec![
-            (Some(&own), false, vec![], true, false, Encrypted),
-            (Some(&own), false, vec![], false, false, VaultMissing),
-            (Some(&other_id), false, vec![], true, false, Command),
-            (Some(&other_shim), false, vec![], true, false, Command),
-            (Some("!pass show x"), false, vec![], true, false, Command),
-            (Some("MY_KEY_1"), false, vec![], false, false, EnvVar),
-            (Some("sk-abc"), false, vec![], false, false, Plaintext),
-            (Some("lower_case"), false, vec![], false, false, Plaintext),
-            (Some("  "), true, vec![], false, false, None),
-            (Option::None, true, vec!["oauth"], false, false, None),
-            (
-                Option::None,
-                false,
-                vec!["api_key", "oauth"],
-                false,
-                false,
-                Oauth,
-            ),
-            (
-                Option::None,
-                false,
-                vec!["api_key"],
-                false,
-                false,
-                LoginStored,
-            ),
-            (Option::None, false, vec![], false, false, Missing),
-            (Some("sk-abc"), true, vec!["oauth"], false, false, Plaintext),
+        let cases: Vec<(Option<&str>, bool, Vec<&str>, ProviderKeyKind)> = vec![
+            (Some(&legacy), false, vec![], Command),
+            (Some("!pass show x"), false, vec![], Command),
+            (Some("MY_KEY_1"), false, vec![], EnvVar),
+            (Some("sk-abc"), false, vec![], Plaintext),
+            (Some("lower_case"), false, vec![], Plaintext),
+            (Some("  "), true, vec![], None),
+            (Option::None, true, vec!["oauth"], None),
+            (Option::None, false, vec!["api_key", "oauth"], Oauth),
+            (Option::None, false, vec!["api_key"], LoginStored),
+            (Option::None, false, vec![], Missing),
+            (Some("sk-abc"), true, vec!["oauth"], Plaintext),
         ];
-        for (key, auth_none, creds, vault, env, want) in cases {
-            let got = kind("my id", key, auth_none, &creds, vault, env);
+        for (key, auth_none, creds, want) in cases {
+            let got = kind(key, auth_none, &creds, false);
             assert_eq!(got.kind, want, "{key:?} {creds:?}");
         }
-        let s = kind("p", Some("MY_KEY"), false, &[], false, true);
+        let s = kind(Some("MY_KEY"), false, &[], true);
         assert_eq!(
             (s.env_var.as_deref(), s.env_set),
             (Some("MY_KEY"), Some(true))
         );
-        let s = kind("p", Some("MY_KEY"), false, &[], false, false);
+        let s = kind(Some("MY_KEY"), false, &[], false);
         assert_eq!(s.env_set, Some(false));
     }
 
@@ -362,13 +301,8 @@ mod tests {
                 model_ids: vec!["x/y".into()],
             })
         };
-        let shim = PathBuf::from("/d/bin/ompws-key");
         let t = |_: &str| true;
-        let env = KeyEnv {
-            shim: &shim,
-            vault_has: &t,
-            env_set: &t,
-        };
+        let env = KeyEnv { env_set: &t };
         let rows = build_rows(&Inputs {
             yml: &yml,
             disabled: &disabled,
@@ -400,13 +334,8 @@ mod tests {
 
     #[test]
     fn blockless_ollama_row_is_keyless_with_default_address() {
-        let shim = PathBuf::from("/d/bin/ompws-key");
-        let (vault_has, env_set) = (|_: &str| false, |_: &str| false);
-        let env = KeyEnv {
-            shim: &shim,
-            vault_has: &vault_has,
-            env_set: &env_set,
-        };
+        let env_set = |_: &str| false;
+        let env = KeyEnv { env_set: &env_set };
         let creds: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::from([
             ("ollama".into(), (vec![], vec![])),
             ("openai".into(), (vec![], vec![])),
