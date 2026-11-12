@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
 vi.mock("./imageTokens", async (orig) => ({ ...(await orig<Record<string, unknown>>()), getImageTokenPalette: () => ({ hex: "#888" }) }));
-vi.mock("../../lib/ipc", () => ({ validatePath: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ validatePath: vi.fn(async () => ({ exists: true })) }));
 vi.mock("../privacy/SecretChip", async (orig) => ({
 	...(await orig<Record<string, unknown>>()),
 	PrivacyText: ({ text }: { text: string }) => <>{text}</>,
@@ -14,6 +14,7 @@ vi.mock("../../lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), succ
 
 import { UserMessageBubble } from "./ExecutionDisclosure";
 import { makeUserEcho, useLive } from "../../stores/live";
+import { openImageOrExplain } from "./imageAvailability";
 
 afterEach(cleanup);
 
@@ -65,6 +66,20 @@ describe("UserMessageBubble (queued / delivered mid-turn)", () => {
 		]);
 		rerender(<UserMessageBubble text={text} images={item.images} />);
 		expect(container.querySelectorAll("img")).toHaveLength(2);
+	});
+
+	it("does not relabel a surviving #2 attachment when the collector appends unresolved #1", async () => {
+		const item = makeUserEcho("[Image #1] then [Image #2]", [
+			{ id: "two", path: "/blobs/two.png", marker: "[Image #2]" },
+		]);
+		expect(item.images?.map((image) => [image.marker, image.path])).toEqual([
+			["[Image #2]", "/blobs/two.png"], ["[Image #1]", null],
+		]);
+		const open = vi.fn();
+		await openImageOrExplain(item.images ?? [], 1, open);
+		expect(open).not.toHaveBeenCalled();
+		await openImageOrExplain(item.images ?? [], 2, open);
+		expect(open).toHaveBeenCalledWith(0);
 	});
 
 	it("uses an inline path when the matching structured blob cannot resolve", () => {

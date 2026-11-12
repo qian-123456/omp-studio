@@ -1,5 +1,72 @@
 /** Draft bookkeeping for a send that was released while the user kept typing. */
 
+import type { ComposerFile, ComposerImage } from "../../stores/composer";
+
+export interface NativeAttachmentSnapshot {
+	text: string;
+	images: ComposerImage[];
+	files: ComposerFile[];
+}
+
+interface NativeAttachmentEdit {
+	before: NativeAttachmentSnapshot;
+	after: NativeAttachmentSnapshot;
+	rawBefore: string;
+	rawAfter: string;
+}
+
+/** Complements native text undo with the attachment identities at each input boundary. */
+export class NativeAttachmentHistory {
+	private edits: NativeAttachmentEdit[] = [];
+	private cursor = 0;
+
+	clear(): void {
+		this.edits = [];
+		this.cursor = 0;
+	}
+
+	private matches(a: NativeAttachmentSnapshot, b: NativeAttachmentSnapshot): boolean {
+		return a.text === b.text &&
+			a.images.length === b.images.length && a.images.every((image, i) => image === b.images[i]) &&
+			a.files.length === b.files.length && a.files.every((file, i) => file === b.files[i]);
+	}
+
+	record(before: NativeAttachmentSnapshot, after: NativeAttachmentSnapshot, rawAfter: string): void {
+		const previous = this.edits[this.cursor - 1];
+		const rawBefore = previous && this.matches(previous.after, before) ? previous.rawAfter : before.text;
+		this.edits.splice(this.cursor);
+		if (!before.images.length && !before.files.length && !this.edits.length) return;
+		this.edits.push({ before, after, rawBefore, rawAfter });
+		this.cursor = this.edits.length;
+	}
+
+	restore(text: string, inputType: string, current: NativeAttachmentSnapshot): NativeAttachmentSnapshot | undefined {
+		if (inputType !== "historyUndo" && inputType !== "historyRedo") return;
+		const expected = this.cursor > 0 ? this.edits[this.cursor - 1]?.after : this.edits[0]?.before;
+		if (!expected || !this.matches(expected, current)) {
+			this.clear();
+			return;
+		}
+		if (inputType === "historyUndo") {
+			for (let i = this.cursor - 1; i >= 0; i--) {
+				const edit = this.edits[i];
+				if (edit.before.text !== text && edit.rawBefore !== text) continue;
+				this.cursor = i;
+				return edit.before;
+			}
+		} else {
+			for (let i = this.cursor; i < this.edits.length; i++) {
+				const edit = this.edits[i];
+				if (edit.after.text !== text && edit.rawAfter !== text) continue;
+				this.cursor = i + 1;
+				return edit.after;
+			}
+		}
+		// A history event outside our native input boundaries cannot reuse old identities.
+		this.clear();
+	}
+}
+
 const IMG_RE = /\s*(?:🖼️\s*#(\d+)\b|\[(?:Image|图片)\s*#(\d+)(?:,[^\]]*)?(?::[^\]]*)?\])/gu;
 const FILE_RE = /\s*(?:📎\s*#(\d+)\b|\[(?:File|文件)\s*#(\d+)(?::[^\]]*)?\])/gu;
 

@@ -250,7 +250,7 @@ import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
 import { tNow, useT } from "../../stores/language";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
-import { mergeFailedDraft, remainingDraft, syncAttachmentTokens } from "./composerRelease";
+import { mergeFailedDraft, NativeAttachmentHistory, remainingDraft, syncAttachmentTokens } from "./composerRelease";
 import { formatTokens } from "./sessionStats";
 import {
 	argHintLabel,
@@ -368,6 +368,20 @@ export function Composer({
 		[text],
 	);
 	const setDraft = useComposer((s) => s.setDraft);
+	const [attachmentHistory] = useState(() => new NativeAttachmentHistory());
+	const changingNativeDraft = useRef(false);
+	useLayoutEffect(() => {
+		attachmentHistory.clear();
+		// Native text history belongs only to this textarea's current draft. Insertion,
+		// handoff and send/release must not let an old token revive a consumed image.
+		return useComposer.subscribe((state, previous) => {
+			if (!changingNativeDraft.current && (
+				state.drafts[sessionId] !== previous.drafts[sessionId] ||
+				state.images[sessionId] !== previous.images[sessionId] ||
+				state.files[sessionId] !== previous.files[sessionId]
+			)) attachmentHistory.clear();
+		});
+	}, [sessionId, attachmentHistory]);
 
 	// Command chip: an atomic `/name` pinned to the input start; the draft
 	// holds only its arguments and `serializeChip` restores `/name args` on
@@ -2828,34 +2842,42 @@ export function Composer({
 									return;
 								}
 							}
-							setText(next);
-							setDraft(sessionId, next);
-							setCursorPos(e.target.selectionStart ?? next.length);
+							const store = useComposer.getState();
+							const before = {
+								text: store.drafts[sessionId] ?? "",
+								images: store.images[sessionId] ?? [],
+								files: store.files[sessionId] ?? [],
+							};
+							const history = attachmentHistory;
+							const restored = history.restore(next, (e.nativeEvent as InputEvent).inputType, before);
+							// Native undo restores characters, not the objects removed by selection/cut.
+							let after = restored;
+							if (!after) {
+								const sync = syncAttachmentTokens(next, before.images.length, before.files.length);
+								after = {
+									text: sync.text,
+									images: sync.images ? sync.images.map((i) => before.images[i]) : before.images,
+									files: sync.files ? sync.files.map((i) => before.files[i]) : before.files,
+								};
+							}
+							changingNativeDraft.current = true;
+							try {
+								setText(after.text);
+								if (after.images !== before.images) store.setImages(sessionId, after.images);
+								if (after.files !== before.files) store.setFiles(sessionId, after.files);
+							} finally {
+								changingNativeDraft.current = false;
+							}
+							if (!restored) history.record(before, after, next);
+							const nextCaret = Math.min(caret, after.text.length);
+							setCursorPos(nextCaret);
+							if (after.text !== next) {
+								const ta = e.target;
+								setTimeout(() => ta.setSelectionRange(nextCaret, nextCaret), 0);
+							}
 							setMenuDismissed(false);
 							setArgHintLine(null);
 							if (historyIdx !== -1) setHistoryIdx(-1);
-							// Tokens deleted by selection/cut: drop their attachments and
-							// renumber the survivors so #N keeps pointing at the same one.
-							const curImages = useComposer.getState().images[sessionId] ?? [];
-							const curFiles = useComposer.getState().files[sessionId] ?? [];
-							if (curImages.length > 0 || curFiles.length > 0) {
-								const sync = syncAttachmentTokens(next, curImages.length, curFiles.length);
-								const store = useComposer.getState();
-								if (sync.images) {
-									store.setImages(sessionId, sync.images.map((i) => curImages[i]));
-								}
-								if (sync.files) {
-									store.setFiles(sessionId, sync.files.map((i) => curFiles[i]));
-								}
-								if (sync.text !== next) {
-									const ta = e.target;
-									const caret = Math.min(ta.selectionStart ?? sync.text.length, sync.text.length);
-									setText(sync.text);
-									setDraft(sessionId, sync.text);
-									setCursorPos(caret);
-									setTimeout(() => ta.setSelectionRange(caret, caret), 0);
-								}
-							}
 						}}
 						onSelect={(e) => {
 							const ta = e.target as HTMLTextAreaElement;

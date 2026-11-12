@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,10 +12,13 @@ vi.mock("../../lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), i
 vi.mock("../chat/imageTokens", async (original) => ({ ...(await original<Record<string, unknown>>()), getImageTokenPalette: () => ({ hex: "#888888" }) }));
 
 import { useSessions } from "../../stores/sessions";
+import { resetLastCompositionEndForTest } from "../../lib/hooks";
+import { IdeaEditor } from "./IdeaEditor";
 import { useBacklog } from "./backlogStore";
 import { IdeaEditBox } from "./IdeaEditBox";
 
 beforeEach(() => {
+	resetLastCompositionEndForTest();
 	vi.stubGlobal(
 		"ResizeObserver",
 		class {
@@ -34,6 +38,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	resetLastCompositionEndForTest();
 	vi.unstubAllGlobals();
 	document.body.innerHTML = "";
 });
@@ -47,6 +52,57 @@ describe("IdeaEditBox ESC and overlay layering", () => {
 		fireEvent.keyDown(textarea, { key });
 		expect(useBacklog.getState().editBuffer?.text).toBe("hello");
 		expect(useBacklog.getState().editBuffer?.images).toEqual([]);
+	});
+
+	it.each(["Enter", "Escape", "Backspace", "Delete"])("leaves IME %s native without saving, cancelling or removing the image", (key) => {
+		const onSave = vi.fn();
+		const onCancel = vi.fn();
+		render(<IdeaEditBox id="item-1" kind="idea" onKindChange={() => {}} project="" onProjectChange={() => {}} onSave={onSave} onCancel={onCancel} />);
+		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+		const caret = key === "Delete" ? 0 : "🖼️ #1".length;
+		textarea.setSelectionRange(caret, caret);
+		for (const ime of [{ isComposing: true }, { keyCode: 229 }]) {
+			expect(fireEvent.keyDown(textarea, { key, ...ime })).toBe(true);
+		}
+		expect(onSave).not.toHaveBeenCalled();
+		expect(onCancel).not.toHaveBeenCalled();
+		expect(useBacklog.getState().editBuffer).toEqual({ id: "item-1", text: "🖼️ #1hello", images: ["/tmp/img.png"] });
+	});
+
+	it.each(["compositionend", "blur"])("paints native preedit and commits its latest value once on %s", (finish) => {
+		const onChange = vi.fn();
+		function Editor() {
+			const [doc, setDoc] = useState({ text: "🖼️ #1不是", images: ["/tmp/img.png"] });
+			return <IdeaEditor doc={doc} onChange={(next) => { onChange(next); setDoc(next); }} minHeight={74} maxHeight={74} />;
+		}
+		render(<Editor />);
+		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+		const mirror = textarea.nextElementSibling as HTMLDivElement;
+		const transparent = getComputedStyle(textarea).color;
+		expect(transparent).toBe("rgba(0, 0, 0, 0)");
+		expect(getComputedStyle(mirror).visibility).not.toBe("hidden");
+
+		fireEvent.compositionStart(textarea);
+		expect(getComputedStyle(textarea).color).not.toBe(transparent);
+		expect(getComputedStyle(mirror).visibility).toBe("hidden");
+		fireEvent.change(textarea, { target: { value: "🖼️ #1不是直接" } });
+		expect(onChange).toHaveBeenCalledTimes(1);
+
+		// Native preedit can advance before React receives the final input event.
+		const text = "🖼️ #1不是直接就发送。";
+		const setNativeValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+		setNativeValue.call(textarea, text);
+		if (finish === "compositionend") fireEvent.compositionEnd(textarea);
+		else fireEvent.blur(textarea);
+		expect(textarea.value).toBe(text);
+		expect(getComputedStyle(textarea).color).toBe(transparent);
+		expect(getComputedStyle(mirror).visibility).not.toBe("hidden");
+		expect(mirror.textContent).toBe(text);
+		expect(onChange).toHaveBeenLastCalledWith({ text, images: ["/tmp/img.png"] });
+		expect(onChange).toHaveBeenCalledTimes(2);
+
+		fireEvent.input(textarea, { target: { value: text } });
+		expect(onChange).toHaveBeenCalledTimes(2);
 	});
 	it("ESC with image preview open keeps editor mounted and content; second ESC cancels the editor", async () => {
 		const onCancel = vi.fn();

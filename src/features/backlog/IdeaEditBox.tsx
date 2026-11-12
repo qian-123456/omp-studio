@@ -105,7 +105,7 @@ export function IdeaEditBox({
 					maxHeight={74}
 					boxClass="rounded-xl border-[var(--accent)]"
 				/>
-				<div className="mt-1 flex items-center justify-between gap-2">
+				<div className="mt-1 flex flex-wrap items-center justify-between gap-2">
 					<div className="flex flex-col text-[10px] leading-tight text-[var(--text-dim)]">
 						{t("backlog.editBufferHint")
 							.split(/\s*[·•]\s*/)
@@ -115,7 +115,7 @@ export function IdeaEditBox({
 								</span>
 							))}
 					</div>
-					<div className="flex shrink-0 items-center gap-1.5">
+					<div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
 					<EditProjectSelect value={project} onChange={onProjectChange} />
 					<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
 						{KINDS.map((k) => {
@@ -127,7 +127,7 @@ export function IdeaEditBox({
 									aria-pressed={kind === k}
 									onMouseDown={(e) => e.preventDefault()}
 									onClick={() => onKindChange(k)}
-									className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] transition-colors ${
+									className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-[12px] transition-colors ${
 										kind === k
 											? KIND_META[k].tone
 											: "text-[var(--text-dim)] hover:text-[var(--text)]"

@@ -4,6 +4,9 @@
  * token deletion, slash sends, failed-send restore and the @ file menu.
  */
 
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as IpcModule from "../../lib/ipc";
@@ -18,6 +21,11 @@ import { rejectResume, RESUME_MISSING_MODEL_MODAL } from "../../lib/ensureLive";
 import { useUi } from "../../stores/ui";
 import { Composer } from "./Composer";
 import * as slashExecutors from "./slash/executors";
+import type { BacklogItem } from "../../lib/contracts";
+import { fillIdeasIntoComposer, resetPendingFills } from "../backlog/fillComposer";
+import { docToStored, reconcileDoc, storedToDoc } from "../backlog/ideaTokens";
+import { usePendingSession } from "../sessions/pendingSession";
+import { transferDraft } from "../sessions/draftSession";
 
 const SESSION = "s1";
 
@@ -111,6 +119,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	resetPendingFills();
 	vi.restoreAllMocks();
 	document.body.innerHTML = "";
 });
@@ -200,7 +209,220 @@ const deferred = <T,>() => {
 	return { promise, resolve, reject };
 };
 
+describe("stored backlog image delivery", () => {
+	it.each(["existing session", "local draft handoff"] as const)("preserves two distinct file payloads through edit, fill and submit: %s", async (target) => {
+		const dir = await mkdtemp(join(tmpdir(), "omp-backlog-images-"));
+		// Real, different image bytes. Only the native conversion boundary is replaced;
+		// stored-token conversion, attachment editing, handoff and sending run production code.
+		const fixtures = [
+			{ path: join(dir, "first.png"), mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVZkAAAAASUVORK5CYII=" },
+			{ path: join(dir, "second.gif"), mimeType: "image/gif", data: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" },
+		];
+		let localId: string | null = null;
+		try {
+			await Promise.all(fixtures.map((fixture) => writeFile(fixture.path, Buffer.from(fixture.data, "base64"))));
+			h.imageContentsFromPaths.mockImplementation(async (paths) => Promise.all(paths.map(async (path) => {
+				const fixture = fixtures.find((candidate) => candidate.path === path);
+				if (!fixture) throw new Error(`Unexpected image path: ${path}`);
+				return { type: "image" as const, data: (await readFile(path)).toString("base64"), mimeType: fixture.mimeType };
+			})));
+			const ideas: BacklogItem[] = fixtures.map((fixture, index) => {
+				const doc = storedToDoc(`[图片: ${fixture.path}]说明 ${index + 1}`);
+				const editedDoc = reconcileDoc({ ...doc, text: `补充说明 ${index + 1}\n${doc.text}` });
+				return {
+					id: `inline-image-${index + 1}`, kind: "idea", status: "inbox", refs: [],
+					text: docToStored(editedDoc), targetSessionId: null, projectDir: null,
+					createdAt: "2026-11-12T00:00:00Z", updatedAt: "2026-11-12T00:00:00Z", deletedAt: null,
+				};
+			});
+			act(() => {
+				if (target === "local draft handoff") {
+					localId = usePendingSession.getState().open({ cwd: "/work", mode: "code" });
+					fillIdeasIntoComposer(localId, ideas);
+					usePendingSession.getState().attach(localId, SESSION);
+					transferDraft(localId, SESSION);
+					usePendingSession.getState().discard(localId);
+				} else {
+					fillIdeasIntoComposer(SESSION, ideas);
+				}
+			});
+			expect(draft()).toContain("🖼️#1说明 1");
+			expect(draft()).toContain("🖼️#2说明 2");
+			expect(useComposer.getState().images[SESSION].map((image) => image.path)).toEqual(fixtures.map((fixture) => fixture.path));
+			fireEvent.change(ta(), { target: { value: `${draft()}\n请分别分析` } });
+			expect(useComposer.getState().images[SESSION]).toHaveLength(2);
+			// Status persistence has separate fillComposer tests; this case owns image delivery.
+			resetPendingFills();
+			fireEvent.keyDown(ta(), { key: "Enter" });
+			await waitFor(() => expect(prompts()).toHaveLength(1));
+			expect(h.imageContentsFromPaths).toHaveBeenCalledWith(fixtures.map((fixture) => fixture.path));
+			const command = h.rpcSend.mock.calls.find(([, value]) =>
+				value !== null && typeof value === "object" && "type" in value && value.type === "prompt",
+			)?.[1];
+			expect(command).toMatchObject({
+				type: "prompt",
+				images: fixtures.map(({ data, mimeType }) => ({ type: "image", data, mimeType })),
+			});
+			expect(command).toHaveProperty("message", expect.stringContaining(`[Image #1: ${fixtures[0].path}]说明 1`));
+			expect(command).toHaveProperty("message", expect.stringContaining(`[Image #2: ${fixtures[1].path}]说明 2`));
+			expect(command).toHaveProperty("message", expect.stringContaining("请分别分析"));
+			expect(fixtures[0].data).not.toBe(fixtures[1].data);
+		} finally {
+			if (localId) {
+				usePendingSession.getState().discard(localId);
+				useComposer.getState().pruneSessions([localId]);
+			}
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("selection-deleted attachment tokens", () => {
+	it.each([
+		["first", "existing"], ["second", "existing"],
+		["first", "local"], ["second", "local"],
+	] as const)("restores the %s image through native undo/redo and sends both identities: %s", async (removed, target) => {
+		let localId: string | null = null;
+		const owner = target === "local"
+			? (localId = usePendingSession.getState().open({ cwd: "/work", mode: "code" }))
+			: SESSION;
+		if (localId) {
+			cleanup();
+			render(<Composer sessionId={owner} />);
+		}
+		const textarea = () => document.querySelector<HTMLTextAreaElement>(`textarea[data-composer="${owner}"]`)!;
+		const images = [img("a", "/a.png"), img("b", "/b.png")];
+		const original = "x 🖼️#1 y 🖼️#2";
+		const rawDeleted = removed === "first" ? "x  y 🖼️#2" : "x 🖼️#1 y ";
+		const normalized = removed === "first" ? "x  y 🖼️#1" : rawDeleted;
+		try {
+			act(() => {
+				useComposer.getState().setImages(owner, images);
+				useComposer.getState().setDraft(owner, original);
+			});
+			fireEvent.input(textarea(), { target: { value: rawDeleted }, inputType: "deleteContentBackward" });
+			expect(useComposer.getState().images[owner]).toEqual([images[removed === "first" ? 1 : 0]]);
+			fireEvent.input(textarea(), { target: { value: normalized + "typed" }, inputType: "insertText" });
+			fireEvent.input(textarea(), { target: { value: rawDeleted }, inputType: "historyUndo" });
+			expect(useComposer.getState().drafts[owner]).toBe(normalized);
+			fireEvent.input(textarea(), { target: { value: original }, inputType: "historyUndo" });
+			expect(useComposer.getState().images[owner]).toEqual(images);
+			fireEvent.input(textarea(), { target: { value: rawDeleted }, inputType: "historyRedo" });
+			expect(useComposer.getState().drafts[owner]).toBe(normalized);
+			expect(useComposer.getState().images[owner]).toHaveLength(1);
+			fireEvent.input(textarea(), { target: { value: normalized + "typed" }, inputType: "historyRedo" });
+			// A grouped native undo can jump directly over the text and token deletion.
+			fireEvent.input(textarea(), { target: { value: original }, inputType: "historyUndo" });
+			expect(useComposer.getState().images[owner]).toEqual(images);
+			if (localId) {
+				act(() => {
+					usePendingSession.getState().attach(localId!, SESSION);
+					transferDraft(localId!, SESSION);
+					usePendingSession.getState().discard(localId!);
+				});
+				cleanup();
+				render(<Composer sessionId={SESSION} />);
+			}
+			h.imageContentsFromPaths.mockImplementation(async (paths) => paths.map((path) => ({
+				type: "image" as const, data: path === "/a.png" ? "AA==" : "AQ==", mimeType: "image/png",
+			})));
+			fireEvent.keyDown(ta(), { key: "Enter" });
+			await waitFor(() => expect(prompts()).toHaveLength(1));
+			expect(h.imageContentsFromPaths).toHaveBeenCalledWith(["/a.png", "/b.png"]);
+			expect(prompts()[0]).toContain("[Image #1: /a.png]");
+			expect(prompts()[0]).toContain("[Image #2: /b.png]");
+			const command = h.rpcSend.mock.calls.find(([, value]) =>
+				value !== null && typeof value === "object" && "type" in value && value.type === "prompt",
+			)?.[1];
+			expect(command).toMatchObject({ images: [{ data: "AA==" }, { data: "AQ==" }] });
+		} finally {
+			if (localId) {
+				usePendingSession.getState().discard(localId);
+				useComposer.getState().pruneSessions([localId]);
+			}
+		}
+	});
+
+	it("restores file identities with the same native history transaction", () => {
+		const files = [file("a", "/a.txt"), file("b", "/b.txt")];
+		act(() => {
+			useComposer.getState().setFiles(SESSION, files);
+			useComposer.getState().setDraft(SESSION, "📎#1 and 📎#2");
+		});
+		fireEvent.input(ta(), { target: { value: " and 📎#2" }, inputType: "deleteContentBackward" });
+		expect(draft()).toBe(" and 📎#1");
+		fireEvent.input(ta(), { target: { value: "📎#1 and 📎#2" }, inputType: "historyUndo" });
+		expect(useComposer.getState().files[SESSION]).toEqual(files);
+	});
+
+	it("does not revive a deleted attachment after a new image takes its number", () => {
+		act(() => {
+			useComposer.getState().setImages(SESSION, [img("a", "/a.png"), img("b", "/b.png")]);
+			useComposer.getState().setDraft(SESSION, "🖼️#1 and 🖼️#2");
+		});
+		fireEvent.input(ta(), { target: { value: "🖼️#1 and " }, inputType: "deleteContentBackward" });
+		act(() => { useComposer.getState().addImage(SESSION, "/new.png"); });
+		fireEvent.input(ta(), { target: { value: "🖼️#1 and 🖼️#2" }, inputType: "historyUndo" });
+		expect(useComposer.getState().images[SESSION]?.map((image) => image.path)).toEqual(["/a.png", "/new.png"]);
+	});
+
+	it("does not resurrect a deleted image when undo only removes text after manually recreated tokens", () => {
+		const first = img("a", "/a.png");
+		const second = img("b", "/b.png");
+		const original = "🖼️#1 and 🖼️#2";
+		act(() => {
+			useComposer.getState().setImages(SESSION, [first, second]);
+			useComposer.getState().setDraft(SESSION, original);
+		});
+		fireEvent.input(ta(), { target: { value: "🖼️#1 and " }, inputType: "deleteContentBackward" });
+		fireEvent.input(ta(), { target: { value: original }, inputType: "insertText" });
+		expect(useComposer.getState().images[SESSION]).toEqual([first]);
+		fireEvent.input(ta(), { target: { value: original + "x" }, inputType: "insertText" });
+		fireEvent.input(ta(), { target: { value: original }, inputType: "historyUndo" });
+		expect(draft()).toBe(original);
+		expect(useComposer.getState().images[SESSION]).toEqual([first]);
+	});
+
+	it("clears native attachment history when the mounted composer switches sessions with identical surviving state", () => {
+		cleanup();
+		const view = render(<Composer sessionId={SESSION} />);
+		const first = img("a", "/a.png");
+		const second = img("b", "/b.png");
+		const original = "🖼️#1 and 🖼️#2";
+		const deleted = "🖼️#1 and ";
+		const otherSession = "same-state-session";
+		act(() => {
+			useComposer.getState().setImages(SESSION, [first, second]);
+			useComposer.getState().setDraft(SESSION, original);
+		});
+		fireEvent.input(ta(), { target: { value: deleted }, inputType: "deleteContentBackward" });
+		expect(useComposer.getState().images[SESSION]).toEqual([first]);
+		act(() => {
+			// Deliberately share A's exact object: text and attachment identity alone
+			// cannot distinguish this session from the old native undo boundary.
+			useComposer.getState().setImages(otherSession, [first]);
+			useComposer.getState().setDraft(otherSession, deleted);
+		});
+		view.rerender(<Composer sessionId={otherSession} />);
+		const otherTextarea = view.container.querySelector<HTMLTextAreaElement>(`textarea[data-composer="${otherSession}"]`)!;
+		fireEvent.input(otherTextarea, { target: { value: original }, inputType: "historyUndo" });
+		expect(useComposer.getState().drafts[otherSession]).toBe(original);
+		expect(useComposer.getState().images[otherSession]).toEqual([first]);
+		expect(useComposer.getState().images[SESSION]).toEqual([first]);
+	});
+
+	it("does not resurrect a consumed image when native undo belongs to an earlier send", async () => {
+		act(() => {
+			useComposer.getState().setImages(SESSION, [img("a", "/a.png")]);
+			useComposer.getState().setDraft(SESSION, "send 🖼️#1");
+		});
+		fireEvent.input(ta(), { target: { value: "send " }, inputType: "deleteContentBackward" });
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(draft()).toBe(""));
+		fireEvent.input(ta(), { target: { value: "send 🖼️#1" }, inputType: "historyUndo" });
+		expect(useComposer.getState().images[SESSION] ?? []).toEqual([]);
+	});
+
 	it("deleting 🖼️#1 keeps the second image and renumbers its token", () => {
 		act(() => {
 			const s = useComposer.getState();

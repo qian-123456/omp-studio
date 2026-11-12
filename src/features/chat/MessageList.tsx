@@ -374,7 +374,7 @@ export const UserRow = React.memo(function UserRow({
 						>
 							{renderUserTextWithChips(quotes ? quotes.body : rawText, (num) => {
 								void openImageOrExplain(
-									validImages.map((i) => i.path),
+									images,
 									num,
 									setPreviewIndex,
 								);

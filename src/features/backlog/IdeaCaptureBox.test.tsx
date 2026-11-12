@@ -76,6 +76,17 @@ describe("IdeaCaptureBox", () => {
 		expect(backlogAdd).not.toHaveBeenCalled();
 	});
 
+	it.each(["panel", "quick"] as const)("%s keeps IME confirmation Enter native without submitting", (variant) => {
+		useBacklog.setState({ draft: { text: "🖼️ #1 不是", kind: "idea", images: ["/tmp/a.png"] } });
+		render(<IdeaCaptureBox variant={variant} />);
+		const textarea = screen.getByRole("textbox");
+		for (const ime of [{ isComposing: true }, { keyCode: 229 }]) {
+			expect(fireEvent.keyDown(textarea, { key: "Enter", ...ime })).toBe(true);
+		}
+		expect(backlogAdd).not.toHaveBeenCalled();
+		expect(useBacklog.getState().draft).toEqual({ text: "🖼️ #1 不是", kind: "idea", images: ["/tmp/a.png"] });
+	});
+
 	it("quick variant attaches the session ref only while the toggle is on", async () => {
 		useBacklog.setState({ draft: { text: "记一下", kind: "idea", images: [] } });
 		render(<IdeaCaptureBox variant="quick" />);

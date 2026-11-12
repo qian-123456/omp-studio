@@ -5,6 +5,7 @@ import { exceedsLines, useLineClampOverflow } from "../../lib/useLineClamp";
 import { adjacentAttachmentToken, getImageTokenPalette } from "../chat/imageTokens";
 import { reconcileDoc, splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
 import { claimEscape } from "../../lib/escapeClaim";
+import { isComposing } from "../../lib/hooks";
 import { useT, tNow } from "../../stores/language";
 export interface IdeaEditorHandle {
 	/** Current caret offset in the text (end of text when unfocused). */
@@ -51,6 +52,10 @@ export const IdeaEditor = forwardRef<
 	const pendingCaret = useRef<number | null>(null);
 	const [scrollTop, setScrollTop] = useState(0);
 	const [preview, setPreview] = useState<number | null>(null);
+	const [composing, setComposing] = useState(false);
+	const syncText = (textarea: HTMLTextAreaElement) => {
+		if (textarea.value !== doc.text) onChange({ text: textarea.value, images: doc.images });
+	};
 
 	useImperativeHandle(
 		ref,
@@ -95,9 +100,12 @@ export const IdeaEditor = forwardRef<
 				spellCheck={false}
 				rows={rows}
 				placeholder={placeholder}
-				onChange={(e) => onChange({ text: e.target.value, images: doc.images })}
+				onChange={(e) => syncText(e.currentTarget)}
 				onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
 				onKeyDown={(e) => {
+					// IME owns candidate confirmation, cancellation and deletion; do not let
+					// token shortcuts or the caller's Enter/Escape handlers consume them.
+					if (isComposing(e) || e.nativeEvent.keyCode === 229) return;
 					if (e.key === "Escape" && preview !== null) {
 						e.stopPropagation();
 						claimEscape(e);
@@ -118,12 +126,26 @@ export const IdeaEditor = forwardRef<
 					onKeyDown?.(e);
 				}}
 				onPaste={onPaste}
-				onBlur={onBlur}
+				onCompositionStart={() => setComposing(true)}
+				onCompositionEnd={(e) => {
+					syncText(e.currentTarget);
+					setComposing(false);
+				}}
+				onBlur={(e) => {
+					syncText(e.currentTarget);
+					setComposing(false);
+					onBlur?.(e);
+				}}
 				onFocus={onFocus}
-				className={`${base} block resize-none ${bgClass} text-transparent caret-[var(--text)] placeholder:text-[var(--text-dim)] [scrollbar-width:none] focus:outline-none [&::-webkit-scrollbar]:hidden`}
-				style={{ minHeight }}
+				className={`${base} block resize-none ${bgClass} caret-[var(--text)] placeholder:text-[var(--text-dim)] [scrollbar-width:none] focus:outline-none [&::-webkit-scrollbar]:hidden`}
+				style={{ minHeight, color: composing ? "var(--text)" : "transparent" }}
 			/>
-			<div aria-hidden className={`${base} pointer-events-none absolute inset-0 overflow-hidden border-transparent text-[var(--text)]`}>
+			{/* Preedit belongs to the native control and may precede React's mirrored text. */}
+			<div
+				aria-hidden
+				className={`${base} pointer-events-none absolute inset-0 overflow-hidden border-transparent text-[var(--text)]`}
+				style={{ visibility: composing ? "hidden" : undefined }}
+			>
 				<div style={{ transform: `translateY(${-scrollTop}px)` }}>
 					{segments.map((s, i) => {
 						if (s.kind === "text") return <span key={`t${i}-${s.value.length}`}>{s.value}</span>;

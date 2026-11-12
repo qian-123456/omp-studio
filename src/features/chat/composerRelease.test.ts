@@ -1,5 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { mergeFailedDraft, remainingDraft, syncAttachmentTokens } from "./composerRelease";
+import { mergeFailedDraft, NativeAttachmentHistory, remainingDraft, syncAttachmentTokens } from "./composerRelease";
+
+describe("native attachment history", () => {
+	it("restores image identities across normalized and grouped native undo/redo", () => {
+		const images = [{ id: "a", path: "/a.png" }, { id: "b", path: "/b.png" }];
+		const original = { text: "🖼️#1 and 🖼️#2", images, files: [] };
+		const deleted = { text: " and 🖼️#1", images: [images[1]], files: [] };
+		const typed = { ...deleted, text: deleted.text + "!" };
+		const history = new NativeAttachmentHistory();
+		history.record(original, deleted, " and 🖼️#2");
+		history.record(deleted, typed, typed.text);
+		expect(history.restore(" and 🖼️#2", "historyUndo", typed)).toBe(deleted);
+		expect(history.restore(original.text, "historyUndo", deleted)).toBe(original);
+		expect(history.restore(" and 🖼️#2", "historyRedo", original)).toBe(deleted);
+		expect(history.restore(typed.text, "historyRedo", deleted)).toBe(typed);
+		// Native editors can coalesce several character edits into one undo boundary.
+		expect(history.restore(original.text, "historyUndo", typed)).toBe(original);
+		expect(history.restore(typed.text, "historyRedo", original)).toBe(typed);
+	});
+
+	it("requires actual history events and the complete current object identity", () => {
+		const image = { id: "a", path: "/a.png" };
+		const before = { text: "🖼️#1", images: [image], files: [] };
+		const after = { text: "", images: [], files: [] };
+		const history = new NativeAttachmentHistory();
+		history.record(before, after, "");
+		expect(history.restore(before.text, "insertText", after)).toBeUndefined();
+		expect(history.restore(before.text, "historyUndo", after)).toBe(before);
+		expect(history.restore("", "historyRedo", { ...before, images: [{ ...image }] })).toBeUndefined();
+		// A failed identity check invalidates the old transaction rather than guessing later.
+		expect(history.restore("", "historyRedo", before)).toBeUndefined();
+	});
+
+	it("clears consumed attachments and truncates redo after a new edit", () => {
+		const image = { id: "a", path: "/a.png" };
+		const before = { text: "🖼️#1", images: [image], files: [] };
+		const after = { text: "", images: [], files: [] };
+		const history = new NativeAttachmentHistory();
+		history.record(before, after, "");
+		expect(history.restore(before.text, "historyUndo", after)).toBe(before);
+		const replacement = { ...before, text: before.text + " changed" };
+		history.record(before, replacement, replacement.text);
+		expect(history.restore("", "historyRedo", replacement)).toBeUndefined();
+		history.record(before, after, "");
+		history.clear();
+		expect(history.restore(before.text, "historyUndo", after)).toBeUndefined();
+	});
+});
 
 describe("remainingDraft", () => {
 	it("keeps only text typed after the sent draft", () => {

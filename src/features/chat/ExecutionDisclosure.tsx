@@ -180,12 +180,10 @@ export function UserMessageBubble({
 }) {
 	const { t } = useT();
 	const [preview, setPreview] = useState<number | null>(null);
+	const imageSlots = useMemo(() => collectUserImages(text, given), [text, given]);
 	const images = useMemo(
-		() =>
-			collectUserImages(text, given).filter(
-				(img): img is ImageAttachment & { path: string } => Boolean(img.path),
-			),
-		[text, given],
+		() => imageSlots.filter((img): img is ImageAttachment & { path: string } => Boolean(img.path)),
+		[imageSlots],
 	);
 	const hasBody = stripImageMarkers(text).length > 0 || /\[(?:File|文件)\s*#|📎\s*#/u.test(text);
 	const quotes = useMemo(() => parseAnnotationQuotes(text), [text]);
@@ -222,7 +220,7 @@ export function UserMessageBubble({
 						<div className={quotes ? "mt-2 whitespace-pre-wrap break-words" : "whitespace-pre-wrap break-words"}>
 							{renderUserTextWithChips(quotes ? quotes.body : text, (num) => {
 								void openImageOrExplain(
-									images.map((i) => i.path),
+									imageSlots,
 									num,
 									setPreview,
 								);
