@@ -31,7 +31,6 @@ import { MODAL_SELECTOR } from "../../components/FloatingLayer";
 import { ChatTrace } from "./ChatTrace";
 import { AnnotationMarkers } from "./AnnotationMarkers";
 import { Composer } from "./Composer";
-import { HeldQueueBar } from "./HeldQueueBar";
 import { StopTimeoutBanner } from "./StopTimeoutBanner";
 import { useQueueAutoSend } from "./QueuedBar";
 import { MessageList } from "./MessageList";
@@ -157,6 +156,10 @@ export function SessionView({
 		setIsLoadingTranscript(true);
 		setTranscriptError(null);
 		return refreshTranscript();
+	}, [refreshTranscript]);
+
+	const handleHoldTimeout = useCallback(() => {
+		void refreshTranscript(false);
 	}, [refreshTranscript]);
 
 	// Initial transcript + pending UI load.
@@ -312,6 +315,7 @@ export function SessionView({
 								isLoadingTranscript={isLoadingTranscript}
 								transcriptError={transcriptError}
 								onRetryTranscript={loadTranscript}
+								onHoldTimeout={handleHoldTimeout}
 								turns={turns}
 								sessionCwd={meta?.cwd ?? ""}
 								sessionFile={sessionFile}
@@ -401,7 +405,6 @@ export function SessionView({
 							</div>
 						)}
 						<StopTimeoutBanner sessionId={sessionId} />
-						{!streaming && <HeldQueueBar sessionId={sessionId} streaming={false} />}
 						{sharing ? (
 							<ShareSelectionBar sessionId={sessionId} />
 						) : (

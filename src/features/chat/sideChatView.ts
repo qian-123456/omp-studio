@@ -19,6 +19,12 @@ const QUESTION_HEADER = "## User question\n";
 /** Question text sent to the model when the user only staged quotes; never shown. */
 export const QUOTE_ONLY_QUESTION = "请结合引用内容回答";
 
+/** First line of the internal handback summary prompt in a side-chat transcript. */
+export const HANDBACK_MARKER = "【回传整理】";
+
+export const isHandbackPrompt = (it: { kind: string; text?: string | null }): boolean =>
+	it.kind === "user" && (it.text ?? "").trimStart().startsWith(HANDBACK_MARKER);
+
 function composeDisplay(selection: string, question: string): string {
 	if (!selection) return question;
 	return question === QUOTE_ONLY_QUESTION ? selection : `${selection}\n\n${question}`;

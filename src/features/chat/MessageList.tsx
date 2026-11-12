@@ -1,7 +1,7 @@
 import { isAnnotating } from "./annotationActive";
 import { openImageOrExplain } from "./imageAvailability";
 import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
-import { trimSideChatItems } from "./sideChatView";
+import { isHandbackPrompt, trimSideChatItems } from "./sideChatView";
 /** [B] Virtualized message stream: turns + in-flight assistant
  * message + live tool cards. Every turn and step carries `id="msg-<itemId>"` so the
  * heatmap and jump navigators can scroll to it. */
@@ -195,7 +195,11 @@ export const UserRow = React.memo(function UserRow({
 	pending?: boolean;
 }) {
 	const { t } = useT();
-	const rawText = item.text ?? "";
+	const handbackSummaryPrompt = isHandbackPrompt(item);
+	const rawText = handbackSummaryPrompt
+		? t("sidechat.handbackPromptSummaryLabel")
+		: (item.text ?? "");
+	const deliveryPhase = (item as UserEcho).deliveryPhase;
 	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const quotes = useMemo(() => parseAnnotationQuotes(rawText), [rawText]);
@@ -403,7 +407,17 @@ export const UserRow = React.memo(function UserRow({
 			) : showAttachmentPlaceholder ? (
 				<div className={USER_BUBBLE_CLASS}>{t("chatView.queue.attachmentPlaceholder")}</div>
 			) : null}
-			{!pending && <div className="flex items-center justify-end gap-1">
+			{deliveryPhase && (
+				<div role="status" className="flex items-center justify-end gap-1 whitespace-nowrap px-1 text-[11px] text-[var(--text-40)]">
+					<Loader2 size={11} className="animate-spin" />
+					<span>
+						{deliveryPhase === "waking"
+							? t("chatView.send.wakingSession")
+							: t("chatView.send.sendingMessage")}
+					</span>
+				</div>
+			)}
+			{!pending && !handbackSummaryPrompt && <div className="flex items-center justify-end gap-1">
 				<div
 					className={clsx(
 						"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
@@ -625,6 +639,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	onTurnsChange,
 	highlightedId,
 	versions,
+	holdingLiveTurn = false,
 }: {
 	sessionId: string;
 	/** One part of a turn (the whole turn when it is not split). */
@@ -644,8 +659,12 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	subagentsRunning?: boolean;
 	/** Latest end among the turn's finished subagents (epoch ms). */
 	subagentEndedAt?: number;
+	/** Live StreamingRow is still holding below this turn while transcript catches up. */
+	holdingLiveTurn?: boolean;
 }) {
 	const { t } = useT();
+	const [forceOpenSteps, setForceOpenSteps] = useState(false);
+	const [retryingTurn, setRetryingTurn] = useState(false);
 	const streamingThisTurn = useLive(
 		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
 	);
@@ -745,6 +764,91 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		return requests.find((r) => r.id === answerRequestId)?.stat ?? null;
 	}, [requests, answerRequestId]);
 
+	const isTurnSettled =
+		block.isLastTurnPart && !streamingThisTurn && !awaitingSubagents && !holdingLiveTurn;
+	const answerIsError = block.answerItem?.stopReason === "error";
+	const terminalErrorReason = useMemo(() => {
+		if (answerIsError && block.answerItem) {
+			return (
+				block.answerItem.errorMessage?.trim() ||
+				block.answerItem.text?.trim() ||
+				t("chatView.stats.fallbackError")
+			);
+		}
+		if (!block.answerItem && isTurnSettled) {
+			const tailReq = requests[requests.length - 1];
+			if (tailReq?.stat.error) return tailReq.stat.error;
+		}
+		return null;
+	}, [answerIsError, block.answerItem, isTurnSettled, requests, t]);
+	const hasPartialErrorProse = Boolean(
+		answerIsError &&
+			block.answerItem?.errorMessage?.trim() &&
+			answerText.trim() &&
+			answerText.trim() !== block.answerItem.errorMessage.trim(),
+	);
+	const hasVisibleInterimProse = useMemo(
+		() =>
+			segments.some(
+				(seg) =>
+					seg.type === "steps" &&
+					seg.prose.some(
+						(step) =>
+							(step.kind === "text" || step.kind === "narration") &&
+							step.text.trim().length > 0,
+					),
+			),
+		[segments],
+	);
+	const hasAskTool = useMemo(
+		() =>
+			block.turn.intermediateSteps.some(
+				(step) => step.kind === "tool" && step.call.name === "ask",
+			),
+		[block.turn.intermediateSteps],
+	);
+	const showMissingFinalAnswerCard =
+		isTurnSettled &&
+		!terminalErrorReason &&
+		block.answerItem?.stopReason !== "aborted" &&
+		!answerText.trim() &&
+		block.turn.intermediateSteps.length > 0 &&
+		!hasVisibleInterimProse &&
+		!hasAskTool;
+
+	const retryTurn = async () => {
+		if (retryingTurn) return;
+		const userItem = block.turn.userItem;
+		const raw = userItem?.text ?? "";
+		const imgs = userItem ? collectUserImages(raw, userItem.images) : [];
+		const prompt =
+			raw.trim() ||
+			(imgs.length > 0
+				? imgs.map((image, index) => image.marker || `[Image #${index + 1}]`).join(" ")
+				: t("chat.message.continueMissingReplyPrompt"));
+		setRetryingTurn(true);
+		try {
+			await sendPrompt(sessionId, prompt, imgs.length > 0 ? { images: imgs } : undefined);
+		} catch (err) {
+			if (!isResumeCancelled(err)) {
+				toast.error(t("chat.message.resendFailed", { error: errMsg(err) }));
+			}
+		} finally {
+			setRetryingTurn(false);
+		}
+	};
+
+	const openComposerModelPicker = () => {
+		const btn =
+			document.querySelector<HTMLButtonElement>(
+				`button[data-model-picker="${CSS.escape(sessionId)}"]`,
+			) ?? document.querySelector<HTMLButtonElement>("button[data-model-picker]");
+		if (btn) {
+			btn.scrollIntoView({ block: "nearest" });
+			btn.click();
+		}
+	};
+
 	return (
 		<div className="flex flex-col py-1">
 			{/* User query bubble (absent when the turn has no visible user message) */}
@@ -789,7 +893,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 								liveOpen={inProgress}
 								hideHeader={inProgress && !isFirst}
 								startedAt={turnStartedAt}
-								forceExpanded={hasHighlightedStep ? true : null}
+								forceExpanded={hasHighlightedStep || forceOpenSteps ? true : null}
 								toolResultsByCallId={toolResultsByCallId}
 								highlightedStepId={hasHighlightedStep ? highlightedId : null}
 								statsPlan={statsPlan}
@@ -860,25 +964,29 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					data-answer-part={block.answerSliceIndex}
 					className={ANSWER_WRAP_CLASS}
 				>
-					<div className={ANSWER_TEXT_CLASS}>
-						{answerText ? (
-							<Markdown text={answerText} sessionId={sessionId} />
-						) : isAnswerContinuation ? null : (
-							<span className="italic text-[var(--text-40)]">{t("chat.message.emptyReply")}</span>
-						)}
-					</div>
+					{(!answerIsError || hasPartialErrorProse) && !showMissingFinalAnswerCard && (
+						<div className={ANSWER_TEXT_CLASS}>
+							{answerText ? (
+								<Markdown text={answerText} sessionId={sessionId} />
+							) : isAnswerContinuation ? null : (
+								<span className="italic text-[var(--text-40)]">{t("chat.message.emptyReply")}</span>
+							)}
+						</div>
+					)}
 					{block.isLastTurnPart && block.answerItem.stopReason === "aborted" && (
 						<p className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]">
 							{block.durationMs ? t("chat.message.stoppedWithTime", { time: formatDurationCompact(block.durationMs) }) : t("chat.message.stopped")}
 						</p>
 					)}
-					{block.isLastTurnPart &&
-						block.answerItem.stopReason === "error" &&
-						isContextOverflowError(block.answerItem.text) && (
-							<ContextOverflowHint
-								modelRef={block.answerItem.model ?? block.turn.userItem?.model}
-							/>
-						)}
+					{block.isLastTurnPart && answerIsError && terminalErrorReason && (
+						<TurnErrorCard
+							reason={terminalErrorReason}
+							modelRef={block.answerItem.model ?? block.turn.userItem?.model}
+							retrying={retryingTurn}
+							onRetry={() => void retryTurn()}
+							onSwitchModel={openComposerModelPicker}
+						/>
+					)}
 
 					{/* The answer request's stats line sits above the footer and is
 					    always visible, even when the steps above stay collapsed. */}
@@ -905,9 +1013,90 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				</ShareSelectable>
 				)
 			)}
+			{!block.answerItem && isTurnSettled && terminalErrorReason && (
+				<TurnErrorCard
+					reason={terminalErrorReason}
+					modelRef={block.turn.userItem?.model}
+					retrying={retryingTurn}
+					onRetry={() => void retryTurn()}
+					onSwitchModel={openComposerModelPicker}
+				/>
+			)}
+			{showMissingFinalAnswerCard && (
+				<div className="my-1.5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] px-3.5 py-2.5 text-[12px] text-[var(--text-60)]">
+					<span>{t("chat.message.noFinalAnswerNotice")}</span>
+					<div className="flex flex-wrap items-center gap-2">
+						{!forceOpenSteps && (
+							<button
+								type="button"
+								onClick={() => setForceOpenSteps(true)}
+								className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							>
+								{t("chat.message.expandStepsAction")}
+							</button>
+						)}
+						<button
+							type="button"
+							disabled={retryingTurn}
+							onClick={() => void retryTurn()}
+							className="rounded-full bg-[var(--text)] px-3 py-1 text-[11px] font-medium text-[var(--bg-panel)] transition-opacity hover:opacity-85 disabled:opacity-50"
+						>
+							{t("chat.message.retryThisTurn")}
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 });
+
+/** Prominent inline card for an unrecovered terminal turn error, with full error text and recovery buttons. */
+function TurnErrorCard({
+	reason,
+	modelRef,
+	retrying,
+	onRetry,
+	onSwitchModel,
+}: {
+	reason: string;
+	modelRef: string | null | undefined;
+	retrying: boolean;
+	onRetry: () => void;
+	onSwitchModel: () => void;
+}) {
+	const { t } = useT();
+	return (
+		<div
+			role="alert"
+			className="my-1.5 flex w-full flex-col gap-2 rounded-xl border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px]"
+		>
+			<div className="font-medium text-rose-500">
+				{t("chat.message.turnFailedTitle")}
+			</div>
+			<div className="select-text whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-[var(--text)]">
+				{reason}
+			</div>
+			{isContextOverflowError(reason) && <ContextOverflowHint modelRef={modelRef} />}
+			<div className="flex flex-wrap items-center gap-2 pt-0.5">
+				<button
+					type="button"
+					disabled={retrying}
+					onClick={onRetry}
+					className="rounded-full bg-[var(--text)] px-3 py-1 text-[11px] font-medium text-[var(--bg-panel)] transition-opacity hover:opacity-85 disabled:opacity-50"
+				>
+					{t("chat.message.retryThisTurn")}
+				</button>
+				<button
+					type="button"
+					onClick={onSwitchModel}
+					className="rounded-full border border-[var(--line)] bg-[var(--bg-panel)] px-3 py-1 text-[11px] font-medium text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+				>
+					{t("chat.message.switchModel")}
+				</button>
+			</div>
+		</div>
+	);
+}
 
 /** Hint under a context-overflow error: jump to the model's context-window row. */
 function ContextOverflowHint({ modelRef }: { modelRef: string | null | undefined }) {
@@ -1433,6 +1622,7 @@ export function MessageList({
 	isLoadingTranscript = false,
 	transcriptError = null,
 	onRetryTranscript,
+	onHoldTimeout,
 	turns = [],
 	sessionCwd = "",
 	sessionFile = "",
@@ -1448,6 +1638,7 @@ export function MessageList({
 	isLoadingTranscript?: boolean;
 	transcriptError?: string | null;
 	onRetryTranscript?: () => void;
+	onHoldTimeout?: () => void;
 	turns?: TurnCheckpoint[];
 	sessionCwd?: string;
 	sessionFile?: string;
@@ -1481,17 +1672,6 @@ export function MessageList({
 		setHold(isStreamingActive ? null : { page: lastPaintedPageRef.current });
 	}
 	lastPaintedPageRef.current = rawItems;
-	// A new page alone is not completion evidence: a short read may carry only
-	// the beginning of the answer. Reuse snapshot coverage for every painted part.
-	const handoffCovered = hold !== null && hold.page !== rawItems &&
-		liveEvidenceRef.current.every((evidence) => snapshotInItems(evidence, rawItems));
-	const holding = holdSessionId === sessionId && !isStreamingActive && hold !== null && !handoffCovered;
-	useEffect(() => {
-		if (handoffCovered) setHold(null);
-	}, [handoffCovered]);
-	// Keep the previous committed page while its last visible live frame is held,
-	// avoiding a partial new answer beside a second, complete copy of that answer.
-	const visibleItems = holding && hold ? hold.page : rawItems;
 	// The transcript file holds every sibling branch after a navigation; only
 	// the root→leaf path is the live conversation. Unknown leaf (offline
 	// session) → unfiltered, as before tree navigation existed.
@@ -1502,12 +1682,58 @@ export function MessageList({
 		() => versionsByItem(rawItems, treeLeafId),
 		[rawItems, treeLeafId],
 	);
-	// Side chats inherit the parent's history; show only their own turns.
+	// Side chats inherit the parent's history; show only their own turns, and
+	// check handoff coverage against those scoped items so inherited parent
+	// replies never prematurely release `holding` and swallow the side-chat reply.
 	const isSideChat = useSessions((s) => (s.sessions[sessionId]?.forkDepth ?? 0) > 0);
 	const awaitingSideChatOrigin = useLive((s) => s.sessions[sessionId]?.sideChatInheritedIds !== undefined);
+	const candidateItems = useMemo(
+		() =>
+			isSideChat && awaitingSideChatOrigin
+				? EMPTY_ITEMS
+				: trimSideChatItems(filterToLeafPath(rawItems, treeLeafId), isSideChat),
+		[rawItems, treeLeafId, isSideChat, awaitingSideChatOrigin],
+	);
+	// A new page alone is not completion evidence: a short read may carry only
+	// the beginning of the answer. Reuse snapshot coverage for every painted part.
+	const handoffCovered =
+		hold !== null &&
+		hold.page !== rawItems &&
+		liveEvidenceRef.current.every((evidence) => snapshotInItems(evidence, candidateItems));
+	const holding = holdSessionId === sessionId && !isStreamingActive && hold !== null && !handoffCovered;
+	useEffect(() => {
+		if (handoffCovered) setHold(null);
+	}, [handoffCovered]);
+	// Bounded re-poll when disk flush lags `agent_end`: ask the parent view to
+	// re-read the committed transcript while NEVER dropping visible live prose
+	// until committed items actually cover `liveEvidenceRef`.
+	useEffect(() => {
+		if (!holding || transcriptError) return;
+		const t1 = window.setTimeout(() => {
+			onHoldTimeout?.();
+			if (liveEvidenceRef.current.length === 0) {
+				setHold(null);
+			}
+		}, 1500);
+		const t2 = window.setTimeout(() => {
+			onHoldTimeout?.();
+		}, 4500);
+		return () => {
+			window.clearTimeout(t1);
+			window.clearTimeout(t2);
+		};
+	}, [holding, transcriptError, onHoldTimeout]);
+	// Keep the previous committed page while its last visible live frame is held,
+	// avoiding a partial new answer beside a second, complete copy of that answer.
+	const visibleItems = holding && hold ? hold.page : rawItems;
 	const items = useMemo(
-		() => isSideChat && awaitingSideChatOrigin ? EMPTY_ITEMS : trimSideChatItems(filterToLeafPath(visibleItems, treeLeafId), isSideChat),
-		[visibleItems, treeLeafId, isSideChat, awaitingSideChatOrigin],
+		() =>
+			visibleItems === rawItems
+				? candidateItems
+				: isSideChat && awaitingSideChatOrigin
+					? EMPTY_ITEMS
+					: trimSideChatItems(filterToLeafPath(visibleItems, treeLeafId), isSideChat),
+		[visibleItems, rawItems, candidateItems, treeLeafId, isSideChat, awaitingSideChatOrigin],
 	);
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
@@ -2260,6 +2486,7 @@ export function MessageList({
 												sessionWorking={sessionWorking}
 												subagentsRunning={subagentSpans.get(block.turnId)?.running}
 												subagentEndedAt={subagentSpans.get(block.turnId)?.endedAt}
+												holdingLiveTurn={block.turnId === lastTurnId && liveVisible}
 												onTurnsChange={onTurnsChange}
 												highlightedId={highlightedId}
 											/>

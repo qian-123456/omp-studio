@@ -134,7 +134,9 @@ export function requestStatFromItem(item: TranscriptItem): RequestStat | null {
 		item.duration ?? null,
 		item.ttft ?? null,
 		item.usage,
-		item.stopReason === "error" ? item.text?.trim() || tNow("chatView.stats.fallbackError") : null,
+		item.stopReason === "error"
+			? item.errorMessage?.trim() || item.text?.trim() || tNow("chatView.stats.fallbackError")
+			: null,
 	);
 }
 

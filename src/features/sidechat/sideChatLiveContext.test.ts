@@ -144,17 +144,44 @@ describe("side chat live context, images, focus and handback", () => {
 		main.remove();
 	});
 
-	it("opening the handback dialog prefills the last reply and sends no prompt", async () => {
+	it("opening the handback dialog starts a summary turn and reuses an up-to-date summary on reopen", async () => {
 		useSessions.setState({ sessions: { c: { id: "c", parentId: "p" } as SessionMeta } });
-		rpc.transcript.mockResolvedValue({
-			sessionId: "c",
-			nextOffset: 0,
-			reset: false,
-			items: [item("1", "user", "q"), item("2", "assistant", "the summary")],
+		const history = [item("1", "user", "q"), item("2", "assistant", "raw reply")];
+		let calls = 0;
+		rpc.transcript.mockImplementation(async () => {
+			calls += 1;
+			if (calls <= 2) {
+				return { sessionId: "c", nextOffset: 0, reset: false, items: history, tailId: null };
+			}
+			return {
+				sessionId: "c",
+				nextOffset: 0,
+				reset: false,
+				tailId: null,
+				items: [
+					...history,
+					item("3", "user", "【回传整理】整理结论"),
+					item("4", "assistant", "定下来的结论：使用方案 A"),
+				],
+			};
+		});
+		rpc.sendPrompt.mockImplementation(async () => {
+			useLive.setState({ sessions: { c: { ...emptySessionLive(), streaming: true } } });
+			queueMicrotask(() => {
+				useLive.setState({ sessions: { c: { ...emptySessionLive(), streaming: false } } });
+			});
 		});
 		await openHandback("c");
-		expect(rpc.sendPrompt).not.toHaveBeenCalled();
-		expect(useHandback.getState().runs.c).toMatchObject({ phase: "ready", draft: "the summary" });
+		expect(rpc.sendPrompt).toHaveBeenCalledTimes(1);
+		expect(useHandback.getState().runs.c).toMatchObject({
+			phase: "ready",
+			draft: "定下来的结论：使用方案 A",
+			summarizedTailId: "2",
+		});
+
+		// Reopening without new side-chat messages reuses the summary without sending again.
+		await openHandback("c");
+		expect(rpc.sendPrompt).toHaveBeenCalledTimes(1);
 	});
 
 	it("opening with no reply stays empty and still sends nothing", async () => {

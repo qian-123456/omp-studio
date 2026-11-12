@@ -114,6 +114,22 @@ describe("transcript and text assembly", () => {
 		expect(transcriptText(items)).toBe("用户：问题\n\n助手：回答");
 	});
 
+	it("strips inherited parent history and multi-round handback prompts while keeping real side-chat Q&A", () => {
+		const items = [
+			item("user", "主会话旧问题"),
+			item("assistant", "主会话旧回答"),
+			item("user", "Side chat forked from main session\n## User question\n辅助对话第一问", { hidden: true }),
+			item("assistant", "辅助对话第一答"),
+			item("user", HANDBACK_PROMPT),
+			item("assistant", "第一次整理结论"),
+			item("user", "辅助对话追问"),
+			item("assistant", "辅助对话追答"),
+		];
+		expect(transcriptText(items)).toBe(
+			"用户：辅助对话第一问\n\n助手：辅助对话第一答\n\n用户：辅助对话追问\n\n助手：辅助对话追答",
+		);
+	});
+
 	it("returns just the note without a transcript, otherwise a collapsed quote block", () => {
 		expect(buildHandbackText("  结论  ", null)).toBe("结论");
 		expect(buildHandbackText("结论", "  ")).toBe("结论");

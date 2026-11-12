@@ -11,8 +11,9 @@
  */
 import { useMemo } from "react";
 import type { ImageAttachment } from "../../lib/contracts";
-import { useHeldItems, useHeldQueue } from "./heldQueue";
-import { promoteOmpQueued, removeOmpQueued, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
+import { useComposer } from "../../stores/composer";
+import { type HeldItem, useHeldItems, useHeldQueue } from "./heldQueue";
+import { drainNext, promoteOmpQueued, removeOmpQueued, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
 import { ompQueueSlot, queuedEchoIds, type UserEcho, useLive } from "../../stores/live";
 import { useT } from "../../stores/language";
 import { UserMessageBubble } from "./ExecutionDisclosure";
@@ -23,6 +24,52 @@ const BUBBLE_CLASS =
 	"min-w-0 max-w-[70%] whitespace-pre-wrap break-words rounded-[22px] bg-[var(--ghost-hover)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text-60)]";
 const ACTION_CLASS =
 	"rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
+const PRIMARY_ACTION_CLASS =
+	"rounded-full bg-[var(--text)] px-3 py-0.5 text-[11px] font-medium text-[var(--bg-panel)] transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50";
+
+function restoreHeldItemToComposer(sessionId: string, index: number, item: HeldItem): void {
+	useHeldQueue.getState().remove(sessionId, index);
+	const composer = useComposer.getState();
+	const existingImages = composer.images[sessionId] ?? [];
+	const validImages = (item.images ?? []).filter(
+		(img): img is ImageAttachment & { path: string } => Boolean(img.path),
+	);
+	const offset = existingImages.length;
+	const referenced = new Set<number>();
+	let restoredText = item.text.replace(
+		/\[(?:Image|图片)\s*#(\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片:\s*([^\]]+)\]/gu,
+		(_marker, number: string | undefined, path: string | undefined) => {
+			const idx = validImages.findIndex((image, pos) =>
+				number
+					? (image.marker?.match(/#(\d+)/u)?.[1] ?? String(pos + 1)) === number
+					: image.path === path?.trim(),
+			);
+			if (idx < 0) return "";
+			referenced.add(idx);
+			return `🖼️#${offset + idx + 1}`;
+		},
+	).trim();
+	for (let i = 0; i < validImages.length; i++) {
+		if (!referenced.has(i)) {
+			restoredText = `${restoredText} 🖼️#${offset + i + 1}`.trim();
+		}
+	}
+	if (validImages.length > 0) {
+		composer.setImages(sessionId, [
+			...existingImages,
+			...validImages.map((img) => ({
+				id: img.id,
+				path: img.path,
+				width: img.width ?? undefined,
+				height: img.height ?? undefined,
+			})),
+		]);
+	}
+	const prevDraft = (composer.drafts[sessionId] ?? "").replace(/\s+$/, "");
+	const nextDraft = prevDraft && restoredText ? `${prevDraft}\n\n${restoredText}` : prevDraft || restoredText;
+	composer.setDraft(sessionId, nextDraft);
+	composer.focusComposer(sessionId);
+}
 
 function QueuedBubble({
 	text,
@@ -114,6 +161,18 @@ export function QueuedBubbles({
 			{preparing?.filter((item) => !held.some((current) => current.id === item.id)).map((item) => (
 				<QueuedBubble key={`preparing-${item.id}`} text={item.text} images={item.images} />
 			))}
+			{held.length > 1 && !streaming && (
+				<div className="flex justify-end py-1">
+					<button
+						type="button"
+						className={PRIMARY_ACTION_CLASS}
+						title={t("chatView.queue.sendAllMergedTitle")}
+						onClick={() => void drainNext(sessionId)}
+					>
+						{t("chatView.queue.sendAllMerged")}
+					</button>
+				</div>
+			)}
 			{held.map((item, i) => (
 				<QueuedBubble
 					key={item.id}
@@ -129,6 +188,15 @@ export function QueuedBubbles({
 								onClick={() => void sendQueuedNow(sessionId, item, streaming)}
 							>
 								{streaming ? t("chatView.queue.promote") : t("chatView.queue.sendNow")}
+							</button>
+							<button
+								type="button"
+								className={ACTION_CLASS}
+								disabled={item.id in busy}
+								title={t("chatView.queue.editInComposerTitle")}
+								onClick={() => restoreHeldItemToComposer(sessionId, i, item)}
+							>
+								{t("chatView.queue.editInComposer")}
 							</button>
 							<button
 								type="button"

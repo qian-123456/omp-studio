@@ -8,9 +8,9 @@ import type { TranscriptItem } from "../../lib/contracts";
 import type { Annotation } from "../../stores/composer";
 import type { SideChatHandbackMode } from "../../stores/displayPrefs";
 import { tNow } from "../../stores/language";
+import { HANDBACK_MARKER, isHandbackPrompt, trimSideChatItems } from "../chat/sideChatView";
 
-/** First line of the instruction; marks the user message in the side-chat transcript. */
-export const HANDBACK_MARKER = "【回传整理】";
+export { HANDBACK_MARKER, isHandbackPrompt };
 
 /** Sent into the side chat only after the user clicked 「回传给父会话」. */
 export const HANDBACK_PROMPT = `${HANDBACK_MARKER}（这是回传对话框的内部整理请求，输出会被原样放进「回传给父会话」的草稿框，不会有人在本对话里阅读。）请把我们在这个辅助对话里讨论并确定下来的内容，整理成一份可以交给主会话的结论。
@@ -40,8 +40,29 @@ export function visibleSideChatActions<T extends { key: string }>(
 	return actions.filter((a) => a.key !== HANDBACK_ACTION_KEY || showHandbackButton(mode));
 }
 
-const isHandbackPrompt = (it: TranscriptItem): boolean =>
-	it.kind === "user" && (it.text ?? "").trimStart().startsWith(HANDBACK_MARKER);
+/**
+ * Latest genuine side-chat discussion item id (after trimming inherited parent
+ * history and ignoring internal 【回传整理】 turns). `null` when empty.
+ */
+export function latestSideChatDiscussionId(items: readonly TranscriptItem[]): string | null {
+	const scoped = trimSideChatItems([...items], false);
+	let inHandbackTurn = false;
+	let lastId: string | null = null;
+	for (const it of scoped) {
+		if (it.kind === "user") {
+			if (isHandbackPrompt(it)) {
+				inHandbackTurn = true;
+				continue;
+			}
+			inHandbackTurn = false;
+		}
+		if (inHandbackTurn || it.hidden) continue;
+		if ((it.kind === "user" || it.kind === "assistant") && it.text?.trim()) {
+			lastId = it.id;
+		}
+	}
+	return lastId;
+}
 
 export type DraftResult = { ok: true; text: string } | { ok: false; pending: boolean; error?: string };
 
@@ -74,16 +95,30 @@ export function extractHandbackDraft(
 	}
 	const tail = after[after.length - 1];
 	if (tail.stopReason === "aborted") return { ok: false, pending: false, error: tNow("sidechat.handbackAborted") };
-	if (tail.stopReason === "error") return { ok: false, pending: false, error: tNow("sidechat.handbackModelError") };
+	if (tail.stopReason === "error") {
+		const detail = tail.errorMessage?.trim() || tail.text?.trim();
+		return { ok: false, pending: false, error: detail || tNow("sidechat.handbackModelError") };
+	}
 	return { ok: false, pending: false, error: tNow("sidechat.handbackNoText") };
 }
 
-/** Visible user/assistant text before the handback instruction, as `用户：…` / `助手：…` lines. */
+/**
+ * Genuine side-chat user/assistant discussion (excluding inherited parent
+ * history and internal 【回传整理】 turns), rendered as `用户：…` / `助手：…` lines.
+ */
 export function transcriptText(items: readonly TranscriptItem[]): string {
+	const scoped = trimSideChatItems([...items], false);
 	const out: string[] = [];
-	for (const it of items) {
-		if (isHandbackPrompt(it)) break;
-		if (it.hidden) continue;
+	let inHandbackTurn = false;
+	for (const it of scoped) {
+		if (it.kind === "user") {
+			if (isHandbackPrompt(it)) {
+				inHandbackTurn = true;
+				continue;
+			}
+			inHandbackTurn = false;
+		}
+		if (inHandbackTurn || it.hidden) continue;
 		const text = it.text?.trim();
 		if (!text) continue;
 		if (it.kind === "user") out.push(`用户：${text}`);

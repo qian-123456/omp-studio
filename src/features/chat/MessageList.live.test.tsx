@@ -595,4 +595,115 @@ describe("agent_end answer handoff", () => {
 		expect(screen.getAllByText("Full answer without completion metadata")).toHaveLength(1);
 		expect(container.querySelector("#msg-live")).toBeNull();
 	});
+
+	it("does not prematurely drop a side-chat live answer when inherited parent history contains the same text", () => {
+		useSessions.setState({
+			sessions: {
+				side: { id: "side", parentId: "main", forkDepth: 1, status: "idle" } as never,
+			},
+		});
+		const inherited = [
+			item({ id: "parent-u", kind: "user", text: "Parent question" }),
+			item({ id: "parent-a", kind: "assistant", text: "Shared conclusion text", completedAt: 2000 }),
+			item({
+				id: "side-q",
+				kind: "user",
+				text: "Side chat forked from main session\n## User question\nConfirm conclusion",
+				hidden: true,
+			}),
+		];
+		useLive.getState().setItems("side", inherited, 10);
+		useLive.getState().reduceFrame({ sessionId: "side", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({
+			sessionId: "side",
+			frame: {
+				type: "message_end",
+				message: {
+					role: "assistant",
+					id: "side-live",
+					completedAt: 2000,
+					content: [{ type: "text", text: "Shared conclusion text" }],
+				},
+			},
+		});
+		const { container } = mount("side");
+		expect(screen.getAllByText("Shared conclusion text")).toHaveLength(1);
+		act(() => {
+			useLive.getState().reduceFrame({ sessionId: "side", frame: { type: "agent_end" } });
+			// Partial page update where side-chat answer hasn't landed yet, only inherited parent has it!
+			useLive.getState().setItems("side", [...inherited], 11);
+		});
+		// Must keep holding #msg-live so the side-chat reply never vanishes!
+		expect(container.querySelector("#msg-live")).not.toBeNull();
+		expect(screen.getAllByText("Shared conclusion text")).toHaveLength(1);
+
+		// Once the side chat's own persisted answer arrives after side-q, hold releases cleanly.
+		act(() => {
+			useLive.getState().setItems(
+				"side",
+				[
+					...inherited,
+					item({ id: "side-a", kind: "assistant", text: "Shared conclusion text", completedAt: 2000 }),
+				],
+				20,
+			);
+		});
+		expect(container.querySelector("#msg-live")).toBeNull();
+		expect(screen.getAllByText("Shared conclusion text")).toHaveLength(1);
+	});
+
+	it("preserves partial prose and renders a full inline error card with retry and switch-model buttons when a turn errors", () => {
+		useLive.setState({
+			sessions: {
+				s1: {
+					...emptySessionLive(),
+					items: [
+						item({ id: "u1", kind: "user", text: "Generate report" }),
+						item({
+							id: "a1",
+							kind: "assistant",
+							text: "Halfway streamed paragraph before disconnect",
+							errorMessage: "502 Bad Gateway: upstream stream terminated unexpectedly",
+							stopReason: "error",
+						}),
+					],
+				},
+			},
+		});
+		mount("s1");
+		expect(screen.getByText("Halfway streamed paragraph before disconnect")).toBeTruthy();
+		expect(screen.getByRole("alert").textContent).toContain(
+			"502 Bad Gateway: upstream stream terminated unexpectedly",
+		);
+		expect(screen.getByRole("button", { name: /重试这一轮|Retry This Turn/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /换成别的模型|Switch Model/ })).toBeTruthy();
+	});
+
+	it("shows an explicit notice and recovery buttons when steps ran without generating a final text reply", () => {
+		useLive.setState({
+			sessions: {
+				s1: {
+					...emptySessionLive(),
+					items: [
+						item({ id: "u1", kind: "user", text: "Check files" }),
+						item({
+							id: "a1",
+							kind: "assistant",
+							text: null,
+							toolCalls: [{ id: "c1", name: "read", args: { path: "a.ts" }, intent: "Read a.ts" }],
+						}),
+						item({
+							id: "r1",
+							kind: "tool_result",
+							toolResult: { toolCallId: "c1", toolName: "read", text: "ok", isError: false, details: null },
+						}),
+					],
+				},
+			},
+		});
+		mount("s1");
+		expect(screen.getByText(/已完成上述处理步骤|Completed the steps above/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: /展开查看过程|View Steps/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /重试这一轮|Retry This Turn/ })).toBeTruthy();
+	});
 });

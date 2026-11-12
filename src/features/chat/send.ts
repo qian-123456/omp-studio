@@ -15,6 +15,7 @@ import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
 import { isLocalDraftId } from "../sessions/pendingSession";
 import { sendFromDraft } from "../sessions/draftSession";
 import { emitPromptSend } from "../../stores/promptSendEvents";
+import { toast } from "../../lib/toast";
 import { tNow } from "../../stores/language";
 import { hasPromptPayload, heldAutoSendStopToken, pauseHeldAutoSend, resumeHeldAutoSend } from "./heldQueue";
 import { useStopHint } from "./stopHint";
@@ -109,10 +110,13 @@ export async function sendPrompt(
 	opts?.onEchoed?.(sessionId);
 	try {
 		if (external) {
+			if (echoId) useLive.getState().setUserEchoPhase?.(sessionId, echoId, "waking");
 			await takeoverExternal(sessionId);
 		} else if (!useLive.getState().sessions[sessionId]?.alive) {
+			if (echoId) useLive.getState().setUserEchoPhase?.(sessionId, echoId, "waking");
 			await ensureLive(sessionId);
 		}
+		if (echoId) useLive.getState().setUserEchoPhase?.(sessionId, echoId, "sending");
 		const streaming = useLive.getState().sessions[sessionId]?.streaming === true;
 		const command: Record<string, unknown> = { type: "prompt", message: trimmed };
 		if (imageContent.length > 0) command.images = imageContent;
@@ -123,13 +127,18 @@ export async function sendPrompt(
 			await rpcSend(sessionId, command);
 		} catch (err) {
 			// Live state said idle but omp is mid-turn (e.g. waiting on subagents,
-			// or a stale `streaming` flag): resend as steer/followUp instead of failing.
+			// or a stale `streaming` flag): reconcile state and resend as steer/followUp.
 			if (streaming || !/already processing/i.test(errMsg(err))) throw err;
+			void rpcSend(sessionId, { type: "get_state" }).catch(() => {});
 			await rpcSend(sessionId, {
 				...command,
 				streamingBehavior: opts?.steer ? "steer" : "followUp",
 			});
+			if (!opts?.steer) {
+				toast.info?.(tNow("chatView.queue.queuedBecauseBusy"));
+			}
 		}
+		if (echoId) useLive.getState().setUserEchoPhase?.(sessionId, echoId, undefined);
 		emitPromptSend("sent", sessionId, trimmed);
 		if (heldAutoSendStopToken(sessionId) === stopToken) resumeHeldAutoSend(sessionId);
 	} catch (err) {

@@ -387,11 +387,28 @@ pub async fn session_usage(
 }
 
 /// Historical request usage, independent of live RPC handles or Token Tracker.
+/// Coalesces concurrent IPC calls on an async gate so background refreshes never
+/// pile up on Tokio's blocking pool during active streaming.
 #[tauri::command]
 pub async fn activity_usage() -> Result<crate::contracts::ActivityUsage, String> {
-    tokio::task::spawn_blocking(super::activity::load)
+    use std::sync::LazyLock;
+    use std::time::{Duration, Instant};
+
+    static GATE: LazyLock<tokio::sync::Mutex<Option<(Instant, crate::contracts::ActivityUsage)>>> =
+        LazyLock::new(|| tokio::sync::Mutex::new(None));
+    const MIN_RESCAN_INTERVAL: Duration = Duration::from_secs(3);
+
+    let mut guard = GATE.lock().await;
+    if let Some((at, cached)) = guard.as_ref() {
+        if at.elapsed() < MIN_RESCAN_INTERVAL {
+            return Ok(cached.clone());
+        }
+    }
+    let usage = tokio::task::spawn_blocking(super::activity::load)
         .await
-        .map_err(|e| format!("activity scan: {e}"))?
+        .map_err(|e| format!("activity scan: {e}"))??;
+    *guard = Some((Instant::now(), usage.clone()));
+    Ok(usage)
 }
 
 /// Transcript-derived thinking level / context size for a session with no live

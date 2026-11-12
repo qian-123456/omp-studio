@@ -50,6 +50,14 @@ describe("splitThinkTags", () => {
 		expect(s).toEqual({ text: "the answer", thinking: "reasoning here", open: false });
 	});
 
+	it("keeps finalized prose visible when a stray closer appears at the very end with no opener", () => {
+		const finalized = splitThinkTags("这是完整的回答正文</think>\n");
+		expect(finalized).toEqual({ text: "这是完整的回答正文\n", thinking: "", open: false });
+		// While still streaming, the answer after </think> may not have arrived yet.
+		const inFlight = splitThinkTags("先推理一下</think>", { streaming: true });
+		expect(inFlight).toEqual({ text: "", thinking: "先推理一下", open: false });
+	});
+
 	it("drops a stray closer after reasoning already closed", () => {
 		const s = splitThinkTags("<think>a</think>b</think>c");
 		expect(s.text).toBe("bc");

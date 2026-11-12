@@ -121,6 +121,8 @@ export interface SideChatViewState {
 	usedAt: Record<string, number>;
 	/** First message of a blank tab, shown as a pending bubble until it is bound (not persisted). */
 	pending: Record<string, string>;
+	/** Current stage of the first-message creation/ask pipeline (not persisted). */
+	pendingStage: Record<string, "creating" | "asking">;
 	/** Attachment snapshot belonging to the pending first message, not the next draft. */
 	pendingAttachments: Record<string, ImageAttachment[]>;
 	/** Show tab `id` (opening it); `null` clears the active tab. */
@@ -130,6 +132,7 @@ export interface SideChatViewState {
 	/** The blank tab got its session: swap the id in place, keeping it active if it was. */
 	bindTab(parentId: string, blankId: string, sessionId: string): void;
 	setPending(blankId: string, text: string | null, images?: ImageAttachment[]): void;
+	setPendingStage(blankId: string, stage: "creating" | "asking" | null): void;
 	/** Close one tab (the conversation itself is kept). Closing the last one closes the panel group. */
 	closeTab(parentId: string, id: string): void;
 	/** Drop view memory for removed sessions (as parent or as child tab). */
@@ -212,6 +215,7 @@ function persist(
 export const useSideChatView = create<SideChatViewState>((set) => ({
 	...initialState(),
 	pending: {},
+	pendingStage: {},
 	pendingAttachments: {},
 	pruneSessions: (ids) =>
 		set((s) => {
@@ -269,15 +273,25 @@ export const useSideChatView = create<SideChatViewState>((set) => ({
 	setPending: (blankId, text, images = []) =>
 		set((s) => {
 			const pending = { ...s.pending };
+			const pendingStage = { ...s.pendingStage };
 			const pendingAttachments = { ...s.pendingAttachments };
 			if (text === null) {
 				delete pending[blankId];
+				delete pendingStage[blankId];
 				delete pendingAttachments[blankId];
 			} else {
 				pending[blankId] = text;
+				pendingStage[blankId] = "creating";
 				pendingAttachments[blankId] = images;
 			}
-			return { pending, pendingAttachments };
+			return { pending, pendingStage, pendingAttachments };
+		}),
+	setPendingStage: (blankId, stage) =>
+		set((s) => {
+			const pendingStage = { ...s.pendingStage };
+			if (stage === null) delete pendingStage[blankId];
+			else pendingStage[blankId] = stage;
+			return { pendingStage };
 		}),
 	closeTab: (parentId, id) => {
 		let emptied = false;

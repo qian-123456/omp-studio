@@ -5,7 +5,7 @@ import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { sendFirstMessage } from "./sideChatActions";
+import { cancelFirstMessage, isFirstMessageCancelled, sendFirstMessage } from "./sideChatActions";
 import { useSideChatView } from "./viewStore";
 
 const firstAskRpc = vi.hoisted(() => ({ create: vi.fn(), ask: vi.fn(), transcript: vi.fn() }));
@@ -287,5 +287,24 @@ describe("SideChat actions", () => {
 		expect(firstAskRpc.ask).toHaveBeenCalledTimes(1);
 		expect(firstAskRpc.ask.mock.calls[0]?.[0]).toBe("retry-child");
 		expect(useSideChatView.getState().pending).toEqual({});
+	});
+
+	it("cancels an in-flight first message and restores the draft cleanly", async () => {
+		const parentId = "cancel-parent";
+		const tabId = useSideChatView.getState().openBlankTab(parentId);
+		useComposer.getState().setSideChatDraft(tabId, "stop me while creating");
+		firstAskRpc.create.mockReturnValueOnce(new Promise(() => {}));
+		const delivery = sendFirstMessage({ parentId, tabId, text: "stop me while creating" });
+		expect(useSideChatView.getState().pending[tabId]).toBe("stop me while creating");
+		cancelFirstMessage(tabId);
+		let caught: unknown;
+		try {
+			await delivery;
+		} catch (err) {
+			caught = err;
+		}
+		expect(isFirstMessageCancelled(caught)).toBe(true);
+		expect(useSideChatView.getState().pending).toEqual({});
+		expect(useComposer.getState().sideChatDrafts[tabId]).toBe("stop me while creating");
 	});
 });
