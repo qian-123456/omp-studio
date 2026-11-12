@@ -190,27 +190,57 @@ export function loadSnapshot(sessionId: string): StreamSnapshot | null {
 	}
 }
 
+/** In-memory index per Storage instance to avoid re-parsing every snapshot on each save. */
+const snapshotIndexByStorage = new WeakMap<
+	Storage,
+	Map<string, { savedAt: number; payloadKey: string }>
+>();
+
+function getSnapshotIndex(
+	storage: Storage,
+): Map<string, { savedAt: number; payloadKey: string }> {
+	let idx = snapshotIndexByStorage.get(storage);
+	if (!idx) {
+		idx = new Map();
+		snapshotIndexByStorage.set(storage, idx);
+	}
+	return idx;
+}
+
 /** Drop the oldest snapshots beyond the session cap (by savedAt). */
 function pruneSnapshots(keep: string): void {
 	const storage = globalThis.localStorage;
 	if (!storage) return;
-	const entries: { sid: string; savedAt: number }[] = [];
+	const sids: string[] = [];
 	try {
 		for (let i = 0; i < storage.length; i++) {
 			const key = storage.key(i);
 			if (!key || !key.startsWith(KEY_PREFIX)) continue;
 			const sid = key.slice(KEY_PREFIX.length);
 			if (sid === keep) continue;
-			const snap = loadSnapshot(sid);
-			entries.push({ sid, savedAt: snap?.savedAt ?? 0 });
+			sids.push(sid);
 		}
 	} catch {
 		return;
 	}
-	if (entries.length < MAX_SNAPSHOT_SESSIONS) return;
+	if (sids.length < MAX_SNAPSHOT_SESSIONS) return;
+	const index = getSnapshotIndex(storage);
+	const entries: { sid: string; savedAt: number }[] = [];
+	for (const sid of sids) {
+		const cached = index.get(sid);
+		if (cached !== undefined) {
+			entries.push({ sid, savedAt: cached.savedAt });
+			continue;
+		}
+		const snap = loadSnapshot(sid);
+		const savedAt = snap?.savedAt ?? 0;
+		index.set(sid, { savedAt, payloadKey: "" });
+		entries.push({ sid, savedAt });
+	}
 	entries.sort((a, b) => a.savedAt - b.savedAt);
 	for (const e of entries.slice(0, entries.length - MAX_SNAPSHOT_SESSIONS + 1)) {
 		try {
+			index.delete(e.sid);
 			storage.removeItem(KEY(e.sid));
 		} catch {
 			/* ignore */
@@ -236,7 +266,15 @@ export function saveSnapshot(sessionId: string, snapshot: StreamSnapshot): void 
 			json = JSON.stringify(slim);
 			if (json.length > MAX_SNAPSHOT_JSON) return;
 		}
+		const index = getSnapshotIndex(storage);
+		const payloadKey = json.replace(/"savedAt":\d+,/, "");
+		const prev = index.get(sessionId);
+		if (prev && prev.payloadKey === payloadKey && storage.getItem(KEY(sessionId)) !== null) {
+			prev.savedAt = snapshot.savedAt;
+			return;
+		}
 		storage.setItem(KEY(sessionId), json);
+		index.set(sessionId, { savedAt: snapshot.savedAt, payloadKey });
 		pruneSnapshots(sessionId);
 	} catch {
 		/* storage unavailable or full: retention is best-effort only */
@@ -245,7 +283,10 @@ export function saveSnapshot(sessionId: string, snapshot: StreamSnapshot): void 
 
 export function clearSnapshot(sessionId: string): void {
 	try {
-		globalThis.localStorage?.removeItem(KEY(sessionId));
+		const storage = globalThis.localStorage;
+		if (!storage) return;
+		getSnapshotIndex(storage).delete(sessionId);
+		storage.removeItem(KEY(sessionId));
 	} catch {
 		/* storage unavailable */
 	}

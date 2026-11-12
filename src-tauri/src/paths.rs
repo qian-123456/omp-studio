@@ -60,6 +60,16 @@ pub fn search_db_path() -> PathBuf {
     data_dir().join("search.db")
 }
 
+/// `~/.omp-workspace/activity-cache.sqlite` — disposable activity accounting index.
+pub fn activity_cache_db_path() -> PathBuf {
+    data_dir().join("activity-cache.sqlite")
+}
+
+/// `~/.omp` — OMP global directory.
+pub fn omp_root_dir() -> PathBuf {
+    home().join(".omp")
+}
+
 /// `~/.omp-workspace/images/` — durable store for pasted/dropped images.
 /// The legacy cache dir `<app-cache>/ompws-clip` stays readable.
 pub fn images_dir() -> PathBuf {

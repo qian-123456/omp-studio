@@ -60,6 +60,17 @@ fn expand_down(
     seen
 }
 
+/// Detached build/cache daemons reparented to launchd (`ppid == 1`) inherit the
+/// GUI app's macOS responsibility when triggered from a session or terminal,
+/// but they are not part of the app's UI process tree.
+fn is_detached_build_daemon(row: &PsRow) -> bool {
+    row.ppid <= 1
+        && matches!(
+            exe_base(&row.comm),
+            "kache" | "kache-engine" | "sccache" | "rust-analyzer"
+        )
+}
+
 /// Isolate this instance from every other omp-workspace instance.
 ///
 /// Ownership = self + its ppid descendants, never crossing another instance's
@@ -107,18 +118,25 @@ fn prune_instance_trees(
                     row.pid != self_pid
                         && responsible.get(&row.pid) == Some(&self_pid)
                         && !foreign.contains(&row.pid)
+                        && !is_detached_build_daemon(row)
                 })
                 .map(|row| row.pid),
         );
     }
     let current = expand_down(seeds, &children, &other_roots);
     let by_pid: HashMap<u32, &PsRow> = rows.iter().map(|r| (r.pid, r)).collect();
+    let omp_seeds: Vec<u32> = current
+        .iter()
+        .copied()
+        .filter(|pid| {
+            by_pid
+                .get(pid)
+                .is_some_and(|row| exe_base(&row.comm) == omp_exe)
+        })
+        .collect();
+    let omp_subtree = expand_down(omp_seeds, &children, &other_roots);
     let mut app = current.clone();
-    app.retain(|pid| {
-        by_pid
-            .get(pid)
-            .is_none_or(|row| exe_base(&row.comm) != omp_exe)
-    });
+    app.retain(|pid| !omp_subtree.contains(pid));
     InstanceTrees { app, current }
 }
 
@@ -250,10 +268,39 @@ fn descendant_of(
     false
 }
 
+/// Walk `row`'s ancestor chain via `ppid`; returns the nearest `omp` ancestor
+/// pid before crossing another app instance's root (`own_exe`).
+fn nearest_omp_ancestor(
+    row: &PsRow,
+    rows: &HashMap<u32, &PsRow>,
+    own_exe: &str,
+    omp_exe: &str,
+) -> Option<u32> {
+    let mut ppid = row.ppid;
+    for _ in 0..64 {
+        if ppid <= 1 {
+            return None;
+        }
+        let parent = rows.get(&ppid)?;
+        let base = exe_base(&parent.comm);
+        if base == own_exe {
+            return None;
+        }
+        if base == omp_exe {
+            return Some(parent.pid);
+        }
+        if parent.ppid == ppid {
+            return None;
+        }
+        ppid = parent.ppid;
+    }
+    None
+}
+
 /// Classify one parsed row. `app_pids` = pids this app's footprint covers
 /// (macOS responsibility set, else just self); `own_exe`/`omp_exe` are the
-/// executable basenames. An `omp` inside the app tree counts as `OmpSpawned`
-/// (never AppTree), so the buckets are disjoint.
+/// executable basenames. An `omp` inside the app tree (and its tool children)
+/// counts as `OmpSpawned` (never AppTree), so the buckets are disjoint.
 pub fn classify(
     row: &PsRow,
     self_pid: u32,
@@ -276,6 +323,15 @@ pub fn classify(
         } else {
             PerfClass::OmpExternal
         };
+    }
+    if let Some(omp_pid) = nearest_omp_ancestor(row, rows, own_exe, omp_exe) {
+        if let Some(omp_row) = rows.get(&omp_pid) {
+            let inside =
+                app_pids.contains(&omp_pid) || descendant_of(omp_row, rows, app_pids, own_exe);
+            if inside {
+                return PerfClass::OmpSpawned;
+            }
+        }
     }
     if app_pids.contains(&row.pid) || descendant_of(row, rows, app_pids, own_exe) {
         return PerfClass::AppTree;
@@ -536,7 +592,7 @@ fn collect() -> PerfBreakdown {
         .collect();
 
     let footprints = footprints_for(
-        trees.app.iter().copied().chain(
+        trees.current.iter().copied().chain(
             rows.iter()
                 .filter(|r| exe_base(&r.comm) == omp_exe)
                 .map(|r| r.pid),
@@ -790,8 +846,8 @@ mod tests {
         // ours. Our own reparented helper 101 is ambiguous (the dev instance
         // shares our responsibility) and stays out rather than risk 301.
         assert_eq!(trees.current, [100, 200, 201].into_iter().collect());
-        // `omp` itself is its own bucket; its tool children stay in the app.
-        assert_eq!(trees.app, [100, 201].into_iter().collect());
+        // `omp` and its tool children (200, 201) belong to the omp bucket, not app UI.
+        assert_eq!(trees.app, [100].into_iter().collect());
     }
 
     #[test]
@@ -800,7 +856,7 @@ mod tests {
         let trees = prune_instance_trees(&rows, &responsible, 300, "omp-workspace", "omp");
         // Responsibility points at the formal app, so it is not evidence.
         assert_eq!(trees.current, [300, 302, 303].into_iter().collect());
-        assert_eq!(trees.app, [300, 303].into_iter().collect());
+        assert_eq!(trees.app, [300].into_iter().collect());
     }
 
     #[test]
@@ -813,7 +869,7 @@ mod tests {
         // 303 stays charged to 100 but lives in the foreign tree.
         let trees = prune_instance_trees(&rows, &responsible, 100, "omp-workspace", "omp");
         assert_eq!(trees.current, [100, 101, 200, 201].into_iter().collect());
-        assert_eq!(trees.app, [100, 101, 201].into_iter().collect());
+        assert_eq!(trees.app, [100, 101].into_iter().collect());
 
         let footprints = trees
             .app
@@ -821,8 +877,8 @@ mod tests {
             .map(|&pid| (pid, Some(pid as u64 * 10)))
             .collect();
         let app = aggregate_bucket(trees.app.iter().copied(), &footprints);
-        assert_eq!(app.bytes, Some(4020));
-        assert_eq!(app.processes, 3);
+        assert_eq!(app.bytes, Some(2010));
+        assert_eq!(app.processes, 2);
     }
 
     #[test]

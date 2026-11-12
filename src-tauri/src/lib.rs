@@ -301,6 +301,7 @@ pub fn run() {
             storage::storage_images_clean,
             storage::storage_image_gc_auto,
             storage::storage_clear_web_cache,
+            storage::storage_clear_omp_cache,
             storage::storage_clean_status_records,
             storage::storage_compact_db,
             storage::storage_sessions_overview,

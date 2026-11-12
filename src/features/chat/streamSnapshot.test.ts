@@ -176,6 +176,26 @@ describe("snapshot storage", () => {
 		expect(loadSnapshot("s0")).toBeNull();
 		expect(loadSnapshot("s5")?.answerText).toBe("answer 5");
 	});
+
+	it("skips redundant disk writes when snapshot content is unchanged", () => {
+		let writes = 0;
+		const origSetItem = localStorage.setItem.bind(localStorage);
+		localStorage.setItem = (k: string, v: string) => {
+			writes++;
+			origSetItem(k, v);
+		};
+		const snap1 = snapshotFromLive(
+			{ ...liveBase(), streamingMessage: textMsg("同一句内容") } as SessionLive,
+			NOW,
+		)!;
+		const snap2 = snapshotFromLive(
+			{ ...liveBase(), streamingMessage: textMsg("同一句内容") } as SessionLive,
+			NOW + 3000,
+		)!;
+		saveSnapshot("s-dedup", snap1);
+		saveSnapshot("s-dedup", snap2);
+		expect(writes).toBe(1);
+	});
 });
 
 const item = (over: Partial<TranscriptItem>): TranscriptItem => ({

@@ -8,6 +8,7 @@ import { confirmDialog } from "../../../lib/dialogs";
 import { formatBytes, relativeTime } from "../../../lib/format";
 import {
 	storageCleanStatusRecords,
+	storageClearOmpCache,
 	storageClearWebCache,
 	storageCompactDb,
 	storageImagesClean,
@@ -133,6 +134,13 @@ export function StorageSection() {
 			await refresh();
 		});
 
+	const clearOmpCache = () =>
+		run("ompCache", async () => {
+			const freed = await storageClearOmpCache();
+			toast.success(t("settingsSectionsStorage.storage.clearOmpCacheDone", { bytes: formatBytes(freed) }));
+			await refresh();
+		});
+
 	const cleanStatus = () =>
 		run("status", async () => {
 			const done = await storageCleanStatusRecords();
@@ -212,6 +220,8 @@ export function StorageSection() {
 
 	const categoryLabels: Record<string, string> = {
 		sessions: t("settingsSectionsStorage.storage.categorySessions"),
+		ompCache: t("settingsSectionsStorage.storage.categoryOmpCache"),
+		ompOther: t("settingsSectionsStorage.storage.categoryOmpOther"),
 		images: t("settingsSectionsStorage.storage.categoryImages"),
 		webCache: t("settingsSectionsStorage.storage.categoryWebCache"),
 		db: t("settingsSectionsStorage.storage.categoryDb"),
@@ -324,6 +334,44 @@ export function StorageSection() {
 							onClick={() => void clearWebCache()}
 						>
 							{t("settingsSectionsStorage.storage.clearCacheBtn")}
+						</Button>
+					}
+				/>
+				<SettingRow
+					label={t("settingsSectionsStorage.storage.ompCacheLabel")}
+					description={t("settingsSectionsStorage.storage.ompCacheDesc")}
+					hint={
+						overview
+							? (overview.ompCacheBytes ?? 0) > 0
+								? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.ompCacheBytes ?? 0) })
+								: t("settingsSectionsStorage.storage.ompCacheEmptyHint")
+							: t("settingsSectionsStorage.storage.loading")
+					}
+					control={
+						<Button
+							loading={busy === "ompCache"}
+							disabled={busy !== null || !overview || (overview.ompCacheBytes ?? 0) === 0}
+							onClick={() => void clearOmpCache()}
+						>
+							{t("settingsSectionsStorage.storage.clearCacheBtn")}
+						</Button>
+					}
+				/>
+				<SettingRow
+					label={t("settingsSectionsStorage.storage.ompOtherLabel")}
+					description={t("settingsSectionsStorage.storage.ompOtherDesc")}
+					hint={
+						overview
+							? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.ompOtherBytes ?? 0) })
+							: t("settingsSectionsStorage.storage.loading")
+					}
+					control={
+						<Button
+							icon={FolderOpen}
+							disabled={!overview?.ompRootDir}
+							onClick={() => overview?.ompRootDir && reveal(overview.ompRootDir)}
+						>
+							{t("settingsSectionsStorage.storage.revealInFinder")}
 						</Button>
 					}
 				/>

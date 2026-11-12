@@ -22,7 +22,7 @@ export function selectedBytes(project: StorageProjectRow, selected: ReadonlySet<
 }
 
 export interface StorageCategoryBreakdown {
-	key: "sessions" | "images" | "webCache" | "db" | "status";
+	key: "sessions" | "ompCache" | "ompOther" | "images" | "webCache" | "db" | "status";
 	bytes: number;
 	percent: number;
 	color: string;
@@ -34,20 +34,31 @@ export interface StorageTotalBreakdown {
 }
 
 export function calculateStorageBreakdown(
-	overview: { images?: { bytes: number }; webCacheBytes?: number; dbBytes?: number; status?: { bytes: number } } | null,
+	overview: {
+		images?: { bytes: number };
+		webCacheBytes?: number;
+		ompCacheBytes?: number;
+		ompOtherBytes?: number;
+		dbBytes?: number;
+		status?: { bytes: number };
+	} | null,
 	sessions: { totalBytes: number } | null,
 ): StorageTotalBreakdown | null {
 	if (!overview && !sessions) return null;
 	const sBytes = sessions?.totalBytes ?? 0;
+	const ompCacheBytes = overview?.ompCacheBytes ?? 0;
+	const ompOtherBytes = overview?.ompOtherBytes ?? 0;
 	const imgBytes = overview?.images?.bytes ?? 0;
 	const webBytes = overview?.webCacheBytes ?? 0;
 	const dbBytes = overview?.dbBytes ?? 0;
 	const statusBytes = overview?.status?.bytes ?? 0;
 
-	const totalBytes = sBytes + imgBytes + webBytes + dbBytes + statusBytes;
+	const totalBytes = sBytes + ompCacheBytes + ompOtherBytes + imgBytes + webBytes + dbBytes + statusBytes;
 	const categories: StorageCategoryBreakdown[] = (
 		[
 			{ key: "sessions" as const, bytes: sBytes, percent: totalBytes > 0 ? (sBytes / totalBytes) * 100 : 0, color: "var(--accent, #6366f1)" },
+			{ key: "ompCache" as const, bytes: ompCacheBytes, percent: totalBytes > 0 ? (ompCacheBytes / totalBytes) * 100 : 0, color: "#f97316" },
+			{ key: "ompOther" as const, bytes: ompOtherBytes, percent: totalBytes > 0 ? (ompOtherBytes / totalBytes) * 100 : 0, color: "#14b8a6" },
 			{ key: "images" as const, bytes: imgBytes, percent: totalBytes > 0 ? (imgBytes / totalBytes) * 100 : 0, color: "#38bdf8" },
 			{ key: "webCache" as const, bytes: webBytes, percent: totalBytes > 0 ? (webBytes / totalBytes) * 100 : 0, color: "#fbbf24" },
 			{ key: "db" as const, bytes: dbBytes, percent: totalBytes > 0 ? (dbBytes / totalBytes) * 100 : 0, color: "#34d399" },

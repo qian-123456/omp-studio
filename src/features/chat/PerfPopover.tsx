@@ -1,9 +1,10 @@
 import clsx from "clsx";
-import { Activity, AppWindow, Layers, Server, X } from "lucide-react";
+import { Activity, AppWindow, HardDrive, Layers, Server, X } from "lucide-react";
 import { type RefObject, useMemo } from "react";
 import type { PerfBreakdown, ServiceInfo } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { useUi } from "../../stores/ui";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
 import { useT } from "../../stores/language";
 
@@ -344,6 +345,20 @@ export function PerfPopover({
 				)}
 			</div>
 			)}
+
+			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
+				<button
+					type="button"
+					onClick={() => {
+						useUi.getState().openSettings("storage");
+						onClose();
+					}}
+					className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--ghost-hover)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--bg-hover)] active:scale-[0.99] transition-all"
+				>
+					<HardDrive size={12} className="text-[var(--text-60)]" />
+					<span>{t("chatView.perf.manageStorage")}</span>
+				</button>
+			</div>
 		</FloatingLayer>
 	);
 }

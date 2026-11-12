@@ -1083,6 +1083,7 @@ export const storageImagesClean = (drafts: string[]) =>
 export const storageImageGcAuto = (drafts: string[]) =>
 	invoke<import("./contracts").StorageGcSummary | null>("storage_image_gc_auto", { drafts });
 export const storageClearWebCache = () => invoke<number>("storage_clear_web_cache");
+export const storageClearOmpCache = () => invoke<number>("storage_clear_omp_cache");
 export const storageCleanStatusRecords = () =>
 	invoke<import("./contracts").StorageGcSummary>("storage_clean_status_records");
 export const storageCompactDb = () =>

@@ -53,13 +53,22 @@ describe("storageLogic", () => {
 	});
 	it("calculates storage breakdown percentages correctly", () => {
 		const breakdown = calculateStorageBreakdown(
-			{ images: { bytes: 200 }, webCacheBytes: 100, dbBytes: 100, status: { bytes: 100 } },
+			{
+				images: { bytes: 100 },
+				webCacheBytes: 100,
+				ompCacheBytes: 150,
+				ompOtherBytes: 50,
+				dbBytes: 50,
+				status: { bytes: 50 },
+			},
 			{ totalBytes: 500 },
 		);
 		expect(breakdown).not.toBeNull();
 		expect(breakdown?.totalBytes).toBe(1000);
 		expect(breakdown?.categories.find((c) => c.key === "sessions")?.percent).toBe(50);
-		expect(breakdown?.categories.find((c) => c.key === "images")?.percent).toBe(20);
+		expect(breakdown?.categories.find((c) => c.key === "ompCache")?.percent).toBe(15);
+		expect(breakdown?.categories.find((c) => c.key === "ompOther")?.percent).toBe(5);
+		expect(breakdown?.categories.find((c) => c.key === "images")?.percent).toBe(10);
 	});
 	it("sorts projects by bytes descending or name", () => {
 		const p1 = { ...project, bytes: 100, name: "b" };

@@ -132,13 +132,79 @@ fn expired_status_files(
     (usage, expired)
 }
 
-// ── DB ─────────────────────────────────────────────────────────────────
+// ── DB & OMP global directory ──────────────────────────────────────────
+
+fn sqlite_file_bytes(db: &Path) -> u64 {
+    let mut wal = db.as_os_str().to_os_string();
+    wal.push("-wal");
+    let mut shm = db.as_os_str().to_os_string();
+    shm.push("-shm");
+    fsutil::tree_size(db) + fsutil::tree_size(Path::new(&wal)) + fsutil::tree_size(Path::new(&shm))
+}
 
 fn db_bytes() -> u64 {
-    let db = paths::db_path();
-    let mut wal = db.clone().into_os_string();
-    wal.push("-wal");
-    fsutil::tree_size(&db) + fsutil::tree_size(Path::new(&wal))
+    sqlite_file_bytes(&paths::db_path())
+        + sqlite_file_bytes(&paths::search_db_path())
+        + sqlite_file_bytes(&paths::activity_cache_db_path())
+}
+
+fn compact_auxiliary_db(path: &Path) {
+    if !path.is_file() {
+        return;
+    }
+    let Ok(conn) = rusqlite::Connection::open(path) else {
+        return;
+    };
+    let _ = conn.busy_timeout(Duration::from_secs(2));
+    let _ = conn
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);");
+}
+
+/// Disposable OMP cache directories (`~/.omp/cache` and `~/.omp/puppeteer`).
+fn omp_cache_dirs(omp_root: &Path) -> Vec<PathBuf> {
+    ["cache", "puppeteer"]
+        .into_iter()
+        .map(|name| omp_root.join(name))
+        .filter(|p| p.is_dir())
+        .collect()
+}
+
+/// Returns `(omp_cache_bytes, omp_other_bytes)` inside `omp_root`, excluding
+/// `agent/sessions` (which is counted separately under `storage_sessions_overview`).
+fn omp_global_usage(omp_root: &Path, sessions_dir: &Path) -> (u64, u64) {
+    let cache_bytes: u64 = omp_cache_dirs(omp_root)
+        .iter()
+        .map(|d| fsutil::tree_size(d))
+        .sum();
+    let mut other_bytes = 0u64;
+    let Ok(entries) = std::fs::read_dir(omp_root) else {
+        return (cache_bytes, 0);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if matches!(name, "cache" | "puppeteer") {
+            continue;
+        }
+        if name == "agent" && path.is_dir() {
+            if let Ok(agent_entries) = std::fs::read_dir(&path) {
+                for sub in agent_entries.flatten() {
+                    let sub_path = sub.path();
+                    if sub_path == sessions_dir
+                        || sub_path.file_name().and_then(|n| n.to_str()) == Some("sessions")
+                    {
+                        continue;
+                    }
+                    other_bytes += fsutil::tree_size(&sub_path);
+                }
+            }
+            continue;
+        }
+        other_bytes += fsutil::tree_size(&path);
+    }
+    (cache_bytes, other_bytes)
 }
 
 /// Text columns that may mention an image file, plus every settings value.
@@ -211,6 +277,12 @@ pub struct StorageOverview {
     pub images: GcSummary,
     /// Disposable WebKit network cache.
     pub web_cache_bytes: u64,
+    /// Disposable OMP runtime & browser cache (`~/.omp/cache`, `~/.omp/puppeteer`).
+    pub omp_cache_bytes: u64,
+    /// Other OMP global files outside `agent/sessions` and caches (`blobs`, `stats.db`, `natives`, etc.).
+    pub omp_other_bytes: u64,
+    /// Path to `~/.omp` for "Reveal in Finder".
+    pub omp_root_dir: String,
     pub status: StatusUsage,
     pub db_bytes: u64,
     pub image_dirs: Vec<String>,
@@ -229,12 +301,18 @@ pub async fn storage_overview(
             &crate::catalog::external::pid_alive,
         );
         let roots = image_roots(&app);
+        let omp_root = paths::omp_root_dir();
+        let (omp_cache_bytes, omp_other_bytes) =
+            omp_global_usage(&omp_root, &paths::omp_sessions_dir());
         StorageOverview {
             images: images::usage(&roots),
             web_cache_bytes: webkit_cache_dirs(&app)
                 .iter()
                 .map(|d| fsutil::tree_size(d))
                 .sum(),
+            omp_cache_bytes,
+            omp_other_bytes,
+            omp_root_dir: omp_root.to_string_lossy().to_string(),
             status,
             db_bytes: db_bytes(),
             image_dirs: roots
@@ -311,6 +389,21 @@ pub async fn storage_clear_web_cache(state: tauri::State<'_, AppState>) -> Resul
     .map_err(|e| format!("清空缓存失败：{e}"))?
 }
 
+/// Clear disposable OMP caches (`~/.omp/cache` and `~/.omp/puppeteer`); returns bytes freed.
+#[tauri::command]
+pub async fn storage_clear_omp_cache(_state: tauri::State<'_, AppState>) -> Result<u64, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut freed = 0;
+        for dir in omp_cache_dirs(&paths::omp_root_dir()) {
+            freed += fsutil::clear_dir_contents(&dir)
+                .map_err(|e| format!("清空 OMP 缓存失败 {}：{e}", dir.display()))?;
+        }
+        Ok(freed)
+    })
+    .await
+    .map_err(|e| format!("清空 OMP 缓存失败：{e}"))?
+}
+
 /// Delete status files of sessions that are no longer running.
 #[tauri::command]
 pub async fn storage_clean_status_records(
@@ -358,6 +451,8 @@ pub async fn storage_compact_db(
             )
             .map_err(|e| format!("压缩数据库失败：{e}"))?;
         }
+        compact_auxiliary_db(&paths::search_db_path());
+        compact_auxiliary_db(&paths::activity_cache_db_path());
         Ok(CompactResult {
             before_bytes: before,
             after_bytes: db_bytes(),
@@ -536,5 +631,34 @@ mod tests {
         for n in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
             assert!(t.contains(n), "{n}");
         }
+    }
+
+    #[test]
+    fn omp_global_usage_separates_caches_and_excludes_sessions() {
+        let root = scratch_dir("omp-global");
+        let sessions = root.join("agent/sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(sessions.join("s.jsonl"), vec![0u8; 500]).unwrap();
+
+        fs::create_dir_all(root.join("cache")).unwrap();
+        fs::write(root.join("cache/pkg"), vec![0u8; 120]).unwrap();
+        fs::create_dir_all(root.join("puppeteer")).unwrap();
+        fs::write(root.join("puppeteer/chr"), vec![0u8; 80]).unwrap();
+
+        fs::create_dir_all(root.join("agent/blobs")).unwrap();
+        fs::write(root.join("agent/blobs/b1"), vec![0u8; 70]).unwrap();
+        fs::write(root.join("stats.db"), vec![0u8; 30]).unwrap();
+
+        let (cache_bytes, other_bytes) = omp_global_usage(&root, &sessions);
+        assert_eq!(cache_bytes, 200);
+        assert_eq!(other_bytes, 100);
+
+        let cleared: u64 = omp_cache_dirs(&root)
+            .iter()
+            .map(|d| fsutil::clear_dir_contents(d).unwrap())
+            .sum();
+        assert_eq!(cleared, 200);
+        assert_eq!(omp_global_usage(&root, &sessions), (0, 100));
+        assert!(sessions.join("s.jsonl").exists());
     }
 }

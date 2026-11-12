@@ -45,6 +45,7 @@ export default defineMessages({
 			serviceProcesses: "服务进程",
 			loading: "加载中…",
 			noServiceProcesses: "未发现当前项目关联的进程",
+			manageStorage: "管理存储空间",
 		},
 		plan: {
 			emptyNoSession: "选择一个会话后，在这里审查规划模式写出的计划",
@@ -331,6 +332,7 @@ export default defineMessages({
 			serviceProcesses: "Service Processes",
 			loading: "Loading…",
 			noServiceProcesses: "No processes associated with the current project found",
+			manageStorage: "Manage Storage",
 		},
 		plan: {
 			emptyNoSession: "Select a session to review the plan written in plan mode",

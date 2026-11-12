@@ -1897,6 +1897,9 @@ export interface StorageStatusUsage {
 export interface StorageOverview {
 	images: StorageGcSummary;
 	webCacheBytes: number;
+	ompCacheBytes?: number;
+	ompOtherBytes?: number;
+	ompRootDir?: string;
 	status: StorageStatusUsage;
 	dbBytes: number;
 	imageDirs: string[];

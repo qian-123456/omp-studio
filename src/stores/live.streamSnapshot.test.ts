@@ -356,4 +356,57 @@ describe("retention lifecycle", () => {
 		clearSnapshot(SID);
 		expect(loadSnapshot(SID)).toBeNull();
 	});
+
+	it("evicts a left session's transcript and subagents once its process finishes", async () => {
+		const { holdTranscript } = await import("./live");
+		const { useSessions } = await import("./sessions");
+		const ids = ["evict-busy", "evict-idle-1", "evict-idle-2", "evict-idle-3"];
+		useSessions.setState({
+			sessions: Object.fromEntries(
+				ids.map((id) => [id, { id, file: `/tmp/${id}.jsonl` } as never]),
+			),
+		});
+		useLive.setState((s) => ({
+			sessions: {
+				...s.sessions,
+				"evict-busy": {
+					...empty(),
+					alive: true,
+					items: [item("m0", "busy transcript")],
+					subagents: {
+						sub1: {
+							toolCallId: "sub1",
+							agent: "task",
+							label: "sub1",
+							assignment: "work",
+							description: null,
+							status: "done",
+							model: null,
+							thinkingText: "",
+							answerText: "subagent output",
+							tools: [],
+							tokens: null,
+							durationMs: 10,
+							error: null,
+						} as never,
+					},
+				},
+				"evict-idle-1": { ...empty(), alive: false, items: [item("m1", "idle 1")] },
+				"evict-idle-2": { ...empty(), alive: false, items: [item("m2", "idle 2")] },
+				"evict-idle-3": { ...empty(), alive: false, items: [item("m3", "idle 3")] },
+			},
+		}));
+		for (const id of ids) {
+			const release = holdTranscript(id);
+			release();
+		}
+		await new Promise((r) => setTimeout(r, 10));
+		// While evict-busy is still alive, its items are kept.
+		expect(useLive.getState().sessions["evict-busy"].items).toHaveLength(1);
+		// Once its process exits and a 4th idle transcript accumulates, it is evicted.
+		useLive.getState().reduceProcess({ sessionId: "evict-busy", running: false, exitCode: 0 });
+		await new Promise((r) => setTimeout(r, 10));
+		expect(useLive.getState().sessions["evict-busy"].items).toHaveLength(0);
+		expect(useLive.getState().sessions["evict-busy"].subagents).toEqual({});
+	});
 });

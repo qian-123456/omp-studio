@@ -104,7 +104,8 @@ fn load_from_with_signatures(
            model TEXT, tokens INTEGER, is_turn INTEGER NOT NULL,
            PRIMARY KEY(file, event_key)
          );
-         CREATE INDEX IF NOT EXISTS idx_events_order ON events(session_created, file, timestamp);",
+         CREATE INDEX IF NOT EXISTS idx_events_order ON events(session_created, file, timestamp);
+         CREATE INDEX IF NOT EXISTS idx_events_dedup ON events(event_key, session_created, file, timestamp);",
     )?;
     let previous: HashMap<String, (u64, String)> = {
         let mut stmt = db.prepare("SELECT path, size, modified FROM files")?;
@@ -164,33 +165,40 @@ fn load_from_with_signatures(
     tx.commit()?;
 
     // A fork carries its parent's entries with the original ids and timestamps.
-    // Visit the oldest session first so copied requests count once, in their
-    // originating session, even after the source has been archived or moved.
+    // Deduplicate in SQLite (picking the earliest session_created/file/timestamp
+    // per event_key) so we do not pull duplicate rows or allocate a giant
+    // HashSet<String> in the main process heap.
     let mut stmt = db.prepare(
-        "SELECT event_key, session, timestamp, model, tokens, is_turn
-         FROM events ORDER BY session_created, file, timestamp",
+        "SELECT session, timestamp, model, tokens, is_turn
+         FROM (
+           SELECT session, timestamp, model, tokens, is_turn,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY event_key
+                    ORDER BY session_created, file, timestamp
+                  ) AS rn
+           FROM events
+         )
+         WHERE rn = 1",
     )?;
     let mut rows = stmt.query([])?;
-    let mut seen = HashSet::new();
     let mut days: BTreeMap<String, Day> = BTreeMap::new();
     while let Some(row) = rows.next()? {
-        let key: String = row.get(0)?;
-        if !seen.insert(key) {
-            continue;
-        }
-        let timestamp: i64 = row.get(2)?;
+        let timestamp: i64 = row.get(1)?;
         let Some(date) = DateTime::<Utc>::from_timestamp_millis(timestamp) else {
             continue;
         };
         let day = days
             .entry(date.with_timezone(&Local).format("%Y-%m-%d").to_string())
             .or_default();
-        day.sessions.insert(row.get::<_, String>(1)?);
-        if row.get::<_, bool>(5)? {
+        let session = row.get_ref(0)?.as_str()?;
+        if !day.sessions.contains(session) {
+            day.sessions.insert(session.to_owned());
+        }
+        if row.get::<_, bool>(4)? {
             day.turns += 1;
             continue;
         }
-        let tokens: Option<u64> = row.get(4)?;
+        let tokens: Option<u64> = row.get(3)?;
         if let Some(tokens) = tokens {
             day.tokens = day
                 .tokens
@@ -200,9 +208,12 @@ fn load_from_with_signatures(
         } else {
             day.missing_requests += 1;
         }
-        if let Some(model) = row.get::<_, Option<String>>(3)? {
-            let entry = day.models.entry(model).or_default();
-            *entry += tokens.unwrap_or(0);
+        if let Some(model) = row.get_ref(2)?.as_str_or_null()? {
+            if let Some(entry) = day.models.get_mut(model) {
+                *entry += tokens.unwrap_or(0);
+            } else {
+                day.models.insert(model.to_owned(), tokens.unwrap_or(0));
+            }
         }
     }
     Ok((

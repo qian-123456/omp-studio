@@ -1732,6 +1732,9 @@ export const useLive = create<LiveState>((set) => ({
 					};
 			return { sessions: { ...s.sessions, [sessionId]: next } };
 		});
+		if (!running) {
+			void evictLeftTranscripts();
+		}
 	},
 	dismissUi: (sessionId, reqId) =>
 		set((s) => {
@@ -2142,7 +2145,28 @@ useLive.subscribe((s, prev) => {
 /** Sessions whose snapshot was already restored this app run. */
 const streamSnapshotsHydrated = new Set<string>();
 const snapshotTimers = new Map<string, Parameters<typeof clearTimeout>[0]>();
-const SNAPSHOT_SAVE_THROTTLE_MS = 1_000;
+const SNAPSHOT_SAVE_THROTTLE_MS = 3_000;
+
+function flushPendingSnapshots(): void {
+	if (snapshotTimers.size === 0) return;
+	const sessions = useLive.getState().sessions;
+	const now = Date.now();
+	for (const [sid, timer] of snapshotTimers.entries()) {
+		clearTimeout(timer);
+		snapshotTimers.delete(sid);
+		const cur = sessions[sid];
+		if (!cur?.streaming) continue;
+		const snap = snapshotFromLive(cur, now);
+		if (snap) saveSnapshot(sid, snap);
+	}
+}
+
+if (typeof window !== "undefined") {
+	window.addEventListener("pagehide", flushPendingSnapshots);
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "hidden") flushPendingSnapshots();
+	});
+}
 
 useLive.subscribe((s, prev) => {
 	for (const [sid, live] of Object.entries(s.sessions)) {
@@ -2218,6 +2242,7 @@ useLive.subscribe((s, prev) => {
 			snapshotTimers.delete(sid);
 			if (live.processExited && live.restoredUnfinished) saveSnapshot(sid, live.restoredUnfinished);
 			if (!live.processExited) clearSnapshot(sid);
+			void evictLeftTranscripts();
 		}
 	}
 });
@@ -2250,6 +2275,7 @@ export function holdTranscript(sessionId: string): () => void {
 			return;
 		}
 		shownTranscripts.delete(sessionId);
+		leftTranscripts = leftTranscripts.filter((id) => id !== sessionId);
 		leftTranscripts.push(sessionId);
 		void evictLeftTranscripts();
 	};
@@ -2259,14 +2285,31 @@ async function evictLeftTranscripts(): Promise<void> {
 	if (leftTranscripts.length <= RETAINED_IDLE_TRANSCRIPTS) return;
 	// Dynamic: ./sessions imports this module (cycle), as in reduceFrame above.
 	const { useSessions } = await import("./sessions");
-	const stale = leftTranscripts.slice(0, -RETAINED_IDLE_TRANSCRIPTS);
-	leftTranscripts = leftTranscripts.slice(-RETAINED_IDLE_TRANSCRIPTS);
 	useLive.setState((s) => {
 		let sessions = s.sessions;
+		const busy: string[] = [];
+		const idle: string[] = [];
+		for (const id of leftTranscripts) {
+			if (shownTranscripts.has(id)) continue;
+			const live = sessions[id];
+			if (live?.alive || live?.streaming) {
+				busy.push(id);
+			} else {
+				idle.push(id);
+			}
+		}
+		const stale =
+			idle.length > RETAINED_IDLE_TRANSCRIPTS
+				? idle.slice(0, -RETAINED_IDLE_TRANSCRIPTS)
+				: [];
+		const keptIdle =
+			idle.length > RETAINED_IDLE_TRANSCRIPTS
+				? idle.slice(-RETAINED_IDLE_TRANSCRIPTS)
+				: idle;
+		leftTranscripts = [...busy, ...keptIdle];
 		for (const id of stale) {
 			const live = sessions[id];
-			if (!live || live.items.length === 0) continue;
-			if (shownTranscripts.has(id) || live.alive || live.streaming) continue;
+			if (!live || (live.items.length === 0 && Object.keys(live.subagents).length === 0)) continue;
 			if (!useSessions.getState().sessions[id]?.file) continue;
 			if (sessions === s.sessions) sessions = { ...sessions };
 			sessions[id] = {
@@ -2277,6 +2320,8 @@ async function evictLeftTranscripts(): Promise<void> {
 				streamingMessage: null,
 				tools: {},
 				liveRequests: [],
+				subagents: {},
+				thinkingDurations: {},
 			};
 		}
 		return sessions === s.sessions ? s : { sessions };
