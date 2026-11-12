@@ -295,9 +295,9 @@ describe("add dialog", () => {
 		const onClose = vi.fn();
 		render(<ProviderDialog target={{ mode: "add" }} onClose={onClose} />);
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "gw" } });
-		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://gw.example/v1" } });
+		fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gw.example/v1" } });
 		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "sk-1" } });
-		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m1" } });
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "m1" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
 		const [input, key] = ipc.providerUpsert.mock.calls[0];
@@ -315,8 +315,8 @@ describe("add dialog", () => {
 		useProviders.setState({ rows: [row("taken", "plaintext")], loaded: true });
 		render(<ProviderDialog target={{ mode: "add" }} onClose={() => {}} />);
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "taken" } });
-		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://x/v1" } });
-		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m" } });
+		fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://x/v1" } });
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "m" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		expect((await screen.findByRole("alert")).textContent).toContain("taken");
 		expect(ipc.providerUpsert).not.toHaveBeenCalled();
@@ -353,10 +353,10 @@ describe("edit dialog", () => {
 		const name = screen.getByLabelText("名称") as HTMLInputElement;
 		expect(name.readOnly).toBe(true);
 		expect(name.value).toBe("ollama");
-		const url = screen.getByLabelText("地址") as HTMLInputElement;
+		const url = screen.getByLabelText("Base URL") as HTMLInputElement;
 		expect(url.placeholder).toBe("http://127.0.0.1:11434");
 		expect(url.value).toBe("");
-		expect((screen.getByLabelText(/这个服务不需要密钥/) as HTMLInputElement).checked).toBe(true);
+		expect(screen.getByRole("radio", { name: "免密钥" }).getAttribute("aria-checked")).toBe("true");
 		expect(screen.getByText("额外添加的模型")).toBeTruthy();
 		expect(screen.getByText(/OMP 自带的 2 个模型会保留/)).toBeTruthy();
 		expect(screen.queryByLabelText("API 密钥")).toBeNull();
@@ -367,9 +367,9 @@ describe("edit dialog", () => {
 		const r = builtin({ authNone: false, key: { kind: "missing", envVar: null, envSet: null } });
 		await openEdit(r);
 		ipc.providerSaveBuiltin.mockResolvedValue(r);
-		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "http://gpu:11434" } });
-		fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
-		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "extra-1" } });
+		fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://gpu:11434" } });
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "extra-1" } });
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerSaveBuiltin).toHaveBeenCalledTimes(1));
 		const [input, key] = ipc.providerSaveBuiltin.mock.calls[0];
@@ -395,10 +395,10 @@ describe("edit dialog", () => {
 
 	it("refuses extra models when there is no address and no default", async () => {
 		await openEdit(builtin({ baseUrl: null, defaultBaseUrl: null }));
-		fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
-		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "x" } });
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "x" } });
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
-		expect((await screen.findByRole("alert")).textContent).toContain("添加模型需要先填写地址");
+		expect((await screen.findByRole("alert")).textContent).toContain("添加模型需要先填写 Base URL");
 		expect(ipc.providerSaveBuiltin).not.toHaveBeenCalled();
 	});
 
@@ -419,7 +419,7 @@ describe("edit dialog", () => {
 		const r = row("gw", "plaintext", { models: [{ id: "m1" }] });
 		await openEdit(r);
 		ipc.providerUpsert.mockResolvedValue(r);
-		fireEvent.click(screen.getByLabelText(/这个服务不需要密钥/));
+		fireEvent.click(screen.getByRole("radio", { name: "免密钥" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
 		const [input, key] = ipc.providerUpsert.mock.calls[0];
@@ -547,8 +547,8 @@ describe("grouped other model catalog", () => {
 		const dialog = await screen.findByRole("dialog", { name: /编辑供应商/ });
 		expect((within(dialog).getByLabelText("名称") as HTMLInputElement).value).toBe("existing");
 		expect((within(dialog).getByLabelText("API 密钥") as HTMLInputElement).value).toBe("");
-		fireEvent.change(within(dialog).getByLabelText("地址"), { target: { value: "https://changed.example/v1" } });
-		fireEvent.change(within(dialog).getByLabelText("第 1 个模型 ID"), { target: { value: "chat-only" } });
+		fireEvent.change(within(dialog).getByLabelText("Base URL"), { target: { value: "https://changed.example/v1" } });
+		fireEvent.change(within(dialog).getByLabelText("输入新模型 ID"), { target: { value: "chat-only" } });
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect(ipc.providerUpsert).toHaveBeenCalledWith(expect.objectContaining({ originalId: "existing", id: "existing", models: ["chat-only"] }), null);
@@ -602,8 +602,9 @@ describe("provider dialog key input mode", () => {
 		ipc.providerUpsert.mockResolvedValue(row("openai", "envVar", { key: { kind: "envVar", envVar: "OPENAI_API_KEY", envSet: true } }));
 		const onClose = vi.fn();
 		render(<ProviderDialog target={{ mode: "add" }} onClose={onClose} />);
+		fireEvent.click(screen.getByRole("button", { name: /从预设填充/ }));
 		fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
-		fireEvent.click(screen.getByLabelText(/使用环境变量/));
+		fireEvent.click(screen.getByRole("radio", { name: "环境变量" }));
 		expect((screen.getByLabelText("环境变量名") as HTMLInputElement).value).toBe("OPENAI_API_KEY");
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
@@ -616,8 +617,8 @@ describe("provider dialog key input mode", () => {
 		useProviders.setState({ rows: [], loaded: true });
 		render(<ProviderDialog target={{ mode: "add" }} onClose={() => {}} />);
 		fireEvent.change(screen.getByLabelText("名称"), { target: { value: "gw" } });
-		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "https://gw.example/v1" } });
-		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "m1" } });
+		fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gw.example/v1" } });
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "m1" } });
 		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "MY_SECRET_NAME" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		expect((await screen.findAllByRole("alert")).some((el) => el.textContent?.includes("看起来是变量名"))).toBe(true);
@@ -629,7 +630,7 @@ describe("provider dialog key input mode", () => {
 		useProviders.setState({ rows: [r], loaded: true });
 		ipc.providerUpsert.mockResolvedValue(row("gw", "envVar", { models: ["m1"], key: { kind: "envVar", envVar: "GW_KEY", envSet: false } }));
 		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={() => {}} />);
-		expect((screen.getByLabelText(/使用环境变量/) as HTMLInputElement).checked).toBe(true);
+		expect(screen.getByRole("radio", { name: "环境变量" }).getAttribute("aria-checked")).toBe("true");
 		fireEvent.change(screen.getByLabelText("环境变量名"), { target: { value: "GW_KEY" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
@@ -642,9 +643,42 @@ describe("provider dialog key input mode", () => {
 		const r = row("gw", "envVar", { models: ["m1"] });
 		useProviders.setState({ rows: [r], loaded: true });
 		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={() => {}} />);
-		fireEvent.click(screen.getByLabelText(/直接保存密钥/));
+		fireEvent.click(screen.getByRole("radio", { name: "直接填写" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		expect((await screen.findAllByRole("alert")).length).toBeGreaterThan(0);
 		expect(ipc.providerUpsert).not.toHaveBeenCalled();
+	});
+
+	it("preset popover fills Ollama with keyless mode and batch maxTokens applies to all rows", async () => {
+		useProviders.setState({ rows: [], loaded: true });
+		ipc.providerUpsert.mockResolvedValue(row("ollama", "none", { authNone: true }));
+		render(<ProviderDialog target={{ mode: "add" }} onClose={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: /从预设填充/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Ollama/ }));
+		expect(screen.getByRole("radio", { name: "免密钥" }).getAttribute("aria-checked")).toBe("true");
+		fireEvent.change(screen.getByLabelText("输入新模型 ID"), { target: { value: "qwen3, deepseek-r1" } });
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
+		fireEvent.change(screen.getByLabelText("批量设置输出上限"), { target: { value: "120000" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
+		expect(ipc.providerUpsert.mock.calls[0][0]).toMatchObject({
+			id: "ollama",
+			authNone: true,
+			models: [
+				{ id: "qwen3", maxTokens: 120000 },
+				{ id: "deepseek-r1", maxTokens: 120000 },
+			],
+		});
+	});
+
+	it("edit: batch probe button tests all models concurrently", async () => {
+		const r = row("gw", "plaintext", { models: ["m1", "m2"] });
+		useProviders.setState({ rows: [r], loaded: true });
+		ipc.providerTestModel.mockResolvedValue({ ok: true, latencyMs: 120, detail: "ok" });
+		render(<ProviderDialog target={{ mode: "edit", row: r }} onClose={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: "批量检测可用性" }));
+		await waitFor(() => expect(ipc.providerTestModel).toHaveBeenCalledTimes(2));
+		expect(ipc.providerTestModel).toHaveBeenCalledWith("gw", "m1");
+		expect(ipc.providerTestModel).toHaveBeenCalledWith("gw", "m2");
 	});
 });

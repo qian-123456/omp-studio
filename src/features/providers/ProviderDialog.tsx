@@ -1,8 +1,9 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
+import { Activity, ChevronDown, CircleCheck, CircleX, Eye, EyeOff, FolderOpen, Loader2, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { Modal } from "../../components/Modal";
 import { NativeSelect } from "../../components/NativeSelect";
 import type { DiscoveredModel, ProviderRow } from "../../lib/contracts";
@@ -16,12 +17,12 @@ import { useModelCatalog } from "../../stores/modelCatalog";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 import { planEnvImport } from "./envImport";
 import { maskKey } from "./envparse";
-import { initialEnvName, initialKeyInputMode, type KeyInputMode as Mode, keyInputProblem, keyToSend, toastKeySaved } from "./keyInput";
-import { KeyInputMode } from "./KeyInputMode";
+import { initialEnvName, initialKeyInputMode, type KeyInputMode as Mode, type KeyInputProblem, keyInputProblem, keyToSend, toastKeySaved } from "./keyInput";
 import { MODELS_YML_PATH } from "./keyState";
 import { insecureHttpWarning } from "./httpWarning";
-import { ModelPickerModal } from "./ModelPickerModal";
+import { isProbeFailed } from "./modelClass";
 import type { ModelCategory } from "./modelClass";
+import { ModelPickerModal } from "./ModelPickerModal";
 import { type ModelRow, modelEntriesToRows, rowsToModelEntries } from "./modelEntry";
 import { KNOWN_APIS, PROVIDER_PRESETS, presetById, SERVICE_PURPOSES, SERVICE_API_LABELS, serviceApiSupportsKind, INVALID_PROVIDER_APIS } from "./presets";
 import { useProviders } from "./store";
@@ -42,11 +43,16 @@ const OTHER_API = "__other__";
 const blankModelRow = (): ModelRow => ({ id: "", name: null, contextWindow: "", maxTokens: "" });
 
 const inputCls =
-	"mt-1.5 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
+	"w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 const cellCls =
-	"w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
+	"w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 hover:border-[var(--border-divider)] focus:border-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:bg-[var(--well-bg)] focus:outline-none transition-all";
+const batchCellCls =
+	"w-full rounded-md hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-[11px] text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 const labelCls = "block text-xs font-medium text-neutral-200";
-const hintCls = "mt-0.5 text-[11px] text-neutral-400";
+const hintCls = "mt-1 text-[11px] text-neutral-400";
+const MODEL_TABLE_GRID = "grid grid-cols-[minmax(0,1fr)_116px_110px_92px] items-center gap-2";
+const PROBE_CONCURRENCY = 4;
+const digitsOnly = (value: string): string => value.replace(/[^0-9]/g, "");
 
 export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Props) {
 	const { t } = useT();
@@ -57,7 +63,9 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const saveBuiltin = useProviders((s) => s.saveBuiltin);
 	const remove = useProviders((s) => s.remove);
 	const runTest = useProviders((s) => s.runTest);
+	const runModelTest = useProviders((s) => s.runModelTest);
 	const test = useProviders((s) => (target.mode === "edit" ? s.tests[target.row.id] : undefined));
+	const modelTests = useProviders((s) => s.modelTests) ?? {};
 
 	const editing = target.mode === "edit" ? target.row : null;
 	const isImport = target.mode === "import";
@@ -72,6 +80,8 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const availableApis = KNOWN_APIS;
 
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+	const [presetOpen, setPresetOpen] = useState(false);
+	const presetBtnRef = useRef<HTMLButtonElement>(null);
 	const [id, setId] = useState(editing?.id ?? "");
 	const [baseUrl, setBaseUrl] = useState(
 		isBuiltin && editing?.baseUrl === defaultBaseUrl ? "" : (editing?.baseUrl ?? ""),
@@ -88,18 +98,20 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const [envName, setEnvName] = useState(initialEnv);
 	const [keyAttempted, setKeyAttempted] = useState(false);
 	const [apiKey, setApiKey] = useState("");
+	const [howOpen, setHowOpen] = useState(false);
 	const keyProblem = authNone || isImport
 		? null
 		: keyInputProblem({ mode: keyMode, envName, plainKey: apiKey, requirePlainKey: editing !== null && initialMode === "env" });
-	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
-		const initial = modelEntriesToRows(initialModels);
-		return initial.length > 0 || isBuiltin ? initial : [{ ...blankModelRow(), ...(serviceMode ? { kind: "image", api: "openai-images" } : {}) }];
-	});
+	const [modelRows, setModelRows] = useState<ModelRow[]>(() => modelEntriesToRows(initialModels));
+	const [newModelInput, setNewModelInput] = useState("");
+	const rowsContainerRef = useRef<HTMLDivElement>(null);
 	const [providerWindow, setProviderWindow] = useState(() => {
 		const saved = editing ? loadProviderWindows()[editing.id] : undefined;
 		return saved == null ? "" : String(saved);
 	});
 	const [providerWindowChanged, setProviderWindowChanged] = useState(false);
+	const [batchMaxTokens, setBatchMaxTokens] = useState("");
+	const [probingAll, setProbingAll] = useState(false);
 	const [showKey, setShowKey] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
@@ -124,6 +136,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		if (editing) {
 			return (
 				providerWindowChanged ||
+				newModelInput.trim().length > 0 ||
 				id !== editing.id ||
 				baseUrl !== (isBuiltin && editing.baseUrl === defaultBaseUrl ? "" : (editing.baseUrl ?? "")) ||
 				api !== (editing.api ?? "") ||
@@ -136,14 +149,15 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		return (
 			providerWindowChanged ||
 			selectedPresetId !== null ||
+			newModelInput.trim().length > 0 ||
 			id.length > 0 ||
 			baseUrl.length > 0 ||
 			apiKey.length > 0 ||
 			(keyMode === "env" && envName.length > 0) ||
-			api !== "openai-completions" ||
+			api !== (serviceMode ? "" : "openai-completions") ||
 			entries.length > 0
 		);
-	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, envName, initialMode, initialEnv, modelRows, selectedPresetId, providerWindowChanged]);
+	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, keyMode, envName, initialMode, initialEnv, modelRows, selectedPresetId, providerWindowChanged, newModelInput, serviceMode]);
 
 	const isClosingRef = useRef(false);
 	const handleDismiss = useCallback(async () => {
@@ -183,8 +197,11 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	const applyPreset = (presetId: string) => {
 		const p = PROVIDER_PRESETS.find((x) => x.id === presetId);
 		setSelectedPresetId(presetId);
+		setPresetOpen(false);
 		if (!p) return;
 		setEnvName(p.envVar);
+		setAuthNone(Boolean(p.noKey));
+		setKeyMode("plain");
 		setId(p.id === "custom" ? "" : uniqueId(p.id));
 		setBaseUrl(p.baseUrl);
 		const nextApi = serviceMode ? "" : p.api;
@@ -192,7 +209,65 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		setApiChoice(known ? nextApi : OTHER_API);
 		setApiOther(known ? "" : nextApi);
 		const preset = serviceMode ? [] : modelEntriesToRows(p.models);
-		setModelRows(preset.length > 0 ? preset : [{ ...blankModelRow(), ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }]);
+		setModelRows(
+			preset.map((row) => ({
+				...row,
+				contextWindow: providerWindow || row.contextWindow,
+				maxTokens: batchMaxTokens || row.maxTokens,
+			})),
+		);
+	};
+
+	const resetPreset = () => {
+		setSelectedPresetId(null);
+		setPresetOpen(false);
+		setId("");
+		setBaseUrl("");
+		setAuthNone(false);
+		setKeyMode("plain");
+		setEnvName("");
+		setApiKey("");
+		const nextApi = serviceMode ? "" : "openai-completions";
+		setApiChoice(nextApi);
+		setApiOther("");
+		setModelRows([]);
+		setNewModelInput("");
+	};
+
+	const buildAppendedRows = useCallback(
+		(prev: ModelRow[], raw: string): ModelRow[] => {
+			const rawIds = raw
+				.split(/[\s,，\n]+/)
+				.map((part) => part.trim())
+				.filter(Boolean);
+			const existing = new Set(prev.map((r) => r.id.trim()).filter(Boolean));
+			const additions: ModelRow[] = [];
+			for (const mid of rawIds) {
+				if (!mid || existing.has(mid)) continue;
+				existing.add(mid);
+				additions.push({
+					...blankModelRow(),
+					id: mid,
+					contextWindow: providerWindow,
+					maxTokens: batchMaxTokens,
+					...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}),
+				});
+			}
+			return additions.length > 0 ? [...prev, ...additions] : prev;
+		},
+		[providerWindow, batchMaxTokens, serviceMode, purpose, purposeSpec],
+	);
+
+	const appendFromInput = (raw: string) => {
+		if (!raw.trim()) return;
+		setModelRows((prev) => buildAppendedRows(prev, raw));
+		setNewModelInput("");
+		if (formError) setFormError(null);
+		requestAnimationFrame(() => {
+			if (rowsContainerRef.current) {
+				rowsContainerRef.current.scrollTop = rowsContainerRef.current.scrollHeight;
+			}
+		});
 	};
 
 	const handleModelRowChange = (index: number, field: keyof ModelRow, value: string) => {
@@ -226,7 +301,13 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 	};
 
 	const replaceModelRows = (selectedIds: string[], append: boolean) => {
-		const fresh = selectedIds.map((mid) => ({ ...blankModelRow(), id: mid, contextWindow: providerWindow, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }));
+		const fresh = selectedIds.map((mid) => ({
+			...blankModelRow(),
+			id: mid,
+			contextWindow: providerWindow,
+			maxTokens: batchMaxTokens,
+			...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}),
+		}));
 		setModelRows((prev) => {
 			if (!append) return fresh;
 			const existing = new Set(prev.map((r) => r.id.trim()).filter(Boolean));
@@ -234,6 +315,25 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		});
 		setDiscoveredModels(null);
 		if (formError) setFormError(null);
+	};
+
+	const handleProbeAll = async () => {
+		if (!editing || !editing.testable || probingAll || !runModelTest) return;
+		const ids = modelRows.map((r) => r.id.trim()).filter(Boolean);
+		if (ids.length === 0) return;
+		setProbingAll(true);
+		let cursor = 0;
+		const worker = async () => {
+			while (cursor < ids.length) {
+				const mid = ids[cursor++];
+				await runModelTest(editing.id, mid);
+			}
+		};
+		try {
+			await Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, ids.length) }, worker));
+		} finally {
+			setProbingAll(false);
+		}
 	};
 
 	const handleRemove = async () => {
@@ -261,20 +361,25 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 
 	const handleSave = async () => {
 		setFormError(null);
+		const effectiveModelRows = newModelInput.trim() ? buildAppendedRows(modelRows, newModelInput) : modelRows;
+		if (newModelInput.trim()) {
+			setModelRows(effectiveModelRows);
+			setNewModelInput("");
+		}
 		if (!serviceMode && providerWindow && (!Number.isSafeInteger(Number(providerWindow)) || Number(providerWindow) < 1 || Number(providerWindow) > 2000000)) {
-			setFormError(`${t("providers.colContextWindow")}: ${t("providers.contextWindowPlaceholder")}`);
+			setFormError(`${t("providers.colContextWindow")}: ${t("providers.batchContextPlaceholder")}`);
 			return;
 		}
-		if (INVALID_PROVIDER_APIS[api] === true || modelRows.some((row) => row.id.trim() && ["web-search", "local-inference", "factory-droid-agent"].includes(row.api || api))) {
+		if (INVALID_PROVIDER_APIS[api] === true || effectiveModelRows.some((row) => row.id.trim() && ["web-search", "local-inference", "factory-droid-agent"].includes(row.api || api))) {
 			setFormError(t("providers.unsupportedServiceProtocol"));
 			return;
 		}
-		const enteredModels = rowsToModelEntries(modelRows);
+		const enteredModels = rowsToModelEntries(effectiveModelRows);
 		if (!api && (enteredModels.length === 0 || enteredModels.some((model) => typeof model === "string" || !model.api?.trim()))) {
 			setFormError(t("providers.explicitModelApisRequired"));
 			return;
 		}
-		const incompatible = modelRows.find((row) => {
+		const incompatible = effectiveModelRows.find((row) => {
 			if (!row.id.trim() || !row.kind) return false;
 			const effectiveApi = row.api || api;
 			if (serviceApiSupportsKind(row.kind, effectiveApi) !== false) return false;
@@ -291,7 +396,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		const key = authNone ? "" : (keyToSend({ mode: keyMode, envName, plainKey: apiKey }) ?? "");
 		const url = baseUrl.trim();
 		if (editing && isBuiltin) {
-			const extra = rowsToModelEntries(modelRows);
+			const extra = rowsToModelEntries(effectiveModelRows);
 			if (extra.length > 0 && !url && !defaultBaseUrl) {
 				setFormError(t("providers.addModelNeedUrlError"));
 				return;
@@ -343,7 +448,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 			setFormError(t("providers.duplicateIdError", { id: newId }));
 			return;
 		}
-		const models = rowsToModelEntries(modelRows);
+		const models = rowsToModelEntries(effectiveModelRows);
 		if (models.length === 0) {
 			setFormError(t("providers.atLeastOneModelError"));
 			return;
@@ -495,11 +600,27 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 		};
 	}, [isImport, loadEnvFile]);
 
+	const selectedPreset = selectedPresetId ? presetById(selectedPresetId) : undefined;
+	const problemKey: Record<KeyInputProblem, string> = {
+		envEmpty: "providers.envNameEmpty",
+		envInvalid: "providers.envNameInvalid",
+		plainLooksLikeName: "providers.plainLooksLikeName",
+		plainRequired: "providers.errorEmptyKey",
+	};
+	const showKeyProblem =
+		!authNone &&
+		keyProblem !== null &&
+		(keyAttempted || (keyProblem !== "envEmpty" && keyProblem !== "plainRequired"));
+	const shownEnvName = envName.trim();
+	const envStatus = editing?.key.kind === "envVar" && editing.key.envVar === shownEnvName ? editing.key.envSet : undefined;
+	const testableModels = modelRows.map((r) => r.id.trim()).filter(Boolean);
+	const activeAuthSeg = authNone ? "none" : keyMode;
+
 	return (
 		<>
 		<Modal
 			onClose={() => void handleDismiss()}
-			size="lg"
+			size="xl"
 			ariaLabel={editing ? t("providers.titleEdit") : isImport ? t("providers.titleImport") : t("providers.titleAdd")}
 		>
 			<div
@@ -523,20 +644,93 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					}
 				}}
 			>
-				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
-					<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
-						{editing ? t("providers.titleEdit") : isImport ? t("providers.titleImport") : t("providers.titleAdd")}
+				<div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-divider)] px-4 py-2.5">
+					<div className="min-w-0">
+						<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
+							{editing ? t("providers.titleEdit") : isImport ? t("providers.titleImport") : t("providers.titleAdd")}
+						</div>
+						{!isImport && (
+							<div className="mt-0.5 text-[11px] text-neutral-400">
+								{editing ? t("providers.dialogEditSubtitle") : t("providers.dialogAddSubtitle")}
+							</div>
+						)}
 					</div>
-					<button
-						type="button"
-						onClick={() => void handleDismiss()}
-						aria-label={t("common.close")}
-						className="rounded-md p-1 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
+					<div className="flex shrink-0 items-center gap-1.5">
+						{!editing && !isImport && (
+							<>
+								<button
+									ref={presetBtnRef}
+									type="button"
+									aria-expanded={presetOpen}
+									aria-haspopup="dialog"
+									onClick={() => setPresetOpen((v) => !v)}
+									className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+								>
+									<span
+										className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/15"
+										style={{ backgroundColor: selectedPreset?.color ?? "var(--accent)" }}
+									/>
+									<span>{selectedPreset ? selectedPreset.name : t("providers.startFromPreset")}</span>
+									<ChevronDown className={`h-3 w-3 text-neutral-400 transition-transform ${presetOpen ? "rotate-180" : ""}`} />
+								</button>
+								{selectedPreset && (
+									<button
+										type="button"
+										onClick={resetPreset}
+										className="whitespace-nowrap rounded-lg hairline bg-transparent px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+									>
+										{t("providers.presetResetBtn")}
+									</button>
+								)}
+								{presetOpen && (
+									<FloatingLayer
+										anchor={presetBtnRef.current}
+										placement="bottom-end"
+										offset={6}
+										layer="popover"
+										onDismiss={() => setPresetOpen(false)}
+										ignoreRefs={[presetBtnRef]}
+										role="dialog"
+										aria-label={t("providers.startFromPreset")}
+										className="w-[348px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-3 shadow-xl"
+									>
+										<div className="mb-2 text-[11px] text-neutral-400">{t("providers.presetPopoverHint")}</div>
+										<div className="grid grid-cols-2 gap-1.5">
+											{PROVIDER_PRESETS.map((p) => (
+												<button
+													key={p.id}
+													type="button"
+													onClick={() => applyPreset(p.id)}
+													className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-all active:scale-95 ${
+														selectedPresetId === p.id
+															? "border-[color-mix(in_srgb,var(--accent)_60%,transparent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent)]"
+															: "hairline bg-[var(--well-bg)] text-neutral-200 hover:bg-[var(--bg-hover)]"
+													}`}
+												>
+													<span className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/15" style={{ backgroundColor: p.color }} />
+													<span className="min-w-0 flex-1 whitespace-nowrap">{p.name}</span>
+													{p.noKey && (
+														<span className="shrink-0 whitespace-nowrap rounded bg-neutral-800/80 px-1 py-0.5 text-[10px] text-neutral-400">
+															{t("providers.keyModeNoneShort")}
+														</span>
+													)}
+												</button>
+											))}
+										</div>
+									</FloatingLayer>
+								)}
+							</>
+						)}
+						<button
+							type="button"
+							onClick={() => void handleDismiss()}
+							aria-label={t("common.close")}
+							className="rounded-md p-1 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
+						>
+							<X className="h-3.5 w-3.5" />
+						</button>
+					</div>
 				</div>
-
 				{isImport ? (
 					<div className="flex-1 space-y-4 overflow-y-auto p-4">
 						<div
@@ -635,323 +829,568 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 						<p className="text-[11px] leading-relaxed text-neutral-500">{t("providers.keyPlainNote", { path: MODELS_YML_PATH })}</p>
 					</div>
 				) : (
-					<div className="flex-1 space-y-4 overflow-y-auto p-4">
-						{!editing && (
-							<div>
-								<div className={labelCls}>{t("providers.startFromPreset")}</div>
-								<div className="mt-2 flex flex-wrap gap-1.5">
-									{PROVIDER_PRESETS.map((p) => (
-										<button
-											key={p.id}
-											type="button"
-											onClick={() => applyPreset(p.id)}
-											className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-all active:scale-95 ${
-												selectedPresetId === p.id
-													? "border-[color-mix(in_srgb,var(--accent)_60%,transparent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent)]"
-													: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-											}`}
-										>
-											<span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
-											{p.name}
-										</button>
-									))}
-								</div>
-							</div>
-						)}
-
-						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-							<div>
-								<label htmlFor="provider-name" className={labelCls}>
-									{t("providers.nameLabel")}
-								</label>
-								<input
-									id="provider-name"
-									type="text"
-									value={id}
-									onChange={(e) => setId(e.target.value)}
-									readOnly={isBuiltin}
-									spellCheck={false}
-									className={`${inputCls} font-mono ${isBuiltin ? "cursor-default opacity-70" : ""}`}
-									placeholder={t("providers.namePlaceholder")}
-								/>
-								<div className={hintCls}>
-									{isBuiltin ? t("providers.builtinNameHint") : t("providers.customNameHint")}
-								</div>
-							</div>
-							<div>
-								<label htmlFor="provider-url" className={labelCls}>
-									{t("providers.urlLabel")}
-								</label>
-								<input
-									id="provider-url"
-									type="text"
-									value={baseUrl}
-									onChange={(e) => setBaseUrl(e.target.value)}
-									className={`${inputCls} font-mono`}
-									placeholder={isBuiltin ? (defaultBaseUrl ?? "https://api.example.com/v1") : "https://api.example.com/v1"}
-								/>
-								{isBuiltin && <div className={hintCls}>{t("providers.builtinUrlHint")}</div>}
-								{insecureHttpWarning(baseUrl) && (
-									<p
-										role="status"
-										className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-300"
-									>
-										{insecureHttpWarning(baseUrl)}
-									</p>
-								)}
-							</div>
-						</div>
-
-						{serviceMode && (
-							<div>
-								<label htmlFor="provider-purpose" className={labelCls}>{t("providers.servicePurpose")}</label>
-								<NativeSelect id="provider-purpose" value={purpose} containerClassName="mt-1.5" onChange={(event) => {
-									const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value)!;
-									setPurpose(next.kind);
-									setModelRows((prev) => prev.map((row) => row.id.trim() ? row : { ...row, kind: next.kind, api: next.apis[0] }));
-								}}>
-									{SERVICE_PURPOSES.map((p) => <option key={p.kind} value={p.kind}>{t(p.key)}</option>)}
-								</NativeSelect>
-								<p className={hintCls}>{t("providers.servicePurposeHint")}</p>
-								<p className={hintCls}>{t("providers.serviceGlobalHint")}</p>
-							</div>
-						)}
-						<div>
-							<label htmlFor="provider-api" className={labelCls}>
-								{t("providers.apiLabel")}
-							</label>
-							{isBuiltin ? (
-								<div
-									id="provider-api"
-									className="mt-1.5 select-text break-all rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-300"
-								>
-									{editing?.api ?? t("providers.unknownApi")}
-								</div>
-							) : (
-								<>
-									<NativeSelect
-										id="provider-api"
-										value={apiChoice}
-										onChange={(e) => {
-											setApiChoice(e.target.value);
-										}}
-										containerClassName="mt-1.5"
-									>
-										{serviceMode && <option value="">{t("providers.perModelApi")}</option>}
-										{availableApis.map((a) => (
-											<option key={a.value} value={a.value}>
-												{a.label}
-											</option>
-										))}
-										<option value={OTHER_API}>{t("providers.otherApiOption")}</option>
-									</NativeSelect>
-									{apiChoice === OTHER_API && (
-										<input
-											type="text"
-											value={apiOther}
-											onChange={(e) => setApiOther(e.target.value)}
-											aria-label={t("providers.otherApiAria")}
-											spellCheck={false}
-											className={`${inputCls} font-mono`}
-											placeholder={t("providers.otherApiPlaceholder")}
-										/>
-									)}
-								</>
-							)}
-						</div>
-
-						<label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-200">
-							<input
-								type="checkbox"
-								checked={authNone}
-								onChange={(e) => setAuthNone(e.target.checked)}
-								className="h-3.5 w-3.5 accent-[var(--accent)]"
-							/>
-							<span>{t("providers.authNoneCheck")}</span>
-						</label>
-
-						{!authNone && (
-							<KeyInputMode
-								name="provider-key-mode"
-								mode={keyMode}
-								onModeChange={setKeyMode}
-								envName={envName}
-								onEnvNameChange={setEnvName}
-								problem={keyProblem}
-								attempted={keyAttempted}
-								current={editing?.key.kind === "envVar" && editing.key.envVar ? { name: editing.key.envVar, set: editing.key.envSet } : null}
-								onSubmit={() => void handleSave()}
-							>
-								<div>
-									<label htmlFor="provider-key" className={labelCls}>
-										{t("providers.apiKeyLabel")}
-									</label>
-									<div className="relative">
-										<input
-											id="provider-key"
-											type={showKey ? "text" : "password"}
-											value={apiKey}
-											onChange={(e) => setApiKey(e.target.value)}
-											onKeyDown={(e) => {
-												if (isComposing(e)) return;
-												if (e.key === "Enter" && !saving) void handleSave();
-											}}
-											autoComplete="new-password"
-											className={`${inputCls} pr-9`}
-											placeholder={
-												editing && editing.key.kind !== "missing" && editing.key.kind !== "none"
-													? t("providers.keepUnchangedPlaceholder")
-													: "sk-xxx"
-											}
-										/>
-										<button
-											type="button"
-											onClick={() => setShowKey((value) => !value)}
-											title={showKey ? t("providers.hideKey") : t("providers.showKey")}
-											aria-label={showKey ? t("providers.hideKey") : t("providers.showKey")}
-											className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-neutral-500 transition-all hover:text-neutral-200 active:scale-95"
-										>
-											{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-										</button>
+					<div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3.5">
+						{/* 1. Core connection & credentials */}
+						<section className="space-y-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/45 p-2.5">
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_268px]">
+								<div className="min-w-0">
+									<div className="flex items-center gap-0.5">
+										<label htmlFor="provider-name" className={labelCls}>
+											{t("providers.nameLabel")}
+										</label>
+										{!isBuiltin && <span aria-hidden="true" className="text-xs font-medium text-rose-400">*</span>}
+									</div>
+									<input
+										id="provider-name"
+										type="text"
+										value={id}
+										onChange={(e) => setId(e.target.value)}
+										readOnly={isBuiltin}
+										spellCheck={false}
+										className={`mt-1.5 ${inputCls} font-mono ${isBuiltin ? "cursor-default opacity-70" : ""}`}
+										placeholder={t("providers.namePlaceholder")}
+									/>
+									<div className={hintCls}>
+										{isBuiltin ? t("providers.builtinNameHint") : t("providers.customNameHint")}
 									</div>
 								</div>
-							</KeyInputMode>
-						)}
+								<div className="min-w-0">
+									<label htmlFor="provider-api" className={labelCls}>
+										{t("providers.apiLabel")}
+									</label>
+									{isBuiltin ? (
+										<div
+											id="provider-api"
+											className="mt-1.5 select-text break-all rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-300"
+										>
+											{editing?.api ?? t("providers.unknownApi")}
+										</div>
+									) : (
+										<NativeSelect
+											id="provider-api"
+											value={apiChoice}
+											onChange={(e) => setApiChoice(e.target.value)}
+											containerClassName="mt-1.5"
+										>
+											{serviceMode && <option value="">{t("providers.perModelApi")}</option>}
+											{availableApis.map((a) => (
+												<option key={a.value} value={a.value}>
+													{a.label}
+												</option>
+											))}
+											<option value={OTHER_API}>{t("providers.otherApiOption")}</option>
+										</NativeSelect>
+									)}
+								</div>
+							</div>
 
-						<div className="border-t border-[var(--border-divider)] pt-3">
-							<div className="flex items-center justify-between">
-								<span className={labelCls}>{isBuiltin ? t("providers.modelsHeaderExtra") : t("providers.modelsHeaderAll")}</span>
+							{!isBuiltin && apiChoice === OTHER_API && (
+								<div>
+									<input
+										type="text"
+										value={apiOther}
+										onChange={(e) => setApiOther(e.target.value)}
+										aria-label={t("providers.otherApiAria")}
+										spellCheck={false}
+										className={`${inputCls} font-mono`}
+										placeholder={t("providers.otherApiPlaceholder")}
+									/>
+								</div>
+							)}
+
+							{serviceMode && (
+								<div className="grid grid-cols-1 gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+									<div>
+										<label htmlFor="provider-purpose" className={labelCls}>{t("providers.servicePurpose")}</label>
+										<NativeSelect
+											id="provider-purpose"
+											value={purpose}
+											containerClassName="mt-1.5"
+											onChange={(event) => {
+												const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value)!;
+												setPurpose(next.kind);
+												setModelRows((prev) => prev.map((row) => (row.id.trim() ? row : { ...row, kind: next.kind, api: next.apis[0] })));
+											}}
+										>
+											{SERVICE_PURPOSES.map((p) => (
+												<option key={p.kind} value={p.kind}>
+													{t(p.key)}
+												</option>
+											))}
+										</NativeSelect>
+									</div>
+									<p className="text-[11px] leading-relaxed text-neutral-400 sm:pt-5">
+										{t("providers.servicePurposeHint")}
+									</p>
+								</div>
+							)}
+
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<div className="min-w-0">
+									<div className="flex min-h-[22px] items-center gap-0.5">
+										<label htmlFor="provider-url" className={labelCls}>
+											{t("providers.urlLabel")}
+										</label>
+										{!isBuiltin && <span aria-hidden="true" className="text-xs font-medium text-rose-400">*</span>}
+									</div>
+									<input
+										id="provider-url"
+										type="text"
+										value={baseUrl}
+										onChange={(e) => setBaseUrl(e.target.value)}
+										spellCheck={false}
+										className={`mt-1.5 ${inputCls} font-mono`}
+										placeholder={isBuiltin ? (defaultBaseUrl ?? "https://api.example.com/v1") : "https://api.example.com/v1"}
+									/>
+									{isBuiltin && <div className={hintCls}>{t("providers.builtinUrlHint")}</div>}
+									{insecureHttpWarning(baseUrl) && (
+										<p
+											role="status"
+											className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-300"
+										>
+											{insecureHttpWarning(baseUrl)}
+										</p>
+									)}
+								</div>
+
+								<div className="min-w-0">
+									<div className="flex min-h-[22px] flex-wrap items-center justify-between gap-1.5">
+										<label
+											htmlFor={activeAuthSeg === "env" ? "provider-env-name" : activeAuthSeg === "plain" ? "provider-key" : undefined}
+											className={labelCls}
+										>
+											{t("providers.apiKeyLabel")}
+										</label>
+										<div
+											role="radiogroup"
+											aria-label={t("providers.keyInputLegend")}
+											className="inline-flex shrink-0 items-center rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-0.5"
+										>
+											{(
+												[
+													{ value: "plain", label: t("providers.keyModeDirectShort") },
+													{ value: "env", label: t("providers.keyModeEnvShort") },
+													{ value: "none", label: t("providers.keyModeNoneShort") },
+												] as const
+											).map((opt) => {
+												const checked = activeAuthSeg === opt.value;
+												return (
+													<button
+														key={opt.value}
+														type="button"
+														role="radio"
+														aria-checked={checked}
+														onClick={() => {
+															if (opt.value === "none") {
+																setAuthNone(true);
+															} else {
+																setAuthNone(false);
+																setKeyMode(opt.value);
+															}
+														}}
+														className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] transition-colors ${
+															checked
+																? "bg-[var(--bg-panel)] font-medium text-neutral-100 shadow-2xs"
+																: "text-neutral-400 hover:text-neutral-200"
+														}`}
+													>
+														{opt.label}
+													</button>
+												);
+											})}
+										</div>
+									</div>
+
+									{activeAuthSeg === "plain" && (
+										<div className="mt-1.5">
+											<div className="relative">
+												<input
+													id="provider-key"
+													type={showKey ? "text" : "password"}
+													value={apiKey}
+													onChange={(e) => setApiKey(e.target.value)}
+													onKeyDown={(e) => {
+														if (isComposing(e)) return;
+														if (e.key === "Enter" && !saving) void handleSave();
+													}}
+													autoComplete="new-password"
+													aria-invalid={showKeyProblem}
+													className={`${inputCls} pr-9 font-mono`}
+													placeholder={
+														editing && editing.key.kind !== "missing" && editing.key.kind !== "none"
+															? t("providers.keepUnchangedPlaceholder")
+															: "sk-xxx"
+													}
+												/>
+												<button
+													type="button"
+													onClick={() => setShowKey((value) => !value)}
+													title={showKey ? t("providers.hideKey") : t("providers.showKey")}
+													aria-label={showKey ? t("providers.hideKey") : t("providers.showKey")}
+													className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-neutral-500 transition-all hover:text-neutral-200 active:scale-95"
+												>
+													{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+												</button>
+											</div>
+											<p className={hintCls}>{t("providers.keyPlainNote", { path: MODELS_YML_PATH })}</p>
+										</div>
+									)}
+
+									{activeAuthSeg === "env" && (
+										<div className="mt-1.5 space-y-1.5">
+											<input
+												id="provider-env-name"
+												type="text"
+												value={envName}
+												onChange={(e) => setEnvName(e.target.value.trim())}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" && !isComposing(e)) void handleSave();
+												}}
+												spellCheck={false}
+												autoCapitalize="characters"
+												autoComplete="off"
+												aria-label={t("providers.envNameLabel")}
+												aria-invalid={showKeyProblem}
+												placeholder={t("providers.envNamePlaceholder")}
+												className={`${inputCls} font-mono`}
+											/>
+											<div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400">
+												{envStatus !== undefined ? (
+													<span className={envStatus === true ? "text-emerald-400" : "text-amber-400"}>
+														{envStatus === true
+															? t("providers.envStatusSet", { name: shownEnvName })
+															: t("providers.envStatusUnset", { name: shownEnvName })}
+													</span>
+												) : (
+													<span>{t("providers.envHint")}</span>
+												)}
+												<button
+													type="button"
+													aria-expanded={howOpen}
+													onClick={() => setHowOpen((v) => !v)}
+													className="whitespace-nowrap rounded-full hairline bg-[var(--well-bg)] px-2 py-0.5 text-neutral-300 hover:bg-[var(--bg-hover)]"
+												>
+													{howOpen ? t("providers.envHowHide") : t("providers.envHowShow")}
+												</button>
+											</div>
+											{howOpen && (
+												<ul className="list-disc space-y-1 rounded-lg hairline bg-[var(--well-bg)] py-2 pl-6 pr-3 text-[11px] leading-relaxed text-neutral-400">
+													<li>{t("providers.envExplainWhere")}</li>
+													<li>{t("providers.envExplainFix")}</li>
+												</ul>
+											)}
+										</div>
+									)}
+
+									{activeAuthSeg === "none" && (
+										<div className="mt-1.5 flex h-[30px] items-center rounded-lg border border-dashed border-[var(--border-divider)] bg-[var(--well-bg)] px-3 text-[11px] text-neutral-400">
+											{t("providers.authNoneCheck")}
+										</div>
+									)}
+
+									{showKeyProblem && keyProblem && (
+										<div role="alert" className="mt-1 select-text break-words text-[11px] text-rose-300">
+											{t(problemKey[keyProblem])}
+										</div>
+									)}
+								</div>
+							</div>
+						</section>
+
+						{/* 2. Models table: header batch adjust + fixed-height scrollable rows + pinned add bar */}
+						<section className="space-y-2 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/45 p-2.5">
+							<div className="flex flex-wrap items-center justify-between gap-2">
 								<div className="flex items-center gap-2">
+									<span className={labelCls}>
+										{isBuiltin ? t("providers.modelsHeaderExtra") : t("providers.modelsHeaderAll")}
+									</span>
+									<span className="inline-flex items-center rounded-full bg-[var(--bg-active-fill)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-300">
+										{modelRows.length}
+									</span>
+								</div>
+								<div className="flex flex-wrap items-center gap-1.5">
+									<button
+										type="button"
+										onClick={() => void handleProbeAll()}
+										disabled={!editing || !editing.testable || probingAll || testableModels.length === 0}
+										title={
+											!editing
+												? t("providers.probeNeedSaved")
+												: !editing.testable
+													? t("providers.cannotTestReason")
+													: t("providers.probeAllRowTitle")
+										}
+										className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-40"
+									>
+										{probingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
+										<span>{t("providers.probeAllBtn")}</span>
+									</button>
 									<button
 										type="button"
 										onClick={() => void handleFetchModels()}
 										disabled={fetchingModels}
-										className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-40"
+										className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-1 text-xs font-medium text-[var(--accent)] transition-all hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] active:scale-95 disabled:opacity-40"
 									>
-										{fetchingModels ? (
-											<Loader2 className="h-3 w-3 animate-spin" />
-										) : (
-											<RefreshCw className="h-3 w-3" />
-										)}
+										{fetchingModels ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
 										<span>{t("providers.fetchModelsBtn")}</span>
-									</button>
-									<button
-										type="button"
-										onClick={() => setModelRows((prev) => [...prev, { ...blankModelRow(), contextWindow: providerWindow, ...(serviceMode ? { kind: purpose, api: purposeSpec.apis[0] } : {}) }])}
-										className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs text-[var(--accent)] transition-all hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95"
-									>
-										<Plus className="h-3 w-3" />
-										<span>{t("providers.addModelBtn")}</span>
 									</button>
 								</div>
 							</div>
-							<p className={hintCls}>
-								{isBuiltin
-									? t("providers.builtinModelsHint", { count: Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0)) })
-									: t("providers.customModelsHint")}
-							</p>
-							{!serviceMode && (
-								<label className="mt-2 flex items-center gap-2 text-xs text-neutral-300">
-									<span>{t("providers.colContextWindow")}</span>
-									<input
-										type="number"
-										min={1}
-										max={2000000}
-										value={providerWindow}
-										onChange={(e) => {
-											const value = e.target.value;
-											setProviderWindowChanged(true);
-											setProviderWindow(value);
-											setModelRows((prev) => prev.map((row) => ({ ...row, contextWindow: value })));
-										}}
-										className={cellCls}
-										placeholder={t("providers.contextWindowPlaceholder")}
-									/>
-								</label>
+
+							{isBuiltin && (
+								<p className="text-[11px] text-neutral-400">
+									{t("providers.builtinModelsHint", { count: Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0)) })}
+								</p>
 							)}
 
-							<div className="mt-2 space-y-1.5">
-								{modelRows.length > 0 && (
-									<div className="grid grid-cols-[1fr_88px_88px_28px] gap-2 px-1 text-[11px] font-medium text-neutral-400">
-										<span>{t("providers.colModelId")}</span>
-										<span>{t("providers.colContextWindow")}</span>
-										<span>{t("providers.colMaxTokens")}</span>
-										<span />
-									</div>
-								)}
-								{modelRows.map((row, index) => (
-									<div
-										// biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable identity while being typed
-										key={index}
-										className="grid grid-cols-[1fr_88px_88px_28px] items-center gap-2"
-									>
+							<div className="overflow-hidden rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)]">
+								<div className={`${MODEL_TABLE_GRID} border-b border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-3 py-1.5 text-[11px] font-medium text-neutral-400`}>
+									<span>{t("providers.colModelId")}</span>
+									<span>{t("providers.colContextWindow")}</span>
+									<span>{t("providers.colMaxTokens")}</span>
+									<span className="text-right">{t("providers.colActions")}</span>
+								</div>
+
+								{!serviceMode && (
+									<div className={`${MODEL_TABLE_GRID} border-b border-[var(--border-divider)] bg-[var(--well-bg)]/55 px-3 py-1.5`}>
+										<span className="text-[11px] text-neutral-400">{t("providers.batchAdjustLabel")}</span>
 										<input
 											type="text"
-											value={row.id}
-											onChange={(e) => handleModelRowChange(index, "id", e.target.value)}
-											aria-label={t("providers.modelIdAria", { index: index + 1 })}
-											className={cellCls}
-											placeholder={t("providers.modelIdPlaceholder")}
+											inputMode="numeric"
+											value={providerWindow}
+											aria-label={t("providers.colContextWindow")}
+											onChange={(e) => {
+												const value = digitsOnly(e.target.value);
+												setProviderWindowChanged(true);
+												setProviderWindow(value);
+												setModelRows((prev) => prev.map((row) => ({ ...row, contextWindow: value })));
+											}}
+											className={batchCellCls}
+											placeholder={t("providers.batchContextPlaceholder")}
 										/>
 										<input
-											type="number"
-											min={1}
-											max={2000000}
-											value={row.contextWindow}
-											onChange={(e) => handleModelRowChange(index, "contextWindow", e.target.value)}
-											aria-label={t("providers.contextWindowAria", { index: index + 1 })}
-											className={cellCls}
-											placeholder={t("providers.contextWindowPlaceholder")}
+											type="text"
+											inputMode="numeric"
+											value={batchMaxTokens}
+											aria-label={t("providers.batchMaxTokensAria")}
+											onChange={(e) => {
+												const value = digitsOnly(e.target.value);
+												setBatchMaxTokens(value);
+												setModelRows((prev) => prev.map((row) => ({ ...row, maxTokens: value })));
+											}}
+											className={batchCellCls}
+											placeholder={t("providers.batchMaxTokensPlaceholder")}
 										/>
-										<input
-											type="number"
-											min={1}
-											max={2000000}
-											value={row.maxTokens}
-											onChange={(e) => handleModelRowChange(index, "maxTokens", e.target.value)}
-											aria-label={t("providers.maxTokensAria", { index: index + 1 })}
-											className={cellCls}
-											placeholder={t("providers.maxTokensPlaceholder")}
-										/>
-										<button
-											type="button"
-											onClick={() => setModelRows((prev) => prev.filter((_, i) => i !== index))}
-											aria-label={t("providers.deleteModelAria", { index: index + 1 })}
-											title={t("providers.deleteModelTitle")}
-											className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
-										>
-											<X className="h-3.5 w-3.5" />
-										</button>
-										{(serviceMode || row.kind || row.api) && (
-											<div className="col-span-4 grid grid-cols-2 gap-2 pb-2">
-												<label className={hintCls}>{t("providers.servicePurpose")}
-													<NativeSelect value={row.kind ?? ""} onChange={(event) => {
-														const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value);
-														setModelRows((prev) => prev.map((r, i) => i === index ? { ...r, kind: event.target.value || undefined, api: next?.apis[0] } : r));
-													}}>
-														<option value="">{t("providers.inheritPurpose")}</option>
-														<option value="chat">{t("providers.purposeChat")}</option>
-														{row.kind && row.kind !== "chat" && !SERVICE_PURPOSES.some((p) => p.kind === row.kind) && <option value={row.kind}>{row.kind}</option>}
-														{SERVICE_PURPOSES.map((p) => <option key={p.kind} value={p.kind}>{t(p.key)}</option>)}
-													</NativeSelect>
-												</label>
-												<label className={hintCls}>{t("providers.apiLabel")}
-													<NativeSelect value={row.api ?? ""} onChange={(event) => handleModelRowChange(index, "api", event.target.value)}>
-														<option value="">{t("providers.inheritApi")}</option>
-														{[...new Set([...(SERVICE_PURPOSES.find((p) => p.kind === row.kind)?.apis ?? KNOWN_APIS.map((a) => a.value)), ...(row.api ? [row.api] : [])])].map((value) => <option key={value} value={value}>{SERVICE_API_LABELS[value] ?? KNOWN_APIS.find((a) => a.value === value)?.label ?? value}</option>)}
-													</NativeSelect>
-												</label>
-											</div>
-										)}
-									</div>
-								))}
-								{modelRows.length === 0 && (
-									<div className="rounded-lg hairline border-dashed border-neutral-700 p-3 text-center text-xs text-neutral-500">
-										{isBuiltin ? t("providers.builtinNoExtraModels") : t("providers.customNoModels")}
+										<div className="text-right">
+											{providerWindow || batchMaxTokens ? (
+												<button
+													type="button"
+													onClick={() => {
+														setProviderWindowChanged(true);
+														setProviderWindow("");
+														setBatchMaxTokens("");
+														setModelRows((prev) => prev.map((row) => ({ ...row, contextWindow: "", maxTokens: "" })));
+													}}
+													className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+												>
+													{t("providers.batchClearBtn")}
+												</button>
+											) : (
+												<span className="whitespace-nowrap text-[11px] text-neutral-500">{t("providers.batchSyncTip")}</span>
+											)}
+										</div>
 									</div>
 								)}
+
+								<div
+									ref={rowsContainerRef}
+									className="h-[144px] divide-y divide-[var(--border-divider)] overflow-y-auto"
+								>
+									{modelRows.length === 0 ? (
+										<div className="flex h-full items-center justify-center px-4 text-center text-xs text-neutral-500">
+											{isBuiltin ? t("providers.builtinNoExtraModels") : t("providers.customNoModels")}
+										</div>
+									) : (
+										modelRows.map((row, index) => {
+											const mid = row.id.trim();
+											const modelTest = editing && mid ? modelTests[`${editing.id}::${mid}`] : undefined;
+											const testingModel = modelTest?.state === "testing";
+											const testedDone = modelTest?.state === "done";
+											const failed = isProbeFailed(modelTest);
+											const testTitle = !editing
+												? t("providers.probeNeedSaved")
+												: !editing.testable
+													? t("providers.cannotTestReason")
+													: testedDone
+														? `${modelTest.result.detail}${t("providers.latencyOpen")}${modelTest.result.latencyMs}ms${t("providers.latencyClose")}`
+														: t("providers.testModelTitle", { id: mid || String(index + 1) });
+											return (
+												<div
+													// biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable identity while being typed
+													key={index}
+													className="px-3 py-1.5"
+												>
+													<div className={MODEL_TABLE_GRID}>
+														<input
+															type="text"
+															value={row.id}
+															onChange={(e) => handleModelRowChange(index, "id", e.target.value)}
+															aria-label={t("providers.modelIdAria", { index: index + 1 })}
+															className={cellCls}
+															placeholder={t("providers.modelIdPlaceholder")}
+														/>
+														<input
+															type="text"
+															inputMode="numeric"
+															value={row.contextWindow}
+															onChange={(e) => handleModelRowChange(index, "contextWindow", digitsOnly(e.target.value))}
+															aria-label={t("providers.contextWindowAria", { index: index + 1 })}
+															className={cellCls}
+															placeholder={t("providers.contextWindowPlaceholder")}
+														/>
+														<input
+															type="text"
+															inputMode="numeric"
+															value={row.maxTokens}
+															onChange={(e) => handleModelRowChange(index, "maxTokens", digitsOnly(e.target.value))}
+															aria-label={t("providers.maxTokensAria", { index: index + 1 })}
+															className={cellCls}
+															placeholder={t("providers.maxTokensPlaceholder")}
+														/>
+														<div className="flex items-center justify-end gap-1">
+															<button
+																type="button"
+																onClick={() => editing && mid && runModelTest && void runModelTest(editing.id, mid)}
+																disabled={!editing || !editing.testable || !mid || testingModel}
+																title={testTitle}
+																aria-label={t("providers.testModelAria", { id: mid || String(index + 1) })}
+																className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md hairline px-1.5 py-0.5 text-[11px] transition-colors disabled:opacity-40 ${
+																	testedDone
+																		? failed
+																			? "border-rose-700/40 bg-rose-950/30 text-rose-300"
+																			: "border-emerald-700/40 bg-emerald-950/30 text-emerald-300"
+																		: "bg-[var(--well-bg)] text-neutral-300 hover:bg-[var(--bg-hover)]"
+																}`}
+															>
+																{testingModel ? (
+																	<Loader2 className="h-3 w-3 animate-spin" />
+																) : testedDone ? (
+																	failed ? <CircleX className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />
+																) : null}
+																<span>
+																	{testingModel
+																		? t("providers.modelTestRunning")
+																		: testedDone
+																			? failed
+																				? t("providers.modelTestFail")
+																				: t("providers.modelTestOk")
+																			: t("providers.testBtn")}
+																</span>
+															</button>
+															<button
+																type="button"
+																onClick={() => setModelRows((prev) => prev.filter((_, i) => i !== index))}
+																aria-label={t("providers.deleteModelAria", { index: index + 1 })}
+																title={t("providers.deleteModelTitle")}
+																className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
+															>
+																<X className="h-3.5 w-3.5" />
+															</button>
+														</div>
+													</div>
+													{(serviceMode || row.kind || row.api) && (
+														<div className="mt-1.5 grid grid-cols-2 gap-2 pb-1">
+															<label className="text-[11px] text-neutral-400">
+																{t("providers.servicePurpose")}
+																<NativeSelect
+																	value={row.kind ?? ""}
+																	containerClassName="mt-1"
+																	onChange={(event) => {
+																		const next = SERVICE_PURPOSES.find((p) => p.kind === event.target.value);
+																		setModelRows((prev) =>
+																			prev.map((r, i) =>
+																				i === index
+																					? { ...r, kind: event.target.value || undefined, api: next?.apis[0] }
+																					: r,
+																			),
+																		);
+																	}}
+																>
+																	<option value="">{t("providers.inheritPurpose")}</option>
+																	<option value="chat">{t("providers.purposeChat")}</option>
+																	{row.kind && row.kind !== "chat" && !SERVICE_PURPOSES.some((p) => p.kind === row.kind) && (
+																		<option value={row.kind}>{row.kind}</option>
+																	)}
+																	{SERVICE_PURPOSES.map((p) => (
+																		<option key={p.kind} value={p.kind}>
+																			{t(p.key)}
+																		</option>
+																	))}
+																</NativeSelect>
+															</label>
+															<label className="text-[11px] text-neutral-400">
+																{t("providers.apiLabel")}
+																<NativeSelect
+																	value={row.api ?? ""}
+																	containerClassName="mt-1"
+																	onChange={(event) => handleModelRowChange(index, "api", event.target.value)}
+																>
+																	<option value="">{t("providers.inheritApi")}</option>
+																	{[
+																		...new Set([
+																			...(SERVICE_PURPOSES.find((p) => p.kind === row.kind)?.apis ?? KNOWN_APIS.map((a) => a.value)),
+																			...(row.api ? [row.api] : []),
+																		]),
+																	].map((value) => (
+																		<option key={value} value={value}>
+																			{SERVICE_API_LABELS[value] ?? KNOWN_APIS.find((a) => a.value === value)?.label ?? value}
+																		</option>
+																	))}
+																</NativeSelect>
+															</label>
+														</div>
+													)}
+												</div>
+											);
+										})
+									)}
+								</div>
+
+								{/* Pinned bottom add-model bar */}
+								<div className="flex items-center gap-2 border-t border-[var(--border-divider)] bg-[var(--bg-active-fill)]/55 px-3 py-2">
+									<input
+										type="text"
+										value={newModelInput}
+										onChange={(e) => setNewModelInput(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" && !isComposing(e)) {
+												e.preventDefault();
+												appendFromInput(newModelInput);
+											}
+										}}
+										onPaste={(e) => {
+											const text = e.clipboardData.getData("text");
+											if (/[\s,，\n]/.test(text)) {
+												e.preventDefault();
+												appendFromInput(`${newModelInput} ${text}`);
+											}
+										}}
+										aria-label={t("providers.newModelInputAria")}
+										spellCheck={false}
+										className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none"
+										placeholder={t("providers.newModelInputPlaceholder")}
+									/>
+									<button
+										type="button"
+										onClick={() => appendFromInput(newModelInput)}
+										disabled={newModelInput.trim() === ""}
+										className="shrink-0 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-40"
+									>
+										{t("providers.addModelBtn")}
+									</button>
+								</div>
 							</div>
-						</div>
+						</section>
 					</div>
 				)}
 
@@ -964,7 +1403,7 @@ export function ProviderDialog({ target, onClose, pickerCategory = "chat" }: Pro
 					</div>
 				)}
 
-				<div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
+				<div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-2.5">
 					{editing && (
 						<div className="mr-auto flex flex-wrap items-center gap-2">
 							<button

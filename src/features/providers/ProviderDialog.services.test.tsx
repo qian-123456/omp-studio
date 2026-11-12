@@ -15,18 +15,22 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 import { ProviderDialog } from "./ProviderDialog";
 import { loadProviderWindows } from "../settings/contextWindow/core";
 import type { ProviderRow } from "../../lib/contracts";
+vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
 it("adds an image service from an OpenAI connection without preset chat models", async () => {
  render(<ProviderDialog target={{ mode: "add" }} pickerCategory="other" onClose={vi.fn()} />);
+ fireEvent.click(screen.getByRole("button", { name: new RegExp(tNow("providers.startFromPreset")) }));
  fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
  expect(screen.queryByDisplayValue("gpt-4o")).toBeNull();
- fireEvent.change(screen.getByLabelText(tNow("providers.modelIdAria", { index: 1 })), { target: { value: "my-image-model" } });
+ fireEvent.change(screen.getByLabelText(tNow("providers.newModelInputAria")), { target: { value: "my-image-model" } });
+ fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
  fireEvent.click(screen.getByRole("button", { name: tNow("common.save") }));
  await waitFor(() => expect(upsert).toHaveBeenCalled());
  expect(upsert.mock.calls[0][0]).toMatchObject({ api: "", models: [{ id: "my-image-model", kind: "image", api: "openai-images" }] });
 });
 it("keeps chat presets and the chat protocol unchanged", () => {
  render(<ProviderDialog target={{ mode: "add" }} onClose={vi.fn()} />);
+ fireEvent.click(screen.getByRole("button", { name: new RegExp(tNow("providers.startFromPreset")) }));
  fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
  expect(screen.getByDisplayValue("gpt-4o")).toBeTruthy();
  expect(screen.getByDisplayValue("gpt-4.1")).toBeTruthy();
@@ -46,7 +50,8 @@ it("offers service purposes but blocks internal runner APIs at provider level", 
 });
 it("requires explicit model protocols when no provider protocol is selected", async () => {
  render(<ProviderDialog target={{ mode: "add" }} pickerCategory="other" onClose={vi.fn()} />);
- fireEvent.change(screen.getByLabelText(tNow("providers.modelIdAria", { index: 1 })), { target: { value: "image-id" } });
+ fireEvent.change(screen.getByLabelText(tNow("providers.newModelInputAria")), { target: { value: "image-id" } });
+ fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
  const modelApi = screen.getAllByRole("combobox").find((element) => (element as HTMLSelectElement).value === "openai-images")!;
  fireEvent.change(modelApi, { target: { value: "" } });
  fireEvent.click(screen.getByRole("button", { name: tNow("common.save") }));
@@ -55,14 +60,15 @@ it("requires explicit model protocols when no provider protocol is selected", as
 });
 it("submits six mixed service capabilities with explicit model APIs and no provider default", async () => {
  render(<ProviderDialog target={{ mode: "add" }} pickerCategory="other" onClose={vi.fn()} />);
+ fireEvent.click(screen.getByRole("button", { name: new RegExp(tNow("providers.startFromPreset")) }));
  fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
  const kinds = ["image", "stt", "tts", "embedding", "rerank", "video"];
  for (let index = 0; index < kinds.length; index++) {
   if (index > 0) {
    fireEvent.change(screen.getByLabelText(tNow("providers.servicePurpose"), { selector: "#provider-purpose" }), { target: { value: kinds[index] } });
-   fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
   }
-  fireEvent.change(screen.getByLabelText(tNow("providers.modelIdAria", { index: index + 1 })), { target: { value: `${kinds[index]}-id` } });
+  fireEvent.change(screen.getByLabelText(tNow("providers.newModelInputAria")), { target: { value: `${kinds[index]}-id` } });
+  fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
  }
  fireEvent.click(screen.getByRole("button", { name: tNow("common.save") }));
  await waitFor(() => expect(upsert).toHaveBeenCalled());
@@ -87,6 +93,7 @@ it("persists a zero-model provider default on save and restores it on reopening"
  view.unmount();
  render(<ProviderDialog target={target} onClose={vi.fn()} />);
  expect((screen.getByLabelText(tNow("providers.colContextWindow")) as HTMLInputElement).value).toBe("64000");
+ fireEvent.change(screen.getByLabelText(tNow("providers.newModelInputAria")), { target: { value: "added-model" } });
  fireEvent.click(screen.getByRole("button", { name: tNow("providers.addModelBtn") }));
  expect((screen.getByLabelText(tNow("providers.contextWindowAria", { index: 1 })) as HTMLInputElement).value).toBe("64000");
 });
