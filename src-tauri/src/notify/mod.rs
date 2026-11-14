@@ -143,7 +143,7 @@ async fn on_status(state: &AppState, session_id: &str, new: SessionStatus) {
     let title = meta
         .as_ref()
         .map(crate::todos::sessions::display_name)
-        .unwrap_or_else(|| "omp-workspace".to_string());
+        .unwrap_or_else(|| "Vecway".to_string());
     let snippet = meta
         .as_ref()
         .filter(|_| new == SessionStatus::Review)

@@ -40,7 +40,7 @@ export function ConnectionBanner() {
 				<Pill role="alert" tone="danger" icon={<KeyRound size={16} />} text="配对已失效" action="重新配对" onAction={() => setGuide(true)} />
 				<BottomSheet open={guide} onClose={() => setGuide(false)} title="重新配对">
 					<ol className="m-selectable list-decimal space-y-3 px-5 pt-2 pb-6 pl-10 text-m-md text-m-text-2">
-						<li>在电脑上打开 omp-workspace，进入「设置 → 连接与设备」。</li>
+						<li>在电脑上打开 Vecway，进入「设置 → 连接与设备」。</li>
 						<li>点击「生成配对二维码」。</li>
 						<li>用手机相机扫描二维码，或直接打开配对链接。</li>
 						<li>配对成功后这里会自动恢复。</li>

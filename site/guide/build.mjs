@@ -120,7 +120,27 @@ if (existsSync(imagesSrc)) {
 	cpSync(imagesSrc, join(here, "images"), { recursive: true });
 }
 
+const repoRoot = join(here, "..", "..");
+const logoSrc = join(repoRoot, "docs", "images", "vecway-logo.svg");
+if (existsSync(logoSrc)) {
+	cpSync(logoSrc, join(here, "logo.svg"));
+}
+const llmsSrc = join(repoRoot, "llms.txt");
+if (existsSync(llmsSrc)) {
+	cpSync(llmsSrc, join(here, "llms.txt"));
+}
+
 const json = JSON.stringify(data).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const html = readFileSync(join(here, "template.html"), "utf8").replace("/*__DATA__*/null", () => json);
 writeFileSync(join(here, "index.html"), html);
+
+const baseUrl = "https://qian-123456.github.io/vecway/";
+writeFileSync(join(here, "robots.txt"), `User-agent: *\nAllow: /\n\nSitemap: ${baseUrl}sitemap.xml\n`);
+const urls = [baseUrl, ...LANGS.flatMap((l) => data[l].map((c) => `${baseUrl}#/${l}/${c.slug}`))];
+writeFileSync(
+	join(here, "sitemap.xml"),
+	`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
+		.map((u) => `  <url><loc>${u}</loc></url>`)
+		.join("\n")}\n</urlset>\n`,
+);
 console.log(`guide: ${LANGS.map((l) => `${l}=${data[l].length}`).join(" ")} -> site/guide/index.html`);

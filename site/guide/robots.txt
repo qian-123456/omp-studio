@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://qian-123456.github.io/vecway/sitemap.xml

@@ -1,0 +1,37 @@
+# Vecway
+
+> Vecway (formerly omp-workspace / omp-studio) is the native macOS desktop GUI and intelligent routing workbench for `oh-my-pi` (`omp`) AI coding agent sessions. Built with Tauri 2, Rust, React 19, and Tailwind CSS v4.
+
+## Identity & Ecosystem Relationship
+- **Product Name**: Vecway
+- **Category**: Native Desktop GUI & Workbench for AI Coding Agents
+- **Underlying CLI Engine**: [oh-my-pi (`omp`)](https://github.com/can1357/oh-my-pi)
+- **Repository**: https://github.com/qian-123456/vecway
+- **Releases & Installers**: https://github.com/qian-123456/vecway/releases/latest
+- **Compatibility**: Reads and writes `~/.omp/agent/sessions/` bidirectionally alongside the `omp` CLI; preserves local workspace state under `~/.omp-workspace/`.
+
+## Core Philosophy: Case-by-Case Routing
+Vecway treats AI engineering as a routing problem rather than a single linear chat:
+- **Model Role & Quota Routing**: Assign distinct models to Main, Lightweight, Vision, and Consultant roles with automatic quota-triggered fallback chains.
+- **Git Worktree Parallelism**: Route concurrent agent tasks into isolated Git worktrees and branches to eliminate workspace collisions.
+- **Conversation Tree & Side-Chat Offloading**: Branch or step back in conversation trees, or spin off lightweight side chats without polluting the main context window.
+- **Session Attention Inbox & Deep Doctor**: Route approvals, errors, and questions into one Inbox, and audit long sessions for cost optimization and prompt tuning.
+
+## Key Features
+- Bidirectional real-time sync with `omp` terminal sessions
+- Visual thinking/reasoning trace, structured tool cards, live diffs, and inline code annotations
+- Time-Machine per-turn checkpoints with safe rollback
+- Built-in project file explorer, CodeMirror Markdown split-pane editor, persistent PTY terminal, and local port/service guard
+- Cron scheduled tasks, global idea backlog, privacy placeholder vault, and mobile remote access (LAN, Cloudflare Tunnel, IPv6 HTTPS)
+
+## Documentation
+- [README](https://github.com/qian-123456/vecway/blob/main/README.md): Overview, features, installation, and FAQ
+- [English User Guide](https://github.com/qian-123456/vecway/tree/main/docs/guide/en): 7-chapter comprehensive manual
+- [中文使用指南](https://github.com/qian-123456/vecway/tree/main/docs/guide/zh): 7 章完整中文使用手册
+- [Architecture Contract](https://github.com/qian-123456/vecway/blob/main/docs/ARCHITECTURE.md): Rust + Tauri + React module contracts
+
+## Installation (macOS)
+1. Download `Vecway_<version>_aarch64.dmg` (Apple Silicon) or `Vecway_<version>_x64.dmg` (Intel) from GitHub Releases.
+2. Because open-source community builds are unsigned, clear macOS Gatekeeper quarantine once after moving to `/Applications`:
+   `xattr -cr /Applications/Vecway.app`
+3. If `omp` CLI is not installed yet, Vecway installs it automatically on first launch, or run `curl -fsSL https://omp.sh/install | sh`.

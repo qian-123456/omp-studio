@@ -22,7 +22,7 @@ export default defineMessages({
 		testSend: "发送测试通知",
 		testSentTitle: "已在 {time} 发出测试通知",
 		testSentHelp:
-			"如果屏幕右上角没有弹出通知：打开「系统设置 → 通知」，找到 omp-workspace，打开「允许通知」，提醒样式选「横幅」或「提醒」；同时确认没有开启系统的「专注模式 / 勿扰模式」。",
+			"如果屏幕右上角没有弹出通知：打开「系统设置 → 通知」，找到 Vecway，打开「允许通知」，提醒样式选「横幅」或「提醒」；同时确认没有开启系统的「专注模式 / 勿扰模式」。",
 		testFailedTitle: "发送失败：{error}",
 		quietTitle: "免打扰",
 		quietBothRequired: "开始和结束时间需要同时填写（或同时清空表示关闭免打扰）",
@@ -105,7 +105,7 @@ export default defineMessages({
 		testSend: "Send test notification",
 		testSentTitle: "Test notification sent at {time}",
 		testSentHelp:
-			"If no notification appeared in the top-right corner: Open System Settings → Notifications, find omp-workspace, turn on Allow Notifications, and select Banners or Alerts. Also make sure Focus / Do Not Disturb is off.",
+			"If no notification appeared in the top-right corner: Open System Settings → Notifications, find Vecway, turn on Allow Notifications, and select Banners or Alerts. Also make sure Focus / Do Not Disturb is off.",
 		testFailedTitle: "Send failed: {error}",
 		quietTitle: "Quiet hours",
 		quietBothRequired: "Both start and end times must be provided (or clear both to disable quiet hours)",

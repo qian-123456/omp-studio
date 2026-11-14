@@ -63,7 +63,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.event.inputs.tag_name || github.ref_name }}
-          releaseName: 'omp-workspace ${{ github.event.inputs.tag_name || github.ref_name }}'
+          releaseName: 'Vecway ${{ github.event.inputs.tag_name || github.ref_name }}'
           releaseBody: |
             ### 下载与架构选择 / Download & Architecture
             - **Apple Silicon (M1/M2/M3/M4/M5)**: 下载 `*aarch64.dmg`（推荐大多数用户）
@@ -73,10 +73,10 @@ jobs:
             ---
 
             ### ⚠️ 重要安全提示：macOS 绕过未签名与隔离提示
-            由于开源社区版未购买苹果商业开发者证书，首次在 macOS 打开可能提示 **“omp-workspace 已损坏，无法打开。你应该将它移到废纸篓”**。
+            由于开源社区版未购买苹果商业开发者证书，首次在 macOS 打开可能提示 **“Vecway 已损坏，无法打开。你应该将它移到废纸篓”**。
             **软件并非损坏**，只需打开 macOS「终端（Terminal）」并运行以下命令清除隔离属性：
             ```bash
-            xattr -cr /Applications/omp-workspace.app
+            xattr -cr /Applications/Vecway.app
             ```
             *备选方式*：在访达「应用程序」中按住 `Control` 键点按应用选择「打开」，或在系统「系统设置 ▸ 隐私与安全性」中点击「仍要打开」。
 
@@ -107,8 +107,8 @@ jobs:
             ---
 
             ### 问题反馈与帮助 / Support
-            - [在线用户手册](https://github.com/qian-123456/omp-studio/tree/main/docs/guide/zh)
-            - [GitHub Issues](https://github.com/qian-123456/omp-studio/issues)
+            - [在线用户手册](https://github.com/qian-123456/vecway/tree/main/docs/guide/zh)
+            - [GitHub Issues](https://github.com/qian-123456/vecway/issues)
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

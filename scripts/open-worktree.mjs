@@ -199,7 +199,7 @@ print(best)
 `;
 	const probe = sh("swift", ["-e", swift], { env: { ...process.env, PROBE_PID: String(pid) } });
 	if (probe.status === 0 && probe.stdout.trim()) return probe.stdout.trim();
-	const fallback = sh("agent-desktop", ["list-windows", "--app", "omp-workspace"]);
+	const fallback = sh("agent-desktop", ["list-windows", "--app", "Vecway"]);
 	if (fallback.status !== 0) return null;
 	try {
 		const parsed = JSON.parse(fallback.stdout);

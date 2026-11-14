@@ -231,7 +231,7 @@ export function AboutSection() {
 			<SectionHeader title={t("settingsSections.about.title")} description={t("settingsSections.about.description")} />
 
 			<SectionJumpBar />
-			{/* 1. 本产品 (omp-workspace) */}
+			{/* 1. 本产品 (Vecway) */}
 			<SettingsCard jump={t("settingsSections.about.titleApp")} title={t("settingsSections.about.titleApp")}>
 				<SettingRow
 					label={t("settingsSections.about.thisProduct")}
@@ -239,7 +239,7 @@ export function AboutSection() {
 						<div className="space-y-1">
 							<div className="text-xs text-[var(--text-muted)]">{t("settingsSections.about.thisProductDesc")}</div>
 							<div className="text-[11px] font-mono text-[var(--text-dim)]">
-								omp-workspace v{desktopAppVersion ?? appVersion ?? t("settingsSections.about.unknown")}
+								Vecway v{desktopAppVersion ?? appVersion ?? t("settingsSections.about.unknown")}
 							</div>
 						</div>
 					}

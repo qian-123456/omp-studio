@@ -1,20 +1,23 @@
-# omp-workspace
-
 <div align="center">
 
-**A modern, high-performance desktop workbench for [oh-my-pi](https://github.com/can1357/oh-my-pi) (`omp`) AI agent sessions.**  
-专为 `omp` 命令行智能体打造的现代化原生桌面工作台。
+<img src="docs/images/vecway-logo.svg" alt="Vecway Logo" width="112" height="112" />
 
-[![GitHub release](https://img.shields.io/github/v/release/qian-123456/omp-studio?include_prereleases&style=flat-square&color=2563eb)](https://github.com/qian-123456/omp-studio/releases)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square&logo=apple)](https://github.com/qian-123456/omp-studio)
+# Vecway
+
+**The Native Desktop GUI & Intelligent Routing Workbench for [`oh-my-pi` (`omp`)](https://github.com/can1357/oh-my-pi) AI Coding Agents.**  
+专为 [`oh-my-pi`（`omp`）](https://github.com/can1357/oh-my-pi) 智能体打造的现代化原生桌面 GUI 与智能路由工作台。
+
+[![GitHub release](https://img.shields.io/github/v/release/qian-123456/vecway?include_prereleases&style=flat-square&color=2563eb)](https://github.com/qian-123456/vecway/releases)
+[![Powered by oh-my-pi (omp)](https://img.shields.io/badge/powered%20by-oh--my--pi%20(omp)-0f172a?style=flat-square)](https://github.com/can1357/oh-my-pi)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square&logo=apple)](https://github.com/qian-123456/vecway)
 [![Built with Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-blue?style=flat-square&logo=tauri)](https://tauri.app/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-[English](#english) | [中文说明](#中文说明)
+[English](#english) | [中文说明](#中文说明) | [User Guide](docs/guide/en) | [中文手册](docs/guide/zh) | [`llms.txt`](llms.txt)
 
 <br/>
 
-<img src="docs/images/workbench-overview.png" alt="omp-workspace Workbench Overview" width="900" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
+<img src="docs/images/workbench-overview.png" alt="Vecway — Native Desktop GUI Workbench for oh-my-pi (omp)" width="900" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
 
 </div>
 
@@ -23,9 +26,28 @@
 <a name="english"></a>
 ## English
 
-`omp-workspace` is a native desktop workbench designed to supercharge your workflow with the `omp` agent CLI. Built with **Tauri 2, Rust, React 19, TypeScript, and Tailwind CSS v4**, it blends command-line raw power with native desktop fluidity.
+**Vecway** *(formerly `omp-workspace` / `omp-studio`)* is a fast, native desktop GUI and multi-path routing workbench built for [`oh-my-pi` (`omp`)](https://github.com/can1357/oh-my-pi) AI coding agent sessions. Engineered with **Tauri 2, Rust, React 19, TypeScript, and Tailwind CSS v4**, it turns raw terminal agent power into a calm, structured desktop workspace.
 
-It works **alongside** the `omp` CLI rather than replacing it: terminal sessions are instantly synchronized to the sidebar, and desktop sessions can be taken over in your terminal anytime.
+Vecway works **alongside** the `omp` CLI rather than replacing it: terminal sessions under `~/.omp/agent/sessions/` appear in the sidebar in real time, and any desktop session can be taken over in your terminal whenever you want.
+
+### ⚡ Quick Facts
+
+| Attribute | Details |
+|---|---|
+| **Product** | **Vecway** (formerly `omp-workspace` / `omp-studio`) |
+| **Underlying Agent CLI** | [`oh-my-pi` (`omp`)](https://github.com/can1357/oh-my-pi) — full bidirectional session sync |
+| **Core Philosophy** | **Vector × Way** — Case-by-case intelligent routing across models, branches, and workflows |
+| **Platform** | macOS 12+ (Apple Silicon & Intel) |
+| **Stack** | Tauri 2 · Rust · React 19 · TypeScript · Tailwind CSS v4 |
+| **License** | MIT |
+
+### 🔀 Why Vecway? — The Case-by-Case Routing Philosophy
+
+Complex engineering rarely fits a single linear chat or one fixed model. Vecway embeds **routing** into every layer of the workbench:
+- **Model Role & Fallback Routing**: Route Main, Lightweight, Vision, and Consultant tasks to the right models automatically, backed by quota-triggered fallback chains.
+- **Git Worktree Parallel Routing**: Route concurrent coding tasks into isolated Git worktrees and branches so multiple `omp` agents never step on each other's files.
+- **Conversation Tree & Side-Chat Routing**: Fork sibling branches, step back cleanly, or peel off quick questions into a lightweight Side Chat without polluting your main context window.
+- **Session Attention Inbox & Doctor**: Route all approvals, runtime questions, and errors into one Inbox, and let a lightweight Session Doctor audit long runs for prompt and cost waste.
 
 ### 🌟 Key Features
 
@@ -74,34 +96,34 @@ It works **alongside** the `omp` CLI rather than replacing it: terminal sessions
 
 ### 📦 Download and Install
 
-Download the latest release for your Mac architecture from [GitHub Releases](https://github.com/qian-123456/omp-studio/releases/latest):
+Download the latest release for your Mac architecture from [GitHub Releases](https://github.com/qian-123456/vecway/releases/latest):
 
 | Architecture | Chip / Hardware | Installer Asset |
 |---|---|---|
-| **Apple Silicon** (Recommended) | M1 / M2 / M3 / M4 / M5 series Mac | `omp-workspace_0.1.10_aarch64.dmg` |
-| **Intel Mac** | Older Intel-based Mac | `omp-workspace_0.1.10_x64.dmg` |
+| **Apple Silicon** (Recommended) | M1 / M2 / M3 / M4 / M5 series Mac | `Vecway_<version>_aarch64.dmg` |
+| **Intel Mac** | Older Intel-based Mac | `Vecway_<version>_x64.dmg` |
 
-> ⚠️ **Important: "omp-workspace is damaged and can't be opened"**
+> ⚠️ **Important: "Vecway is damaged and can't be opened"**
 >
 > Because open-source community builds are not signed with a paid Apple Developer certificate, macOS Gatekeeper may show:
-> `“omp-workspace” is damaged and can’t be opened. You should move it to the Trash.`
+> `“Vecway” is damaged and can’t be opened. You should move it to the Trash.`
 >
 > **The app is NOT damaged.** Run this command in Terminal to clear the quarantine flag:
 > ```bash
-> xattr -cr /Applications/omp-workspace.app
+> xattr -cr /Applications/Vecway.app
 > ```
-> *Alternative*: Right-click (Control-click) `omp-workspace.app` in Finder, choose **Open**, or go to **System Settings ▸ Privacy & Security** and click **Open Anyway**.
+> *Alternative*: Right-click (Control-click) `Vecway.app` in Finder, choose **Open**, or go to **System Settings ▸ Privacy & Security** and click **Open Anyway**.
 
 ---
 
 ### 🛠️ Build from Source
 
-**Requirements**: macOS 12+, Node.js 18+, `pnpm`, and Rust 1.80+.
+**Requirements**: macOS 12+, Node.js 18+, `pnpm`, and Rust 1.85+.
 
 ```bash
 # Clone the repository
-git clone https://github.com/qian-123456/omp-studio.git
-cd omp-studio
+git clone https://github.com/qian-123456/vecway.git
+cd vecway
 
 # Install dependencies and start development mode
 pnpm install
@@ -137,14 +159,31 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 New worktrees need the current tracked launchers and package commands; uncommitted main-checkout changes do not propagate through `git worktree add`. Existing running applications do not need restarting for this configuration change, but already-loaded agent instructions and custom shell commands may still contain obsolete wrapper exports. Clear those exports before issuing direct Cargo commands. Fingerprinted statechart audit documents and saved evidence describe their historical baseline, not the current cache policy. CI release builds keep their existing official-Cargo policy.
 
+### ❓ FAQ
+
+- **What is the desktop GUI for `oh-my-pi` (`omp`)?**  
+  **Vecway** (formerly `omp-workspace` / `omp-studio`) is a community-built native desktop GUI and workbench for `oh-my-pi` (`omp`). If you do not have `omp` installed yet, Vecway can install it automatically on first launch.
+- **Does Vecway replace my `omp` terminal workflow?**  
+  No. Both Vecway and the `omp` CLI share `~/.omp/agent/sessions/` and `~/.omp/agent/models.yml`, so you can switch seamlessly between terminal and GUI on the same session.
+- **Will upgrading from `omp-workspace` keep my existing local settings and history?**  
+  Yes. Vecway preserves the local data directory (`~/.omp-workspace/`) and application identifier (`ai.omp.workspace`) for seamless continuity.
+
 ---
 
 <a name="中文说明"></a>
 ## 中文说明
 
-`omp-workspace` 是专为 [oh-my-pi](https://github.com/can1357/oh-my-pi)（`omp` 智能体命令行引擎）打造的高性能、沉浸式桌面工作台。采用 **Tauri 2 + Rust + React 19 + TypeScript + Tailwind CSS v4** 技术栈构建，将直观的可视化界面与极速的原生性能融为一体。
+**Vecway**（原名 `omp-workspace` / `omp-studio`）是专为 [`oh-my-pi`（`omp`）](https://github.com/can1357/oh-my-pi) 智能体命令行引擎打造的高性能原生桌面 GUI 与智能路由工作台。采用 **Tauri 2 + Rust + React 19 + TypeScript + Tailwind CSS v4** 技术栈构建，将命令行的硬核能力与原生桌面的清晰秩序融为一体。
 
 工作台与终端 `omp` 紧密协作而非割裂替代：终端中创建的会话会实时呈现在左侧栏，桌面发起的任务亦可随时在终端中无缝续接。
+
+### 🔀 设计哲学：Vector × Way（因境择路）
+
+复杂研发从来不是一条直线走到底——Vecway 把**“分情况路由、走最优路径、留兜底方案”**的思维贯穿在产品每一层：
+- **模型角色与额度路由**：为主力、轻量、视觉、顾问等不同角色指派专属模型，并配置额度触发的自动降级回退链。
+- **Git Worktree 并行隔离路由**：为不同任务自动路由到独立的工作树与分支目录，多智能体同时编码互不踩踏。
+- **分支对话树与侧聊分流**：随时在历史节点分叉回溯，或把临时旁枝问题分流到轻量级 Side Chat，不污染主上下文。
+- **全盘注意力调度与体检**：把所有审批、报错与待回复统一路由进收件箱（Inbox），并用独立轻量模型为长会话做成本与提示词体检。
 
 ### 🌟 核心特性全景
 
@@ -193,10 +232,10 @@ New worktrees need the current tracked launchers and package commands; uncommitt
 
 ### 📥 下载与安装
 
-请前往 [GitHub Releases 最新发布页](https://github.com/qian-123456/omp-studio/releases/latest) 下载对应芯片的安装包：
+请前往 [GitHub Releases 最新发布页](https://github.com/qian-123456/vecway/releases/latest) 下载对应芯片的安装包：
 
-- **苹果 M 系列芯片（Apple Silicon: M1/M2/M3/M4/M5）**：下载 `omp-workspace_0.1.10_aarch64.dmg`（绝大多数用户推荐）
-- **老款 Intel 芯片**：下载 `omp-workspace_0.1.10_x64.dmg`
+- **苹果 M 系列芯片（Apple Silicon: M1/M2/M3/M4/M5）**：下载 `Vecway_<version>_aarch64.dmg`（绝大多数用户推荐）
+- **老款 Intel 芯片**：下载 `Vecway_<version>_x64.dmg`
 
 > ⚠️ **重要：若提示“已损坏，无法打开。你应该将它移到废纸篓”**
 >
@@ -204,7 +243,7 @@ New worktrees need the current tracked launchers and package commands; uncommitt
 >
 > 只需要打开 macOS「终端（Terminal）」，执行以下命令即可清除隔离标记并正常开启：
 > ```bash
-> xattr -cr /Applications/omp-workspace.app
+> xattr -cr /Applications/Vecway.app
 > ```
 > *免终端替代方案*：在访达「应用程序」中按住 `Control` 键点按应用选择「打开」，或在系统「系统设置 ▸ 隐私与安全性」中点击「仍要打开」。
 
@@ -212,12 +251,12 @@ New worktrees need the current tracked launchers and package commands; uncommitt
 
 ### 💻 源码编译与本地开发
 
-**运行环境**：macOS 12+，Node.js 18+，`pnpm`，Rust 1.80+。
+**运行环境**：macOS 12+，Node.js 18+，`pnpm`，Rust 1.85+。
 
 ```bash
 # 1. 克隆代码仓库
-git clone https://github.com/qian-123456/omp-studio.git
-cd omp-studio
+git clone https://github.com/qian-123456/vecway.git
+cd vecway
 
 # 2. 安装前端依赖
 pnpm install
@@ -238,9 +277,19 @@ cd src-tauri && cargo clippy  # 后端 Rust 代码检查
 
 ---
 
+### ❓ 常见问题（FAQ）
+
+- **这是不是 `oh-my-pi`（`omp`）的桌面客户端 / GUI？**  
+  是的。**Vecway**（原 `omp-workspace` / `omp-studio`）正是专为 `omp` 命令行智能体打造的社区原生桌面 GUI 与多路径路由工作台。未安装 `omp` 时，首次启动工作台会自动完成安装。
+- **改名为 Vecway 后，之前 `omp-workspace` 的配置和会话会丢吗？**  
+  不会。Vecway 完整保留了本地数据目录（`~/.omp-workspace/`）和系统级应用标识，升级覆盖即可无缝延续所有会话与设置。
+
+---
+
 ### 📖 文档与指引
 
 - 完整使用指南：[`docs/guide/zh/`](docs/guide/zh)（中文版）、[`docs/guide/en/`](docs/guide/en)（英文版）
+- AI 检索索引文件：[`llms.txt`](llms.txt)
 - 系统架构与模块契约：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - 发版与 Release 规范：[`docs/RELEASE_GUIDE.md`](docs/RELEASE_GUIDE.md)
 - 贡献者与智能体工作纪律：[`AGENTS.md`](AGENTS.md)

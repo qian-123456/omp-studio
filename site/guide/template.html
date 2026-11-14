@@ -3,7 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>omp-workspace 使用说明 / User Guide</title>
+<title>Vecway 使用说明 / User Guide — oh-my-pi (omp) Desktop GUI</title>
+<meta name="description" content="Vecway (formerly omp-workspace) is the native macOS desktop GUI and intelligent routing workbench for oh-my-pi (omp) AI coding agents. Includes multi-model routing, Git worktree parallelism, visual trace, time-machine checkpoints, and mobile remote control.">
+<meta name="keywords" content="Vecway, oh-my-pi, omp, omp GUI, omp desktop, oh-my-pi GUI, AI coding agent workbench, Git worktree AI, model routing, Tauri 2, macOS AI IDE">
+<meta name="robots" content="index,follow">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Vecway">
+<meta property="og:title" content="Vecway — Native Desktop GUI & Routing Workbench for oh-my-pi (omp)">
+<meta property="og:description" content="Visual session hub, role-based model routing & fallbacks, isolated Git worktree parallelism, time-machine checkpoints, and mobile access for oh-my-pi (omp) agents.">
+<meta property="og:url" content="https://github.com/qian-123456/vecway">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Vecway — Desktop GUI for oh-my-pi (omp)">
+<meta name="twitter:description" content="Native macOS workbench for oh-my-pi (omp) AI coding agents with intelligent model routing and Git worktree isolation.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Vecway",
+      "alternateName": ["omp-workspace", "omp-studio", "oh-my-pi GUI"],
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "macOS 12+",
+      "softwareRequirements": "oh-my-pi (omp) CLI",
+      "license": "https://opensource.org/licenses/MIT",
+      "url": "https://github.com/qian-123456/vecway",
+      "downloadUrl": "https://github.com/qian-123456/vecway/releases/latest",
+      "description": "Native macOS desktop GUI and intelligent routing workbench for oh-my-pi (omp) AI coding agent sessions, featuring role-based model routing, Git worktree parallelism, visual execution trace, and time-machine checkpoints."
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Vecway and how does it relate to oh-my-pi (omp)?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Vecway (formerly omp-workspace / omp-studio) is a community-built native desktop GUI and workbench for the oh-my-pi (omp) AI coding agent CLI. It synchronizes bidirectionally with ~/.omp/agent/sessions/ so terminal and desktop sessions stay seamlessly connected."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I fix 'Vecway is damaged and can't be opened' on macOS?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Open-source builds are not notarized with a paid Apple Developer certificate. Run 'xattr -cr /Applications/Vecway.app' in Terminal or Control-click Vecway.app and choose Open."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 <style>
 :root{--bg:#fff;--fg:#1f1e1d;--muted:#6b6a68;--border:#e5e3de;--side:#faf9f7;--accent:#c2410c;--code-bg:#f5f4f1;--note:#2563eb;--tip:#16a34a;--warn:#d97706;--top:56px;
 --hl-c:#6b6a68;--hl-k:#b91c1c;--hl-s:#15803d;--hl-n:#1d4ed8;--hl-t:#7c3aed}
@@ -85,8 +137,8 @@ body.drawer .scrim{display:block;position:fixed;inset:var(--top) 0 0 0;backgroun
 (function(){
 var DATA=JSON.parse(document.getElementById("guide-data").textContent);
 var KEY="ompws.guide.lang";
-var T={zh:{brand:"omp-workspace 使用说明",toc:"本页内容",prev:"上一章",next:"下一章",copy:"复制",copied:"已复制",empty:"暂无内容",html:"zh-CN"},
-en:{brand:"omp-workspace User Guide",toc:"On this page",prev:"Previous",next:"Next",copy:"Copy",copied:"Copied",empty:"No content yet",html:"en"}};
+var T={zh:{brand:"Vecway 使用说明",toc:"本页内容",prev:"上一章",next:"下一章",copy:"复制",copied:"已复制",empty:"暂无内容",html:"zh-CN"},
+en:{brand:"Vecway User Guide",toc:"On this page",prev:"Previous",next:"Next",copy:"Copy",copied:"Copied",empty:"No content yet",html:"en"}};
 var $=function(i){return document.getElementById(i)};
 function getLang(){try{var l=localStorage.getItem(KEY);if(l==="zh"||l==="en")return l}catch(e){}return "zh"}
 var lang=getLang(),cur=null,spy=[];
@@ -106,7 +158,7 @@ function render(){
 var r=parse();lang=r.lang;try{localStorage.setItem(KEY,lang)}catch(e){}
 var list=DATA[lang]||[];var t=T[lang];
 document.documentElement.lang=t.html;document.title=t.brand+" / "+(lang==="zh"?"User Guide":"使用说明");
-$("brand").textContent=lang==="zh"?"omp-workspace 使用说明 / User Guide":"omp-workspace User Guide / 使用说明";
+$("brand").textContent=lang==="zh"?"Vecway 使用说明 / User Guide":"Vecway User Guide / 使用说明";
 document.querySelectorAll(".lang button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.lang===lang))});
 $("nav").innerHTML=list.map(function(c){return '<a href="#/'+lang+'/'+c.slug+'"'+(c.slug===r.slug?' aria-current="page"':'')+'>'+esc(c.title)+'</a>'}).join("");
 var idx=-1;for(var i=0;i<list.length;i++)if(list[i].slug===r.slug)idx=i;

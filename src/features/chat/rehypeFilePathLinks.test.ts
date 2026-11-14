@@ -3,7 +3,7 @@ import { inlineCodeUrl } from "./rehypeFilePathLinks";
 
 describe("inlineCodeUrl", () => {
 	it("accepts a lone http(s) URL", () => {
-		const u = "https://github.com/qian-123456/omp-studio/releases/latest/download/latest.json";
+		const u = "https://github.com/qian-123456/vecway/releases/latest/download/latest.json";
 		expect(inlineCodeUrl(u)).toBe(u);
 		expect(inlineCodeUrl("  http://localhost:3000/a?b=1#c ")).toBe("http://localhost:3000/a?b=1#c");
 	});

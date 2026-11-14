@@ -1,18 +1,18 @@
 # Getting Started
 
-> omp-workspace is a community desktop workbench for OMP AI agents: start, view, debug, and manage all your agent sessions and workspace code in a modern native window. This chapter covers the architecture, prerequisites, window layout, and starting your first session.
+> Vecway is the native desktop GUI and intelligent routing workbench for [oh-my-pi](https://github.com/can1357/oh-my-pi) (`omp`) AI agents (community project, not an official OMP release): start, view, debug, and manage all your agent sessions and workspace code in a modern native window. This chapter covers the architecture, prerequisites, window layout, and starting your first session.
 
 In this chapter, you will learn how to:
 
-- [Understand the role of omp-workspace](#understand-omp-workspace)
+- [Understand the role of Vecway](#understand-vecway)
 - [Check prerequisites and launch the app](#prerequisites)
 - [Navigate the primary window layout](#window-layout)
 - [Start your first agent session](#start-your-first-session)
 - [Configure model providers and credentials](#configure-model-providers)
 
-## Understand omp-workspace
+## Understand Vecway
 
-omp-workspace is a native desktop shell (built with Tauri 2 + React 19) for the OMP command-line agent. It works seamlessly alongside the CLI rather than replacing it:
+Vecway is a native desktop shell and routing hub (built with Tauri 2 + React 19) for the `omp` (`oh-my-pi`) command-line agent. It works seamlessly alongside the CLI rather than replacing it:
 
 - **Bidirectional Session Sync**: When the app launches, it automatically scans `~/.omp/agent/sessions/`. Sessions started in your terminal via `omp` appear in the sidebar; sessions created in the desktop app can be resumed in the terminal.
 - **Git Worktree Isolation**: Native support for Git worktrees. Multiple agents can work on separate branches of the same repository simultaneously without file collisions.

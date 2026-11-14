@@ -106,7 +106,7 @@ export function AdvancedSection() {
 		if (!settings) return;
 		try {
 			const path = await saveDialog({
-				defaultPath: "omp-workspace-settings.json",
+				defaultPath: "vecway-settings.json",
 				filters: [{ name: "JSON", extensions: ["json"] }],
 			});
 			if (!path) return;

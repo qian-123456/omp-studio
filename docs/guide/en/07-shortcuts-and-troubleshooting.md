@@ -53,14 +53,14 @@ In this chapter, you will learn how to:
 
 ## Troubleshooting
 
-### 0. "omp-workspace is damaged and can't be opened"
+### 0. "Vecway is damaged and can't be opened"
 - **Cause**: Because open-source community releases are not notarized with an Apple Developer certificate, macOS Gatekeeper quarantines downloaded binaries and displays a "damaged" warning.
 - **Solution (choose one)**:
   1. **Terminal command (recommended)**: Run this one-line command to remove the quarantine flag:
      ```bash
-     xattr -cr /Applications/omp-workspace.app
+     xattr -cr /Applications/Vecway.app
      ```
-  2. **Right-click Open**: Right-click (Control-click) `omp-workspace.app` in Finder, select **Open**, and confirm **Open** in the dialog.
+  2. **Right-click Open**: Right-click (Control-click) `Vecway.app` in Finder, select **Open**, and confirm **Open** in the dialog.
   3. **System Settings**: Go to **System Settings ▸ Privacy & Security**, scroll down to find the blocked application, and click **Open Anyway**.
 
 ### 1. "omp not found" or session fails to start
