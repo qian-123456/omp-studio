@@ -90,20 +90,18 @@ jobs:
 
             ### 本次更新 / What's New
             #### 新增功能 / Features
-            - 供应商密钥现在支持直接保存或使用环境变量；新增与编辑供应商的配置界面重新设计。
-            - Provider keys can now be saved directly or supplied through environment variables; provider setup and editing have been redesigned.
+            - **正式更名为 Vecway**：应用名称、窗口标题、通知与手机端界面全面更新为 **Vecway**（专为 `oh-my-pi` / `omp` 打造的原生桌面 GUI 与智能路由工作台），并同步启用全新黑白灰扳手 V 矢量应用图标。
+            - **Rebranded to Vecway**: Updated app name, window title, notifications, mobile UI, and monochrome wrench-V icon set as the native desktop GUI & intelligent routing workbench for `oh-my-pi` (`omp`).
+            - **仓库迁移与兼容**：GitHub 仓库与自动更新源迁至 `qian-123456/vecway`；本地数据目录（`~/.omp-workspace`）与应用标识保持向后兼容，旧版本升级不丢失任何会话与设置。
+            - **Repository & Upgrade Continuity**: Release and updater endpoints now point to `qian-123456/vecway` while preserving `~/.omp-workspace` and bundle identity so existing users upgrade seamlessly.
 
             #### 修复与优化 / Fixes & Improvements
-            - 调整供应商表单的列布局与对齐，并统一服务配置体验。
-            - Improved provider form alignment and consistency across service configuration.
-
-            #### 重大改动 / Breaking Changes
-            - 供应商 API 密钥现以明文保存在 OMP 的 `~/.omp/agent/models.yml`；已移除供应商密钥加密存储。升级前请确认该文件及其备份的访问权限。可识别的旧密钥引用会在启动时迁移。
-            - Provider API keys are now stored unencrypted in OMP's `~/.omp/agent/models.yml`; encrypted provider-key storage has been removed. Review access to this file and its backups before upgrading. Recognized legacy key references migrate at startup.
+            - 更新中英双语 README、用户指南与 `llms.txt` 检索索引，完善面向搜索引擎与 AI 搜索的产品发现信息。
+            - Updated bilingual README, user guide, and `llms.txt` for improved search and AI discovery.
 
             #### 验证范围 / Verification Scope
-            - TypeScript 类型检查、435 个前端与移动端测试文件（4,123 项）、Rust `cargo check`，以及 Apple Silicon 本地发布包与更新签名构建均已通过。
-            - Verified: TypeScript type-check, 435 frontend/mobile test files (4,123 tests), Rust `cargo check`, and the Apple Silicon release bundle with updater signature.
+            - TypeScript 类型检查、437 个前端与移动端测试文件（4,132 项）、Rust `cargo check`，以及 GitHub Actions macOS 双架构自动发布构建。
+            - Verified: TypeScript type-check, 437 frontend/mobile test files (4,132 tests), Rust `cargo check`, and GitHub Actions macOS universal release workflow.
             ---
 
             ### 问题反馈与帮助 / Support
